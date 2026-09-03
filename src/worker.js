@@ -1080,7 +1080,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
 
   <!-- Real-time Search Card -->
   <div class="search-card">
-    <form class="search-form" id="searchForm" onsubmit="handleSearchSubmit(event)">
+    <form class="search-form" id="searchForm" onsubmit="doSearch(); return false;" action="javascript:void(0);">
       <div class="search-input-wrapper">
         <span class="search-icon">🔍</span>
         <input
@@ -1090,10 +1090,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
           placeholder="Search 440,000+ shiurim (e.g. Schachter, Teshuva, Netzavim, or ID)..."
           value="${escapeHtml(searchQuery)}"
           autocomplete="off"
+          oninput="onSearchInput()"
+          onkeydown="if(event.key === 'Enter'){ event.preventDefault(); doSearch(); }"
         >
         <button type="button" class="clear-search-btn" id="clearSearchBtn" onclick="clearSearch()" title="Clear">×</button>
       </div>
-      <button type="submit" class="search-submit-btn">Search</button>
+      <button type="button" class="search-submit-btn" onclick="doSearch()">Search</button>
     </form>
 
     <!-- Quick topic / speaker chips -->
@@ -1287,10 +1289,50 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
   // Handle Search input
   const searchInput = document.getElementById('searchInput');
   const clearSearchBtn = document.getElementById('clearSearchBtn');
+  let searchDebounceTimer = null;
 
-  searchInput.addEventListener('input', () => {
-    clearSearchBtn.style.display = searchInput.value.trim() ? 'block' : 'none';
-  });
+  function onSearchInput() {
+    const val = searchInput.value;
+    clearSearchBtn.style.display = val.trim() ? 'block' : 'none';
+
+    clearTimeout(searchDebounceTimer);
+    const query = val.trim();
+    if (!query) {
+      clearSearch();
+      return;
+    }
+    if (query.length < 2) return;
+
+    searchDebounceTimer = setTimeout(() => {
+      executeLiveSearch(query);
+    }, 300);
+  }
+
+  function doSearch() {
+    clearTimeout(searchDebounceTimer);
+    const query = searchInput.value.trim();
+    if (!query) return;
+
+    // Smart detect: is it a Shiur ID or YUTorah URL?
+    const id = extractShiurId(query);
+    if (id) {
+      playShiurById(null, id);
+      return;
+    }
+
+    executeLiveSearch(query);
+  }
+
+  function handleSearchSubmit(e) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    doSearch();
+    return false;
+  }
+
+  searchInput.addEventListener('input', onSearchInput);
 
   if (searchInput.value.trim()) {
     clearSearchBtn.style.display = 'block';
@@ -1316,21 +1358,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       if (id2) return id2;
     }
     return null;
-  }
-
-  function handleSearchSubmit(e) {
-    if (e) e.preventDefault();
-    const query = searchInput.value.trim();
-    if (!query) return;
-
-    // Smart detect: is it a Shiur ID or YUTorah URL?
-    const id = extractShiurId(query);
-    if (id) {
-      playShiurById(null, id);
-      return;
-    }
-
-    executeLiveSearch(query);
   }
 
   function searchFor(term) {
