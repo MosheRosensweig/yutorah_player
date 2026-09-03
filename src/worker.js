@@ -1327,8 +1327,74 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
   }
 
   const audio = document.getElementById('audioElement');
-  const initialTimestamp = ${JSON.stringify(timestamp)};
-  const hasAudio = ${JSON.stringify(Boolean(audioUrl))};
+  let initialTimestamp = ${JSON.stringify(timestamp)};
+  let hasAudio = ${JSON.stringify(Boolean(audioUrl))};
+  let currentShiurId = ${JSON.stringify(shiurId || '')};
+  let initialTimeApplied = false;
+  let lastUrlUpdateSec = -1;
+  let lastUrlUpdateTime = 0;
+
+  function updateUrlTimestamp(force) {
+    if (!hasAudio || !audio.src) return;
+    const curTime = audio.currentTime;
+    if (isNaN(curTime) || curTime < 0) return;
+    const curSec = Math.floor(curTime);
+
+    const now = Date.now();
+    // Throttled: update URL at most once every 5 seconds, unless forced (pause, seek, tab close)
+    if (!force && (curSec === lastUrlUpdateSec || (now - lastUrlUpdateTime < 5000))) {
+      return;
+    }
+
+    lastUrlUpdateSec = curSec;
+    lastUrlUpdateTime = now;
+
+    // Save to localStorage for instant resume even without URL parameter
+    if (currentShiurId && curSec > 0) {
+      try {
+        localStorage.setItem('yutorah_progress_' + currentShiurId, curSec);
+      } catch (e) {}
+    }
+
+    // Update the browser URL in-place without polluting back-button history
+    try {
+      const url = new URL(window.location.href);
+      if (curSec > 0) {
+        url.searchParams.set('t', curSec);
+      } else {
+        url.searchParams.delete('t');
+      }
+      history.replaceState(history.state, '', url.toString());
+    } catch (e) {}
+  }
+
+  function applyInitialTime() {
+    if (initialTimeApplied) return;
+    let targetSec = 0;
+    if (initialTimestamp) {
+      const p = parseFloat(initialTimestamp);
+      if (!isNaN(p) && p > 0) targetSec = p;
+    } else if (currentShiurId) {
+      try {
+        const saved = parseFloat(localStorage.getItem('yutorah_progress_' + currentShiurId));
+        if (!isNaN(saved) && saved > 5) targetSec = saved;
+      } catch (e) {}
+    }
+
+    if (targetSec > 0) {
+      if (audio.duration && !isNaN(audio.duration)) {
+        audio.currentTime = Math.min(targetSec, audio.duration - 1);
+        initialTimeApplied = true;
+        updateUrlTimestamp(true);
+      } else {
+        try {
+          audio.currentTime = targetSec;
+          initialTimeApplied = true;
+          updateUrlTimestamp(true);
+        } catch(e) {}
+      }
+    }
+  }
 
   function formatTime(sec) {
     if (!sec || isNaN(sec)) return '0:00';
@@ -1651,9 +1717,41 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
         dlBtn.style.display = 'inline-flex';
       }
 
+      currentShiurId = id;
+      hasAudio = true;
+      initialTimeApplied = false;
+      lastUrlUpdateSec = -1;
+      lastUrlUpdateTime = 0;
+
+      // Check if URL or localStorage has a timestamp for this shiur
+      let resumeSec = 0;
+      try {
+        const saved = parseFloat(localStorage.getItem('yutorah_progress_' + id));
+        if (!isNaN(saved) && saved > 5) resumeSec = saved;
+      } catch(e) {}
+
+      const curUrl = new URL(window.location.href);
+      const urlT = curUrl.searchParams.get('t');
+      if (urlT) {
+        const p = parseFloat(urlT);
+        if (!isNaN(p) && p > 0) resumeSec = p;
+      }
+
+      initialTimestamp = resumeSec ? String(resumeSec) : '';
+
       // Start playing
       audio.src = audioSrc;
       audio.load();
+
+      if (resumeSec > 0) {
+        const onLoaded = function() {
+          audio.removeEventListener('loadedmetadata', onLoaded);
+          audio.currentTime = resumeSec;
+          updateUrlTimestamp(true);
+        };
+        audio.addEventListener('loadedmetadata', onLoaded);
+      }
+
       const p = audio.play();
       if (p !== undefined) {
         p.catch(err => console.log('Autoplay notification:', err));
@@ -1678,7 +1776,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
   function closePlayer() {
     audio.pause();
     document.getElementById('playerCard').style.display = 'none';
-    history.pushState({}, '', '/');
+    hasAudio = false;
+    currentShiurId = '';
+    const newUrl = new URL(window.location.href);
+    newUrl.pathname = '/';
+    newUrl.search = '';
+    history.pushState({}, '', newUrl.toString());
   }
 
   // Switch Collection Tabs
@@ -1721,6 +1824,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
   function skip(sec) {
     if (!audio.src) return;
     audio.currentTime = Math.max(0, Math.min(audio.duration || Infinity, audio.currentTime + sec));
+    updateUrlTimestamp(true);
   }
 
   function setSpeed(rate) {
@@ -1752,6 +1856,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
     audio.currentTime = pct * audio.duration;
+    updateUrlTimestamp(true);
   }
 
   scrubberBar.addEventListener('click', seekToPosition);
@@ -1764,19 +1869,49 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
 
   // Audio Events
   audio.addEventListener('play', () => document.getElementById('playBtn').textContent = '⏸');
-  audio.addEventListener('pause', () => document.getElementById('playBtn').textContent = '▶');
+  audio.addEventListener('pause', () => {
+    document.getElementById('playBtn').textContent = '▶';
+    updateUrlTimestamp(true);
+  });
   audio.addEventListener('timeupdate', () => {
     if (!audio.duration) return;
     const pct = (audio.currentTime / audio.duration) * 100;
     document.getElementById('scrubberFill').style.width = pct + '%';
     document.getElementById('curTime').textContent = formatTime(audio.currentTime);
+    updateUrlTimestamp(false);
   });
   audio.addEventListener('loadedmetadata', () => {
     document.getElementById('totalTime').textContent = formatTime(audio.duration);
-    if (initialTimestamp) {
-      const sec = parseFloat(initialTimestamp);
-      if (!isNaN(sec)) audio.currentTime = sec;
+    applyInitialTime();
+  });
+  audio.addEventListener('canplay', () => {
+    applyInitialTime();
+  });
+  audio.addEventListener('ended', () => {
+    document.getElementById('playBtn').textContent = '▶';
+    if (currentShiurId) {
+      try { localStorage.removeItem('yutorah_progress_' + currentShiurId); } catch(e) {}
     }
+    const url = new URL(window.location.href);
+    url.searchParams.delete('t');
+    history.replaceState(history.state, '', url.toString());
+  });
+
+  if (audio.readyState >= 1) {
+    applyInitialTime();
+  }
+
+  // Save timestamp when page/tab is backgrounded or closed
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      updateUrlTimestamp(true);
+    }
+  });
+  window.addEventListener('beforeunload', () => {
+    updateUrlTimestamp(true);
+  });
+  window.addEventListener('pagehide', () => {
+    updateUrlTimestamp(true);
   });
 
   // Fallback if primary audio stream errors
