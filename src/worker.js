@@ -61,6 +61,18 @@ export default {
       return response;
     }
 
+    // If it's a Cloudflare challenge, pass through untouched so Turnstile verification succeeds cleanly
+    if (response.headers.get('cf-mitigated') === 'challenge' || response.status === 403 || response.status === 503) {
+      const respHeaders = new Headers(response.headers);
+      respHeaders.delete('x-frame-options');
+      respHeaders.delete('content-security-policy');
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: respHeaders,
+      });
+    }
+
     // Prepare response headers for HTML
     const responseHeaders = new Headers(response.headers);
     responseHeaders.delete('x-frame-options');
