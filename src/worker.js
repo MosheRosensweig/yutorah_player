@@ -1,18 +1,70 @@
 /**
  * YUTorah Player — Cloudflare Worker Web Application
  *
- * A standalone, zero-friction web portal and enhanced audio player.
- * No extensions, no bookmarklets, no installation required.
- * Just visit the website on any phone or laptop and it works instantly!
+ * Standalone, zero-friction web portal and enhanced audio player.
+ * Server-renders shiur metadata directly into HTML for instant playback.
+ * Works seamlessly on iOS Safari, Android Chrome, Mac, and Windows.
  */
 
 const TARGET_API_ORIGIN = 'https://www.yutorah.org';
+
+// Curated list of popular / featured shiurim for the homepage
+const FEATURED_SHIURIM = [
+  {
+    id: '1187082',
+    title: 'The Power of לדוד',
+    speaker: 'Rabbi Noach Goldstein',
+    speakerPhoto: 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/noach_goldstein.jpg',
+    duration: '46 min',
+    category: 'Elul / Machshava'
+  },
+  {
+    id: '1187083',
+    title: '13 Middot Explainer: Understanding Each Middah',
+    speaker: 'Rabbi Moshe Taragin',
+    speakerPhoto: 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/mtaragin.jpg',
+    duration: '1 hr 48 min',
+    category: 'Yeshivat Har Etzion'
+  },
+  {
+    id: '1187202',
+    title: 'Chassidus on Teshuva - Kedushas Levi',
+    speaker: 'Mrs. Emma Katz',
+    speakerPhoto: 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/emma_katz.jpg',
+    duration: '10 min',
+    category: 'Chicago Kollel'
+  },
+  {
+    id: '1187183',
+    title: "Tehilim 81: Shir shel Yom of Rosh ha'Shanah",
+    speaker: 'Rabbi Matt Schneeweiss',
+    speakerPhoto: 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/matt_schneeweiss.jpg',
+    duration: '1 hr 3 min',
+    category: 'Nach'
+  },
+  {
+    id: '988711',
+    title: 'Shemot 5781',
+    speaker: 'Rabbi Hershel Schachter',
+    speakerPhoto: 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/hershel_schachter.jpg',
+    duration: '1 hr 17 min',
+    category: 'Parsha / Halacha'
+  },
+  {
+    id: '987056',
+    title: 'Josh Gelernter Mikraos Gedolos Parsha Chabura',
+    speaker: 'Rabbi Yaakov B. Neuburger',
+    speakerPhoto: 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/yaacov_b._neuberger.jpg',
+    duration: '31 min',
+    category: 'Parsha / Machshava'
+  }
+];
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    // 1. API proxy for lecture data (CORS-friendly, bypasses any browser restrictions)
+    // 1. API proxy for lecture data (for live searches / dynamic lookups)
     if (url.pathname.startsWith('/sidebar/lecturedata') || url.pathname.startsWith('/sidebar/lectureData') || url.pathname === '/api/shiur') {
       const shiurId = url.searchParams.get('shiurID') || url.searchParams.get('shiurId') || url.searchParams.get('id');
       if (!shiurId) {
@@ -47,22 +99,37 @@ export default {
       }
     }
 
-    // 2. Extract Shiur ID from URL paths like:
-    // /1187082
-    // /lectures/1187082
-    // /lectures/details?shiurID=1187082
-    // ?shiurId=1187082
+    // 2. Extract Shiur ID from paths like /1187082, /lectures/1187082, or ?shiurId=1187082
     let shiurId = url.searchParams.get('shiurId') || url.searchParams.get('shiurID') || url.searchParams.get('id');
     const pathMatch = url.pathname.match(/^\/(?:lectures\/)?(\d+)/);
     if (!shiurId && pathMatch) {
       shiurId = pathMatch[1];
     }
 
-    // If audioUrl is provided directly
     const directAudio = url.searchParams.get('audioUrl') || url.searchParams.get('url');
+    const timestamp = url.searchParams.get('t') || '';
 
-    // 3. Render HTML Web App
-    return new Response(renderAppHtml({ shiurId, directAudio, timestamp: url.searchParams.get('t') }), {
+    // 3. If a shiurId is requested, pre-fetch metadata so the page arrives fully loaded!
+    let shiurData = null;
+    if (shiurId) {
+      try {
+        const resp = await fetch(`${TARGET_API_ORIGIN}/sidebar/lectureData?shiurId=${encodeURIComponent(shiurId)}`, {
+          headers: {
+            'User-Agent': request.headers.get('User-Agent') || 'Mozilla/5.0',
+            'Accept': 'application/json',
+            'Referer': `${TARGET_API_ORIGIN}/`,
+          }
+        });
+        if (resp.ok) {
+          shiurData = await resp.json();
+        }
+      } catch (err) {
+        console.error('Failed to pre-fetch shiur:', err);
+      }
+    }
+
+    // 4. Render and return the HTML app
+    return new Response(renderAppHtml({ shiurData, shiurId, directAudio, timestamp }), {
       headers: {
         'Content-Type': 'text/html; charset=utf-8',
         'Cache-Control': 'no-cache',
@@ -71,13 +138,39 @@ export default {
   }
 };
 
-function renderAppHtml({ shiurId, directAudio, timestamp }) {
+function renderAppHtml({ shiurData, shiurId, directAudio, timestamp }) {
+  const isPlaying = Boolean(shiurData || directAudio);
+
+  let title = 'YUTorah Enhanced Player';
+  let speaker = '';
+  let photo = '';
+  let duration = '';
+  let meta = '';
+  let description = '';
+  let audioUrl = '';
+  let downloadUrl = '';
+
+  if (shiurData) {
+    title = shiurData.shiurTitle || 'Untitled Shiur';
+    speaker = shiurData.shiurTeacherFullName || (shiurData.shiurTeachers && shiurData.shiurTeachers[0] ? shiurData.shiurTeachers[0].teacherFullName : 'YUTorah');
+    photo = shiurData.teacherPhotoURL_lp || shiurData.teacherPhotoURL || (shiurData.shiurTeachers && shiurData.shiurTeachers[0] ? shiurData.shiurTeachers[0].teacherPhotoURL : '');
+    duration = shiurData.shiurDuration || '';
+    meta = duration + (shiurData.shiurDateFormatted ? ' · ' + shiurData.shiurDateFormatted : '');
+    description = shiurData.shiurDescription || '';
+    downloadUrl = shiurData.downloadURL || shiurData.playerDownloadURL || '';
+    audioUrl = shiurData.playerDownloadURL || (shiurData.shiurURL ? 'https://shiurim.yutorah.net' + shiurData.shiurURL : '') || downloadUrl;
+  } else if (directAudio) {
+    title = 'Audio Stream';
+    speaker = directAudio;
+    audioUrl = directAudio;
+  }
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>YUTorah Enhanced Player</title>
+  <title>${escapeHtml(title)} — YUTorah Enhanced</title>
   <style>
     :root {
       --primary: #2b4c7e;
@@ -87,7 +180,7 @@ function renderAppHtml({ shiurId, directAudio, timestamp }) {
       --card: #ffffff;
       --text: #22252a;
       --text-muted: #656d78;
-      --border: #e1e6ed;
+      --border: #dde2ea;
       --shadow: 0 4px 20px rgba(0, 0, 0, 0.07);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -105,10 +198,14 @@ function renderAppHtml({ shiurId, directAudio, timestamp }) {
       background: var(--primary);
       color: #fff;
       padding: 14px 20px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.12);
+    }
+    .header-inner {
+      max-width: 860px;
+      margin: 0 auto;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.12);
     }
     .brand {
       display: flex;
@@ -130,20 +227,20 @@ function renderAppHtml({ shiurId, directAudio, timestamp }) {
     /* Main Container */
     main {
       flex: 1;
-      max-width: 820px;
+      max-width: 860px;
       width: 100%;
       margin: 0 auto;
-      padding: 20px 16px 40px;
+      padding: 20px 16px 50px;
     }
 
     /* Search & Launcher Card */
     .launcher-card {
       background: var(--card);
       border-radius: 12px;
-      padding: 18px 20px;
+      padding: 16px 18px;
       box-shadow: var(--shadow);
       border: 1px solid var(--border);
-      margin-bottom: 20px;
+      margin-bottom: 22px;
     }
     .input-row {
       display: flex;
@@ -184,10 +281,9 @@ function renderAppHtml({ shiurId, directAudio, timestamp }) {
       padding: 24px;
       box-shadow: var(--shadow);
       border: 1px solid var(--border);
-      display: none;
-      animation: fadeIn 0.25s ease;
+      margin-bottom: 28px;
+      ${isPlaying ? '' : 'display: none;'}
     }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 
     /* Shiur Info Header */
     .shiur-header {
@@ -197,13 +293,14 @@ function renderAppHtml({ shiurId, directAudio, timestamp }) {
       margin-bottom: 20px;
     }
     .speaker-photo {
-      width: 72px;
-      height: 72px;
+      width: 74px;
+      height: 74px;
       border-radius: 50%;
       object-fit: cover;
       background: #e2e6ec;
       border: 2px solid var(--border);
       flex-shrink: 0;
+      ${photo ? '' : 'display: none;'}
     }
     .shiur-details {
       flex: 1;
@@ -233,9 +330,9 @@ function renderAppHtml({ shiurId, directAudio, timestamp }) {
     }
     .scrubber-bar {
       width: 100%;
-      height: 8px;
+      height: 10px;
       background: #e4e8ef;
-      border-radius: 4px;
+      border-radius: 5px;
       cursor: pointer;
       position: relative;
       touch-action: none;
@@ -243,17 +340,17 @@ function renderAppHtml({ shiurId, directAudio, timestamp }) {
     .scrubber-fill {
       height: 100%;
       background: var(--primary);
-      border-radius: 4px;
+      border-radius: 5px;
       width: 0%;
       position: relative;
     }
     .scrubber-handle {
       position: absolute;
-      right: -7px;
+      right: -8px;
       top: 50%;
       transform: translateY(-50%);
-      width: 16px;
-      height: 16px;
+      width: 18px;
+      height: 18px;
       background: var(--primary);
       border: 2px solid #fff;
       border-radius: 50%;
@@ -300,13 +397,13 @@ function renderAppHtml({ shiurId, directAudio, timestamp }) {
       transform: scale(0.92);
     }
     .ctrl-btn.skip {
-      width: 48px;
-      height: 48px;
+      width: 50px;
+      height: 50px;
       font-size: 14px;
     }
     .ctrl-btn.play {
-      width: 64px;
-      height: 64px;
+      width: 66px;
+      height: 66px;
       font-size: 26px;
       border-color: var(--primary);
       background: var(--primary);
@@ -385,89 +482,143 @@ function renderAppHtml({ shiurId, directAudio, timestamp }) {
       font-size: 14px;
       line-height: 1.6;
       color: #4a5568;
+      ${description ? '' : 'display: none;'}
     }
 
-    /* Featured Shiurim Section */
+    /* Section Title */
     .section-title {
-      font-size: 18px;
+      font-size: 19px;
       font-weight: 700;
-      margin: 28px 0 14px;
+      margin: 10px 0 16px;
       color: var(--text);
     }
-    .shiur-cards {
+
+    /* Featured Shiur Cards */
+    .shiur-cards-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-      gap: 14px;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 16px;
     }
-    .quick-card {
+    .quick-card-link {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
       background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 14px;
+      border: 1.5px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      text-decoration: none;
+      color: inherit;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+      transition: all 0.15s ease;
       cursor: pointer;
-      transition: transform 0.15s, box-shadow 0.15s;
     }
-    .quick-card:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+    .quick-card-link:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 6px 18px rgba(0,0,0,0.08);
       border-color: var(--primary);
     }
-    .quick-title {
+    .quick-card-link:active {
+      transform: scale(0.98);
+    }
+    .quick-card-top {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .quick-card-avatar {
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: #e2e6ec;
+      flex-shrink: 0;
+    }
+    .quick-card-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .quick-card-title {
       font-size: 14px;
       font-weight: 700;
-      line-height: 1.3;
-      margin-bottom: 6px;
+      line-height: 1.35;
       color: var(--text);
+      margin-bottom: 4px;
     }
-    .quick-speaker {
+    .quick-card-speaker {
       font-size: 13px;
       color: var(--primary);
       font-weight: 600;
     }
-    .quick-duration {
+    .quick-card-bottom {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-top: 1px solid #edf0f5;
+      padding-top: 10px;
       font-size: 12px;
       color: var(--text-muted);
-      margin-top: 4px;
+    }
+    .quick-play-badge {
+      background: #eef2f7;
+      color: var(--primary);
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.15s;
+    }
+    .quick-card-link:hover .quick-play-badge {
+      background: var(--primary);
+      color: #fff;
     }
 
-    /* Loading Spinner */
-    .spinner {
-      display: none;
+    /* Shortcuts Hint */
+    .shortcuts-hint {
+      margin-top: 12px;
+      font-size: 12px;
+      color: var(--text-muted);
       text-align: center;
-      padding: 30px;
-      font-size: 15px;
-      font-weight: 600;
-      color: var(--primary);
+    }
+    kbd {
+      background: #eaedf2;
+      border: 1px solid #cfd5de;
+      border-radius: 3px;
+      padding: 1px 5px;
+      font-size: 11px;
     }
   </style>
 </head>
 <body>
 
 <header>
-  <a href="/" class="brand">
-    🎧 YUTorah Enhanced <span>PLAYER</span>
-  </a>
+  <div class="header-inner">
+    <a href="/" class="brand">
+      🎧 YUTorah Enhanced <span>PLAYER</span>
+    </a>
+  </div>
 </header>
 
 <main>
   <!-- Launcher Input -->
   <div class="launcher-card">
     <div class="input-row">
-      <input type="text" id="shiurInput" class="shiur-input" placeholder="Paste any YUTorah URL or Shiur ID (e.g. 1187082)">
+      <input type="text" id="shiurInput" class="shiur-input" placeholder="Paste any YUTorah lecture URL or ID (e.g. 1187082)">
       <button class="play-btn" onclick="handleLaunch()">▶ Play</button>
     </div>
   </div>
 
-  <div class="spinner" id="loadingSpinner">⏳ Loading shiur...</div>
-
-  <!-- Audio Player -->
+  <!-- Audio Player Card -->
   <div class="player-card" id="playerCard">
     <div class="shiur-header">
-      <img id="speakerImg" class="speaker-photo" src="" alt="">
+      <img id="speakerImg" class="speaker-photo" src="${escapeHtml(photo)}" alt="${escapeHtml(speaker)}">
       <div class="shiur-details">
-        <h1 id="shiurTitle" class="shiur-title"></h1>
-        <div id="shiurSpeaker" class="shiur-speaker"></div>
-        <div id="shiurMeta" class="shiur-meta"></div>
+        <h1 id="shiurTitle" class="shiur-title">${escapeHtml(title)}</h1>
+        <div id="shiurSpeaker" class="shiur-speaker">${escapeHtml(speaker)}</div>
+        <div id="shiurMeta" class="shiur-meta">${escapeHtml(meta)}</div>
       </div>
     </div>
 
@@ -480,17 +631,17 @@ function renderAppHtml({ shiurId, directAudio, timestamp }) {
       </div>
       <div class="time-display">
         <span id="curTime">0:00</span>
-        <span id="totalTime">0:00</span>
+        <span id="totalTime">${escapeHtml(duration || '0:00')}</span>
       </div>
     </div>
 
-    <!-- Transport -->
+    <!-- Transport Buttons -->
     <div class="transport-row">
-      <button class="ctrl-btn skip" onclick="skip(-30)" title="Back 30s">-30</button>
-      <button class="ctrl-btn skip" onclick="skip(-10)" title="Back 10s">-10</button>
-      <button class="ctrl-btn play" id="playBtn" onclick="togglePlay()">▶</button>
-      <button class="ctrl-btn skip" onclick="skip(10)" title="Forward 10s">+10</button>
-      <button class="ctrl-btn skip" onclick="skip(30)" title="Forward 30s">+30</button>
+      <button class="ctrl-btn skip" onclick="skip(-30)" title="Back 30s (Shift+←)">-30</button>
+      <button class="ctrl-btn skip" onclick="skip(-10)" title="Back 10s (←)">-10</button>
+      <button class="ctrl-btn play" id="playBtn" onclick="togglePlay()" title="Play / Pause (Space)">▶</button>
+      <button class="ctrl-btn skip" onclick="skip(10)" title="Forward 10s (→)">+10</button>
+      <button class="ctrl-btn skip" onclick="skip(30)" title="Forward 30s (Shift+→)">+30</button>
     </div>
 
     <!-- Secondary Controls -->
@@ -514,51 +665,48 @@ function renderAppHtml({ shiurId, directAudio, timestamp }) {
         <button class="action-btn" id="copyLinkBtn" onclick="copyShareLink()">
           📋 Copy Link @ Time
         </button>
-        <a class="action-btn" id="dlBtn" href="#" target="_blank">
+        <a class="action-btn" id="dlBtn" href="${escapeHtml(downloadUrl || audioUrl)}" target="_blank" ${downloadUrl || audioUrl ? '' : 'style="display:none;"'}>
           ⬇️ Download MP3
         </a>
       </div>
     </div>
 
-    <div class="shiur-desc" id="shiurDesc" style="display:none;"></div>
+    <div class="shortcuts-hint">
+      Shortcuts: <kbd>Space</kbd> play/pause · <kbd>←</kbd>/<kbd>→</kbd> ±10s · <kbd>Shift+←/→</kbd> ±30s · <kbd>[</kbd>/<kbd>]</kbd> speed
+    </div>
+
+    <div class="shiur-desc" id="shiurDesc">${escapeHtml(description)}</div>
   </div>
 
-  <!-- Featured / Quick Suggestions -->
-  <div id="featuredSection">
-    <h2 class="section-title">🔥 Featured & Recent Shiurim</h2>
-    <div class="shiur-cards">
-      <div class="quick-card" onclick="loadShiur('1187082')">
-        <div class="quick-title">The Power of לדוד</div>
-        <div class="quick-speaker">Rabbi Noach Goldstein</div>
-        <div class="quick-duration">⏱ 46 min · Elul / Machshava</div>
-      </div>
-      <div class="quick-card" onclick="loadShiur('1187083')">
-        <div class="quick-title">13 Middot Explainer: Understanding Each Middah</div>
-        <div class="quick-speaker">Rabbi Moshe Taragin</div>
-        <div class="quick-duration">⏱ 1 hr 48 min · Yeshivat Har Etzion</div>
-      </div>
-      <div class="quick-card" onclick="loadShiur('1187202')">
-        <div class="quick-title">Chassidus on Teshuva - Kedushas Levi</div>
-        <div class="quick-speaker">Mrs. Emma Katz</div>
-        <div class="quick-duration">⏱ 10 min · Chicago Kollel</div>
-      </div>
-      <div class="quick-card" onclick="loadShiur('1187183')">
-        <div class="quick-title">Tehilim 81: Shir shel Yom of Rosh ha'Shanah</div>
-        <div class="quick-speaker">Rabbi Matt Schneeweiss</div>
-        <div class="quick-duration">⏱ 1 hr 3 min · Nach</div>
-      </div>
+  <!-- Featured Shiurim Section (Real Clickable Links) -->
+  <div>
+    <h2 class="section-title">🔥 Featured Shiurim</h2>
+    <div class="shiur-cards-grid">
+      ${FEATURED_SHIURIM.map(s => `
+        <a href="/${s.id}" class="quick-card-link">
+          <div class="quick-card-top">
+            <img class="quick-card-avatar" src="${escapeHtml(s.speakerPhoto)}" alt="${escapeHtml(s.speaker)}" loading="lazy">
+            <div class="quick-card-info">
+              <div class="quick-card-title">${escapeHtml(s.title)}</div>
+              <div class="quick-card-speaker">${escapeHtml(s.speaker)}</div>
+            </div>
+          </div>
+          <div class="quick-card-bottom">
+            <span>⏱ ${escapeHtml(s.duration)}</span>
+            <span class="quick-play-badge">▶ Play</span>
+          </div>
+        </a>
+      `).join('')}
     </div>
   </div>
 </main>
 
-<audio id="audioElement" preload="metadata"></audio>
+<audio id="audioElement" src="${escapeHtml(audioUrl)}" preload="metadata"></audio>
 
 <script>
   const audio = document.getElementById('audioElement');
-  let currentShiur = null;
-  const initialShiurId = ${JSON.stringify(shiurId || '')};
-  const initialDirectAudio = ${JSON.stringify(directAudio || '')};
-  const initialTimestamp = ${JSON.stringify(timestamp || '')};
+  const initialTimestamp = ${JSON.stringify(timestamp)};
+  const hasAudio = ${JSON.stringify(Boolean(audioUrl))};
 
   function formatTime(sec) {
     if (!sec || isNaN(sec)) return '0:00';
@@ -575,9 +723,11 @@ function renderAppHtml({ shiurId, directAudio, timestamp }) {
     if (!val) return;
     const m = val.match(/(?:lectures\/)?(\d+)/);
     if (m) {
-      loadShiur(m[1]);
+      window.location.href = '/' + m[1];
     } else if (val.match(/\\.(mp3|m4a|wav)(\\?|$)/i)) {
-      playDirectUrl(val);
+      window.location.href = '/?audioUrl=' + encodeURIComponent(val);
+    } else {
+      window.location.href = '/' + encodeURIComponent(val);
     }
   }
 
@@ -585,99 +735,18 @@ function renderAppHtml({ shiurId, directAudio, timestamp }) {
     if (e.key === 'Enter') handleLaunch();
   });
 
-  async function loadShiur(id) {
-    document.getElementById('loadingSpinner').style.display = 'block';
-    document.getElementById('playerCard').style.display = 'none';
-
-    try {
-      const resp = await fetch('/sidebar/lecturedata?shiurID=' + encodeURIComponent(id));
-      if (!resp.ok) throw new Error('HTTP ' + resp.status);
-      const data = await resp.json();
-      currentShiur = data;
-
-      // Update UI
-      document.getElementById('shiurTitle').textContent = data.shiurTitle || 'Untitled Shiur';
-      document.getElementById('shiurSpeaker').textContent = data.shiurTeacherFullName || (data.shiurTeachers && data.shiurTeachers[0] ? data.shiurTeachers[0].teacherFullName : '');
-      document.getElementById('shiurMeta').textContent = (data.shiurDuration || '') + (data.shiurDateFormatted ? ' · ' + data.shiurDateFormatted : '');
-
-      const photo = data.teacherPhotoURL_lp || data.teacherPhotoURL || (data.shiurTeachers && data.shiurTeachers[0] ? data.shiurTeachers[0].teacherPhotoURL : '');
-      const imgEl = document.getElementById('speakerImg');
-      if (photo) {
-        imgEl.src = photo;
-        imgEl.style.display = 'block';
-      } else {
-        imgEl.style.display = 'none';
-      }
-
-      const descEl = document.getElementById('shiurDesc');
-      if (data.shiurDescription) {
-        descEl.textContent = data.shiurDescription;
-        descEl.style.display = 'block';
-      } else {
-        descEl.style.display = 'none';
-      }
-
-      // Download link
-      const dl = data.downloadURL || data.playerDownloadURL;
-      const dlBtn = document.getElementById('dlBtn');
-      if (dl) {
-        dlBtn.href = dl;
-        dlBtn.style.display = 'inline-flex';
-      } else {
-        dlBtn.style.display = 'none';
-      }
-
-      // Audio Source
-      const audioUrl = data.playerDownloadURL || (data.shiurURL ? 'https://shiurim.yutorah.net' + data.shiurURL : null) || dl;
-      if (!audioUrl) throw new Error('No audio file available');
-
-      audio.src = audioUrl;
-      audio.load();
-
-      // Mobile Lock Screen Metadata
-      if ('mediaSession' in navigator) {
-        navigator.mediaSession.metadata = new MediaMetadata({
-          title: data.shiurTitle || 'Shiur',
-          artist: document.getElementById('shiurSpeaker').textContent || 'YUTorah',
-          album: 'YUTorah Online',
-          artwork: photo ? [{ src: photo, sizes: '300x300', type: 'image/jpeg' }] : []
-        });
-      }
-
-      // Update URL without reload
-      const newUrl = new URL(window.location.href);
-      newUrl.pathname = '/' + id;
-      newUrl.search = '';
-      window.history.pushState({ id }, '', newUrl.toString());
-
-      document.getElementById('loadingSpinner').style.display = 'none';
-      document.getElementById('playerCard').style.display = 'block';
-
-      // Auto-start play
-      audio.play().catch(() => {});
-
-    } catch (err) {
-      document.getElementById('loadingSpinner').textContent = '⚠️ Error loading shiur: ' + err.message;
+  // Audio Controls
+  function togglePlay() {
+    if (!audio.src) return;
+    if (audio.paused) {
+      audio.play().catch(e => console.log('Play blocked:', e));
+    } else {
+      audio.pause();
     }
   }
 
-  function playDirectUrl(url) {
-    audio.src = url;
-    document.getElementById('shiurTitle').textContent = 'Audio Stream';
-    document.getElementById('shiurSpeaker').textContent = url;
-    document.getElementById('speakerImg').style.display = 'none';
-    document.getElementById('shiurDesc').style.display = 'none';
-    document.getElementById('playerCard').style.display = 'block';
-    audio.play().catch(() => {});
-  }
-
-  // Audio Controls
-  function togglePlay() {
-    if (audio.paused) audio.play();
-    else audio.pause();
-  }
-
   function skip(sec) {
+    if (!audio.src) return;
     audio.currentTime = Math.max(0, Math.min(audio.duration || Infinity, audio.currentTime + sec));
   }
 
@@ -725,8 +794,14 @@ function renderAppHtml({ shiurId, directAudio, timestamp }) {
     }
   });
 
-  // MediaSession Action Handlers
-  if ('mediaSession' in navigator) {
+  // Mobile Lock Screen (MediaSession)
+  if ('mediaSession' in navigator && hasAudio) {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: ${JSON.stringify(title)},
+      artist: ${JSON.stringify(speaker)},
+      album: 'YUTorah Online',
+      artwork: ${JSON.stringify(photo ? [{ src: photo, sizes: '300x300', type: 'image/jpeg' }] : [])}
+    });
     try {
       navigator.mediaSession.setActionHandler('play', () => audio.play());
       navigator.mediaSession.setActionHandler('pause', () => audio.pause());
@@ -737,22 +812,41 @@ function renderAppHtml({ shiurId, directAudio, timestamp }) {
 
   // Keyboard Shortcuts
   document.addEventListener('keydown', (e) => {
-    if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
     if (e.key === ' ') { e.preventDefault(); togglePlay(); }
     else if (e.key === 'ArrowLeft') { e.preventDefault(); skip(e.shiftKey ? -30 : -10); }
     else if (e.key === 'ArrowRight') { e.preventDefault(); skip(e.shiftKey ? 30 : 10); }
+    else if (e.key === '[') {
+      const sel = document.getElementById('speedSelect');
+      if (sel.selectedIndex > 0) { sel.selectedIndex--; setSpeed(sel.value); }
+    }
+    else if (e.key === ']') {
+      const sel = document.getElementById('speedSelect');
+      if (sel.selectedIndex < sel.options.length - 1) { sel.selectedIndex++; setSpeed(sel.value); }
+    }
     else if (e.key === 'm' || e.key === 'M') { audio.muted = !audio.muted; }
   });
 
-  // Initial load
-  if (initialShiurId) {
-    loadShiur(initialShiurId);
-  } else if (initialDirectAudio) {
-    playDirectUrl(initialDirectAudio);
+  // If page loaded with audio, try to autoplay or wait for first touch
+  if (hasAudio) {
+    audio.play().catch(() => {
+      // Browser blocked autoplay; waiting for user to click play button
+      console.log('Autoplay deferred for user tap');
+    });
   }
 </script>
 
 </body>
 </html>
 `;
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
