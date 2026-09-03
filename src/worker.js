@@ -94,9 +94,9 @@ export default {
       const q = url.searchParams.get('q') || url.searchParams.get('searchTerm') || '';
       const teacherId = url.searchParams.get('teacherId') || '';
       const subCategoryId = url.searchParams.get('subCategoryId') || '';
-      const page = url.searchParams.get('page') || '1';
+      const start = url.searchParams.get('start') || '1';
 
-      let targetUrl = `${API_ORIGIN}/search?searchTerm=${encodeURIComponent(q)}`;
+      let targetUrl = `${API_ORIGIN}/search?searchTerm=${encodeURIComponent(q)}&start=${encodeURIComponent(start)}`;
       if (teacherId) targetUrl += `&teacherId=${encodeURIComponent(teacherId)}`;
       if (subCategoryId) targetUrl += `&subCategoryId=${encodeURIComponent(subCategoryId)}`;
 
@@ -204,6 +204,7 @@ export default {
     // 6. Pre-fetch collections & search data if needed
     let homepageData = null;
     let initialSearchResults = null;
+    let initialNumFound = 0;
 
     if (!shiurData && searchQuery) {
       try {
@@ -213,6 +214,7 @@ export default {
         if (searchResp.ok) {
           const searchJson = await searchResp.json();
           initialSearchResults = (searchJson?.response?.docs || []).map(normalizeShiur);
+          initialNumFound = searchJson?.response?.numFound || initialSearchResults.length;
         }
       } catch (e) {
         console.error('Error pre-fetching search:', e);
@@ -230,7 +232,8 @@ export default {
       timestamp,
       homepageData,
       searchQuery,
-      initialSearchResults
+      initialSearchResults,
+      initialNumFound
     }), {
       headers: {
         'Content-Type': 'text/html; charset=utf-8',
@@ -309,7 +312,7 @@ function normalizeShiur(s) {
   return { id, title, speaker, photo, duration, date, category };
 }
 
-function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageData, searchQuery, initialSearchResults }) {
+function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageData, searchQuery, initialSearchResults, initialNumFound = 0 }) {
   const isPlaying = Boolean(shiurData || directAudio);
 
   let title = 'YUTorah Enhanced Player';
@@ -1038,6 +1041,47 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       100% { transform: rotate(360deg); }
     }
 
+    /* Load More Button */
+    .load-more-btn {
+      background: var(--card);
+      color: var(--primary);
+      border: 2px solid var(--primary);
+      border-radius: 10px;
+      padding: 12px 28px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    .load-more-btn:hover {
+      background: var(--primary);
+      color: #fff;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 14px rgba(43, 76, 126, 0.2);
+    }
+    .load-more-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .spinner-small {
+      border: 2px solid rgba(43, 76, 126, 0.3);
+      border-top: 2px solid var(--primary);
+      border-radius: 50%;
+      width: 16px;
+      height: 16px;
+      animation: spin 0.8s linear infinite;
+    }
+    .load-more-btn:hover .spinner-small {
+      border-color: rgba(255, 255, 255, 0.3);
+      border-top-color: #fff;
+    }
+
     /* Footer */
     footer {
       text-align: center;
@@ -1223,6 +1267,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     <div class="shiur-cards-grid" id="searchResultsGrid">
       ${initialSearchResults ? initialSearchResults.map(renderShiurCardHtml).join('') : ''}
     </div>
+
+    <div id="loadMoreContainer" style="text-align: center; margin-top: 26px; ${initialSearchResults && initialSearchResults.length < initialNumFound ? '' : 'display: none;'}">
+      <button id="loadMoreBtn" class="load-more-btn" onclick="loadMoreResults()">
+        <span id="loadMoreBtnText">🔽 Load More Results</span>
+        <span id="loadMoreSpinner" class="spinner-small" style="display: none;"></span>
+      </button>
+      <div id="searchTotalInfo" style="font-size: 13px; color: var(--text-muted); margin-top: 10px; font-weight: 500;">
+        ${initialSearchResults ? `Showing ${initialSearchResults.length} of ${initialNumFound.toLocaleString()} shiurim` : ''}
+      </div>
+    </div>
   </div>
 
   <!-- Collections Section (Tabs: Editor's Picks, Recently Uploaded, Popular, Daily) -->
@@ -1367,8 +1421,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
+  let currentSearchQuery = ${JSON.stringify(searchQuery || '')};
+  let currentLoadedDocsCount = ${JSON.stringify(initialSearchResults ? initialSearchResults.length : 0)};
+  let totalSearchResults = ${JSON.stringify(initialNumFound || 0)};
+  let isLoadingMore = false;
   let currentSearchAbort = null;
+
   async function executeLiveSearch(query) {
+    currentSearchQuery = query;
+    currentLoadedDocsCount = 0;
+    totalSearchResults = 0;
+    isLoadingMore = false;
+
     // Show results container, hide collections
     document.getElementById('collectionsSection').style.display = 'none';
     const resSection = document.getElementById('searchResultsSection');
@@ -1377,10 +1441,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     const spinner = document.getElementById('searchSpinner');
     const grid = document.getElementById('searchResultsGrid');
     const label = document.getElementById('searchResultsLabel');
+    const loadMoreBox = document.getElementById('loadMoreContainer');
 
     label.textContent = 'Searching for "' + query + '"...';
     grid.innerHTML = '';
     spinner.style.display = 'block';
+    loadMoreBox.style.display = 'none';
 
     // Update browser URL without reload
     const newUrl = new URL(window.location.href);
@@ -1396,26 +1462,97 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     currentSearchAbort = new AbortController();
 
     try {
-      const res = await fetch('/api/search?q=' + encodeURIComponent(query), {
+      const res = await fetch('/api/search?q=' + encodeURIComponent(query) + '&start=1', {
         signal: currentSearchAbort.signal
       });
       const data = await res.json();
       spinner.style.display = 'none';
 
       const docs = data?.response?.docs || [];
-      label.textContent = 'Showing ' + docs.length + ' results for "' + query + '"';
+      totalSearchResults = data?.response?.numFound || docs.length;
+      currentLoadedDocsCount = docs.length;
+
+      label.textContent = 'Showing ' + currentLoadedDocsCount + (totalSearchResults ? ' of ' + totalSearchResults.toLocaleString() : '') + ' results for "' + query + '"';
 
       if (docs.length === 0) {
         grid.innerHTML = '<div style="padding: 30px; text-align: center; color: var(--text-muted); grid-column: 1/-1;">No shiurim found matching "' + escapeHtml(query) + '". Try searching for speaker name, topic, or parsha.</div>';
+        loadMoreBox.style.display = 'none';
         return;
       }
 
       grid.innerHTML = docs.map(renderDocToCard).join('');
+
+      // Setup Load More button
+      const totalInfo = document.getElementById('searchTotalInfo');
+      const btn = document.getElementById('loadMoreBtn');
+      const btnText = document.getElementById('loadMoreBtnText');
+      const loadSpinner = document.getElementById('loadMoreSpinner');
+
+      btn.disabled = false;
+      btn.style.display = 'inline-flex';
+      btnText.textContent = '🔽 Load More Results';
+      loadSpinner.style.display = 'none';
+
+      if (currentLoadedDocsCount < totalSearchResults) {
+        loadMoreBox.style.display = 'block';
+        totalInfo.textContent = 'Showing ' + currentLoadedDocsCount + ' of ' + totalSearchResults.toLocaleString() + ' shiurim';
+      } else {
+        loadMoreBox.style.display = 'none';
+      }
     } catch (err) {
       if (err.name === 'AbortError') return;
       spinner.style.display = 'none';
       label.textContent = 'Error searching for "' + query + '"';
       grid.innerHTML = '<div style="padding: 20px; text-align: center; color: #c0392b; grid-column: 1/-1;">Failed to load search results. Please try again.</div>';
+      loadMoreBox.style.display = 'none';
+    }
+  }
+
+  async function loadMoreResults() {
+    if (isLoadingMore || currentLoadedDocsCount >= totalSearchResults) return;
+    isLoadingMore = true;
+
+    const btn = document.getElementById('loadMoreBtn');
+    const btnText = document.getElementById('loadMoreBtnText');
+    const spinner = document.getElementById('loadMoreSpinner');
+    const totalInfo = document.getElementById('searchTotalInfo');
+
+    btn.disabled = true;
+    btnText.textContent = 'Loading more shiurim...';
+    spinner.style.display = 'inline-block';
+
+    const nextStart = currentLoadedDocsCount + 1;
+
+    try {
+      const res = await fetch('/api/search?q=' + encodeURIComponent(currentSearchQuery) + '&start=' + nextStart);
+      const data = await res.json();
+      const newDocs = data?.response?.docs || [];
+
+      if (newDocs.length > 0) {
+        currentLoadedDocsCount += newDocs.length;
+        const grid = document.getElementById('searchResultsGrid');
+        grid.insertAdjacentHTML('beforeend', newDocs.map(renderDocToCard).join(''));
+
+        document.getElementById('searchResultsLabel').textContent =
+          'Showing ' + currentLoadedDocsCount + ' of ' + totalSearchResults.toLocaleString() + ' results for "' + currentSearchQuery + '"';
+      }
+
+      if (currentLoadedDocsCount >= totalSearchResults || newDocs.length === 0) {
+        btn.style.display = 'none';
+        totalInfo.textContent = 'All ' + currentLoadedDocsCount.toLocaleString() + ' shiurim loaded!';
+      } else {
+        totalInfo.textContent = 'Showing ' + currentLoadedDocsCount + ' of ' + totalSearchResults.toLocaleString() + ' shiurim';
+        btn.disabled = false;
+        btnText.textContent = '🔽 Load More Results';
+        spinner.style.display = 'none';
+      }
+    } catch (err) {
+      console.error('Error loading more results:', err);
+      btn.disabled = false;
+      btnText.textContent = '⚠️ Error loading. Click to retry';
+      spinner.style.display = 'none';
+    } finally {
+      isLoadingMore = false;
     }
   }
 
@@ -1423,6 +1560,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     searchInput.value = '';
     clearSearchBtn.style.display = 'none';
     document.getElementById('searchResultsSection').style.display = 'none';
+    document.getElementById('loadMoreContainer').style.display = 'none';
     document.getElementById('collectionsSection').style.display = 'block';
 
     const newUrl = new URL(window.location.href);
