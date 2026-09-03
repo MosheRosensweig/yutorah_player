@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "YUTorah wrapper with enhanced audio player via Cloudflare Worker reverse proxy",
   "main": "src/worker.js",
+  "type": "module",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy"

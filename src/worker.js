@@ -173,7 +173,7 @@ export default {
 
     // 4. Extract Shiur ID or Search Query from URL
     let shiurId = url.searchParams.get('shiurId') || url.searchParams.get('shiurID') || url.searchParams.get('id');
-    const pathMatch = url.pathname.match(/^\/(?:lectures\/)?(\d+)/);
+    const pathMatch = url.pathname.match(/^\/(?:lectures\/)?([0-9]+)/);
     if (!shiurId && pathMatch) {
       shiurId = pathMatch[1];
     }
@@ -219,9 +219,8 @@ export default {
       }
     }
 
-    if (!shiurData) {
-      homepageData = await getHomepageData();
-    }
+    // Pre-fetch homepage collections for cards
+    homepageData = await getHomepageData();
 
     // 7. Render and return the HTML app
     return new Response(renderAppHtml({
@@ -610,6 +609,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       font-size: 14px;
       font-weight: 600;
       margin-bottom: 16px;
+      cursor: pointer;
     }
     .player-nav-back:hover {
       text-decoration: underline;
@@ -700,7 +700,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       align-items: center;
       justify-content: center;
       gap: 14px;
-      margin-bottom: 20px;
+      margin-bottom: 16px;
     }
     .ctrl-btn {
       border: 2px solid var(--border);
@@ -741,6 +741,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       background: var(--primary-dark);
       border-color: var(--primary-dark);
       color: #fff;
+    }
+
+    /* Native Audio Player Element */
+    .native-audio-wrapper {
+      margin: 14px 0 16px;
+    }
+    .native-audio-player {
+      width: 100%;
+      height: 42px;
+      outline: none;
     }
 
     /* Secondary Controls */
@@ -1103,7 +1113,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
 
   <!-- Audio Player Card (Active when playing) -->
   <div class="player-card" id="playerCard">
-    <a href="/" class="player-nav-back">← Back to All Collections</a>
+    <a onclick="closePlayer()" class="player-nav-back">← Back to All Collections</a>
     <div class="shiur-header">
       <img id="speakerImg" class="speaker-photo" src="${escapeHtml(photo)}" alt="${escapeHtml(speaker)}">
       <div class="shiur-details">
@@ -1133,6 +1143,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       <button class="ctrl-btn play" id="playBtn" onclick="togglePlay()" title="Play / Pause (Space)">▶</button>
       <button class="ctrl-btn skip" onclick="skip(10)" title="Forward 10s (→)">+10</button>
       <button class="ctrl-btn skip" onclick="skip(30)" title="Forward 30s (Shift+→)">+30</button>
+    </div>
+
+    <!-- Native Audio Player Controls (Direct browser fallback) -->
+    <div class="native-audio-wrapper">
+      <audio id="audioElement" class="native-audio-player" src="${escapeHtml(audioUrl)}" preload="auto" controls></audio>
     </div>
 
     <!-- Secondary Controls -->
@@ -1244,9 +1259,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
   <p>YUTorah Enhanced Player · Standalone zero-friction audio player for <a href="https://www.yutorah.org" target="_blank">YUTorah.org</a></p>
 </footer>
 
-<audio id="audioElement" src="${escapeHtml(audioUrl)}" preload="metadata"></audio>
-
 <script>
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
   const audio = document.getElementById('audioElement');
   const initialTimestamp = ${JSON.stringify(timestamp)};
   const hasAudio = ${JSON.stringify(Boolean(audioUrl))};
@@ -1273,15 +1296,37 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     clearSearchBtn.style.display = 'block';
   }
 
+  function handleImgError(img) {
+    img.onerror = null;
+    img.src = 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/_default.jpg';
+  }
+
+  function extractShiurId(text) {
+    if (!text) return null;
+    var t = text.trim();
+    if (/^[0-9]{4,8}$/.test(t)) return t;
+    if (t.indexOf('shiurID=') !== -1) {
+      var p1 = t.split(/shiurID=/i);
+      var id1 = p1[1] ? p1[1].split(/[^0-9]/)[0] : '';
+      if (id1) return id1;
+    }
+    if (t.indexOf('lectures/') !== -1) {
+      var p2 = t.split('lectures/');
+      var id2 = p2[1] ? p2[1].split(/[^0-9]/)[0] : '';
+      if (id2) return id2;
+    }
+    return null;
+  }
+
   function handleSearchSubmit(e) {
     if (e) e.preventDefault();
     const query = searchInput.value.trim();
     if (!query) return;
 
     // Smart detect: is it a Shiur ID or YUTorah URL?
-    const idMatch = query.match(/(?:shiurID=|lectures\/details\?shiurID=|lectures\/)(\d+)/i) || query.match(/^(\d{4,8})$/);
-    if (idMatch) {
-      window.location.href = '/' + idMatch[1];
+    const id = extractShiurId(query);
+    if (id) {
+      playShiurById(null, id);
       return;
     }
 
@@ -1363,27 +1408,112 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     const id = d.shiurid || d.shiurID || '';
     const title = d.shiurtitle || d.shiurTitle || 'Untitled';
     const speaker = d.teacherfullname || (d.shiurTeachers && d.shiurTeachers[0] ? d.shiurTeachers[0].teacherFullName : 'YUTorah');
-    let photo = d.PHOTO ? (d.PHOTO.startsWith('http') ? d.PHOTO : 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/' + d.PHOTO) : 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/_default.jpg';
+    const photo = d.PHOTO ? (d.PHOTO.startsWith('http') ? d.PHOTO : 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/' + d.PHOTO) : 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/_default.jpg';
     const duration = d.durationformatted || (d.duration ? d.duration + ' min' : '');
     const date = d.shiurdateformatted || '';
     const category = (Array.isArray(d.categoryname) && d.categoryname[0]) || (Array.isArray(d.subcategoryname) && d.subcategoryname[0]) || '';
 
-    return \`
-      <a href="/\${id}" class="quick-card-link">
-        <div class="quick-card-top">
-          <img class="quick-card-avatar" src="\${escapeHtml(photo)}" alt="\${escapeHtml(speaker)}" loading="lazy" onerror="this.src='https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/_default.jpg'">
-          <div class="quick-card-info">
-            <div class="quick-card-title">\${escapeHtml(title)}</div>
-            <div class="quick-card-speaker">\${escapeHtml(speaker)}</div>
-            \${category ? \`<div class="quick-card-category">\${escapeHtml(category)}</div>\` : ''}
-          </div>
-        </div>
-        <div class="quick-card-bottom">
-          <span>\${date ? date : (duration ? '⏱ ' + duration : '')}</span>
-          <span class="quick-play-badge">▶ Play</span>
-        </div>
-      </a>
-    \`;
+    return '<a href="/' + id + '" class="quick-card-link" onclick="playShiurById(event, this.dataset.id)" data-id="' + id + '">' +
+      '<div class="quick-card-top">' +
+        '<img class="quick-card-avatar" src="' + escapeHtml(photo) + '" alt="' + escapeHtml(speaker) + '" loading="lazy" onerror="handleImgError(this)">' +
+        '<div class="quick-card-info">' +
+          '<div class="quick-card-title">' + escapeHtml(title) + '</div>' +
+          '<div class="quick-card-speaker">' + escapeHtml(speaker) + '</div>' +
+          (category ? '<div class="quick-card-category">' + escapeHtml(category) + '</div>' : '') +
+        '</div>' +
+      '</div>' +
+      '<div class="quick-card-bottom">' +
+        '<span>' + (date ? escapeHtml(date) : (duration ? '⏱ ' + escapeHtml(duration) : '')) + '</span>' +
+        '<span class="quick-play-badge">▶ Play</span>' +
+      '</div>' +
+    '</a>';
+  }
+
+  // Instant Play by Shiur ID (in-page without reload)
+  async function playShiurById(e, id) {
+    if (e) e.preventDefault();
+
+    const playerCard = document.getElementById('playerCard');
+    playerCard.style.display = 'block';
+    playerCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    document.getElementById('shiurTitle').textContent = 'Loading shiur #' + id + '...';
+    document.getElementById('shiurSpeaker').textContent = 'Fetching audio stream...';
+    document.getElementById('shiurMeta').textContent = '';
+    document.getElementById('shiurDesc').style.display = 'none';
+
+    history.pushState({ shiurId: id }, '', '/' + id);
+
+    try {
+      const res = await fetch('/sidebar/lecturedata?shiurID=' + encodeURIComponent(id));
+      if (!res.ok) throw new Error('API returned status ' + res.status);
+      const data = await res.json();
+
+      const title = data.shiurTitle || 'Untitled Shiur';
+      const speaker = data.shiurTeacherFullName || (data.shiurTeachers && data.shiurTeachers[0] ? data.shiurTeachers[0].teacherFullName : 'YUTorah');
+      const photo = data.teacherPhotoURL_lp || data.teacherPhotoURL || (data.shiurTeachers && data.shiurTeachers[0] ? data.shiurTeachers[0].teacherPhotoURL : '');
+      const duration = data.shiurDuration || '';
+      const date = data.shiurDateFormatted || '';
+      const meta = duration + (date ? ' · ' + date : '');
+      const desc = data.shiurDescription || '';
+      const audioSrc = data.playerDownloadURL || (data.shiurURL ? 'https://shiurim.yutorah.net' + data.shiurURL : '') || data.downloadURL || '';
+      const dlSrc = data.downloadURL || audioSrc;
+
+      document.title = title + ' — YUTorah Enhanced';
+      document.getElementById('shiurTitle').textContent = title;
+      document.getElementById('shiurSpeaker').textContent = speaker;
+      document.getElementById('shiurMeta').textContent = meta;
+
+      const img = document.getElementById('speakerImg');
+      if (photo) {
+        img.src = photo;
+        img.style.display = 'block';
+      } else {
+        img.style.display = 'none';
+      }
+
+      const descEl = document.getElementById('shiurDesc');
+      if (desc) {
+        descEl.textContent = desc;
+        descEl.style.display = 'block';
+      } else {
+        descEl.style.display = 'none';
+      }
+
+      const dlBtn = document.getElementById('dlBtn');
+      if (dlSrc) {
+        dlBtn.href = dlSrc;
+        dlBtn.style.display = 'inline-flex';
+      }
+
+      // Start playing
+      audio.src = audioSrc;
+      audio.load();
+      const p = audio.play();
+      if (p !== undefined) {
+        p.catch(err => console.log('Autoplay notification:', err));
+      }
+
+      // MediaSession
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: title,
+          artist: speaker,
+          album: 'YUTorah Online',
+          artwork: photo ? [{ src: photo, sizes: '300x300', type: 'image/jpeg' }] : []
+        });
+      }
+    } catch (err) {
+      console.error('Failed to load shiur:', err);
+      document.getElementById('shiurTitle').textContent = 'Error loading shiur #' + id;
+      document.getElementById('shiurSpeaker').textContent = 'Please check the ID or try again.';
+    }
+  }
+
+  function closePlayer() {
+    audio.pause();
+    document.getElementById('playerCard').style.display = 'none';
+    history.pushState({}, '', '/');
   }
 
   // Switch Collection Tabs
@@ -1410,7 +1540,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
 
   // Audio Controls
   function togglePlay() {
-    if (!audio.src) return;
+    if (!audio.src) {
+      // If no audio loaded yet, play the first shiur
+      const firstCard = document.querySelector('.quick-card-link');
+      if (firstCard) firstCard.click();
+      return;
+    }
     if (audio.paused) {
       audio.play().catch(e => console.log('Play blocked:', e));
     } else {
@@ -1442,13 +1577,25 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     });
   }
 
-  // Scrubber click
-  document.getElementById('scrubberBar').addEventListener('click', (e) => {
+  // Scrubber click & drag
+  let isScrubbing = false;
+  const scrubberBar = document.getElementById('scrubberBar');
+
+  function seekToPosition(e) {
     if (!audio.duration) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const pct = (e.clientX - rect.left) / rect.width;
+    const rect = scrubberBar.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
     audio.currentTime = pct * audio.duration;
-  });
+  }
+
+  scrubberBar.addEventListener('click', seekToPosition);
+  scrubberBar.addEventListener('mousedown', (e) => { isScrubbing = true; seekToPosition(e); });
+  window.addEventListener('mousemove', (e) => { if (isScrubbing) seekToPosition(e); });
+  window.addEventListener('mouseup', () => { isScrubbing = false; });
+  scrubberBar.addEventListener('touchstart', (e) => { isScrubbing = true; seekToPosition(e); }, { passive: true });
+  window.addEventListener('touchmove', (e) => { if (isScrubbing) seekToPosition(e); }, { passive: true });
+  window.addEventListener('touchend', () => { isScrubbing = false; });
 
   // Audio Events
   audio.addEventListener('play', () => document.getElementById('playBtn').textContent = '⏸');
@@ -1464,6 +1611,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     if (initialTimestamp) {
       const sec = parseFloat(initialTimestamp);
       if (!isNaN(sec)) audio.currentTime = sec;
+    }
+  });
+
+  // Fallback if primary audio stream errors
+  audio.addEventListener('error', () => {
+    console.warn('Audio element error with current source:', audio.src);
+    const dlBtn = document.getElementById('dlBtn');
+    if (dlBtn && dlBtn.href && dlBtn.href !== audio.src) {
+      console.log('Attempting fallback source:', dlBtn.href);
+      audio.src = dlBtn.href;
+      audio.load();
+      audio.play().catch(e => console.log('Fallback play error:', e));
     }
   });
 
@@ -1500,7 +1659,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     else if (e.key === 'm' || e.key === 'M') { audio.muted = !audio.muted; }
   });
 
-  // If page loaded with audio, try to autoplay or wait for first user touch
+  // If page loaded with audio, try to autoplay or wait for user touch
   if (hasAudio) {
     audio.play().catch(() => {
       console.log('Autoplay deferred for user tap');
@@ -1515,9 +1674,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
 
 function renderShiurCardHtml(s) {
   return `
-    <a href="/${s.id}" class="quick-card-link">
+    <a href="/${s.id}" class="quick-card-link" onclick="playShiurById(event, this.dataset.id)" data-id="${s.id}">
       <div class="quick-card-top">
-        <img class="quick-card-avatar" src="${escapeHtml(s.photo)}" alt="${escapeHtml(s.speaker)}" loading="lazy" onerror="this.src='https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/_default.jpg'">
+        <img class="quick-card-avatar" src="${escapeHtml(s.photo)}" alt="${escapeHtml(s.speaker)}" loading="lazy" onerror="handleImgError(this)">
         <div class="quick-card-info">
           <div class="quick-card-title">${escapeHtml(s.title)}</div>
           <div class="quick-card-speaker">${escapeHtml(s.speaker)}</div>
