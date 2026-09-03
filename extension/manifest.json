@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "YUTorah Enhanced Player",
+  "version": "1.0",
+  "description": "Upgrades the YUTorah audio player with ±10s/±30s skip, direct speed dropdown, and timestamp links.",
+  "content_scripts": [
+    {
+      "matches": ["*://*.yutorah.org/*"],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ]
+}
