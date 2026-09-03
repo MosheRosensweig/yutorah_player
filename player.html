@@ -1,0 +1,1173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YUTorah Enhanced Player</title>
+<style>
+  :root {
+    --primary: #576a88;
+    --primary-dark: #3d4f6a;
+    --primary-light: #7a8da8;
+    --accent: #ae3120;
+    --bg: #f5f6f8;
+    --card-bg: #ffffff;
+    --text: #2c3e50;
+    --text-light: #6c7a89;
+    --border: #dde1e7;
+    --success: #27ae60;
+    --shadow: 0 2px 12px rgba(0,0,0,0.08);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  /* Header */
+  .header {
+    background: var(--primary);
+    color: white;
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  }
+  .header h1 {
+    font-size: 18px;
+    font-weight: 600;
+    flex: 1;
+  }
+  .header a {
+    color: rgba(255,255,255,0.85);
+    text-decoration: none;
+    font-size: 14px;
+  }
+  .header a:hover { color: white; }
+
+  /* Main container */
+  .container {
+    max-width: 800px;
+    margin: 24px auto;
+    padding: 0 16px;
+  }
+
+  /* Shiur info card */
+  .shiur-info {
+    background: var(--card-bg);
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: var(--shadow);
+    margin-bottom: 16px;
+  }
+  .shiur-header {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+  }
+  .speaker-photo {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    background: var(--border);
+  }
+  .shiur-meta {
+    flex: 1;
+    min-width: 0;
+  }
+  .shiur-title {
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1.3;
+    margin-bottom: 4px;
+    color: var(--text);
+  }
+  .shiur-speaker {
+    font-size: 15px;
+    color: var(--primary);
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+  .shiur-details {
+    font-size: 13px;
+    color: var(--text-light);
+  }
+  .shiur-description {
+    margin-top: 12px;
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--text-light);
+    border-top: 1px solid var(--border);
+    padding-top: 12px;
+  }
+
+  /* Player card */
+  .player-card {
+    background: var(--card-bg);
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: var(--shadow);
+    margin-bottom: 16px;
+  }
+
+  /* Progress bar */
+  .progress-container {
+    margin-bottom: 16px;
+  }
+  .progress-bar-wrapper {
+    position: relative;
+    height: 8px;
+    background: #e0e4ea;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-bottom: 6px;
+  }
+  .progress-bar-wrapper:hover {
+    height: 12px;
+    margin-top: -2px;
+    margin-bottom: 2px;
+  }
+  .progress-fill {
+    height: 100%;
+    background: var(--primary);
+    border-radius: 4px;
+    transition: width 0.1s linear;
+    position: relative;
+  }
+  .progress-fill::after {
+    content: '';
+    position: absolute;
+    right: -6px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 14px;
+    height: 14px;
+    background: var(--primary-dark);
+    border-radius: 50%;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .progress-bar-wrapper:hover .progress-fill::after {
+    opacity: 1;
+  }
+  .time-display {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    color: var(--text-light);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Transport controls */
+  .transport {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .transport-btn {
+    background: none;
+    border: 2px solid var(--border);
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text);
+    transition: all 0.15s;
+    position: relative;
+  }
+  .transport-btn:hover {
+    background: var(--bg);
+    border-color: var(--primary-light);
+    color: var(--primary);
+  }
+  .transport-btn:active {
+    transform: scale(0.95);
+  }
+  .transport-btn.skip {
+    width: 44px;
+    height: 44px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .transport-btn.play-pause {
+    width: 60px;
+    height: 60px;
+    border-color: var(--primary);
+    color: var(--primary);
+    font-size: 24px;
+  }
+  .transport-btn.play-pause:hover {
+    background: var(--primary);
+    color: white;
+  }
+  .skip-label {
+    font-size: 10px;
+    font-weight: 700;
+    pointer-events: none;
+  }
+
+  /* Secondary controls row */
+  .secondary-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .control-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .control-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-light);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* Speed control */
+  .speed-select {
+    padding: 6px 10px;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    background: white;
+    cursor: pointer;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .speed-select:hover, .speed-select:focus {
+    border-color: var(--primary);
+  }
+
+  /* Volume control */
+  .volume-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100px;
+    height: 6px;
+    background: #e0e4ea;
+    border-radius: 3px;
+    outline: none;
+    cursor: pointer;
+  }
+  .volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    background: var(--primary);
+    border-radius: 50%;
+    cursor: pointer;
+  }
+  .volume-slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    background: var(--primary);
+    border-radius: 50%;
+    cursor: pointer;
+    border: none;
+  }
+
+  /* Action buttons */
+  .action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    background: white;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.15s;
+  }
+  .action-btn:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+  }
+  .action-btn.copied {
+    border-color: var(--success);
+    color: var(--success);
+  }
+
+  /* Shortcuts */
+  .shortcuts {
+    background: var(--card-bg);
+    border-radius: 12px;
+    padding: 16px 24px;
+    box-shadow: var(--shadow);
+    margin-bottom: 16px;
+  }
+  .shortcuts-toggle {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-light);
+    cursor: pointer;
+    background: none;
+    border: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+  }
+  .shortcuts-toggle:hover { color: var(--primary); }
+  .shortcuts-content {
+    display: none;
+    margin-top: 12px;
+    font-size: 13px;
+    color: var(--text-light);
+    line-height: 1.8;
+  }
+  .shortcuts-content.open { display: block; }
+  kbd {
+    display: inline-block;
+    padding: 2px 7px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    min-width: 24px;
+    text-align: center;
+  }
+
+  /* Loading / error states */
+  .loading-state {
+    text-align: center;
+    padding: 48px 24px;
+  }
+  .spinner {
+    display: inline-block;
+    width: 32px;
+    height: 32px;
+    border: 3px solid var(--border);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-state p {
+    margin-top: 12px;
+    color: var(--text-light);
+    font-size: 14px;
+  }
+
+  .error-state {
+    background: var(--card-bg);
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: var(--shadow);
+    text-align: center;
+  }
+  .error-state h2 {
+    color: var(--accent);
+    margin-bottom: 8px;
+  }
+  .error-state p {
+    color: var(--text-light);
+    margin-bottom: 16px;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  /* Manual URL input */
+  .manual-input {
+    background: var(--card-bg);
+    border-radius: 12px;
+    padding: 20px 24px;
+    box-shadow: var(--shadow);
+    margin-bottom: 16px;
+  }
+  .manual-input h3 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--text);
+  }
+  .manual-input p {
+    font-size: 13px;
+    color: var(--text-light);
+    margin-bottom: 12px;
+    line-height: 1.5;
+  }
+  .input-row {
+    display: flex;
+    gap: 8px;
+  }
+  .url-input {
+    flex: 1;
+    padding: 10px 14px;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .url-input:focus {
+    border-color: var(--primary);
+  }
+  .go-btn {
+    padding: 10px 20px;
+    background: var(--primary);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .go-btn:hover { background: var(--primary-dark); }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    padding: 16px;
+    font-size: 12px;
+    color: var(--text-light);
+  }
+  .footer a { color: var(--primary); text-decoration: none; }
+  .footer a:hover { text-decoration: underline; }
+
+  /* SVG icons inline */
+  .icon { width: 18px; height: 18px; fill: currentColor; }
+  .icon-lg { width: 28px; height: 28px; }
+
+  /* Toast notification */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: var(--primary-dark);
+    color: white;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    transition: transform 0.3s ease;
+    z-index: 1000;
+  }
+  .toast.show {
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* Responsive */
+  @media (max-width: 600px) {
+    .container { margin: 12px auto; }
+    .shiur-info, .player-card, .shortcuts, .manual-input { padding: 16px; border-radius: 8px; }
+    .shiur-header { flex-direction: column; align-items: center; text-align: center; }
+    .speaker-photo { width: 60px; height: 60px; }
+    .shiur-title { font-size: 17px; }
+    .secondary-controls { justify-content: center; }
+    .volume-slider { width: 80px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🎧 YUTorah Enhanced Player</h1>
+  <a href="index.html">← Home</a>
+</div>
+
+<div class="container">
+  <!-- Loading state -->
+  <div id="loadingState" class="loading-state" style="display:none;">
+    <div class="spinner"></div>
+    <p>Loading shiur data...</p>
+  </div>
+
+  <!-- Error state -->
+  <div id="errorState" class="error-state" style="display:none;">
+    <h2>⚠️ Could not load shiur</h2>
+    <p id="errorMessage">Unable to fetch shiur data. You can paste the audio URL directly below.</p>
+  </div>
+
+  <!-- Manual input (always shown as fallback or primary entry) -->
+  <div id="manualInput" class="manual-input" style="display:none;">
+    <h3>🔗 Play a shiur by URL</h3>
+    <p>Paste a YUTorah lecture URL (e.g., <code>yutorah.org/lectures/1187082</code>) or a direct MP3 link:</p>
+    <div class="input-row">
+      <input type="text" class="url-input" id="manualUrl" placeholder="Paste URL here...">
+      <button class="go-btn" onclick="handleManualUrl()">Play ▶</button>
+    </div>
+  </div>
+
+  <!-- Shiur info -->
+  <div id="shiurInfo" class="shiur-info" style="display:none;">
+    <div class="shiur-header">
+      <img id="speakerImg" class="speaker-photo" src="" alt="" onerror="this.style.display='none'">
+      <div class="shiur-meta">
+        <div class="shiur-title" id="shiurTitle"></div>
+        <div class="shiur-speaker" id="shiurSpeaker"></div>
+        <div class="shiur-details" id="shiurDetails"></div>
+      </div>
+    </div>
+    <div class="shiur-description" id="shiurDescription" style="display:none;"></div>
+  </div>
+
+  <!-- Player -->
+  <div id="playerCard" class="player-card" style="display:none;">
+    <audio id="audioEl" preload="auto"></audio>
+
+    <!-- Progress bar -->
+    <div class="progress-container">
+      <div class="progress-bar-wrapper" id="progressBar">
+        <div class="progress-fill" id="progressFill" style="width:0%"></div>
+      </div>
+      <div class="time-display">
+        <span id="currentTime">0:00</span>
+        <span id="totalTime">0:00</span>
+      </div>
+    </div>
+
+    <!-- Transport controls -->
+    <div class="transport">
+      <button class="transport-btn skip" onclick="skip(-30)" title="Back 30s (Shift+←)">
+        <span class="skip-label">−30</span>
+      </button>
+      <button class="transport-btn skip" onclick="skip(-10)" title="Back 10s (←)">
+        <span class="skip-label">−10</span>
+      </button>
+      <button class="transport-btn play-pause" id="playPauseBtn" onclick="togglePlay()" title="Play/Pause (Space)">
+        ▶
+      </button>
+      <button class="transport-btn skip" onclick="skip(10)" title="Forward 10s (→)">
+        <span class="skip-label">+10</span>
+      </button>
+      <button class="transport-btn skip" onclick="skip(30)" title="Forward 30s (Shift+→)">
+        <span class="skip-label">+30</span>
+      </button>
+    </div>
+
+    <!-- Secondary controls -->
+    <div class="secondary-controls">
+      <div class="control-group">
+        <span class="control-label">Speed</span>
+        <select class="speed-select" id="speedSelect" onchange="setSpeed(this.value)">
+          <option value="0.5">0.5x</option>
+          <option value="0.75">0.75x</option>
+          <option value="1" selected>1.0x</option>
+          <option value="1.25">1.25x</option>
+          <option value="1.5">1.5x</option>
+          <option value="1.75">1.75x</option>
+          <option value="2">2.0x</option>
+          <option value="2.5">2.5x</option>
+          <option value="3">3.0x</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <span class="control-label">Vol</span>
+        <input type="range" class="volume-slider" id="volumeSlider" min="0" max="1" step="0.05" value="1" oninput="setVolume(this.value)">
+      </div>
+
+      <div class="control-group">
+        <button class="action-btn" onclick="copyTimestampLink()" title="Copy link at current time">
+          📋 Copy Link @ Time
+        </button>
+        <a class="action-btn" id="downloadBtn" href="#" target="_blank" title="Download MP3" style="display:none;">
+          ⬇️ Download
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Keyboard shortcuts -->
+  <div class="shortcuts" id="shortcutsCard" style="display:none;">
+    <button class="shortcuts-toggle" onclick="toggleShortcuts()">
+      ⌨️ Keyboard Shortcuts <span id="shortcutsArrow">▸</span>
+    </button>
+    <div class="shortcuts-content" id="shortcutsContent">
+      <div><kbd>Space</kbd> Play / Pause</div>
+      <div><kbd>←</kbd> Skip back 10s &nbsp;&nbsp; <kbd>→</kbd> Skip forward 10s</div>
+      <div><kbd>Shift</kbd>+<kbd>←</kbd> Skip back 30s &nbsp;&nbsp; <kbd>Shift</kbd>+<kbd>→</kbd> Skip forward 30s</div>
+      <div><kbd>↑</kbd> Volume up &nbsp;&nbsp; <kbd>↓</kbd> Volume down</div>
+      <div><kbd>[</kbd> Slower speed &nbsp;&nbsp; <kbd>]</kbd> Faster speed</div>
+      <div><kbd>M</kbd> Mute / Unmute</div>
+      <div><kbd>0</kbd>–<kbd>9</kbd> Jump to 0%–90% of track</div>
+    </div>
+  </div>
+
+  <!-- Original link -->
+  <div id="originalLink" class="footer" style="display:none;">
+    🔗 Original: <a id="origLinkAnchor" href="#" target="_blank"></a>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ============================================================
+// STATE
+// ============================================================
+const audio = document.getElementById('audioEl');
+const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3];
+let shiurData = {};
+
+// ============================================================
+// URL PARAMETER PARSING
+// ============================================================
+function getParams() {
+  const p = new URLSearchParams(window.location.search);
+  return {
+    shiurId:     p.get('shiurId') || p.get('shiurid') || p.get('id'),
+    url:         p.get('url'),
+    audioUrl:    p.get('audioUrl') || p.get('audiourl'),
+    title:       p.get('title'),
+    speaker:     p.get('speaker'),
+    date:        p.get('date'),
+    duration:    p.get('duration'),
+    description: p.get('description'),
+    downloadUrl: p.get('downloadUrl') || p.get('downloadurl'),
+    speakerPhoto:p.get('speakerPhoto') || p.get('speakerphoto'),
+    t:           p.get('t'),
+  };
+}
+
+// ============================================================
+// INITIALIZATION
+// ============================================================
+async function init() {
+  const params = getParams();
+
+  // Extract shiurId from URL if provided
+  if (!params.shiurId && params.url) {
+    const m = params.url.match(/lectures\/(?:lecture\.cfm\/)?(\d+)/);
+    if (m) params.shiurId = m[1];
+  }
+
+  // If we have audioUrl from bookmarklet or direct param, use it directly
+  if (params.audioUrl) {
+    shiurData = {
+      audioUrl:     params.audioUrl,
+      title:        params.title || 'Shiur',
+      speaker:      params.speaker || '',
+      date:         params.date || '',
+      duration:     params.duration || '',
+      description:  params.description || '',
+      downloadUrl:  params.downloadUrl || params.audioUrl,
+      speakerPhoto: params.speakerPhoto || '',
+      shiurId:      params.shiurId || '',
+    };
+    showPlayer(params.t);
+    return;
+  }
+
+  // If we have a shiurId, try to fetch data
+  if (params.shiurId) {
+    show('loadingState');
+    try {
+      const data = await fetchShiurData(params.shiurId);
+      if (data && (data.playerDownloadURL || data.downloadURL)) {
+        shiurData = {
+          audioUrl:     data.playerDownloadURL || data.downloadURL,
+          title:        data.shiurTitle || 'Shiur',
+          speaker:      data.shiurTeacherFullName || (data.shiurTeachers && data.shiurTeachers[0] ? data.shiurTeachers[0].teacherFullName : ''),
+          date:         data.shiurDateText || '',
+          duration:     data.shiurDuration || '',
+          description:  data.shiurDescription || '',
+          downloadUrl:  data.downloadURL || data.playerDownloadURL,
+          speakerPhoto: (data.shiurTeachers && data.shiurTeachers[0]) ? (data.shiurTeachers[0].teacherPhotoURL_lp || data.shiurTeachers[0].teacherPhotoURL || '') : '',
+          shiurId:      params.shiurId,
+        };
+        hide('loadingState');
+        showPlayer(params.t);
+        return;
+      }
+    } catch (e) {
+      console.error('Fetch attempt finished:', e);
+    }
+    hide('loadingState');
+    showErrorForShiur(params.shiurId);
+    return;
+  }
+
+  // No params at all — show manual input
+  show('manualInput');
+}
+
+// ============================================================
+// SHOW ERROR WITH CLEAR ACTIONABLE INSTRUCTIONS
+// ============================================================
+function showErrorForShiur(shiurId) {
+  const errEl = document.getElementById('errorState');
+  const yutorahUrl = `https://www.yutorah.org/lectures/${shiurId}/`;
+  
+  errEl.innerHTML = `
+    <h2>🛡️ YUTorah Cloudflare Protection</h2>
+    <p style="margin: 12px 0 16px; color: var(--text-light); line-height: 1.6;">
+      YUTorah's Cloudflare security blocks external websites from fetching shiur details automatically.<br>
+      <strong>Good news:</strong> You can open it in one click using the Bookmarklet!
+    </p>
+
+    <div style="background: var(--bg); padding: 16px; border-radius: 10px; margin-bottom: 16px; text-align: left;">
+      <div style="font-weight: 700; margin-bottom: 8px; color: var(--text);">🚀 How to play Shiur #${shiurId}:</div>
+      <ol style="margin-left: 20px; line-height: 1.8; color: var(--text-light); font-size: 14px;">
+        <li>
+          Drag this bookmarklet to your bookmarks bar (if you haven't yet):<br>
+          <a id="errorBookmarklet" href="javascript:void(0)" style="display:inline-block; margin: 6px 0; padding: 6px 14px; background: var(--primary); color: white; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 13px;">📌 YUTorah Enhanced</a>
+        </li>
+        <li>
+          Open the shiur on YUTorah:
+          <a href="${yutorahUrl}" target="_blank" style="display:inline-block; margin-left: 4px; color: var(--primary); font-weight: 600;">Open Shiur #${shiurId} on YUTorah.org ↗</a>
+        </li>
+        <li>Click <strong>📌 YUTorah Enhanced</strong> in your bookmarks bar — it starts playing instantly!</li>
+      </ol>
+    </div>
+
+    <div style="text-align: left; margin-top: 12px;">
+      <p style="font-size: 13px; color: var(--text-light); margin-bottom: 6px;"><strong>Alternative:</strong> If you have the direct MP3 link (or right-clicked "Download" on YUTorah):</p>
+      <div style="display: flex; gap: 8px;">
+        <input type="text" class="url-input" id="directMp3Input" placeholder="Paste direct .mp3 link here...">
+        <button class="go-btn" onclick="playDirectMp3()">Play ▶</button>
+      </div>
+    </div>
+  `;
+  
+  errEl.style.display = 'block';
+  showBookmarkletInError();
+}
+
+function playDirectMp3() {
+  const input = document.getElementById('directMp3Input').value.trim();
+  if (!input) return;
+  shiurData = {
+    audioUrl: input,
+    title: 'Shiur',
+    speaker: '',
+    date: '',
+    duration: '',
+    description: '',
+    downloadUrl: input,
+    speakerPhoto: '',
+    shiurId: '',
+  };
+  showPlayer();
+}
+
+function showBookmarkletInError() {
+  const el = document.getElementById('errorBookmarklet');
+  if (el) el.href = getBookmarkletCode();
+}
+
+function getBookmarkletCode() {
+  const pBase = (window.location.protocol === 'file:')
+    ? 'https://mosherosensweig.github.io/yutorah_wrapper/player.html'
+    : window.location.href.replace(/\/[^\/]*$/, '/player.html');
+
+  return "javascript:(function(){try{var pb='" + pBase + "';if(typeof lecturePlayerData!=='undefined'&&lecturePlayerData&&(lecturePlayerData.playerDownloadURL||lecturePlayerData.downloadURL)){var d=lecturePlayerData,p=new URLSearchParams();p.set('audioUrl',d.playerDownloadURL||d.downloadURL||'');p.set('shiurId',d.shiurID||'');p.set('title',d.shiurTitle||'');var sp=d.shiurTeacherFullName||(d.shiurTeachers&&d.shiurTeachers[0]?d.shiurTeachers[0].teacherFullName:'');p.set('speaker',sp||'');p.set('date',d.shiurDateText||'');p.set('duration',d.shiurDuration||'');if(d.downloadURL)p.set('downloadUrl',d.downloadURL);if(d.shiurDescription&&d.shiurDescription!=='null')p.set('description',d.shiurDescription);if(d.shiurTeachers&&d.shiurTeachers[0]){var ph=d.shiurTeachers[0].teacherPhotoURL_lp||d.shiurTeachers[0].teacherPhotoURL||'';if(ph)p.set('speakerPhoto',ph);}window.open(pb+'?'+p.toString(),'_blank');return;}var m=window.location.href.match(/lectures\\/(?:lecture\\.cfm\\/|details\\?shiurID=)?(\\d+)/i);if(m&&m[1]){var sid=m[1];fetch('/sidebar/lecturedata?shiurID='+sid).then(function(r){return r.json();}).then(function(d){var p=new URLSearchParams();p.set('audioUrl',d.playerDownloadURL||d.downloadURL||'');p.set('shiurId',d.shiurID||sid);p.set('title',d.shiurTitle||'');var sp=d.shiurTeacherFullName||(d.shiurTeachers&&d.shiurTeachers[0]?d.shiurTeachers[0].teacherFullName:'');p.set('speaker',sp||'');p.set('date',d.shiurDateText||'');p.set('duration',d.shiurDuration||'');if(d.downloadURL)p.set('downloadUrl',d.downloadURL);if(d.shiurDescription&&d.shiurDescription!=='null')p.set('description',d.shiurDescription);if(d.shiurTeachers&&d.shiurTeachers[0]){var ph=d.shiurTeachers[0].teacherPhotoURL_lp||d.shiurTeachers[0].teacherPhotoURL||'';if(ph)p.set('speakerPhoto',ph);}window.open(pb+'?'+p.toString(),'_blank');}).catch(function(err){alert('Could not fetch shiur data: '+err.message);});return;}var ls=document.querySelectorAll('a[data-id],a[data-shiurid],a.shiur');if(ls.length>0){var c=0;ls.forEach(function(el){var sid=el.getAttribute('data-id')||el.getAttribute('data-shiurid');if(!sid){var lm=(el.href||'').match(/lectures\\/(?:details\\?shiurID=)?(\\d+)/i);if(lm)sid=lm[1];}if(sid&&!el.dataset.enh){el.dataset.enh='1';var b=document.createElement('button');b.textContent='🎧 Enhanced';b.style.cssText='margin-left:6px;background:#576a88;color:#fff;border:none;border-radius:4px;padding:2px 6px;font-size:11px;font-weight:bold;cursor:pointer;vertical-align:middle;';b.onclick=function(ev){ev.preventDefault();ev.stopPropagation();b.textContent='⏳...';fetch('/sidebar/lecturedata?shiurID='+sid).then(function(r){return r.json();}).then(function(d){b.textContent='🎧 Enhanced';var p=new URLSearchParams();p.set('audioUrl',d.playerDownloadURL||d.downloadURL||'');p.set('shiurId',d.shiurID||sid);p.set('title',d.shiurTitle||'');var sp=d.shiurTeacherFullName||(d.shiurTeachers&&d.shiurTeachers[0]?d.shiurTeachers[0].teacherFullName:'');p.set('speaker',sp||'');p.set('date',d.shiurDateText||'');p.set('duration',d.shiurDuration||'');if(d.downloadURL)p.set('downloadUrl',d.downloadURL);if(d.shiurDescription&&d.shiurDescription!=='null')p.set('description',d.shiurDescription);window.open(pb+'?'+p.toString(),'_blank');}).catch(function(err){b.textContent='🎧 Enhanced';alert('Error: '+err.message);});};if(el.parentNode)el.parentNode.insertBefore(b,el.nextSibling);c++;}});alert('✨ Enhanced Player active! Added '+c+' buttons next to shiurim on this page.');return;}alert('Open a shiur on YUTorah.org first, then click this bookmarklet.');}catch(e){alert('Error: '+e.message);}})();";
+}
+
+// ============================================================
+// FAST FETCH SHIUR DATA (short 2.5s timeout, non-blocking)
+// ============================================================
+async function fetchShiurData(shiurId) {
+  const apiUrl = `https://www.yutorah.org/sidebar/lecturedata?shiurID=${shiurId}`;
+
+  // Helper with cross-browser AbortController
+  function fetchWithTimeout(url, ms) {
+    const ctrl = new AbortController();
+    const id = setTimeout(() => ctrl.abort(), ms);
+    return fetch(url, { signal: ctrl.signal }).finally(() => clearTimeout(id));
+  }
+
+  // Fast direct attempt
+  try {
+    const resp = await fetchWithTimeout(apiUrl, 2000);
+    if (resp.ok) return await resp.json();
+  } catch (e) {}
+
+  // Fast parallel proxy attempt (max 2.5s)
+  const proxyUrls = [
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(apiUrl)}`,
+    `https://corsproxy.io/?${encodeURIComponent(apiUrl)}`
+  ];
+
+  const proxyPromises = proxyUrls.map(pUrl =>
+    fetchWithTimeout(pUrl, 2500)
+      .then(async r => {
+        if (!r.ok) throw new Error('Proxy error');
+        const text = await r.text();
+        try {
+          return JSON.parse(text);
+        } catch {
+          const match = text.match(/var\s+lecturePlayerData\s*=\s*({.*?});/s);
+          if (match) return JSON.parse(match[1]);
+          throw new Error('Not JSON');
+        }
+      })
+  );
+
+  try {
+    return await Promise.any(proxyPromises);
+  } catch (e) {
+    return null;
+  }
+}
+
+// ============================================================
+// SHOW PLAYER
+// ============================================================
+function showPlayer(startTime) {
+  // Show shiur info
+  if (shiurData.title) {
+    document.getElementById('shiurTitle').textContent = shiurData.title;
+    document.getElementById('shiurSpeaker').textContent = shiurData.speaker;
+
+    const details = [shiurData.date, shiurData.duration].filter(Boolean).join(' · ');
+    document.getElementById('shiurDetails').textContent = details;
+
+    if (shiurData.speakerPhoto) {
+      const img = document.getElementById('speakerImg');
+      img.src = shiurData.speakerPhoto;
+      img.alt = shiurData.speaker;
+    }
+
+    if (shiurData.description && shiurData.description !== 'null') {
+      const descEl = document.getElementById('shiurDescription');
+      descEl.textContent = shiurData.description;
+      descEl.style.display = 'block';
+    }
+
+    show('shiurInfo');
+  }
+
+  // Set audio source
+  audio.src = shiurData.audioUrl;
+
+  // Set download link
+  if (shiurData.downloadUrl) {
+    const dlBtn = document.getElementById('downloadBtn');
+    dlBtn.href = shiurData.downloadUrl;
+    dlBtn.style.display = 'inline-flex';
+  }
+
+  // Original link
+  if (shiurData.shiurId) {
+    const origUrl = `https://www.yutorah.org/lectures/${shiurData.shiurId}/`;
+    const anchor = document.getElementById('origLinkAnchor');
+    anchor.href = origUrl;
+    anchor.textContent = origUrl;
+    show('originalLink');
+  }
+
+  // Show player + shortcuts
+  show('playerCard');
+  show('shortcutsCard');
+  hide('manualInput');
+  hide('errorState');
+
+  // Start at timestamp if provided
+  if (startTime) {
+    const seconds = parseFloat(startTime);
+    if (!isNaN(seconds)) {
+      audio.addEventListener('loadedmetadata', () => {
+        audio.currentTime = seconds;
+      }, { once: true });
+      // Also try immediately in case metadata is already loaded
+      if (audio.readyState >= 1) {
+        audio.currentTime = seconds;
+      }
+    }
+  }
+
+  // Update page title
+  if (shiurData.title) {
+    document.title = `${shiurData.title} — YUTorah Enhanced Player`;
+  }
+
+  // Mobile lock screen and background media controls
+  if ('mediaSession' in navigator) {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: shiurData.title || 'Shiur',
+      artist: shiurData.speaker || 'YUTorah',
+      album: 'YUTorah Online',
+      artwork: shiurData.speakerPhoto ? [{ src: shiurData.speakerPhoto, sizes: '300x300', type: 'image/jpeg' }] : []
+    });
+
+    try {
+      navigator.mediaSession.setActionHandler('play', () => togglePlay());
+      navigator.mediaSession.setActionHandler('pause', () => togglePlay());
+      navigator.mediaSession.setActionHandler('seekbackward', (details) => skip(-(details.seekOffset || 10)));
+      navigator.mediaSession.setActionHandler('seekforward', (details) => skip(details.seekOffset || 10));
+      navigator.mediaSession.setActionHandler('seekto', (details) => {
+        if (details.seekTime !== undefined && audio.duration) audio.currentTime = details.seekTime;
+      });
+    } catch (e) {}
+  }
+}
+
+// ============================================================
+// AUDIO CONTROLS
+// ============================================================
+function togglePlay() {
+  if (audio.paused) {
+    audio.play().catch(e => console.error('Play failed:', e));
+  } else {
+    audio.pause();
+  }
+}
+
+function skip(seconds) {
+  if (!audio.duration) return;
+  audio.currentTime = Math.max(0, Math.min(audio.duration, audio.currentTime + seconds));
+}
+
+function setSpeed(rate) {
+  audio.playbackRate = parseFloat(rate);
+  document.getElementById('speedSelect').value = rate;
+}
+
+function setVolume(vol) {
+  audio.volume = parseFloat(vol);
+  document.getElementById('volumeSlider').value = vol;
+}
+
+function cycleSpeed(direction) {
+  const current = audio.playbackRate;
+  const idx = SPEEDS.indexOf(current);
+  let newIdx;
+  if (idx === -1) {
+    // Find closest
+    newIdx = SPEEDS.reduce((best, s, i) =>
+      Math.abs(s - current) < Math.abs(SPEEDS[best] - current) ? i : best, 0);
+    newIdx += direction;
+  } else {
+    newIdx = idx + direction;
+  }
+  newIdx = Math.max(0, Math.min(SPEEDS.length - 1, newIdx));
+  setSpeed(SPEEDS[newIdx]);
+}
+
+// ============================================================
+// AUDIO EVENT LISTENERS
+// ============================================================
+audio.addEventListener('play', () => {
+  document.getElementById('playPauseBtn').textContent = '⏸';
+});
+
+audio.addEventListener('pause', () => {
+  document.getElementById('playPauseBtn').textContent = '▶';
+});
+
+audio.addEventListener('timeupdate', () => {
+  if (!audio.duration) return;
+  const pct = (audio.currentTime / audio.duration) * 100;
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('currentTime').textContent = formatTime(audio.currentTime);
+});
+
+audio.addEventListener('loadedmetadata', () => {
+  document.getElementById('totalTime').textContent = formatTime(audio.duration);
+});
+
+audio.addEventListener('durationchange', () => {
+  document.getElementById('totalTime').textContent = formatTime(audio.duration);
+});
+
+// Progress bar click to seek
+document.getElementById('progressBar').addEventListener('click', (e) => {
+  if (!audio.duration) return;
+  const rect = e.currentTarget.getBoundingClientRect();
+  const pct = (e.clientX - rect.left) / rect.width;
+  audio.currentTime = pct * audio.duration;
+});
+
+// Drag seeking on progress bar
+let isDragging = false;
+document.getElementById('progressBar').addEventListener('mousedown', (e) => {
+  isDragging = true;
+  seekToEvent(e);
+});
+document.addEventListener('mousemove', (e) => {
+  if (isDragging) seekToEvent(e);
+});
+document.addEventListener('mouseup', () => {
+  isDragging = false;
+});
+
+function seekToEvent(e) {
+  if (!audio.duration) return;
+  const bar = document.getElementById('progressBar');
+  const rect = bar.getBoundingClientRect();
+  const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  audio.currentTime = pct * audio.duration;
+}
+
+// ============================================================
+// KEYBOARD SHORTCUTS
+// ============================================================
+document.addEventListener('keydown', (e) => {
+  // Don't handle if user is typing in an input
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+
+  switch (e.key) {
+    case ' ':
+      e.preventDefault();
+      togglePlay();
+      break;
+    case 'ArrowLeft':
+      e.preventDefault();
+      skip(e.shiftKey ? -30 : -10);
+      break;
+    case 'ArrowRight':
+      e.preventDefault();
+      skip(e.shiftKey ? 30 : 10);
+      break;
+    case 'ArrowUp':
+      e.preventDefault();
+      setVolume(Math.min(1, audio.volume + 0.05));
+      break;
+    case 'ArrowDown':
+      e.preventDefault();
+      setVolume(Math.max(0, audio.volume - 0.05));
+      break;
+    case '[':
+      cycleSpeed(-1);
+      break;
+    case ']':
+      cycleSpeed(1);
+      break;
+    case 'm':
+    case 'M':
+      audio.muted = !audio.muted;
+      showToast(audio.muted ? '🔇 Muted' : '🔊 Unmuted');
+      break;
+    case '0': case '1': case '2': case '3': case '4':
+    case '5': case '6': case '7': case '8': case '9':
+      if (!e.ctrlKey && !e.metaKey && !e.altKey && audio.duration) {
+        e.preventDefault();
+        audio.currentTime = audio.duration * (parseInt(e.key) / 10);
+      }
+      break;
+  }
+});
+
+// ============================================================
+// COPY TIMESTAMP LINK
+// ============================================================
+function copyTimestampLink() {
+  const currentSeconds = Math.floor(audio.currentTime);
+  const baseUrl = window.location.origin + window.location.pathname;
+  const params = new URLSearchParams(window.location.search);
+  params.set('t', currentSeconds);
+  const link = baseUrl + '?' + params.toString();
+
+  navigator.clipboard.writeText(link).then(() => {
+    showToast(`📋 Link copied! (${formatTime(currentSeconds)})`);
+  }).catch(() => {
+    // Fallback: show the link in a prompt
+    prompt('Copy this link:', link);
+  });
+}
+
+// ============================================================
+// MANUAL URL HANDLER
+// ============================================================
+function handleManualUrl() {
+  const input = document.getElementById('manualUrl').value.trim();
+  if (!input) return;
+
+  // Check if it's a direct MP3/audio URL
+  if (input.match(/\.(mp3|m4a|wav|ogg|aac)(\?|$)/i)) {
+    shiurData = {
+      audioUrl: input,
+      title: 'Shiur',
+      speaker: '',
+      date: '',
+      duration: '',
+      description: '',
+      downloadUrl: input,
+      speakerPhoto: '',
+      shiurId: '',
+    };
+    showPlayer();
+    return;
+  }
+
+  // Check if it's a yutorah lecture URL
+  const m = input.match(/lectures\/(?:lecture\.cfm\/)?(\d+)/);
+  if (m) {
+    // Redirect to self with shiurId param
+    window.location.href = `player.html?shiurId=${m[1]}`;
+    return;
+  }
+
+  // Check if it's just a number (shiur ID)
+  if (/^\d+$/.test(input)) {
+    window.location.href = `player.html?shiurId=${input}`;
+    return;
+  }
+
+  showToast('⚠️ Could not parse URL. Try a YUTorah lecture URL or direct MP3 link.');
+}
+
+// Enter key on manual input
+document.getElementById('manualUrl').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') handleManualUrl();
+});
+
+// ============================================================
+// UTILITIES
+// ============================================================
+function formatTime(seconds) {
+  if (!seconds || isNaN(seconds)) return '0:00';
+  const s = Math.floor(seconds);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) {
+    return `${h}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+  }
+  return `${m}:${sec.toString().padStart(2, '0')}`;
+}
+
+function show(id) { document.getElementById(id).style.display = ''; }
+function hide(id) { document.getElementById(id).style.display = 'none'; }
+
+function showToast(message) {
+  const toast = document.getElementById('toast');
+  toast.textContent = message;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 2500);
+}
+
+function toggleShortcuts() {
+  const content = document.getElementById('shortcutsContent');
+  const arrow = document.getElementById('shortcutsArrow');
+  content.classList.toggle('open');
+  arrow.textContent = content.classList.contains('open') ? '▾' : '▸';
+}
+
+// ============================================================
+// BOOT
+// ============================================================
+init();
+</script>
+
+</body>
+</html>

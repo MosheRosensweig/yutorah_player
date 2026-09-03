@@ -1,0 +1,38 @@
+.ui-notify { width:100%; max-width:720px; margin:0 auto; overflow:hidden;}
+.ui-notify-message { padding:4px 4px 4px 4px; margin-bottom:15px; /*-moz-border-radius:8px; -webkit-border-radius:8px; border-radius:8px */}
+.ui-notify-message h1 { font-size:2.2em; margin:0; padding:0; line-height: 1.5em;}
+.ui-notify-message h2 { font-size:1.8em; margin:0; padding:0; line-height: 1.5em;}
+.ui-notify-message h3 { font-size:1.4em; margin:0; padding:0; line-height: 1.5em;}
+.ui-notify-message p { margin:2px 0; padding:0; font-size:1em; line-height:1.3em; margin: 10px 0 10px;}
+.ui-notify-message b, .ui-notify-message strong{font-weight: 700;}
+.ui-notify-message hr{border:none; width: 100%; height: 1px; background: #ccc;}
+.ui-notify-message a{color:#576a88; text-decoration: underline;}
+.ui-notify-message a.big-link{font-size:1.5em; font-weight: 700; line-height: 1.5em;}
+.ui-notify-message a:hover{text-decoration: none;}
+.ui-notify-message a img{border:none; max-width:100%; min-width: 100%;}
+.ui-notify-message img {border:none;}
+.ui-notify-message:last-child { margin-bottom:0 }
+.ui-notify-message-style { background:#000; background:rgba(0,0,0,0.8); -moz-box-shadow: 0 0 6px #000; -webkit-box-shadow: 0 0 6px #000; box-shadow: 0 0 6px #000; }
+.ui-notify-message-style h1 { color:#fff; font-weight:bold }
+.ui-notify-message-style p { color:#fff }
+.ui-notify-close { color:#fff; text-decoration:underline }
+.ui-notify-click { cursor:pointer }
+.ui-notify-cross { margin-top:-4px; float:right; cursor:pointer; text-decoration:none; font-size:12px; font-weight:bold; text-shadow:0 1px 1px #fff; padding:2px }
+.ui-notify-cross:hover { color:#ffffab }
+.ui-notify-cross:active { position:relative; top:1px }
+
+.ui-state-highlight, .ui-widget-content .ui-state-highlight, .ui-widget-header .ui-state-highlight{background:#fff; border: 0px solid #e2e2e2; box-shadow:0px 0px 50px rgba(0,0,0,.5);}
+.notify-text{font-size:14px; line-height:20px;}
+.ui-notify img, .ui-notify a img{max-width:100%; margin-bottom:-4px; min-width: 100%;}
+.ui-notify-message{position:fixed; top:214px; width:680px; box-sizing: border-box;}
+.ui-notify iframe {max-width:640px; overflow:hidden;}
+
+.ui-notify-close{background: #ae3120; display: block; float: none; position: absolute; top: -24px; right: 0; padding: 4px;}
+.ui-notify-close:hover,
+.ui-notify-close:active{opacity:.75;}
+
+@media screen and (max-width:767px){
+	.ui-notify {width:90%;}
+	.ui-notify-message {width:90%;}
+	.notify-text{font-size:12px; line-height:16px;}
+}

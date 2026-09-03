@@ -1,0 +1,20 @@
+{
+  "name": "yutorah-player",
+  "version": "1.0.0",
+  "description": "YUTorah wrapper with enhanced audio player via Cloudflare Worker reverse proxy",
+  "main": "src/worker.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "keywords": [
+    "yutorah",
+    "audio-player",
+    "cloudflare-worker"
+  ],
+  "author": "Moshe Rosensweig",
+  "license": "MIT",
+  "devDependencies": {
+    "wrangler": "^4.128.0"
+  }
+}

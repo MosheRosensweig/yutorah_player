@@ -1,0 +1,57 @@
+﻿.toast {
+    top: 0;
+    left: 0;
+    width: 100%;
+    padding: 10px;
+    z-index: 9999;
+    font-size: 16px;
+    position: fixed;
+    text-align: center;
+    border-radius: 5px;
+    background-color: #fff;
+    transition: opacity 0.3s ease-in-out;
+    box-shadow: 0px 0px 5px rgba(0, 0, 0, 0.2);
+}
+
+    .toast.success {
+        color: #fff;
+        background-color: #72c87c;
+    }
+
+    .toast.error {
+        color: #fff;
+        background-color: #f44336;
+    }
+
+
+
+@media screen and (max-width:767px) {
+    /* james changes 2023s */
+    .top-ad {
+        height: 60px;
+        position: relative;
+        top: 50px;
+    }
+
+        .top-ad img {
+            display: block !important;
+            width: 90% !important;
+            margin: 0 auto;
+            margin-top: 25px !important
+        }
+
+    #header .panel {
+        background: none;
+    }
+
+    .sidenav {
+        top: 95px !important;
+    }
+
+    .container {
+        padding-top: 188px;
+    }
+    .sidenav .setting {
+        display: inline-block !important;
+    }
+}

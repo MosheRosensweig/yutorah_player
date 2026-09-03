@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YUTorah Enhanced</title>
+<style>
+  :root {
+    --primary: #576a88;
+    --primary-dark: #3d4f6a;
+    --primary-light: #7a8da8;
+    --accent: #ae3120;
+    --bg: #f5f6f8;
+    --card-bg: #ffffff;
+    --text: #2c3e50;
+    --text-light: #6c7a89;
+    --border: #dde1e7;
+    --success: #27ae60;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  .header {
+    background: var(--primary);
+    color: white;
+    padding: 16px 24px;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  }
+  .header h1 { font-size: 22px; font-weight: 700; }
+  .header p { font-size: 14px; opacity: 0.85; margin-top: 4px; }
+
+  .container {
+    max-width: 700px;
+    margin: 24px auto;
+    padding: 0 16px;
+  }
+
+  .card {
+    background: var(--card-bg);
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    margin-bottom: 16px;
+  }
+  .card h2 {
+    font-size: 18px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card p, .card li {
+    font-size: 14px;
+    color: var(--text-light);
+    line-height: 1.6;
+  }
+  .card ol, .card ul { padding-left: 20px; margin: 8px 0; }
+  .card li { margin-bottom: 4px; }
+  .card code {
+    background: var(--bg);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 13px;
+  }
+
+  .big-btn {
+    display: inline-block;
+    padding: 14px 28px;
+    background: var(--primary);
+    color: white;
+    text-decoration: none;
+    border-radius: 10px;
+    font-size: 16px;
+    font-weight: 600;
+    transition: background 0.15s;
+  }
+  .big-btn:hover { background: var(--primary-dark); }
+
+  .open-section { text-align: center; }
+
+  /* URL input */
+  .input-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .url-input {
+    flex: 1;
+    padding: 11px 14px;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .url-input:focus { border-color: var(--primary); }
+  .go-btn {
+    padding: 11px 22px;
+    background: var(--primary);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+    white-space: nowrap;
+  }
+  .go-btn:hover { background: var(--primary-dark); }
+
+  /* Bookmarklet */
+  .bookmarklet-area {
+    text-align: center;
+    padding: 20px;
+    margin: 12px 0;
+    background: var(--bg);
+    border: 2px dashed var(--border);
+    border-radius: 10px;
+  }
+  .bookmarklet-area a {
+    display: inline-block;
+    padding: 12px 24px;
+    background: var(--primary);
+    color: white;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 16px;
+    cursor: grab;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  }
+  .bookmarklet-area .hint {
+    display: block;
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--text-light);
+  }
+
+  .step {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    margin-bottom: 12px;
+  }
+  .step-num {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    background: var(--primary);
+    color: white;
+    border-radius: 50%;
+    font-size: 14px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .step-text { flex: 1; padding-top: 3px; }
+
+  .features-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .feature {
+    font-size: 14px;
+    padding: 8px 12px;
+    background: var(--bg);
+    border-radius: 6px;
+  }
+
+  @media (max-width: 500px) {
+    .features-grid { grid-template-columns: 1fr; }
+    .input-row { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🎧 YUTorah Enhanced Player</h1>
+  <p>Better audio controls for YUTorah shiurim</p>
+</div>
+
+<div class="container">
+
+  <!-- Step 1: Open YUTorah -->
+  <div class="card open-section">
+    <h2>🌐 Step 1: Browse YUTorah</h2>
+    <a href="https://www.yutorah.org/" target="_blank" class="big-btn">Open YUTorah.org →</a>
+    <p style="margin-top: 10px; font-size: 13px;">Opens in a new tab. Find a shiur you want to listen to.</p>
+  </div>
+
+  <!-- Step 2: Use bookmarklet or paste URL -->
+  <div class="card">
+    <h2>🚀 Step 2: Open in Enhanced Player</h2>
+
+    <p><strong>Option A — Bookmarklet (recommended, one-time setup):</strong></p>
+    <div class="bookmarklet-area">
+      <a id="bookmarkletLink" href="javascript:void(0)">📌 YUTorah Enhanced</a>
+      <span class="hint">💻 Desktop: Drag this button to your bookmarks bar</span>
+      <div style="margin-top: 12px;">
+        <button id="copyBookmarkletBtn" class="go-btn" style="background:#4a5d78; font-size: 13px; padding: 7px 16px;" onclick="copyBookmarkletCode()">📋 Copy Code for Mobile</button>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-text">Drag the button to your bookmarks bar (or see mobile guide below)</div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-text">On YUTorah, click a shiur to open its lecture page</div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-text">Click <strong>📌 YUTorah Enhanced</strong> in your bookmarks — done!</div>
+    </div>
+
+    <details style="margin: 16px 0; background: var(--bg); padding: 12px 16px; border-radius: 8px; font-size: 13px;">
+      <summary style="font-weight: 700; cursor: pointer; color: var(--primary);">📱 How to use on iPhone (Safari) or Android</summary>
+      <div style="margin-top: 10px; line-height: 1.7; color: var(--text-light);">
+        <strong style="color:var(--text)">🍎 iPhone / iPad (Safari):</strong>
+        <ol style="margin-left: 20px; margin-top: 4px; margin-bottom: 8px;">
+          <li><strong>Easiest:</strong> If your Mac & iPhone use the same iCloud account, drag the bookmark on your Mac and it will automatically sync to your iPhone Safari favorites!</li>
+          <li><strong>Directly on iPhone:</strong> Tap the <strong>📋 Copy Code for Mobile</strong> button above.</li>
+          <li>Tap Safari's Share button (⎋) → <strong>Add Bookmark</strong> → Name it <code>YUTorah Enhanced</code> → tap Save.</li>
+          <li>Tap the Bookmarks icon (📖) → <strong>Edit</strong> → tap <code>YUTorah Enhanced</code> → delete the URL, paste the code, and tap <strong>Done</strong>.</li>
+          <li><strong>To listen:</strong> On any YUTorah shiur page, tap 📖 → tap <code>YUTorah Enhanced</code>!</li>
+        </ol>
+        <strong style="color:var(--text)">🤖 Android (Chrome):</strong>
+        <ol style="margin-left: 20px; margin-top: 4px;">
+          <li>Tap <strong>📋 Copy Code for Mobile</strong> above.</li>
+          <li>Bookmark this page (tap 3 dots → ⭐) and name it <code>YUTorah Enhanced</code>.</li>
+          <li>Go to Bookmarks → tap 3 dots next to it → <strong>Edit</strong> → delete URL and paste code.</li>
+          <li><strong>To listen:</strong> On YUTorah, tap the address bar, type <code>YUTorah Enhanced</code>, and tap the search result with the star/bookmark icon!</li>
+        </ol>
+      </div>
+    </details>
+
+    <hr style="border: none; border-top: 1px solid var(--border); margin: 20px 0;">
+
+    <p><strong>Option B — Paste a URL or Shiur ID:</strong></p>
+    <p>Copy a shiur's lecture URL or audio link and paste it here:</p>
+    <div class="input-row">
+      <input type="text" class="url-input" id="urlInput" placeholder="e.g. yutorah.org/lectures/1187082, direct MP3 link, or ID">
+      <button class="go-btn" onclick="openPlayer()">▶ Play</button>
+    </div>
+    <p style="margin-top: 8px; font-size: 12px; color: var(--text-light);">
+      💡 <em>Tip: YUTorah protects its pages with Cloudflare bot verification. <strong>Option A (the Bookmarklet)</strong> is the instant, 100% reliable method because you run it right inside your verified YUTorah tab!</em>
+    </p>
+  </div>
+
+  <!-- Features -->
+  <div class="card">
+    <h2>✨ Enhanced Player Features</h2>
+    <div class="features-grid">
+      <div class="feature">⏪ ⏩ Skip ±10s and ±30s</div>
+      <div class="feature">🏎️ Direct speed: 0.5x–3x</div>
+      <div class="feature">⌨️ Keyboard shortcuts</div>
+      <div class="feature">📋 Copy link at timestamp</div>
+      <div class="feature">🔗 Start at any time via URL</div>
+      <div class="feature">⬇️ Download link</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function getPlayerBaseUrl() {
+  if (window.location.protocol === 'file:') {
+    return 'https://mosherosensweig.github.io/yutorah_wrapper/player.html';
+  }
+  return window.location.href.replace(/\/[^\/]*$/, '/player.html');
+}
+
+function generateBookmarklet() {
+  const pb = getPlayerBaseUrl();
+  const code = "javascript:(function(){try{var pb='" + pb + "';if(typeof lecturePlayerData!=='undefined'&&lecturePlayerData&&(lecturePlayerData.playerDownloadURL||lecturePlayerData.downloadURL)){var d=lecturePlayerData,p=new URLSearchParams();p.set('audioUrl',d.playerDownloadURL||d.downloadURL||'');p.set('shiurId',d.shiurID||'');p.set('title',d.shiurTitle||'');var sp=d.shiurTeacherFullName||(d.shiurTeachers&&d.shiurTeachers[0]?d.shiurTeachers[0].teacherFullName:'');p.set('speaker',sp||'');p.set('date',d.shiurDateText||'');p.set('duration',d.shiurDuration||'');if(d.downloadURL)p.set('downloadUrl',d.downloadURL);if(d.shiurDescription&&d.shiurDescription!=='null')p.set('description',d.shiurDescription);if(d.shiurTeachers&&d.shiurTeachers[0]){var ph=d.shiurTeachers[0].teacherPhotoURL_lp||d.shiurTeachers[0].teacherPhotoURL||'';if(ph)p.set('speakerPhoto',ph);}window.open(pb+'?'+p.toString(),'_blank');return;}var m=window.location.href.match(/lectures\\/(?:lecture\\.cfm\\/|details\\?shiurID=)?(\\d+)/i);if(m&&m[1]){var sid=m[1];fetch('/sidebar/lecturedata?shiurID='+sid).then(function(r){return r.json();}).then(function(d){var p=new URLSearchParams();p.set('audioUrl',d.playerDownloadURL||d.downloadURL||'');p.set('shiurId',d.shiurID||sid);p.set('title',d.shiurTitle||'');var sp=d.shiurTeacherFullName||(d.shiurTeachers&&d.shiurTeachers[0]?d.shiurTeachers[0].teacherFullName:'');p.set('speaker',sp||'');p.set('date',d.shiurDateText||'');p.set('duration',d.shiurDuration||'');if(d.downloadURL)p.set('downloadUrl',d.downloadURL);if(d.shiurDescription&&d.shiurDescription!=='null')p.set('description',d.shiurDescription);if(d.shiurTeachers&&d.shiurTeachers[0]){var ph=d.shiurTeachers[0].teacherPhotoURL_lp||d.shiurTeachers[0].teacherPhotoURL||'';if(ph)p.set('speakerPhoto',ph);}window.open(pb+'?'+p.toString(),'_blank');}).catch(function(err){alert('Could not fetch shiur data: '+err.message);});return;}var ls=document.querySelectorAll('a[data-id],a[data-shiurid],a.shiur');if(ls.length>0){var c=0;ls.forEach(function(el){var sid=el.getAttribute('data-id')||el.getAttribute('data-shiurid');if(!sid){var lm=(el.href||'').match(/lectures\\/(?:details\\?shiurID=)?(\\d+)/i);if(lm)sid=lm[1];}if(sid&&!el.dataset.enh){el.dataset.enh='1';var b=document.createElement('button');b.textContent='🎧 Enhanced';b.style.cssText='margin-left:6px;background:#576a88;color:#fff;border:none;border-radius:4px;padding:2px 6px;font-size:11px;font-weight:bold;cursor:pointer;vertical-align:middle;';b.onclick=function(ev){ev.preventDefault();ev.stopPropagation();b.textContent='⏳...';fetch('/sidebar/lecturedata?shiurID='+sid).then(function(r){return r.json();}).then(function(d){b.textContent='🎧 Enhanced';var p=new URLSearchParams();p.set('audioUrl',d.playerDownloadURL||d.downloadURL||'');p.set('shiurId',d.shiurID||sid);p.set('title',d.shiurTitle||'');var sp=d.shiurTeacherFullName||(d.shiurTeachers&&d.shiurTeachers[0]?d.shiurTeachers[0].teacherFullName:'');p.set('speaker',sp||'');p.set('date',d.shiurDateText||'');p.set('duration',d.shiurDuration||'');if(d.downloadURL)p.set('downloadUrl',d.downloadURL);if(d.shiurDescription&&d.shiurDescription!=='null')p.set('description',d.shiurDescription);window.open(pb+'?'+p.toString(),'_blank');}).catch(function(err){b.textContent='🎧 Enhanced';alert('Error: '+err.message);});};if(el.parentNode)el.parentNode.insertBefore(b,el.nextSibling);c++;}});alert('✨ Enhanced Player active! Added '+c+' buttons next to shiurim on this page.');return;}alert('Open a shiur on YUTorah.org first, then click this bookmarklet.');}catch(e){alert('Error: '+e.message);}})();";
+  document.getElementById('bookmarkletLink').href = code;
+}
+
+function openPlayer() {
+  const input = document.getElementById('urlInput').value.trim();
+  if (!input) return;
+  if (input.match(/\.(mp3|m4a|wav|ogg|aac)(\?|$)/i)) {
+    window.open('player.html?audioUrl=' + encodeURIComponent(input), '_blank');
+    return;
+  }
+  const m = input.match(/lectures\/(?:lecture\.cfm\/)?(\d+)/);
+  if (m) {
+    window.open('player.html?shiurId=' + m[1], '_blank');
+    return;
+  }
+  if (/^\d+$/.test(input)) {
+    window.open('player.html?shiurId=' + input, '_blank');
+    return;
+  }
+  window.open('player.html?url=' + encodeURIComponent(input), '_blank');
+}
+
+document.getElementById('urlInput').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') openPlayer();
+});
+
+function copyBookmarkletCode() {
+  const code = document.getElementById('bookmarkletLink').href;
+  navigator.clipboard.writeText(code).then(() => {
+    const btn = document.getElementById('copyBookmarkletBtn');
+    btn.textContent = '✅ Copied!';
+    setTimeout(() => btn.textContent = '📋 Copy Code for Mobile', 2000);
+  }).catch(() => {
+    prompt('Copy this code:', code);
+  });
+}
+
+generateBookmarklet();
+</script>
+</body>
+</html>
