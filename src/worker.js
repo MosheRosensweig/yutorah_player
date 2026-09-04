@@ -94,11 +94,13 @@ export default {
       const q = url.searchParams.get('q') || url.searchParams.get('searchTerm') || '';
       const teacherId = url.searchParams.get('teacherId') || '';
       const subCategoryId = url.searchParams.get('subCategoryId') || '';
+      const locationId = url.searchParams.get('locationId') || url.searchParams.get('venueId') || '';
       const start = url.searchParams.get('start') || '1';
 
       let targetUrl = `${API_ORIGIN}/search?searchTerm=${encodeURIComponent(q)}&start=${encodeURIComponent(start)}`;
       if (teacherId) targetUrl += `&teacherId=${encodeURIComponent(teacherId)}`;
       if (subCategoryId) targetUrl += `&subCategoryId=${encodeURIComponent(subCategoryId)}`;
+      if (locationId) targetUrl += `&locationId=${encodeURIComponent(locationId)}`;
 
       try {
         const upstream = await fetch(targetUrl, {
@@ -325,13 +327,19 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
   let downloadUrl = '';
   let moreFromSpeakers = [];
   let moreFromCategories = [];
+  let shiurTeachers = [];
+  let shiurLocations = [];
+  let shiurCategories = {};
+  let shiurKeywords = [];
+  let shiurDate = '';
 
   if (shiurData) {
     title = shiurData.shiurTitle || 'Untitled Shiur';
     speaker = shiurData.shiurTeacherFullName || (shiurData.shiurTeachers && shiurData.shiurTeachers[0] ? shiurData.shiurTeachers[0].teacherFullName : 'YUTorah');
     photo = shiurData.teacherPhotoURL_lp || shiurData.teacherPhotoURL || (shiurData.shiurTeachers && shiurData.shiurTeachers[0] ? shiurData.shiurTeachers[0].teacherPhotoURL : '');
     duration = shiurData.shiurDuration || '';
-    meta = duration + (shiurData.shiurDateFormatted ? ' · ' + shiurData.shiurDateFormatted : '');
+    shiurDate = shiurData.shiurDateFormatted || '';
+    meta = duration + (shiurDate ? ' · ' + shiurDate : '');
     description = shiurData.shiurDescription || '';
     downloadUrl = shiurData.downloadURL || shiurData.playerDownloadURL || '';
     audioUrl = shiurData.playerDownloadURL || (shiurData.shiurURL ? 'https://shiurim.yutorah.net' + shiurData.shiurURL : '') || downloadUrl;
@@ -341,6 +349,36 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     }
     if (shiurData.moreFromCategories && Array.isArray(shiurData.moreFromCategories)) {
       moreFromCategories = shiurData.moreFromCategories.map(normalizeShiur);
+    }
+
+    // Extract rich metadata
+    if (Array.isArray(shiurData.shiurTeachers)) {
+      shiurTeachers = shiurData.shiurTeachers.map(t => ({
+        id: t.teacherID,
+        name: t.teacherFullName || '',
+        photo: t.teacherPhotoURL_lp || t.teacherPhotoURL || '',
+      }));
+    }
+    if (Array.isArray(shiurData.postedInLocations)) {
+      shiurLocations = shiurData.postedInLocations.map(loc => ({
+        id: loc.locationID,
+        name: loc.locationName || '',
+      }));
+    }
+    if (shiurData.postedInCategories && typeof shiurData.postedInCategories === 'object') {
+      for (const [groupId, group] of Object.entries(shiurData.postedInCategories)) {
+        if (group.groupName && Array.isArray(group.categories)) {
+          shiurCategories[group.groupName] = group.categories.map(c => ({
+            name: c.categoryName || '',
+            id: c.subcategoryID || '',
+          }));
+        }
+      }
+    }
+    if (Array.isArray(shiurData.shiurKeywords)) {
+      shiurKeywords = shiurData.shiurKeywords.map(k => ({
+        title: k.keywordTitle || '',
+      }));
     }
   } else if (directAudio) {
     title = 'Audio Stream';
@@ -1082,6 +1120,167 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       border-top-color: #fff;
     }
 
+    /* Shiur Metadata Box */
+    .shiur-metadata-box {
+      margin-top: 16px;
+      padding: 14px 18px;
+      background: var(--bg);
+      border-radius: 12px;
+      border: 1px solid var(--border-light);
+    }
+    .meta-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    .meta-row:last-child { margin-bottom: 0; }
+    .meta-label {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      min-width: 80px;
+      flex-shrink: 0;
+    }
+    .meta-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: 20px;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--primary);
+      transition: all 0.15s ease;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .meta-chip:hover {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+      transform: translateY(-1px);
+      box-shadow: 0 2px 8px rgba(43, 76, 126, 0.2);
+    }
+    .meta-chip.speaker-chip { border-color: #4a90d9; color: #2563a0; }
+    .meta-chip.speaker-chip:hover { background: #2563a0; color: #fff; border-color: #2563a0; }
+    .meta-chip.venue-chip { border-color: #d4a373; color: #a67c52; }
+    .meta-chip.venue-chip:hover { background: #a67c52; color: #fff; border-color: #a67c52; }
+    .meta-chip.category-chip { border-color: #65a765; color: #3d7a3d; }
+    .meta-chip.category-chip:hover { background: #3d7a3d; color: #fff; border-color: #3d7a3d; }
+    .meta-chip.keyword-chip { border-color: #b0b0b0; color: #666; font-size: 12px; padding: 3px 10px; }
+    .meta-chip.keyword-chip:hover { background: #666; color: #fff; border-color: #666; }
+    .meta-group-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-right: 2px;
+    }
+
+    /* Mini Player (persistent bottom bar) */
+    #miniPlayer {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 999;
+      background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%);
+      color: #fff;
+      display: none;
+      flex-direction: column;
+      box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.2);
+    }
+    #miniPlayer.visible { display: flex; }
+    .mini-progress-track {
+      width: 100%;
+      height: 3px;
+      background: rgba(255,255,255,0.2);
+      cursor: pointer;
+    }
+    .mini-progress-fill {
+      height: 100%;
+      background: var(--accent);
+      width: 0%;
+      transition: width 0.3s linear;
+    }
+    .mini-content {
+      display: flex;
+      align-items: center;
+      padding: 8px 12px;
+      gap: 10px;
+    }
+    .mini-thumb {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      object-fit: cover;
+      flex-shrink: 0;
+      border: 2px solid rgba(255,255,255,0.3);
+    }
+    .mini-info {
+      flex: 1;
+      min-width: 0;
+      cursor: pointer;
+    }
+    .mini-title {
+      font-size: 13px;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .mini-speaker {
+      font-size: 11px;
+      opacity: 0.8;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .mini-time {
+      font-size: 11px;
+      opacity: 0.7;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .mini-controls {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      flex-shrink: 0;
+    }
+    .mini-btn {
+      background: none;
+      border: none;
+      color: #fff;
+      font-size: 18px;
+      cursor: pointer;
+      padding: 6px 8px;
+      border-radius: 50%;
+      transition: background 0.15s;
+      line-height: 1;
+    }
+    .mini-btn:hover { background: rgba(255,255,255,0.15); }
+    .mini-btn.play-btn { font-size: 22px; }
+    .mini-btn.expand-btn { font-size: 16px; }
+    .mini-btn.close-btn { font-size: 16px; opacity: 0.7; }
+    .mini-btn.close-btn:hover { opacity: 1; }
+
+    body.mini-player-active {
+      padding-bottom: 64px;
+    }
+
+    @media (max-width: 600px) {
+      .mini-time { display: none; }
+      .mini-content { padding: 6px 8px; gap: 8px; }
+      .mini-thumb { width: 34px; height: 34px; }
+    }
+
     /* Footer */
     footer {
       text-align: center;
@@ -1159,7 +1358,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
 
   <!-- Audio Player Card (Active when playing) -->
   <div class="player-card" id="playerCard">
-    <a onclick="closePlayer()" class="player-nav-back">← Back to All Collections</a>
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
+      <a onclick="minimizePlayer()" class="player-nav-back" style="margin-bottom: 0; cursor: pointer;">← Browse Library While Listening</a>
+      <button type="button" class="mini-btn-pill" onclick="minimizePlayer()" title="Minimize to mini-player" style="background: #eef2f7; border: 1px solid #dbe2ed; color: var(--primary); font-size: 13px; font-weight: 700; padding: 5px 12px; border-radius: 8px; cursor: pointer;">🗕 Minimize</button>
+    </div>
     <div class="shiur-header">
       <img id="speakerImg" class="speaker-photo" src="${escapeHtml(photo)}" alt="${escapeHtml(speaker)}">
       <div class="shiur-details">
@@ -1228,6 +1430,38 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     </div>
 
     <div class="shiur-desc" id="shiurDesc">${escapeHtml(description)}</div>
+
+    <!-- Metadata Chips -->
+    <div class="shiur-metadata-box" id="shiurMetadataBox" style="${(shiurTeachers.length || shiurLocations.length || Object.keys(shiurCategories).length || shiurKeywords.length) ? '' : 'display:none;'}">
+      ${shiurTeachers.length > 0 ? `
+      <div class="meta-row">
+        <span class="meta-label">👤 Speaker</span>
+        ${shiurTeachers.map(t => `<button class="meta-chip speaker-chip" onclick="filterByTeacher(${JSON.stringify(t.id)}, ${JSON.stringify(t.name).replace(/'/g, '&#39;')})">${escapeHtml(t.name)}</button>`).join('')}
+      </div>` : ''}
+      ${shiurDate ? `
+      <div class="meta-row">
+        <span class="meta-label">📅 Date</span>
+        <span style="font-size:13px; color:var(--text);">${escapeHtml(shiurDate)}</span>
+      </div>` : ''}
+      ${shiurLocations.length > 0 ? `
+      <div class="meta-row">
+        <span class="meta-label">📍 Venue</span>
+        ${shiurLocations.map(loc => `<button class="meta-chip venue-chip" onclick="filterByLocation(${JSON.stringify(loc.id)}, ${JSON.stringify(loc.name).replace(/'/g, '&#39;')})">${escapeHtml(loc.name)}</button>`).join('')}
+      </div>` : ''}
+      ${Object.keys(shiurCategories).length > 0 ? `
+      <div class="meta-row">
+        <span class="meta-label">📂 Topics</span>
+        ${Object.entries(shiurCategories).map(([groupName, cats]) =>
+          `<span class="meta-group-name">${escapeHtml(groupName)}:</span>` +
+          cats.map(c => `<button class="meta-chip category-chip" onclick="filterByCategory(${JSON.stringify(c.id)}, ${JSON.stringify(c.name).replace(/'/g, '&#39;')})">${escapeHtml(c.name)}</button>`).join('')
+        ).join(' ')}
+      </div>` : ''}
+      ${shiurKeywords.length > 0 ? `
+      <div class="meta-row">
+        <span class="meta-label">🏷️ Tags</span>
+        ${shiurKeywords.map(k => `<button class="meta-chip keyword-chip" onclick="searchFor(${JSON.stringify(k.title).replace(/'/g, '&#39;')})">${escapeHtml(k.title)}</button>`).join('')}
+      </div>` : ''}
+    </div>
   </div>
 
   ${moreFromSpeakers.length > 0 ? `
@@ -1310,6 +1544,28 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
   </div>
 
 </main>
+
+<!-- Floating Mini-Player (Persistent Bottom Bar across entire site) -->
+<div id="miniPlayer" onclick="handleMiniPlayerClick(event)">
+  <div class="mini-progress-track" id="miniProgressTrack" onclick="seekMiniProgress(event)">
+    <div class="mini-progress-fill" id="miniProgressFill"></div>
+  </div>
+  <div class="mini-content">
+    <img id="miniThumb" class="mini-thumb" src="${escapeHtml(photo)}" alt="Speaker" onerror="handleImgError(this)">
+    <div class="mini-info" onclick="expandPlayer()">
+      <div class="mini-title" id="miniTitle">${escapeHtml(title)}</div>
+      <div class="mini-speaker" id="miniSpeaker">${escapeHtml(speaker)}</div>
+    </div>
+    <span class="mini-time" id="miniTime">0:00 / ${escapeHtml(duration || '0:00')}</span>
+    <div class="mini-controls">
+      <button type="button" class="mini-btn" onclick="skip(-15); event.stopPropagation();" title="Back 15s">⏪</button>
+      <button type="button" class="mini-btn play-btn" id="miniPlayBtn" onclick="togglePlay(); event.stopPropagation();" title="Play/Pause">▶</button>
+      <button type="button" class="mini-btn" onclick="skip(15); event.stopPropagation();" title="Forward 15s">⏩</button>
+      <button type="button" class="mini-btn expand-btn" onclick="expandPlayer(); event.stopPropagation();" title="Expand Full Player">⤢</button>
+      <button type="button" class="mini-btn close-btn" onclick="closeMiniPlayer(); event.stopPropagation();" title="Stop & Close">✕</button>
+    </div>
+  </div>
+</div>
 
 <footer>
   <p>YUTorah Enhanced Player · Standalone zero-friction audio player for <a href="https://www.yutorah.org" target="_blank">YUTorah.org</a></p>
@@ -1480,21 +1736,124 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     return null;
   }
 
-  function searchFor(term) {
-    searchInput.value = term;
-    clearSearchBtn.style.display = 'block';
-    executeLiveSearch(term);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }
-
   let currentSearchQuery = ${JSON.stringify(searchQuery || '')};
+  let currentFilterParams = {};
   let currentLoadedDocsCount = ${JSON.stringify(initialSearchResults ? initialSearchResults.length : 0)};
   let totalSearchResults = ${JSON.stringify(initialNumFound || 0)};
   let isLoadingMore = false;
   let currentSearchAbort = null;
 
-  async function executeLiveSearch(query) {
+  function searchFor(term) {
+    if (hasAudio && !audio.paused) {
+      minimizePlayer();
+    }
+    searchInput.value = term;
+    clearSearchBtn.style.display = 'block';
+    executeLiveSearch(term);
+    const resSection = document.getElementById('searchResultsSection');
+    if (resSection) resSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function filterByTeacher(teacherId, teacherName) {
+    if (hasAudio && !audio.paused) {
+      minimizePlayer();
+    }
+    searchInput.value = teacherName;
+    clearSearchBtn.style.display = 'block';
+    executeLiveSearch('', {
+      teacherId: teacherId,
+      label: 'Shiurim by ' + teacherName
+    });
+    const resSection = document.getElementById('searchResultsSection');
+    if (resSection) resSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function filterByLocation(locationId, locationName) {
+    if (hasAudio && !audio.paused) {
+      minimizePlayer();
+    }
+    searchInput.value = locationName;
+    clearSearchBtn.style.display = 'block';
+    executeLiveSearch('', {
+      locationId: locationId,
+      label: 'Shiurim at ' + locationName
+    });
+    const resSection = document.getElementById('searchResultsSection');
+    if (resSection) resSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function filterByCategory(subCategoryId, categoryName) {
+    if (hasAudio && !audio.paused) {
+      minimizePlayer();
+    }
+    searchInput.value = categoryName;
+    clearSearchBtn.style.display = 'block';
+    executeLiveSearch('', {
+      subCategoryId: subCategoryId,
+      label: 'Shiurim in ' + categoryName
+    });
+    const resSection = document.getElementById('searchResultsSection');
+    if (resSection) resSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function minimizePlayer() {
+    if (!hasAudio) return;
+    const playerCard = document.getElementById('playerCard');
+    const miniPlayer = document.getElementById('miniPlayer');
+    if (playerCard) playerCard.style.display = 'none';
+    if (miniPlayer) miniPlayer.classList.add('visible');
+    document.body.classList.add('mini-player-active');
+
+    const searchSection = document.getElementById('searchResultsSection');
+    const collSection = document.getElementById('collectionsSection');
+    if (searchSection && collSection && searchSection.style.display === 'none' && collSection.style.display === 'none') {
+      collSection.style.display = 'block';
+    }
+  }
+
+  function expandPlayer() {
+    const playerCard = document.getElementById('playerCard');
+    const miniPlayer = document.getElementById('miniPlayer');
+    if (playerCard) {
+      playerCard.style.display = 'block';
+      playerCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    if (miniPlayer) miniPlayer.classList.remove('visible');
+    document.body.classList.remove('mini-player-active');
+  }
+
+  function closeMiniPlayer() {
+    audio.pause();
+    hasAudio = false;
+    currentShiurId = '';
+    const miniPlayer = document.getElementById('miniPlayer');
+    if (miniPlayer) miniPlayer.classList.remove('visible');
+    document.body.classList.remove('mini-player-active');
+    const playerCard = document.getElementById('playerCard');
+    if (playerCard) playerCard.style.display = 'none';
+    const newUrl = new URL(window.location.href);
+    newUrl.pathname = '/';
+    newUrl.search = '';
+    history.pushState({}, '', newUrl.toString());
+  }
+
+  function handleMiniPlayerClick(e) {
+    if (e.target.closest('button') || e.target.closest('.mini-progress-track')) return;
+    expandPlayer();
+  }
+
+  function seekMiniProgress(e) {
+    if (!audio.duration) return;
+    const track = document.getElementById('miniProgressTrack');
+    const rect = track.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    audio.currentTime = pct * audio.duration;
+    updateUrlTimestamp(true);
+  }
+
+  async function executeLiveSearch(query, extraParams = {}) {
     currentSearchQuery = query;
+    currentFilterParams = extraParams;
     currentLoadedDocsCount = 0;
     totalSearchResults = 0;
     isLoadingMore = false;
@@ -1509,7 +1868,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     const label = document.getElementById('searchResultsLabel');
     const loadMoreBox = document.getElementById('loadMoreContainer');
 
-    label.textContent = 'Searching for "' + query + '"...';
+    const displayLabel = extraParams.label || ('Searching for "' + query + '"...');
+    label.textContent = displayLabel;
     grid.innerHTML = '';
     spinner.style.display = 'block';
     loadMoreBox.style.display = 'none';
@@ -1517,18 +1877,24 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     // Update browser URL without reload
     const newUrl = new URL(window.location.href);
     newUrl.pathname = '/';
-    newUrl.searchParams.set('search', query);
+    if (query) newUrl.searchParams.set('search', query);
+    else newUrl.searchParams.delete('search');
     newUrl.searchParams.delete('shiurId');
     newUrl.searchParams.delete('id');
-    history.pushState({ search: query }, '', newUrl.toString());
+    history.pushState({ search: query, ...extraParams }, '', newUrl.toString());
 
     if (currentSearchAbort) {
       currentSearchAbort.abort();
     }
     currentSearchAbort = new AbortController();
 
+    let apiUrl = '/api/search?q=' + encodeURIComponent(query || '') + '&start=1';
+    if (extraParams.teacherId) apiUrl += '&teacherId=' + encodeURIComponent(extraParams.teacherId);
+    if (extraParams.locationId) apiUrl += '&locationId=' + encodeURIComponent(extraParams.locationId);
+    if (extraParams.subCategoryId) apiUrl += '&subCategoryId=' + encodeURIComponent(extraParams.subCategoryId);
+
     try {
-      const res = await fetch('/api/search?q=' + encodeURIComponent(query) + '&start=1', {
+      const res = await fetch(apiUrl, {
         signal: currentSearchAbort.signal
       });
       const data = await res.json();
@@ -1538,10 +1904,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       totalSearchResults = data?.response?.numFound || docs.length;
       currentLoadedDocsCount = docs.length;
 
-      label.textContent = 'Showing ' + currentLoadedDocsCount + (totalSearchResults ? ' of ' + totalSearchResults.toLocaleString() : '') + ' results for "' + query + '"';
+      const resultsTitle = extraParams.label
+        ? (extraParams.label + ' (' + currentLoadedDocsCount + (totalSearchResults ? ' of ' + totalSearchResults.toLocaleString() : '') + ')')
+        : ('Showing ' + currentLoadedDocsCount + (totalSearchResults ? ' of ' + totalSearchResults.toLocaleString() : '') + ' results for "' + query + '"');
+      label.textContent = resultsTitle;
 
       if (docs.length === 0) {
-        grid.innerHTML = '<div style="padding: 30px; text-align: center; color: var(--text-muted); grid-column: 1/-1;">No shiurim found matching "' + escapeHtml(query) + '". Try searching for speaker name, topic, or parsha.</div>';
+        grid.innerHTML = '<div style="padding: 30px; text-align: center; color: var(--text-muted); grid-column: 1/-1;">No shiurim found. Try searching for speaker name, topic, or venue.</div>';
         loadMoreBox.style.display = 'none';
         return;
       }
@@ -1568,7 +1937,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     } catch (err) {
       if (err.name === 'AbortError') return;
       spinner.style.display = 'none';
-      label.textContent = 'Error searching for "' + query + '"';
+      label.textContent = 'Error loading results';
       grid.innerHTML = '<div style="padding: 20px; text-align: center; color: #c0392b; grid-column: 1/-1;">Failed to load search results. Please try again.</div>';
       loadMoreBox.style.display = 'none';
     }
@@ -1589,8 +1958,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
 
     const nextStart = currentLoadedDocsCount + 1;
 
+    let apiUrl = '/api/search?q=' + encodeURIComponent(currentSearchQuery || '') + '&start=' + nextStart;
+    if (currentFilterParams.teacherId) apiUrl += '&teacherId=' + encodeURIComponent(currentFilterParams.teacherId);
+    if (currentFilterParams.locationId) apiUrl += '&locationId=' + encodeURIComponent(currentFilterParams.locationId);
+    if (currentFilterParams.subCategoryId) apiUrl += '&subCategoryId=' + encodeURIComponent(currentFilterParams.subCategoryId);
+
     try {
-      const res = await fetch('/api/search?q=' + encodeURIComponent(currentSearchQuery) + '&start=' + nextStart);
+      const res = await fetch(apiUrl);
       const data = await res.json();
       const newDocs = data?.response?.docs || [];
 
@@ -1599,8 +1973,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
         const grid = document.getElementById('searchResultsGrid');
         grid.insertAdjacentHTML('beforeend', newDocs.map(renderDocToCard).join(''));
 
-        document.getElementById('searchResultsLabel').textContent =
-          'Showing ' + currentLoadedDocsCount + ' of ' + totalSearchResults.toLocaleString() + ' results for "' + currentSearchQuery + '"';
+        const resultsTitle = currentFilterParams.label
+          ? (currentFilterParams.label + ' (' + currentLoadedDocsCount + (totalSearchResults ? ' of ' + totalSearchResults.toLocaleString() : '') + ')')
+          : ('Showing ' + currentLoadedDocsCount + ' of ' + totalSearchResults.toLocaleString() + ' results for "' + currentSearchQuery + '"');
+        document.getElementById('searchResultsLabel').textContent = resultsTitle;
       }
 
       if (currentLoadedDocsCount >= totalSearchResults || newDocs.length === 0) {
@@ -1613,9 +1989,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
         spinner.style.display = 'none';
       }
     } catch (err) {
-      console.error('Error loading more results:', err);
+      console.error('Failed to load more results:', err);
       btn.disabled = false;
-      btnText.textContent = '⚠️ Error loading. Click to retry';
+      btnText.textContent = 'Retry Loading More';
       spinner.style.display = 'none';
     } finally {
       isLoadingMore = false;
@@ -1757,6 +2133,19 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
         p.catch(err => console.log('Autoplay notification:', err));
       }
 
+      // Update mini player info
+      const miniTitle = document.getElementById('miniTitle');
+      const miniSpeaker = document.getElementById('miniSpeaker');
+      const miniThumb = document.getElementById('miniThumb');
+      const miniTime = document.getElementById('miniTime');
+      if (miniTitle) miniTitle.textContent = title;
+      if (miniSpeaker) miniSpeaker.textContent = speaker;
+      if (miniThumb) miniThumb.src = photo || 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/_default.jpg';
+      if (miniTime) miniTime.textContent = '0:00 / ' + (duration || '0:00');
+
+      // Render rich metadata
+      renderMetadataBox(data);
+
       // MediaSession
       if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({
@@ -1773,9 +2162,78 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     }
   }
 
+  function renderMetadataBox(data) {
+    const box = document.getElementById('shiurMetadataBox');
+    if (!box) return;
+
+    let html = '';
+    const teachers = Array.isArray(data.shiurTeachers) ? data.shiurTeachers : [];
+    const locations = Array.isArray(data.postedInLocations) ? data.postedInLocations : [];
+    const date = data.shiurDateFormatted || '';
+    const keywords = Array.isArray(data.shiurKeywords) ? data.shiurKeywords : [];
+    const categories = (data.postedInCategories && typeof data.postedInCategories === 'object') ? data.postedInCategories : {};
+
+    if (teachers.length > 0) {
+      html += '<div class="meta-row"><span class="meta-label">👤 Speaker</span>';
+      teachers.forEach(t => {
+        const tId = t.teacherID || '';
+        const tName = t.teacherFullName || '';
+        html += '<button type="button" class="meta-chip speaker-chip" onclick="filterByTeacher(' + JSON.stringify(tId) + ', ' + JSON.stringify(tName).replace(/"/g, '&quot;') + ')">' + escapeHtml(tName) + '</button>';
+      });
+      html += '</div>';
+    }
+
+    if (date) {
+      html += '<div class="meta-row"><span class="meta-label">📅 Date</span><span style="font-size:13px; color:var(--text);">' + escapeHtml(date) + '</span></div>';
+    }
+
+    if (locations.length > 0) {
+      html += '<div class="meta-row"><span class="meta-label">📍 Venue</span>';
+      locations.forEach(loc => {
+        const lId = loc.locationID || '';
+        const lName = loc.locationName || '';
+        html += '<button type="button" class="meta-chip venue-chip" onclick="filterByLocation(' + JSON.stringify(lId) + ', ' + JSON.stringify(lName).replace(/"/g, '&quot;') + ')">' + escapeHtml(lName) + '</button>';
+      });
+      html += '</div>';
+    }
+
+    const catEntries = Object.entries(categories);
+    if (catEntries.length > 0) {
+      html += '<div class="meta-row"><span class="meta-label">📂 Topics</span>';
+      catEntries.forEach(([groupId, grp]) => {
+        if (grp.groupName && Array.isArray(grp.categories)) {
+          html += '<span class="meta-group-name">' + escapeHtml(grp.groupName) + ':</span>';
+          grp.categories.forEach(c => {
+            const cId = c.subcategoryID || '';
+            const cName = c.categoryName || '';
+            html += '<button type="button" class="meta-chip category-chip" onclick="filterByCategory(' + JSON.stringify(cId) + ', ' + JSON.stringify(cName).replace(/"/g, '&quot;') + ')">' + escapeHtml(cName) + '</button> ';
+          });
+        }
+      });
+      html += '</div>';
+    }
+
+    if (keywords.length > 0) {
+      html += '<div class="meta-row"><span class="meta-label">🏷️ Tags</span>';
+      keywords.forEach(k => {
+        const kw = k.keywordTitle || '';
+        if (kw) {
+          html += '<button type="button" class="meta-chip keyword-chip" onclick="searchFor(' + JSON.stringify(kw).replace(/"/g, '&quot;') + ')">' + escapeHtml(kw) + '</button>';
+        }
+      });
+      html += '</div>';
+    }
+
+    box.innerHTML = html;
+    box.style.display = html ? 'block' : 'none';
+  }
+
   function closePlayer() {
     audio.pause();
     document.getElementById('playerCard').style.display = 'none';
+    const miniPlayer = document.getElementById('miniPlayer');
+    if (miniPlayer) miniPlayer.classList.remove('visible');
+    document.body.classList.remove('mini-player-active');
     hasAudio = false;
     currentShiurId = '';
     const newUrl = new URL(window.location.href);
@@ -1868,9 +2326,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
   window.addEventListener('touchend', () => { isScrubbing = false; });
 
   // Audio Events
-  audio.addEventListener('play', () => document.getElementById('playBtn').textContent = '⏸');
+  audio.addEventListener('play', () => {
+    document.getElementById('playBtn').textContent = '⏸';
+    const miniBtn = document.getElementById('miniPlayBtn');
+    if (miniBtn) miniBtn.textContent = '⏸';
+  });
   audio.addEventListener('pause', () => {
     document.getElementById('playBtn').textContent = '▶';
+    const miniBtn = document.getElementById('miniPlayBtn');
+    if (miniBtn) miniBtn.textContent = '▶';
     updateUrlTimestamp(true);
   });
   audio.addEventListener('timeupdate', () => {
@@ -1878,10 +2342,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     const pct = (audio.currentTime / audio.duration) * 100;
     document.getElementById('scrubberFill').style.width = pct + '%';
     document.getElementById('curTime').textContent = formatTime(audio.currentTime);
+
+    const miniFill = document.getElementById('miniProgressFill');
+    if (miniFill) miniFill.style.width = pct + '%';
+    const miniTime = document.getElementById('miniTime');
+    if (miniTime) miniTime.textContent = formatTime(audio.currentTime) + ' / ' + formatTime(audio.duration);
+
     updateUrlTimestamp(false);
   });
   audio.addEventListener('loadedmetadata', () => {
     document.getElementById('totalTime').textContent = formatTime(audio.duration);
+    const miniTime = document.getElementById('miniTime');
+    if (miniTime) miniTime.textContent = formatTime(audio.currentTime) + ' / ' + formatTime(audio.duration);
     applyInitialTime();
   });
   audio.addEventListener('canplay', () => {
@@ -1889,6 +2361,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
   });
   audio.addEventListener('ended', () => {
     document.getElementById('playBtn').textContent = '▶';
+    const miniBtn = document.getElementById('miniPlayBtn');
+    if (miniBtn) miniBtn.textContent = '▶';
     if (currentShiurId) {
       try { localStorage.removeItem('yutorah_progress_' + currentShiurId); } catch(e) {}
     }

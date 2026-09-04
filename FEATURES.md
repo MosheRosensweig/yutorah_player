@@ -11,11 +11,14 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 1. [Zero-Friction Access & Standalone Web App](#1-zero-friction-access--standalone-web-app)
 2. [Multi-Collection Hub & Daily Study](#2-multi-collection-hub--daily-study)
 3. [Universal Live Search Engine](#3-universal-live-search-engine)
-4. [Audio Player & Transport Controls](#4-audio-player--transport-controls)
-5. [Automatic URL Timestamping & Session Recovery](#5-automatic-url-timestamping--session-recovery)
-6. [Mobile Lock Screen & Keyboard Shortcuts](#6-mobile-lock-screen--keyboard-shortcuts)
-7. [Smart Recommendations](#7-smart-recommendations)
-8. [Edge Infrastructure & Performance](#8-edge-infrastructure--performance)
+4. [Rich Metadata Filtering & Clickable Chips](#4-rich-metadata-filtering--clickable-chips)
+5. [Persistent Floating Mini-Player (Uninterrupted Playback)](#5-persistent-floating-mini-player-uninterrupted-playback)
+6. [Audio Player & Transport Controls](#6-audio-player--transport-controls)
+7. [Automatic URL Timestamping & Session Recovery](#7-automatic-url-timestamping--session-recovery)
+8. [Mobile Lock Screen & Keyboard Shortcuts](#8-mobile-lock-screen--keyboard-shortcuts)
+9. [Smart Recommendations](#9-smart-recommendations)
+10. [Edge Infrastructure & Performance](#10-edge-infrastructure--performance)
+11. [Product Roadmap](#11-product-roadmap)
 
 ---
 
@@ -65,7 +68,43 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 
 ---
 
-## 4. Audio Player & Transport Controls
+## 4. Rich Metadata Filtering & Clickable Chips
+- **Comprehensive Metadata Display**:
+  - Every shiur card and player view displays structured metadata directly extracted from YUTorah:
+    - **👤 Speaker**: Primary speaker/magid shiur with speaker ID.
+    - **📅 Date**: Formatted recording date (e.g. *Sep 01, 2026*).
+    - **📍 Venue / Synagogue**: Location where the shiur was recorded (e.g. *Cong. KINS (Chicago, IL)*, *Yeshiva University*, *BMT*).
+    - **📂 Grouped Topic Hierarchy**: Categories grouped by parent domain:
+      - **Machshava**: `[Teshuva]`, `[Bitachon]`
+      - **Nach**: `[Tehillim]`
+      - **Parsha**: `[Nitzavim]`
+      - **Halacha**: `[Shabbat]`, `[Kashrut]`
+    - **🏷️ Keyword Tags**: Speaker-assigned topical tags (e.g. `[#לדוד]`, `[#אורי]`).
+- **Interactive Clickable Filter Chips**:
+  - Clicking any chip immediately runs a filtered search for that speaker, venue, or subcategory.
+  - **Zero Audio Interruption**: If a shiur is playing when you click a metadata chip, the audio continues playing seamlessly in the floating mini-player while the search results populate!
+  - Fully integrated with the pagination engine: clicking "🔽 Load More Results" loads successive pages for that specific speaker, venue, or category filter.
+
+---
+
+## 5. Persistent Floating Mini-Player (Uninterrupted Playback)
+- **Site-Wide Uninterrupted Listening**:
+  - You can browse collections, perform searches, click metadata chips, or read other shiur details without audio pausing, resetting, or buffering.
+- **Automatic Docking & Minimizing**:
+  - Clicking **"← Browse Library While Listening"** or the **"🗕 Minimize"** button collapses the full player card into a sleek, sticky bottom mini-player bar.
+  - Searching or clicking any category/venue/speaker chip automatically docks the player so you can explore the results while listening.
+- **Mini-Player Bar Controls**:
+  - **Interactive Seekline**: Top mini progress bar showing playback progress with click-to-seek functionality.
+  - **Speaker Thumbnail & Info**: Small avatar thumbnail, truncated title, and speaker name.
+  - **Playback Time**: Live `14:20 / 46:19` counter.
+  - **Transport Buttons**: `-15s` skip, Play/Pause toggle (▶ / ⏸), `+15s` skip.
+  - **"⤢ Expand" Button**: One-click restore that expands the full player card and smoothly scrolls it into view.
+  - **"✕ Close" Button**: Stops playback and dismisses the mini-player.
+  - Clicking anywhere on the mini-player (outside of buttons) smoothly expands the full player.
+
+---
+
+## 6. Audio Player & Transport Controls
 - **Instant In-Page Playback (`playShiurById`)**:
   - Clicking `▶ Play` on any shiur card immediately expands the player and begins audio streaming in 0 milliseconds without a page reload.
 - **Dedicated Skip Buttons**:
@@ -88,7 +127,7 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 
 ---
 
-## 5. Automatic URL Timestamping & Session Recovery
+## 7. Automatic URL Timestamping & Session Recovery
 - **Real-Time URL Sync**:
   - As the shiur plays, the browser address bar dynamically updates with the current playback timestamp (e.g. `.../1187082?t=185` for 3m 05s).
   - **Throttled for Performance**: Uses `history.replaceState` throttled to at most once every 5 seconds. Has zero impact on browser performance and stays well below browser History API rate limits.
@@ -105,7 +144,7 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 
 ---
 
-## 6. Mobile Lock Screen & Keyboard Shortcuts
+## 8. Mobile Lock Screen & Keyboard Shortcuts
 - **Lock-Screen & Background Playback (`navigator.mediaSession`)**:
   - Full integration with system media controllers on iOS, Android, macOS, Windows, and smartwatches.
   - Displays lecture title, speaker name, "YUTorah Online" album title, and high-res rabbi portrait.
@@ -119,17 +158,15 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 
 ---
 
-## 7. Smart Recommendations
+## 9. Smart Recommendations
 - **🎙️ More from this Speaker**:
   - Automatically queries and renders up to 6 other lectures given by the same speaker.
 - **📚 More in this Category**:
   - Automatically queries and renders up to 6 other lectures in the same topic or subcategory.
-- **← Back to All Collections Button**:
-  - Easily exit playback and return to the main browse hub with a single click.
 
 ---
 
-## 8. Edge Infrastructure & Performance
+## 10. Edge Infrastructure & Performance
 - **Cloudflare Workers Architecture**:
   - Runs on Cloudflare's global edge network across 300+ cities worldwide for sub-20ms latency.
 - **In-Memory Edge Caching**:
@@ -140,3 +177,13 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
   - Communicates directly with unblocked REST microservices, completely avoiding Cloudflare Turnstile bot blocks.
 - **100% Free & Scalable**:
   - Operates comfortably within Cloudflare's free allowance of 100,000 requests per day with no ongoing cost or credit card required.
+
+---
+
+## 11. Product Roadmap
+- [x] Clickable metadata filter chips (Speaker, Venue, Categories, Keywords).
+- [x] Persistent sticky bottom mini-player with uninterrupted playback across the site.
+- [ ] Multi-shiur playback queue ("Play Next" / Playlist mode).
+- [ ] User favorites / bookmarking via browser localStorage.
+- [ ] Offline caching via Service Worker (PWA installable app).
+- [ ] Optional GitHub Pages static deployment fallback.
