@@ -155,8 +155,9 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 
 ## 8. Mobile Responsiveness, Dark Theme & Keyboard Shortcuts
 - **Dark Mode / Light Mode Switcher**:
-  - Dedicated theme toggle button (🌙 / ☀️) in the header next to the Hebrew date.
-  - Tailored high-contrast dark theme (`#0f141c` canvas, `#182232` cards, `#e7edf7` text, and accessible slate blue accents) optimized for night study and OLED battery savings.
+  - Integrated directly into the main layout within the top daily study & timely schedule banner (`.timely-banner`), right at the top of the page.
+  - Sits within the normal vertical scroll flow with zero horizontal scrolling or off-screen positioning on mobile.
+  - Tailored high-contrast dark theme (`#0f141c` canvas, `#182232` cards, `#e7edf7` text, and accessible slate blue accents) with the top daily study box (Parsha, Daf Yomi, Mishna, Nach) fully adapted for dark mode.
   - Instant zero-flash rendering on load via `<head>` script that reads `localStorage.getItem('yutorah_theme')`.
   - Automatically syncs with system OS preferences (`prefers-color-scheme: dark`) when no manual override is set.
 - **Mobile-Adaptive Keyboard Hints**:
