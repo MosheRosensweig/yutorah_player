@@ -598,8 +598,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     [data-theme="dark"] .timely-banner { background: var(--card); border-color: var(--border); box-shadow: var(--shadow); }
     [data-theme="dark"] .timely-label { color: var(--primary-light); }
     [data-theme="dark"] .timely-val { color: var(--text); }
-    [data-theme="dark"] .theme-toggle-pill { background: #1c2738; border-color: #2e3e57; color: #e7edf7; }
-    [data-theme="dark"] .theme-toggle-pill:hover { background: #25334a; border-color: #3b5070; }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body {
@@ -706,33 +704,32 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     .timely-val {
       color: var(--text);
     }
-    .theme-bar-top {
+    .header-right {
       display: flex;
-      justify-content: flex-end;
       align-items: center;
-      margin-bottom: 10px;
+      gap: 10px;
+      flex-shrink: 0;
     }
-    .theme-toggle-pill {
-      background: var(--card);
-      border: 1px solid var(--border);
-      color: var(--text);
-      font-size: 13px;
-      font-weight: 600;
-      padding: 6px 14px;
-      border-radius: 20px;
+    .theme-toggle-btn {
+      background: rgba(255,255,255,0.18);
+      border: 1px solid rgba(255,255,255,0.3);
+      color: #fff;
+      font-size: 16px;
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
       display: inline-flex;
       align-items: center;
-      gap: 6px;
+      justify-content: center;
       cursor: pointer;
       transition: all 0.15s ease;
       flex-shrink: 0;
-      white-space: nowrap;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+      line-height: 1;
+      padding: 0;
     }
-    .theme-toggle-pill:hover {
-      background: var(--border-light);
-      border-color: var(--primary);
-      transform: translateY(-1px);
+    .theme-toggle-btn:hover {
+      background: rgba(255,255,255,0.32);
+      transform: scale(1.08);
     }
 
     @media (max-width: 600px) {
@@ -743,8 +740,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
         font-size: 15px;
       }
       .brand span {
-        font-size: 9px;
-        padding: 1px 5px;
+        display: none;
+      }
+      .header-right {
+        gap: 6px;
+      }
+      .theme-toggle-btn {
+        width: 30px;
+        height: 30px;
+        font-size: 14px;
       }
       .hebrew-date-badge {
         font-size: 11px;
@@ -757,10 +761,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       .timely-study-group {
         gap: 10px;
         row-gap: 6px;
-      }
-      .theme-toggle-pill {
-        padding: 5px 12px;
-        font-size: 12px;
       }
     }
 
@@ -1682,17 +1682,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     <a href="/" class="brand" onclick="goHome(event)">
       🎧 YUTorah Enhanced <span>PLAYER</span>
     </a>
-    ${homepageData?.hebrewDateString ? `<div class="hebrew-date-badge">📅 ${escapeHtml(homepageData.hebrewDateString)}</div>` : ''}
+    <div class="header-right">
+      <button type="button" id="themeToggleBtn" class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Dark / Light Mode">🌙</button>
+      ${homepageData?.hebrewDateString ? `<div class="hebrew-date-badge">📅 ${escapeHtml(homepageData.hebrewDateString)}</div>` : ''}
+    </div>
   </div>
 </header>
 
 <main>
-  <!-- Top Utility Bar (On top of daily study box) -->
-  <div class="theme-bar-top">
-    <button type="button" id="themeToggleBtn" class="theme-toggle-pill" onclick="toggleTheme()" title="Toggle Dark / Light Mode">
-      <span id="themeToggleIcon">🌙</span> <span id="themeToggleText">Dark Mode</span>
-    </button>
-  </div>
 
   <div class="timely-banner">
     <div class="timely-study-group">
@@ -3079,12 +3076,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
   // Theme Management (Dark / Light mode)
   function initTheme() {
     var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    var icon = document.getElementById('themeToggleIcon');
-    var text = document.getElementById('themeToggleText');
     var btn = document.getElementById('themeToggleBtn');
-    if (icon) icon.textContent = isDark ? '☀️' : '🌙';
-    if (text) text.textContent = isDark ? 'Light Mode' : 'Dark Mode';
-    if (btn) btn.title = isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode';
+    if (btn) {
+      btn.textContent = isDark ? '☀️' : '🌙';
+      btn.title = isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode';
+    }
   }
 
   function toggleTheme() {
@@ -3097,12 +3093,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       document.documentElement.removeAttribute('data-theme');
       try { localStorage.setItem('yutorah_theme', 'light'); } catch(e) {}
     }
-    var icon = document.getElementById('themeToggleIcon');
-    var text = document.getElementById('themeToggleText');
     var btn = document.getElementById('themeToggleBtn');
-    if (icon) icon.textContent = nextDark ? '☀️' : '🌙';
-    if (text) text.textContent = nextDark ? 'Light Mode' : 'Dark Mode';
-    if (btn) btn.title = nextDark ? 'Switch to Light Mode' : 'Switch to Dark Mode';
+    if (btn) {
+      btn.textContent = nextDark ? '☀️' : '🌙';
+      btn.title = nextDark ? 'Switch to Light Mode' : 'Switch to Dark Mode';
+    }
   }
 
   initTheme();
