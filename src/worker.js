@@ -1317,7 +1317,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     .mini-controls {
       display: flex;
       align-items: center;
-      gap: 2px;
+      gap: 12px;
       flex-shrink: 0;
     }
     .mini-btn {
@@ -1328,32 +1328,58 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       cursor: pointer;
       padding: 6px 8px;
       border-radius: 50%;
-      transition: background 0.15s;
+      transition: all 0.15s ease;
       line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
     }
     .mini-btn:hover { background: rgba(255,255,255,0.15); }
-    .mini-btn.play-btn { font-size: 22px; }
-    .mini-btn.expand-btn { font-size: 16px; }
+    .mini-play-btn {
+      background: rgba(255,255,255,0.22);
+      border: 1.5px solid rgba(255,255,255,0.5);
+      color: #fff;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      font-size: 17px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s ease;
+      margin: 0 4px;
+      flex-shrink: 0;
+    }
+    .mini-play-btn:hover {
+      background: rgba(255,255,255,0.35);
+      border-color: #fff;
+      transform: scale(1.08);
+    }
+    .mini-btn.skip-btn {
+      background: none;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s ease;
+      line-height: 1;
+    }
+    .mini-btn.skip-btn:hover {
+      transform: scale(1.08);
+    }
+    .mini-btn.skip-btn:hover polygon {
+      fill: rgba(255,255,255,0.32);
+      stroke: rgba(255,255,255,0.85);
+    }
+    .mini-btn.expand-btn { font-size: 16px; margin-left: 2px; }
     .mini-btn.close-btn { font-size: 16px; opacity: 0.7; }
     .mini-btn.close-btn:hover { opacity: 1; }
 
     body.mini-player-active {
       padding-bottom: 64px;
-    }
-
-    .mini-btn.skip-btn {
-      font-size: 11px;
-      font-weight: 800;
-      border: 1px solid rgba(255,255,255,0.35);
-      border-radius: 12px;
-      padding: 3px 6px;
-      min-width: 32px;
-      text-align: center;
-      line-height: 1;
-    }
-    .mini-btn.skip-btn:hover {
-      background: rgba(255,255,255,0.2);
-      border-color: rgba(255,255,255,0.6);
     }
 
     /* Speaker & Venue Bio / Description Banner */
@@ -1727,9 +1753,19 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     </div>
     <span class="mini-time" id="miniTime">0:00 / ${escapeHtml(duration || '0:00')}</span>
     <div class="mini-controls">
-      <button type="button" class="mini-btn skip-btn" onclick="skip(-10); event.stopPropagation();" title="Back 10s">-10</button>
+      <button type="button" class="mini-btn skip-btn" onclick="skip(-10); event.stopPropagation();" title="Back 10s">
+        <svg width="44" height="28" viewBox="0 0 44 28" style="display:block;">
+          <polygon points="4,14 40,2 40,26" fill="rgba(255,255,255,0.18)" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" stroke-linejoin="round"/>
+          <text x="26" y="18" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="11" font-weight="800" text-anchor="middle">-10</text>
+        </svg>
+      </button>
       <button type="button" class="mini-play-btn" id="miniPlayBtn" onclick="togglePlay(); event.stopPropagation();" title="Play/Pause">▶</button>
-      <button type="button" class="mini-btn skip-btn" onclick="skip(10); event.stopPropagation();" title="Forward 10s">+10</button>
+      <button type="button" class="mini-btn skip-btn" onclick="skip(10); event.stopPropagation();" title="Forward 10s">
+        <svg width="44" height="28" viewBox="0 0 44 28" style="display:block;">
+          <polygon points="40,14 4,2 4,26" fill="rgba(255,255,255,0.18)" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" stroke-linejoin="round"/>
+          <text x="18" y="18" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="11" font-weight="800" text-anchor="middle">+10</text>
+        </svg>
+      </button>
       <button type="button" class="mini-btn expand-btn" onclick="expandPlayer(); event.stopPropagation();" title="Expand Full Player">⤢</button>
       <button type="button" class="mini-btn close-btn" onclick="closeMiniPlayer(); event.stopPropagation();" title="Stop & Close">✕</button>
     </div>
