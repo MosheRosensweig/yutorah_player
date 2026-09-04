@@ -646,20 +646,23 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       flex-direction: column;
     }
 
-    /* Sticky Top Container (Keeps Header & Sponsorship Banner Frozen on Scroll) */
-    .top-nav-sticky {
-      position: sticky;
-      top: 0;
-      z-index: 100;
-      width: 100%;
-    }
+    /* Frozen Top Header (Always Fixed to Top of Viewport) */
     header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      width: 100%;
+      z-index: 1000;
       background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%);
       color: #fff;
-      padding: 14px 20px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+      padding: 12px 20px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.12);
+    }
+    .header-spacer {
+      height: 52px;
       width: 100%;
-      overflow-x: hidden;
+      flex-shrink: 0;
     }
     .header-inner {
       max-width: 960px;
@@ -847,6 +850,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     @media (max-width: 600px) {
       header {
         padding: 8px 10px;
+      }
+      .header-spacer {
+        height: 38px;
       }
       .brand {
         font-size: 14px;
@@ -1950,23 +1956,22 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
 </head>
 <body>
 
-<div class="top-nav-sticky">
-  <header>
-    <div class="header-inner">
-      <a href="/" class="brand" onclick="goHome(event)">
-        🎧 YUTorah Enhanced <span>PLAYER</span>
-      </a>
-      <div class="header-right">
-        <button type="button" id="themeToggleBtn" class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Dark / Light Mode">🌙</button>
-        ${homepageData?.hebrewDateString ? `<div class="hebrew-date-badge">📅 ${escapeHtml(homepageData.hebrewDateString)}</div>` : ''}
-      </div>
+<header id="mainHeader">
+  <div class="header-inner">
+    <a href="/" class="brand" onclick="goHome(event)">
+      🎧 YUTorah Enhanced <span>PLAYER</span>
+    </a>
+    <div class="header-right">
+      <button type="button" id="themeToggleBtn" class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Dark / Light Mode">🌙</button>
+      ${homepageData?.hebrewDateString ? `<div class="hebrew-date-badge">📅 ${escapeHtml(homepageData.hebrewDateString)}</div>` : ''}
     </div>
-  </header>
+  </div>
+</header>
+<div class="header-spacer" id="headerSpacer"></div>
 
-  <div class="sponsorship-banner">
-    <div class="sponsorship-content">
-      <span class="sponsorship-text">Learning on the Marcos and Adina Katz YUTorah site is sponsored today for a refuah shleimah for <strong>Avraham Yitzchak Fishel ben Chaina Shifra</strong></span>
-    </div>
+<div class="sponsorship-banner">
+  <div class="sponsorship-content">
+    <span class="sponsorship-text">Learning on the Marcos and Adina Katz YUTorah site is sponsored today for a refuah shleimah for <strong>Avraham Yitzchak Fishel ben Chaina Shifra</strong></span>
   </div>
 </div>
 
@@ -3555,6 +3560,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       btn.title = nextDark ? 'Switch to Light Mode' : 'Switch to Dark Mode';
     }
   }
+
+  function syncHeaderSpacer() {
+    var h = document.getElementById('mainHeader');
+    var s = document.getElementById('headerSpacer');
+    if (h && s) {
+      s.style.height = h.offsetHeight + 'px';
+    }
+  }
+  syncHeaderSpacer();
+  window.addEventListener('resize', syncHeaderSpacer);
 
   initTheme();
   try {
