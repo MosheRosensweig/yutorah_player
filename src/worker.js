@@ -607,7 +607,32 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     [data-theme="dark"] .timely-label { color: var(--primary-light); }
     [data-theme="dark"] .timely-val { color: var(--text); }
 
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent !important;
+      -webkit-tap-highlight-color: rgba(0,0,0,0) !important;
+    }
+    button, a, input, select, .ctrl-btn, .mini-btn, .theme-toggle-btn, .tab-btn, .chip, .quick-card-link, .timely-link {
+      -webkit-tap-highlight-color: transparent !important;
+      -webkit-tap-highlight-color: rgba(0,0,0,0) !important;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+      outline: none;
+    }
+    button:focus,
+    button:active,
+    a:focus,
+    a:active {
+      outline: none !important;
+      -webkit-tap-highlight-color: transparent !important;
+      -webkit-tap-highlight-color: rgba(0,0,0,0) !important;
+    }
+    button svg, a svg {
+      pointer-events: none;
+    }
     html, body {
       overflow-x: hidden;
       max-width: 100vw;
@@ -782,8 +807,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       flex-shrink: 0;
     }
     .theme-toggle-btn {
-      background: none;
-      border: none;
+      background: none !important;
+      border: none !important;
       color: #fff;
       font-size: 20px;
       padding: 0 4px;
@@ -795,12 +820,22 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       flex-shrink: 0;
       line-height: 1;
       border-radius: 0;
-      box-shadow: none;
+      box-shadow: none !important;
       width: auto;
       height: auto;
+      outline: none !important;
+      -webkit-tap-highlight-color: transparent !important;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    .theme-toggle-btn:focus,
+    .theme-toggle-btn:active {
+      outline: none !important;
+      background: none !important;
+      box-shadow: none !important;
     }
     .theme-toggle-btn:hover {
-      background: none;
+      background: none !important;
       transform: scale(1.22);
     }
 
@@ -1091,8 +1126,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       justify-content: center;
       font-weight: 700;
       user-select: none;
+      -webkit-user-select: none;
       transition: all 0.15s ease;
       touch-action: manipulation;
+      outline: none !important;
+      -webkit-tap-highlight-color: transparent !important;
+    }
+    .ctrl-btn:focus,
+    .ctrl-btn:active {
+      outline: none !important;
+      -webkit-tap-highlight-color: transparent !important;
     }
     .ctrl-btn:hover {
       border-color: var(--primary);
@@ -1745,6 +1788,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       transition: all 0.15s ease;
       margin: 0 4px;
       flex-shrink: 0;
+      outline: none !important;
+      -webkit-tap-highlight-color: transparent !important;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    .mini-play-btn:focus,
+    .mini-play-btn:active {
+      outline: none !important;
     }
     .mini-play-btn:hover {
       background: rgba(255,255,255,0.35);
@@ -1752,8 +1803,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       transform: scale(1.08);
     }
     .mini-btn.skip-btn {
-      background: none;
-      border: none;
+      background: none !important;
+      border: none !important;
       padding: 0;
       cursor: pointer;
       display: inline-flex;
@@ -1761,9 +1812,24 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       justify-content: center;
       transition: all 0.15s ease;
       line-height: 1;
+      outline: none !important;
+      -webkit-tap-highlight-color: transparent !important;
+      -webkit-user-select: none;
+      user-select: none;
+      box-shadow: none !important;
+    }
+    .mini-btn.skip-btn:hover,
+    .mini-btn.skip-btn:focus,
+    .mini-btn.skip-btn:active {
+      background: none !important;
+      outline: none !important;
+      box-shadow: none !important;
     }
     .mini-btn.skip-btn:hover {
       transform: scale(1.08);
+    }
+    .mini-btn.skip-btn:active {
+      transform: scale(0.96);
     }
     .mini-btn.skip-btn:hover polygon {
       fill: rgba(255,255,255,0.32);
