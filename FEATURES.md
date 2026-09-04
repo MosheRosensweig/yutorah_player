@@ -68,7 +68,7 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 
 ---
 
-## 4. Rich Metadata Filtering & Clickable Chips
+## 4. Rich Metadata Filtering, Biographies & Clickable Chips
 - **Comprehensive Metadata Display**:
   - Every shiur card and player view displays structured metadata directly extracted from YUTorah:
     - **👤 Speaker**: Primary speaker/magid shiur with speaker ID.
@@ -80,6 +80,9 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
       - **Parsha**: `[Nitzavim]`
       - **Halacha**: `[Shabbat]`, `[Kashrut]`
     - **🏷️ Keyword Tags**: Speaker-assigned topical tags (e.g. `[#לדוד]`, `[#אורי]`).
+- **Collapsible Speaker Biographies & Venue Descriptions**:
+  - When viewing or filtering by a speaker (e.g. *Rabbi Michael Rosensweig*) or venue (e.g. *Cong. KINS*), the full description/biography is displayed above the shiur list.
+  - Starts in an unobtrusive collapsed preview with a **Read More ▼ / Show Less ▲** toggle.
 - **Interactive Clickable Filter Chips**:
   - Clicking any chip immediately runs a filtered search for that speaker, venue, or subcategory.
   - **Zero Audio Interruption**: If a shiur is playing when you click a metadata chip, the audio continues playing seamlessly in the floating mini-player while the search results populate!
@@ -90,6 +93,8 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 ## 5. Persistent Floating Mini-Player (Uninterrupted Playback)
 - **Site-Wide Uninterrupted Listening**:
   - You can browse collections, perform searches, click metadata chips, or read other shiur details without audio pausing, resetting, or buffering.
+- **Zero-Interruption Home Navigation (`goHome`)**:
+  - Clicking the brand/home logo (`🎧 YUTorah Enhanced PLAYER`) navigates back to the homepage library without reloading the page—the current shiur automatically docks into the mini-player and keeps playing.
 - **Automatic Docking & Minimizing**:
   - Clicking **"← Browse Library While Listening"** or the **"🗕 Minimize"** button collapses the full player card into a sleek, sticky bottom mini-player bar.
   - Searching or clicking any category/venue/speaker chip automatically docks the player so you can explore the results while listening.
@@ -97,7 +102,7 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
   - **Interactive Seekline**: Top mini progress bar showing playback progress with click-to-seek functionality.
   - **Speaker Thumbnail & Info**: Small avatar thumbnail, truncated title, and speaker name.
   - **Playback Time**: Live `14:20 / 46:19` counter.
-  - **Transport Buttons**: `-15s` skip, Play/Pause toggle (▶ / ⏸), `+15s` skip.
+  - **Transport Buttons**: Dedicated **-10** skip, Play/Pause toggle (▶ / ⏸), and **+10** skip.
   - **"⤢ Expand" Button**: One-click restore that expands the full player card and smoothly scrolls it into view.
   - **"✕ Close" Button**: Stops playback and dismisses the mini-player.
   - Clicking anywhere on the mini-player (outside of buttons) smoothly expands the full player.

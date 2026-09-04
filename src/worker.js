@@ -138,6 +138,72 @@ export default {
       });
     }
 
+    // 2b. Teacher Info Proxy: /api/teacher?id=...
+    if (url.pathname === '/api/teacher') {
+      const teacherId = url.searchParams.get('id') || url.searchParams.get('teacherId');
+      if (!teacherId) {
+        return new Response(JSON.stringify({ error: 'Missing teacher ID' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+        });
+      }
+      try {
+        const upstream = await fetch(`${TARGET_API_ORIGIN}/teachers/sidebar/${encodeURIComponent(teacherId)}`, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            'Accept': 'application/json'
+          }
+        });
+        const data = await upstream.text();
+        return new Response(data, {
+          status: upstream.status,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'public, max-age=3600'
+          }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 502,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+        });
+      }
+    }
+
+    // 2c. Venue Info Proxy: /api/venue?id=...
+    if (url.pathname === '/api/venue') {
+      const venueId = url.searchParams.get('id') || url.searchParams.get('locationId');
+      if (!venueId) {
+        return new Response(JSON.stringify({ error: 'Missing venue ID' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+        });
+      }
+      try {
+        const upstream = await fetch(`${TARGET_API_ORIGIN}/venues/sidebar/${encodeURIComponent(venueId)}`, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            'Accept': 'application/json'
+          }
+        });
+        const data = await upstream.text();
+        return new Response(data, {
+          status: upstream.status,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'public, max-age=3600'
+          }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 502,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+        });
+      }
+    }
+
     // 3. Lecture Data API proxy
     if (url.pathname.startsWith('/sidebar/lecturedata') || url.pathname.startsWith('/sidebar/lectureData') || url.pathname === '/api/shiur') {
       const shiurId = url.searchParams.get('shiurID') || url.searchParams.get('shiurId') || url.searchParams.get('id');
@@ -1275,6 +1341,96 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       padding-bottom: 64px;
     }
 
+    .mini-btn.skip-btn {
+      font-size: 11px;
+      font-weight: 800;
+      border: 1px solid rgba(255,255,255,0.35);
+      border-radius: 12px;
+      padding: 3px 6px;
+      min-width: 32px;
+      text-align: center;
+      line-height: 1;
+    }
+    .mini-btn.skip-btn:hover {
+      background: rgba(255,255,255,0.2);
+      border-color: rgba(255,255,255,0.6);
+    }
+
+    /* Speaker & Venue Bio / Description Banner */
+    .bio-banner {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+    }
+    .bio-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 12px;
+    }
+    .bio-avatar {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid var(--border);
+      flex-shrink: 0;
+      background: #e2e6ec;
+    }
+    .bio-meta {
+      flex: 1;
+      min-width: 0;
+    }
+    .bio-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--primary);
+      margin-bottom: 3px;
+    }
+    .bio-subtitle {
+      font-size: 13px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+    .bio-text {
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--text);
+      transition: max-height 0.3s ease;
+    }
+    .bio-text.collapsed {
+      max-height: 72px;
+      overflow: hidden;
+      position: relative;
+      -webkit-mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
+      mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
+    }
+    .bio-text p {
+      margin-bottom: 8px;
+    }
+    .bio-text p:last-child {
+      margin-bottom: 0;
+    }
+    .bio-toggle-btn {
+      background: none;
+      border: none;
+      color: var(--primary);
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      margin-top: 8px;
+      padding: 4px 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .bio-toggle-btn:hover {
+      text-decoration: underline;
+    }
+
     @media (max-width: 600px) {
       .mini-time { display: none; }
       .mini-content { padding: 6px 8px; gap: 8px; }
@@ -1304,7 +1460,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
 
 <header>
   <div class="header-inner">
-    <a href="/" class="brand">
+    <a href="/" class="brand" onclick="goHome(event)">
       🎧 YUTorah Enhanced <span>PLAYER</span>
     </a>
     ${homepageData?.hebrewDateString ? `<div class="hebrew-date-badge">📅 ${escapeHtml(homepageData.hebrewDateString)}</div>` : ''}
@@ -1353,6 +1509,48 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       <button class="chip" onclick="searchFor('Rabbi Yaakov Neuburger')">👤 R' Neuburger</button>
       <button class="chip" onclick="searchFor('Rabbi Moshe Taragin')">👤 R' Taragin</button>
       <button class="chip" onclick="searchFor('Daf Yomi')">📜 Daf Yomi</button>
+    </div>
+  </div>
+
+  <!-- Dynamic Search Results Section (Shown when search or filter is active) -->
+  <div id="searchResultsSection" style="${initialSearchResults ? '' : 'display: none;'}">
+    <!-- Speaker & Venue Bio / Description Banner -->
+    <div class="bio-banner" id="bioBanner" style="display: none;">
+      <div class="bio-header">
+        <img id="bioAvatar" class="bio-avatar" src="" alt="Speaker" onerror="handleImgError(this)">
+        <div class="bio-meta">
+          <h3 id="bioTitle" class="bio-title"></h3>
+          <div id="bioSubtitle" class="bio-subtitle"></div>
+        </div>
+      </div>
+      <div id="bioText" class="bio-text collapsed"></div>
+      <button type="button" id="bioToggleBtn" class="bio-toggle-btn" onclick="toggleBioCollapse()" style="display: none;">Read More ▼</button>
+    </div>
+
+    <div class="search-results-info">
+      <span class="search-results-text" id="searchResultsLabel">
+        ${initialSearchResults ? `Showing ${initialSearchResults.length} results for "${escapeHtml(searchQuery)}"` : 'Search Results'}
+      </span>
+      <button class="close-results-btn" onclick="clearSearch()">Clear Search ×</button>
+    </div>
+
+    <div class="spinner-box" id="searchSpinner">
+      <div class="spinner"></div>
+      Searching YUTorah...
+    </div>
+
+    <div class="shiur-cards-grid" id="searchResultsGrid">
+      ${initialSearchResults ? initialSearchResults.map(renderShiurCardHtml).join('') : ''}
+    </div>
+
+    <div id="loadMoreContainer" style="text-align: center; margin-top: 26px; ${initialSearchResults && initialSearchResults.length < initialNumFound ? '' : 'display: none;'}">
+      <button id="loadMoreBtn" class="load-more-btn" onclick="loadMoreResults()">
+        <span id="loadMoreBtnText">🔽 Load More Results</span>
+        <span id="loadMoreSpinner" class="spinner-small" style="display: none;"></span>
+      </button>
+      <div id="searchTotalInfo" style="font-size: 13px; color: var(--text-muted); margin-top: 10px; font-weight: 500;">
+        ${initialSearchResults ? `Showing ${initialSearchResults.length} of ${initialNumFound.toLocaleString()} shiurim` : ''}
+      </div>
     </div>
   </div>
 
@@ -1466,7 +1664,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
 
   ${moreFromSpeakers.length > 0 ? `
   <!-- More from this Speaker -->
-  <div style="margin-bottom: 30px;">
+  <div id="moreFromSpeakerSection" style="margin-bottom: 30px;">
     <h2 class="section-title">🎙️ More from ${escapeHtml(speaker)}</h2>
     <div class="shiur-cards-grid">
       ${moreFromSpeakers.map(renderShiurCardHtml).join('')}
@@ -1476,42 +1674,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
 
   ${moreFromCategories.length > 0 ? `
   <!-- More in this Category -->
-  <div style="margin-bottom: 30px;">
+  <div id="moreFromCategorySection" style="margin-bottom: 30px;">
     <h2 class="section-title">📚 More in this Category</h2>
     <div class="shiur-cards-grid">
       ${moreFromCategories.map(renderShiurCardHtml).join('')}
     </div>
   </div>
   ` : ''}
-
-  <!-- Dynamic Search Results Section (Shown when search is active) -->
-  <div id="searchResultsSection" style="${initialSearchResults ? '' : 'display: none;'}">
-    <div class="search-results-info">
-      <span class="search-results-text" id="searchResultsLabel">
-        ${initialSearchResults ? `Showing ${initialSearchResults.length} results for "${escapeHtml(searchQuery)}"` : 'Search Results'}
-      </span>
-      <button class="close-results-btn" onclick="clearSearch()">Clear Search ×</button>
-    </div>
-
-    <div class="spinner-box" id="searchSpinner">
-      <div class="spinner"></div>
-      Searching YUTorah...
-    </div>
-
-    <div class="shiur-cards-grid" id="searchResultsGrid">
-      ${initialSearchResults ? initialSearchResults.map(renderShiurCardHtml).join('') : ''}
-    </div>
-
-    <div id="loadMoreContainer" style="text-align: center; margin-top: 26px; ${initialSearchResults && initialSearchResults.length < initialNumFound ? '' : 'display: none;'}">
-      <button id="loadMoreBtn" class="load-more-btn" onclick="loadMoreResults()">
-        <span id="loadMoreBtnText">🔽 Load More Results</span>
-        <span id="loadMoreSpinner" class="spinner-small" style="display: none;"></span>
-      </button>
-      <div id="searchTotalInfo" style="font-size: 13px; color: var(--text-muted); margin-top: 10px; font-weight: 500;">
-        ${initialSearchResults ? `Showing ${initialSearchResults.length} of ${initialNumFound.toLocaleString()} shiurim` : ''}
-      </div>
-    </div>
-  </div>
 
   <!-- Collections Section (Tabs: Editor's Picks, Recently Uploaded, Popular, Daily) -->
   <div class="collections-section" id="collectionsSection" style="${initialSearchResults ? 'display: none;' : ''}">
@@ -1558,9 +1727,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     </div>
     <span class="mini-time" id="miniTime">0:00 / ${escapeHtml(duration || '0:00')}</span>
     <div class="mini-controls">
-      <button type="button" class="mini-btn" onclick="skip(-15); event.stopPropagation();" title="Back 15s">⏪</button>
-      <button type="button" class="mini-btn play-btn" id="miniPlayBtn" onclick="togglePlay(); event.stopPropagation();" title="Play/Pause">▶</button>
-      <button type="button" class="mini-btn" onclick="skip(15); event.stopPropagation();" title="Forward 15s">⏩</button>
+      <button type="button" class="mini-btn skip-btn" onclick="skip(-10); event.stopPropagation();" title="Back 10s">-10</button>
+      <button type="button" class="mini-play-btn" id="miniPlayBtn" onclick="togglePlay(); event.stopPropagation();" title="Play/Pause">▶</button>
+      <button type="button" class="mini-btn skip-btn" onclick="skip(10); event.stopPropagation();" title="Forward 10s">+10</button>
       <button type="button" class="mini-btn expand-btn" onclick="expandPlayer(); event.stopPropagation();" title="Expand Full Player">⤢</button>
       <button type="button" class="mini-btn close-btn" onclick="closeMiniPlayer(); event.stopPropagation();" title="Stop & Close">✕</button>
     </div>
@@ -1743,10 +1912,169 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
   let isLoadingMore = false;
   let currentSearchAbort = null;
 
-  function searchFor(term) {
-    if (hasAudio && !audio.paused) {
+  function goHome(e) {
+    if (e) e.preventDefault();
+
+    if (hasAudio) {
       minimizePlayer();
     }
+
+    const searchSec = document.getElementById('searchResultsSection');
+    if (searchSec) searchSec.style.display = 'none';
+    const bioBanner = document.getElementById('bioBanner');
+    if (bioBanner) bioBanner.style.display = 'none';
+
+    if (searchInput) {
+      searchInput.value = '';
+      clearSearchBtn.style.display = 'none';
+    }
+
+    const collSec = document.getElementById('collectionsSection');
+    if (collSec) collSec.style.display = 'block';
+
+    const moreSpeaker = document.getElementById('moreFromSpeakerSection');
+    if (moreSpeaker) moreSpeaker.style.display = 'none';
+    const moreCat = document.getElementById('moreFromCategorySection');
+    if (moreCat) moreCat.style.display = 'none';
+
+    const newUrl = new URL(window.location.href);
+    newUrl.pathname = '/';
+    newUrl.search = '';
+    history.pushState({}, '', newUrl.toString());
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function toggleBioCollapse() {
+    const text = document.getElementById('bioText');
+    const btn = document.getElementById('bioToggleBtn');
+    if (!text || !btn) return;
+    const isCollapsed = text.classList.contains('collapsed');
+    if (isCollapsed) {
+      text.classList.remove('collapsed');
+      btn.textContent = 'Show Less ▲';
+    } else {
+      text.classList.add('collapsed');
+      btn.textContent = 'Read More ▼';
+    }
+  }
+
+  function formatBioHtml(raw) {
+    if (!raw) return '';
+    var nl = String.fromCharCode(10);
+    return String(raw)
+      .split('<p>').join(nl + nl)
+      .split('<P>').join(nl + nl)
+      .split('<br>').join(nl)
+      .split('<br/>').join(nl)
+      .split('<br />').join(nl)
+      .split(nl)
+      .map(function(line) { return line.trim(); })
+      .filter(function(line) { return line.length > 0; })
+      .map(function(line) { return '<p>' + escapeHtml(line) + '</p>'; })
+      .join('');
+  }
+
+  async function loadTeacherBio(teacherId, teacherName) {
+    const banner = document.getElementById('bioBanner');
+    const textEl = document.getElementById('bioText');
+    const titleEl = document.getElementById('bioTitle');
+    const subEl = document.getElementById('bioSubtitle');
+    const avatarEl = document.getElementById('bioAvatar');
+    const toggleBtn = document.getElementById('bioToggleBtn');
+    if (!banner || !teacherId) return;
+
+    try {
+      const res = await fetch('/api/teacher?id=' + encodeURIComponent(teacherId));
+      if (!res.ok) {
+        banner.style.display = 'none';
+        return;
+      }
+      const data = await res.json();
+      const bio = data.teacherBio || '';
+      const name = data.teacherFullName || teacherName || '';
+      const position = data.teacherTitle || data.teacherPosition || (data.teacherShiurimNumber ? data.teacherShiurimNumber + ' shiurim on YUTorah' : '');
+      const photo = data.teacherPhotoURL_lp || data.teacherPhotoURL || 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/_default.jpg';
+
+      if (!bio && !position) {
+        banner.style.display = 'none';
+        return;
+      }
+
+      titleEl.textContent = name;
+      subEl.textContent = position;
+      avatarEl.src = photo;
+
+      if (bio) {
+        textEl.innerHTML = formatBioHtml(bio);
+        textEl.className = 'bio-text collapsed';
+        toggleBtn.style.display = 'inline-flex';
+        toggleBtn.textContent = 'Read More ▼';
+      } else {
+        textEl.innerHTML = '';
+        toggleBtn.style.display = 'none';
+      }
+
+      banner.style.display = 'block';
+    } catch (e) {
+      console.warn('Failed to load teacher bio:', e);
+      banner.style.display = 'none';
+    }
+  }
+
+  async function loadVenueDescription(locationId, locationName) {
+    const banner = document.getElementById('bioBanner');
+    const textEl = document.getElementById('bioText');
+    const titleEl = document.getElementById('bioTitle');
+    const subEl = document.getElementById('bioSubtitle');
+    const avatarEl = document.getElementById('bioAvatar');
+    const toggleBtn = document.getElementById('bioToggleBtn');
+    if (!banner || !locationId) return;
+
+    try {
+      const res = await fetch('/api/venue?id=' + encodeURIComponent(locationId));
+      if (!res.ok) {
+        banner.style.display = 'none';
+        return;
+      }
+      const data = await res.json();
+      const desc = data.locationDescription || '';
+      const name = data.locationName || locationName || '';
+      const shiurimCount = data.locationShiurimNumber ? (data.locationShiurimNumber + ' shiurim recorded here') : '';
+      const photo = data.locationPhotoURL || 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/_default.jpg';
+
+      if (!desc && !shiurimCount) {
+        banner.style.display = 'none';
+        return;
+      }
+
+      titleEl.textContent = name;
+      subEl.textContent = shiurimCount;
+      avatarEl.src = photo;
+
+      if (desc) {
+        textEl.innerHTML = formatBioHtml(desc);
+        textEl.className = 'bio-text collapsed';
+        toggleBtn.style.display = 'inline-flex';
+        toggleBtn.textContent = 'Read More ▼';
+      } else {
+        textEl.innerHTML = '';
+        toggleBtn.style.display = 'none';
+      }
+
+      banner.style.display = 'block';
+    } catch (e) {
+      console.warn('Failed to load venue description:', e);
+      banner.style.display = 'none';
+    }
+  }
+
+  function searchFor(term) {
+    if (hasAudio) {
+      minimizePlayer();
+    }
+    const bioBanner = document.getElementById('bioBanner');
+    if (bioBanner) bioBanner.style.display = 'none';
     searchInput.value = term;
     clearSearchBtn.style.display = 'block';
     executeLiveSearch(term);
@@ -1755,9 +2083,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
   }
 
   function filterByTeacher(teacherId, teacherName) {
-    if (hasAudio && !audio.paused) {
+    if (hasAudio) {
       minimizePlayer();
     }
+    loadTeacherBio(teacherId, teacherName);
     searchInput.value = teacherName;
     clearSearchBtn.style.display = 'block';
     executeLiveSearch('', {
@@ -1769,9 +2098,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
   }
 
   function filterByLocation(locationId, locationName) {
-    if (hasAudio && !audio.paused) {
+    if (hasAudio) {
       minimizePlayer();
     }
+    loadVenueDescription(locationId, locationName);
     searchInput.value = locationName;
     clearSearchBtn.style.display = 'block';
     executeLiveSearch('', {
@@ -1783,9 +2113,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
   }
 
   function filterByCategory(subCategoryId, categoryName) {
-    if (hasAudio && !audio.paused) {
+    if (hasAudio) {
       minimizePlayer();
     }
+    const bioBanner = document.getElementById('bioBanner');
+    if (bioBanner) bioBanner.style.display = 'none';
     searchInput.value = categoryName;
     clearSearchBtn.style.display = 'block';
     executeLiveSearch('', {
@@ -1857,6 +2189,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     currentLoadedDocsCount = 0;
     totalSearchResults = 0;
     isLoadingMore = false;
+
+    // Minimize player if loaded so search results take center stage
+    if (hasAudio) {
+      minimizePlayer();
+    }
+    const moreSpeaker = document.getElementById('moreFromSpeakerSection');
+    if (moreSpeaker) moreSpeaker.style.display = 'none';
+    const moreCat = document.getElementById('moreFromCategorySection');
+    if (moreCat) moreCat.style.display = 'none';
 
     // Show results container, hide collections
     document.getElementById('collectionsSection').style.display = 'none';
@@ -2003,7 +2344,20 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     clearSearchBtn.style.display = 'none';
     document.getElementById('searchResultsSection').style.display = 'none';
     document.getElementById('loadMoreContainer').style.display = 'none';
-    document.getElementById('collectionsSection').style.display = 'block';
+    const bioBanner = document.getElementById('bioBanner');
+    if (bioBanner) bioBanner.style.display = 'none';
+
+    // If has audio and was on a shiur page, re-expand player and show recommendations
+    const playerCard = document.getElementById('playerCard');
+    if (hasAudio && currentShiurId && playerCard) {
+      expandPlayer();
+      const moreSpeaker = document.getElementById('moreFromSpeakerSection');
+      if (moreSpeaker) moreSpeaker.style.display = 'block';
+      const moreCat = document.getElementById('moreFromCategorySection');
+      if (moreCat) moreCat.style.display = 'block';
+    } else {
+      document.getElementById('collectionsSection').style.display = 'block';
+    }
 
     const newUrl = new URL(window.location.href);
     newUrl.searchParams.delete('search');
@@ -2020,6 +2374,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     const date = d.shiurdateformatted || '';
     const category = (Array.isArray(d.categoryname) && d.categoryname[0]) || (Array.isArray(d.subcategoryname) && d.subcategoryname[0]) || '';
 
+    const metaParts = [];
+    if (duration) metaParts.push('⏱ ' + escapeHtml(duration));
+    if (date) metaParts.push(escapeHtml(date));
+    const bottomMeta = metaParts.join(' · ');
+
     return '<a href="/' + id + '" class="quick-card-link" onclick="playShiurById(event, this.dataset.id)" data-id="' + id + '">' +
       '<div class="quick-card-top">' +
         '<img class="quick-card-avatar" src="' + escapeHtml(photo) + '" alt="' + escapeHtml(speaker) + '" loading="lazy" onerror="handleImgError(this)">' +
@@ -2030,7 +2389,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
         '</div>' +
       '</div>' +
       '<div class="quick-card-bottom">' +
-        '<span>' + (date ? escapeHtml(date) : (duration ? '⏱ ' + escapeHtml(duration) : '')) + '</span>' +
+        '<span>' + bottomMeta + '</span>' +
         '<span class="quick-play-badge">▶ Play</span>' +
       '</div>' +
     '</a>';
@@ -2447,6 +2806,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
 }
 
 function renderShiurCardHtml(s) {
+  const metaParts = [];
+  if (s.duration) metaParts.push('⏱ ' + escapeHtml(s.duration));
+  if (s.date) metaParts.push(escapeHtml(s.date));
+  const bottomMeta = metaParts.join(' · ');
+
   return `
     <a href="/${s.id}" class="quick-card-link" onclick="playShiurById(event, this.dataset.id)" data-id="${s.id}">
       <div class="quick-card-top">
@@ -2458,7 +2822,7 @@ function renderShiurCardHtml(s) {
         </div>
       </div>
       <div class="quick-card-bottom">
-        <span>${s.date ? escapeHtml(s.date) : (s.duration ? '⏱ ' + escapeHtml(s.duration) : '')}</span>
+        <span>${bottomMeta}</span>
         <span class="quick-play-badge">▶ Play</span>
       </div>
     </a>
