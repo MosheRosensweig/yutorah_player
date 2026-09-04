@@ -95,12 +95,14 @@ export default {
       const teacherId = url.searchParams.get('teacherId') || '';
       const subCategoryId = url.searchParams.get('subCategoryId') || '';
       const locationId = url.searchParams.get('locationId') || url.searchParams.get('venueId') || '';
+      const seriesId = url.searchParams.get('seriesId') || url.searchParams.get('series') || '';
       const start = url.searchParams.get('start') || '1';
 
       let targetUrl = `${API_ORIGIN}/search?searchTerm=${encodeURIComponent(q)}&start=${encodeURIComponent(start)}`;
       if (teacherId) targetUrl += `&teacherId=${encodeURIComponent(teacherId)}`;
       if (subCategoryId) targetUrl += `&subCategoryId=${encodeURIComponent(subCategoryId)}`;
       if (locationId) targetUrl += `&locationId=${encodeURIComponent(locationId)}`;
+      if (seriesId) targetUrl += `&seriesId=${encodeURIComponent(seriesId)}`;
 
       try {
         const upstream = await fetch(targetUrl, {
@@ -454,6 +456,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
 
   // Collections data
   let editorsPicks = [];
+  let featuredSeries = [];
   let recentlyUploaded = [];
   let popularShiurim = [];
   let dailyShiurim = [];
@@ -461,6 +464,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
   if (homepageData) {
     if (Array.isArray(homepageData.editorsPicks) && homepageData.editorsPicks.length > 0) {
       editorsPicks = homepageData.editorsPicks.map(normalizeShiur);
+    }
+    if (Array.isArray(homepageData.featuredSeries) && homepageData.featuredSeries.length > 0) {
+      featuredSeries = homepageData.featuredSeries;
     }
     if (Array.isArray(homepageData.recentlyUploaded) && homepageData.recentlyUploaded.length > 0) {
       recentlyUploaded = homepageData.recentlyUploaded.map(normalizeShiur);
@@ -478,6 +484,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
   }
 
   const timely = homepageData?.timelyData || null;
+  const parshaCatMatch = timely?.parshaURL ? timely.parshaURL.match(/category=([0-9]+)/) : null;
+  const parshaCatId = parshaCatMatch ? parshaCatMatch[1] : '233995';
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -689,11 +697,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       display: flex;
       align-items: center;
       flex-wrap: wrap;
-      gap: 14px;
+      gap: 12px;
       row-gap: 6px;
     }
     .timely-item {
-      display: flex;
+      display: inline-flex;
       align-items: center;
       gap: 6px;
     }
@@ -704,62 +712,133 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     .timely-val {
       color: var(--text);
     }
+    .timely-link {
+      text-decoration: none;
+      cursor: pointer;
+      padding: 3px 8px;
+      border-radius: 6px;
+      transition: all 0.15s ease;
+      background: rgba(43, 76, 126, 0.05);
+      border: 1px solid rgba(43, 76, 126, 0.12);
+    }
+    .timely-link:hover {
+      background: rgba(43, 76, 126, 0.12);
+      border-color: rgba(43, 76, 126, 0.28);
+      transform: translateY(-1px);
+    }
+    .timely-link .timely-val {
+      text-decoration: underline;
+      text-decoration-color: rgba(43, 76, 126, 0.4);
+      text-underline-offset: 3px;
+    }
+    [data-theme="dark"] .timely-link {
+      background: rgba(92, 142, 204, 0.1);
+      border-color: rgba(92, 142, 204, 0.2);
+    }
+    [data-theme="dark"] .timely-link:hover {
+      background: rgba(92, 142, 204, 0.2);
+      border-color: rgba(92, 142, 204, 0.35);
+    }
+    [data-theme="dark"] .timely-link .timely-val {
+      text-decoration-color: rgba(92, 142, 204, 0.5);
+    }
+
+    /* Sponsorship Banner */
+    .sponsorship-banner {
+      background: linear-gradient(90deg, #fdf8eb 0%, #fffdf7 50%, #fdf8eb 100%);
+      border-bottom: 1px solid #e7d8b5;
+      color: #634d17;
+      font-size: 13px;
+      padding: 8px 16px;
+      text-align: center;
+      line-height: 1.45;
+    }
+    .sponsorship-content {
+      max-width: 960px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .sponsorship-banner strong {
+      color: #3b2c06;
+      font-weight: 700;
+    }
+    [data-theme="dark"] .sponsorship-banner {
+      background: linear-gradient(90deg, #141a24 0%, #1a2230 50%, #141a24 100%);
+      border-bottom: 1px solid #29384e;
+      color: #e8ce8f;
+    }
+    [data-theme="dark"] .sponsorship-banner strong {
+      color: #fae4a5;
+    }
+
     .header-right {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
       flex-shrink: 0;
     }
     .theme-toggle-btn {
-      background: rgba(255,255,255,0.18);
-      border: 1px solid rgba(255,255,255,0.3);
+      background: none;
+      border: none;
       color: #fff;
-      font-size: 16px;
-      width: 34px;
-      height: 34px;
-      border-radius: 50%;
+      font-size: 20px;
+      padding: 0 4px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
-      transition: all 0.15s ease;
+      transition: transform 0.15s ease;
       flex-shrink: 0;
       line-height: 1;
-      padding: 0;
+      border-radius: 0;
+      box-shadow: none;
+      width: auto;
+      height: auto;
     }
     .theme-toggle-btn:hover {
-      background: rgba(255,255,255,0.32);
-      transform: scale(1.08);
+      background: none;
+      transform: scale(1.22);
     }
 
     @media (max-width: 600px) {
       header {
-        padding: 10px 14px;
+        padding: 8px 10px;
       }
       .brand {
-        font-size: 15px;
+        font-size: 14px;
+        gap: 5px;
       }
       .brand span {
-        display: none;
+        display: inline-block;
+        font-size: 9px;
+        padding: 2px 5px;
+        letter-spacing: 0.4px;
       }
       .header-right {
-        gap: 6px;
+        gap: 4px;
       }
       .theme-toggle-btn {
-        width: 30px;
-        height: 30px;
-        font-size: 14px;
+        font-size: 18px;
+        padding: 0 2px;
       }
       .hebrew-date-badge {
         font-size: 11px;
-        padding: 3px 8px;
+        padding: 2px 7px;
+      }
+      .sponsorship-banner {
+        font-size: 11.5px;
+        padding: 6px 10px;
       }
       .timely-banner {
-        padding: 10px 12px;
-        gap: 10px;
+        padding: 8px 10px;
+        gap: 8px;
       }
       .timely-study-group {
-        gap: 10px;
+        gap: 8px;
         row-gap: 6px;
       }
     }
@@ -1160,15 +1239,20 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     }
     .tab-bar {
       display: flex;
-      gap: 8px;
+      gap: 6px;
       background: var(--border-light);
       padding: 4px;
       border-radius: 10px;
       overflow-x: auto;
       max-width: 100%;
+      scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
+    }
+    .tab-bar::-webkit-scrollbar {
+      display: none;
     }
     .tab-btn {
-      padding: 8px 16px;
+      padding: 8px 14px;
       border: none;
       background: none;
       border-radius: 8px;
@@ -1178,6 +1262,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       cursor: pointer;
       white-space: nowrap;
       transition: all 0.15s;
+      flex-shrink: 0;
     }
     .tab-btn:hover {
       color: var(--primary);
@@ -1186,6 +1271,123 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       background: #ffffff;
       color: var(--primary);
       box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+    }
+    [data-theme="dark"] .tab-btn.active {
+      background: #243247;
+      color: #fff;
+    }
+
+    /* Series Cards Grid */
+    .series-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 16px;
+    }
+    .series-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    .series-card:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-hover);
+      border-color: var(--primary-light);
+    }
+    .series-card-img {
+      height: 120px;
+      background-size: cover;
+      background-position: center;
+      background-color: var(--border-light);
+    }
+    .series-card-body {
+      padding: 14px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    .series-card-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 6px;
+      line-height: 1.3;
+    }
+    .series-card-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.4;
+      margin-bottom: 10px;
+      flex: 1;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .series-card-count {
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--primary);
+      margin-top: auto;
+    }
+
+    /* Trending Container */
+    .trending-container {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 22px;
+    }
+    .trending-group-title {
+      font-size: 13.5px;
+      font-weight: 700;
+      color: var(--primary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+    }
+    .trending-chips-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 22px;
+    }
+    .trending-chips-wrap:last-child {
+      margin-bottom: 0;
+    }
+    .trending-chip-btn {
+      background: var(--border-light);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 14px;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .trending-chip-btn:hover {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+      transform: translateY(-1px);
+    }
+    [data-theme="dark"] .trending-chip-btn {
+      background: #1e2a3c;
+      border-color: #2e3e56;
+      color: #dce5f2;
+    }
+    [data-theme="dark"] .trending-chip-btn:hover {
+      background: var(--primary);
+      color: #fff;
     }
 
     /* Search Results Header */
@@ -1689,14 +1891,21 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
   </div>
 </header>
 
+<div class="sponsorship-banner">
+  <div class="sponsorship-content">
+    <span class="sponsorship-icon">🎗️</span>
+    <span class="sponsorship-text">Learning on the Marcos and Adina Katz YUTorah site is sponsored today for a refuah shleimah for <strong>Avraham Yitzchak Fishel ben Chaina Shifra</strong></span>
+  </div>
+</div>
+
 <main>
 
   <div class="timely-banner">
     <div class="timely-study-group">
-      ${timely?.parshaStr ? `<div class="timely-item"><span class="timely-label">📖 Parsha:</span> <span class="timely-val">${escapeHtml(timely.parshaStr)}</span></div>` : ''}
-      ${timely?.dafStr ? `<div class="timely-item"><span class="timely-label">📜 Daf Yomi:</span> <span class="timely-val">${escapeHtml(timely.dafStr)}</span></div>` : ''}
-      ${timely?.mishnaYomiStr ? `<div class="timely-item"><span class="timely-label">📗 Mishna:</span> <span class="timely-val">${escapeHtml(timely.mishnaYomiStr)}</span></div>` : ''}
-      ${timely?.nachYomiStr ? `<div class="timely-item"><span class="timely-label">📘 Nach:</span> <span class="timely-val">${escapeHtml(timely.nachYomiStr)}</span></div>` : ''}
+      ${timely?.parshaStr ? `<a href="/?category=${parshaCatId}" class="timely-item timely-link" onclick="filterByCategory('${parshaCatId}', 'Parsha: ${escapeHtml(timely.parshaStr).replace(/'/g, "\\'")}'); return false;" title="Browse ${escapeHtml(timely.parshaStr)} shiurim"><span class="timely-label">📖 Parsha:</span> <span class="timely-val">${escapeHtml(timely.parshaStr)}</span></a>` : ''}
+      ${timely?.dafStr ? `<a href="/?search=${encodeURIComponent(timely.dafStr)}" class="timely-item timely-link" onclick="searchFor('${escapeHtml(timely.dafStr).replace(/'/g, "\\'")}'); return false;" title="Browse ${escapeHtml(timely.dafStr)} shiurim"><span class="timely-label">📜 Daf Yomi:</span> <span class="timely-val">${escapeHtml(timely.dafStr)}</span></a>` : ''}
+      ${timely?.mishnaYomiStr ? `<a href="/?category=${timely?.mishnaYomiSubcategoryID || '234949'}" class="timely-item timely-link" onclick="filterByCategory('${timely?.mishnaYomiSubcategoryID || '234949'}', 'Mishna Yomi: ${escapeHtml(timely.mishnaYomiStr).replace(/'/g, "\\'")}'); return false;" title="Browse ${escapeHtml(timely.mishnaYomiStr)} shiurim"><span class="timely-label">📗 Mishna:</span> <span class="timely-val">${escapeHtml(timely.mishnaYomiStr)}</span></a>` : ''}
+      ${timely?.nachYomiStr ? `<a href="/?category=${timely?.nachYomiSubcategoryID || '234877'}" class="timely-item timely-link" onclick="filterByCategory('${timely?.nachYomiSubcategoryID || '234877'}', 'Nach Yomi: ${escapeHtml(timely.nachYomiStr).replace(/'/g, "\\'")}'); return false;" title="Browse ${escapeHtml(timely.nachYomiStr)} shiurim"><span class="timely-label">📘 Nach:</span> <span class="timely-val">${escapeHtml(timely.nachYomiStr)}</span></a>` : ''}
       ${!timely?.parshaStr && !timely?.dafStr && homepageData?.hebrewDateString ? `<div class="timely-item"><span class="timely-label">📅 Date:</span> <span class="timely-val">${escapeHtml(homepageData.hebrewDateString)}</span></div>` : ''}
     </div>
   </div>
@@ -1904,15 +2113,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
   </div>
   ` : ''}
 
-  <!-- Collections Section (Tabs: Editor's Picks, Recently Uploaded, Popular, Daily) -->
+  <!-- Collections Section (Original 7 Tabs from YUTorah) -->
   <div class="collections-section" id="collectionsSection" style="${initialSearchResults ? 'display: none;' : ''}">
     <div class="section-header">
       <h2 class="section-title" id="activeCollectionTitle">⭐ Editor's Picks</h2>
       <div class="tab-bar">
         <button class="tab-btn active" id="tab-editors" onclick="switchCollection('editors')">⭐ Editor's Picks</button>
+        <button class="tab-btn" id="tab-series" onclick="switchCollection('series')">📚 Featured Series</button>
         <button class="tab-btn" id="tab-recent" onclick="switchCollection('recent')">⏱️ Recently Uploaded</button>
-        <button class="tab-btn" id="tab-popular" onclick="switchCollection('popular')">🔥 Most Popular</button>
-        <button class="tab-btn" id="tab-daily" onclick="switchCollection('daily')">📖 Daily Shiurim</button>
+        <button class="tab-btn" id="tab-viewed" onclick="switchCollection('viewed')">👁️ Recently Viewed</button>
+        <button class="tab-btn" id="tab-parsha" onclick="switchCollection('parsha')">📖 Parsha Shiurim</button>
+        <button class="tab-btn" id="tab-daily" onclick="switchCollection('daily')">📜 Daily Shiur</button>
+        <button class="tab-btn" id="tab-trending" onclick="switchCollection('trending')">🔥 Trending Keywords</button>
       </div>
     </div>
 
@@ -1921,16 +2133,62 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       ${editorsPicks.map(renderShiurCardHtml).join('')}
     </div>
 
+    <div class="series-grid" id="grid-series" style="display: none;">
+      ${featuredSeries.map(renderSeriesCardHtml).join('')}
+    </div>
+
     <div class="shiur-cards-grid" id="grid-recent" style="display: none;">
       ${recentlyUploaded.map(renderShiurCardHtml).join('')}
     </div>
 
-    <div class="shiur-cards-grid" id="grid-popular" style="display: none;">
-      ${popularShiurim.map(renderShiurCardHtml).join('')}
+    <div class="shiur-cards-grid" id="grid-viewed" style="display: none;">
+      <!-- Populated client-side from local listening history -->
+    </div>
+
+    <div class="shiur-cards-grid" id="grid-parsha" style="display: none;">
+      <!-- Populated dynamically with current week's Parsha shiurim -->
     </div>
 
     <div class="shiur-cards-grid" id="grid-daily" style="display: none;">
       ${dailyShiurim.map(renderShiurCardHtml).join('')}
+    </div>
+
+    <div class="trending-container" id="grid-trending" style="display: none;">
+      <div class="trending-group-title">🗓️ Holiday & Season Topics</div>
+      <div class="trending-chips-wrap">
+        <button class="trending-chip-btn" onclick="searchFor('Elul')">🌿 Elul</button>
+        <button class="trending-chip-btn" onclick="searchFor('Teshuva')">🔄 Teshuva</button>
+        <button class="trending-chip-btn" onclick="searchFor('Rosh Hashanah')">🍎 Rosh Hashanah</button>
+        <button class="trending-chip-btn" onclick="searchFor('Yom Kippur')">🤍 Yom Kippur</button>
+        <button class="trending-chip-btn" onclick="searchFor('Selichot')">🕯️ Selichot</button>
+        <button class="trending-chip-btn" onclick="searchFor('Shofar')">📯 Shofar</button>
+        <button class="trending-chip-btn" onclick="searchFor('Sukkot')">🌿 Sukkot</button>
+        <button class="trending-chip-btn" onclick="searchFor('Simchat Torah')">📜 Simchat Torah</button>
+      </div>
+
+      <div class="trending-group-title">🎙️ Featured Roshei Yeshiva & Speakers</div>
+      <div class="trending-chips-wrap">
+        <button class="trending-chip-btn" onclick="searchFor('Rabbi Hershel Schachter')">👤 Rabbi Hershel Schachter</button>
+        <button class="trending-chip-btn" onclick="searchFor('Rabbi Michael Rosensweig')">👤 Rabbi Michael Rosensweig</button>
+        <button class="trending-chip-btn" onclick="searchFor('Rabbi Mayer Twersky')">👤 Rabbi Mayer Twersky</button>
+        <button class="trending-chip-btn" onclick="searchFor('Rabbi Aryeh Lebowitz')">👤 Rabbi Aryeh Lebowitz</button>
+        <button class="trending-chip-btn" onclick="searchFor('Rabbi Yaakov Neuburger')">👤 Rabbi Yaakov Neuburger</button>
+        <button class="trending-chip-btn" onclick="searchFor('Rabbi Moshe Taragin')">👤 Rabbi Moshe Taragin</button>
+        <button class="trending-chip-btn" onclick="searchFor('Rabbi Joseph B. Soloveitchik')">👤 Rav Soloveitchik zt&quot;l</button>
+        <button class="trending-chip-btn" onclick="searchFor('Mrs. Emma Katz')">👤 Mrs. Emma Katz</button>
+      </div>
+
+      <div class="trending-group-title">📖 Core Texts & Daily Learning</div>
+      <div class="trending-chips-wrap">
+        <button class="trending-chip-btn" onclick="searchFor('Daf Yomi')">📜 Daf Yomi</button>
+        <button class="trending-chip-btn" onclick="searchFor('Mishna Yomi')">📗 Mishna Yomi</button>
+        <button class="trending-chip-btn" onclick="searchFor('Nach Yomi')">📘 Nach Yomi</button>
+        <button class="trending-chip-btn" onclick="searchFor('Halacha')">⚖️ Halacha</button>
+        <button class="trending-chip-btn" onclick="searchFor('Machshava')">🧠 Machshava</button>
+        <button class="trending-chip-btn" onclick="searchFor('Tefillah')">🙏 Tefillah</button>
+        <button class="trending-chip-btn" onclick="searchFor('Rambam')">📚 Rambam</button>
+        <button class="trending-chip-btn" onclick="searchFor('Mussar')">✨ Mussar</button>
+      </div>
     </div>
   </div>
 
@@ -2360,6 +2618,22 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     if (resSection) resSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
+  function filterBySeries(seriesId, seriesName) {
+    if (hasAudio) {
+      minimizePlayer();
+    }
+    const bioBanner = document.getElementById('bioBanner');
+    if (bioBanner) bioBanner.style.display = 'none';
+    searchInput.value = seriesName;
+    clearSearchBtn.style.display = 'block';
+    executeLiveSearch('', {
+      seriesId: seriesId,
+      label: 'Series: ' + seriesName
+    });
+    const resSection = document.getElementById('searchResultsSection');
+    if (resSection) resSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
   function minimizePlayer() {
     if (!hasAudio) return;
     const playerCard = document.getElementById('playerCard');
@@ -2465,6 +2739,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     if (extraParams.teacherId) apiUrl += '&teacherId=' + encodeURIComponent(extraParams.teacherId);
     if (extraParams.locationId) apiUrl += '&locationId=' + encodeURIComponent(extraParams.locationId);
     if (extraParams.subCategoryId) apiUrl += '&subCategoryId=' + encodeURIComponent(extraParams.subCategoryId);
+    if (extraParams.seriesId) apiUrl += '&seriesId=' + encodeURIComponent(extraParams.seriesId);
 
     try {
       const res = await fetch(apiUrl, {
@@ -2535,6 +2810,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     if (currentFilterParams.teacherId) apiUrl += '&teacherId=' + encodeURIComponent(currentFilterParams.teacherId);
     if (currentFilterParams.locationId) apiUrl += '&locationId=' + encodeURIComponent(currentFilterParams.locationId);
     if (currentFilterParams.subCategoryId) apiUrl += '&subCategoryId=' + encodeURIComponent(currentFilterParams.subCategoryId);
+    if (currentFilterParams.seriesId) apiUrl += '&seriesId=' + encodeURIComponent(currentFilterParams.seriesId);
 
     try {
       const res = await fetch(apiUrl);
@@ -2690,6 +2966,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       lastUrlUpdateSec = -1;
       lastUrlUpdateTime = 0;
 
+      addRecentHistory({
+        id: id,
+        title: title,
+        speaker: speaker,
+        photo: photo,
+        duration: duration,
+        date: date
+      });
+
       // Check if URL or localStorage has a timestamp for this shiur
       let resumeSec = 0;
       try {
@@ -2833,13 +3118,101 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     history.pushState({}, '', newUrl.toString());
   }
 
-  // Switch Collection Tabs
-  const collections = ['editors', 'recent', 'popular', 'daily'];
+  // Recent History Helpers
+  function getRecentHistory() {
+    try {
+      return JSON.parse(localStorage.getItem('yutorah_recent_history') || '[]');
+    } catch(e) {
+      return [];
+    }
+  }
+
+  function addRecentHistory(shiur) {
+    if (!shiur || !shiur.id) return;
+    try {
+      let history = getRecentHistory();
+      history = history.filter(item => String(item.id) !== String(shiur.id));
+      history.unshift({
+        id: shiur.id,
+        title: shiur.title || 'Untitled',
+        speaker: shiur.speaker || 'YUTorah',
+        photo: shiur.photo || '',
+        duration: shiur.duration || '',
+        date: shiur.date || '',
+        category: shiur.category || ''
+      });
+      if (history.length > 24) history = history.slice(0, 24);
+      localStorage.setItem('yutorah_recent_history', JSON.stringify(history));
+    } catch(e) {}
+  }
+
+  function renderRecentlyViewedGrid() {
+    const grid = document.getElementById('grid-viewed');
+    if (!grid) return;
+    const history = getRecentHistory();
+    if (history.length === 0) {
+      grid.innerHTML = '<div style="text-align: center; padding: 40px 20px; color: var(--text-muted); grid-column: 1/-1;">' +
+        '<div style="font-size: 36px; margin-bottom: 12px;">🎧</div>' +
+        '<div style="font-weight: 700; font-size: 16px; margin-bottom: 6px; color: var(--text);">No Recently Viewed Shiurim Yet</div>' +
+        '<div style="font-size: 13px; max-width: 400px; margin: 0 auto 16px;">Shiurim you listen to will appear here automatically for quick resumption.</div>' +
+        '<button class="chip" onclick="switchCollection(\\'editors\\')">⭐ Browse Editor\'s Picks</button>' +
+        '</div>';
+      return;
+    }
+    grid.innerHTML = history.map(item => {
+      const photo = item.photo || 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/_default.jpg';
+      const metaParts = [];
+      if (item.duration) metaParts.push('⏱ ' + escapeHtml(item.duration));
+      if (item.date) metaParts.push(escapeHtml(item.date));
+      const bottomMeta = metaParts.join(' · ');
+      return '<a href="/' + item.id + '" class="quick-card-link" onclick="playShiurById(event, this.dataset.id)" data-id="' + item.id + '">' +
+        '<div class="quick-card-top">' +
+          '<img class="quick-card-avatar" src="' + escapeHtml(photo) + '" alt="' + escapeHtml(item.speaker) + '" loading="lazy" onerror="handleImgError(this)">' +
+          '<div class="quick-card-info">' +
+            '<div class="quick-card-title">' + escapeHtml(item.title) + '</div>' +
+            '<div class="quick-card-speaker">' + escapeHtml(item.speaker) + '</div>' +
+            (item.category ? '<div class="quick-card-category">' + escapeHtml(item.category) + '</div>' : '') +
+          '</div>' +
+        '</div>' +
+        '<div class="quick-card-bottom">' +
+          '<span>' + bottomMeta + '</span>' +
+          '<span class="quick-play-badge">▶ Resume</span>' +
+        '</div>' +
+      '</a>';
+    }).join('');
+  }
+
+  let parshaShiurimLoaded = false;
+  async function loadParshaShiurimGrid() {
+    const grid = document.getElementById('grid-parsha');
+    if (!grid || parshaShiurimLoaded) return;
+    grid.innerHTML = '<div class="spinner-box" style="display:block; grid-column:1/-1;"><div class="spinner"></div>Loading current Parsha shiurim...</div>';
+    try {
+      const parshaCat = '${parshaCatId}';
+      const res = await fetch('/api/search?subCategoryId=' + encodeURIComponent(parshaCat) + '&start=1');
+      const data = await res.json();
+      const docs = data?.response?.docs || [];
+      if (docs.length > 0) {
+        grid.innerHTML = docs.map(renderDocToCard).join('');
+        parshaShiurimLoaded = true;
+      } else {
+        grid.innerHTML = '<div style="padding: 30px; text-align: center; color: var(--text-muted); grid-column: 1/-1;">No parsha shiurim found.</div>';
+      }
+    } catch (e) {
+      grid.innerHTML = '<div style="padding: 20px; text-align: center; color: #c0392b; grid-column: 1/-1;">Could not load parsha shiurim. <button class="chip" onclick="parshaShiurimLoaded=false; loadParshaShiurimGrid();">Retry</button></div>';
+    }
+  }
+
+  // Switch Collection Tabs (All 7 original YUTorah tabs)
+  const collections = ['editors', 'series', 'recent', 'viewed', 'parsha', 'daily', 'trending'];
   const collectionTitles = {
     editors: "⭐ Editor's Picks",
+    series: "📚 Featured Series",
     recent: "⏱️ Recently Uploaded",
-    popular: "🔥 Most Popular / Trending",
-    daily: "📖 Daily Shiurim"
+    viewed: "👁️ Recently Viewed",
+    parsha: "📖 Parsha Shiurim",
+    daily: "📜 Daily Shiur",
+    trending: "🔥 Trending Keywords"
   };
 
   function switchCollection(activeName) {
@@ -2847,11 +3220,22 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       const tab = document.getElementById('tab-' + name);
       const grid = document.getElementById('grid-' + name);
       if (tab) tab.classList.toggle('active', name === activeName);
-      if (grid) grid.style.display = (name === activeName ? 'grid' : 'none');
+      if (grid) {
+        if (name === activeName) {
+          grid.style.display = (name === 'trending' ? 'block' : 'grid');
+        } else {
+          grid.style.display = 'none';
+        }
+      }
     });
     const titleEl = document.getElementById('activeCollectionTitle');
     if (titleEl && collectionTitles[activeName]) {
       titleEl.textContent = collectionTitles[activeName];
+    }
+    if (activeName === 'viewed') {
+      renderRecentlyViewedGrid();
+    } else if (activeName === 'parsha') {
+      loadParshaShiurimGrid();
     }
   }
 
@@ -3150,6 +3534,25 @@ function renderShiurCardHtml(s) {
         <span class="quick-play-badge">▶ Play</span>
       </div>
     </a>
+  `;
+}
+
+function renderSeriesCardHtml(s) {
+  const imgUrl = s.imageURL || 'https://cdnyutorah.cachefly.net/_images/series/riets.gif';
+  const name = s.name || 'Featured Series';
+  const desc = s.description || '';
+  const count = s.numShiurim || 0;
+  const seriesId = s.seriesID || '';
+
+  return `
+    <div class="series-card" onclick="filterBySeries('${seriesId}', '${escapeHtml(name).replace(/'/g, "\\'")}')" title="Explore ${escapeHtml(name)}">
+      <div class="series-card-img" style="background-image: url('${escapeHtml(imgUrl)}');"></div>
+      <div class="series-card-body">
+        <div class="series-card-title">${escapeHtml(name)}</div>
+        ${desc ? `<div class="series-card-desc">${escapeHtml(desc)}</div>` : ''}
+        <div class="series-card-count">📚 ${count} shiurim</div>
+      </div>
+    </div>
   `;
 }
 
