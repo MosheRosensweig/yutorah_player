@@ -646,15 +646,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       flex-direction: column;
     }
 
-    /* Header */
+    /* Sticky Top Container (Keeps Header & Sponsorship Banner Frozen on Scroll) */
+    .top-nav-sticky {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      width: 100%;
+    }
     header {
       background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%);
       color: #fff;
       padding: 14px 20px;
-      box-shadow: 0 2px 12px rgba(0,0,0,0.12);
-      position: sticky;
-      top: 0;
-      z-index: 100;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
       width: 100%;
       overflow-x: hidden;
     }
@@ -777,6 +780,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       padding: 8px 16px;
       text-align: center;
       line-height: 1.45;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
     }
     .sponsorship-content {
       max-width: 960px;
@@ -795,6 +799,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       background: linear-gradient(90deg, #141a24 0%, #1a2230 50%, #141a24 100%);
       border-bottom: 1px solid #29384e;
       color: #e8ce8f;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
     }
     [data-theme="dark"] .sponsorship-banner strong {
       color: #fae4a5;
@@ -1945,22 +1950,23 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
 </head>
 <body>
 
-<header>
-  <div class="header-inner">
-    <a href="/" class="brand" onclick="goHome(event)">
-      🎧 YUTorah Enhanced <span>PLAYER</span>
-    </a>
-    <div class="header-right">
-      <button type="button" id="themeToggleBtn" class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Dark / Light Mode">🌙</button>
-      ${homepageData?.hebrewDateString ? `<div class="hebrew-date-badge">📅 ${escapeHtml(homepageData.hebrewDateString)}</div>` : ''}
+<div class="top-nav-sticky">
+  <header>
+    <div class="header-inner">
+      <a href="/" class="brand" onclick="goHome(event)">
+        🎧 YUTorah Enhanced <span>PLAYER</span>
+      </a>
+      <div class="header-right">
+        <button type="button" id="themeToggleBtn" class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Dark / Light Mode">🌙</button>
+        ${homepageData?.hebrewDateString ? `<div class="hebrew-date-badge">📅 ${escapeHtml(homepageData.hebrewDateString)}</div>` : ''}
+      </div>
     </div>
-  </div>
-</header>
+  </header>
 
-<div class="sponsorship-banner">
-  <div class="sponsorship-content">
-    <span class="sponsorship-icon">🎗️</span>
-    <span class="sponsorship-text">Learning on the Marcos and Adina Katz YUTorah site is sponsored today for a refuah shleimah for <strong>Avraham Yitzchak Fishel ben Chaina Shifra</strong></span>
+  <div class="sponsorship-banner">
+    <div class="sponsorship-content">
+      <span class="sponsorship-text">Learning on the Marcos and Adina Katz YUTorah site is sponsored today for a refuah shleimah for <strong>Avraham Yitzchak Fishel ben Chaina Shifra</strong></span>
+    </div>
   </div>
 </div>
 
