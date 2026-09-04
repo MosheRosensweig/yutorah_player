@@ -3155,7 +3155,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
         '<div style="font-size: 36px; margin-bottom: 12px;">🎧</div>' +
         '<div style="font-weight: 700; font-size: 16px; margin-bottom: 6px; color: var(--text);">No Recently Viewed Shiurim Yet</div>' +
         '<div style="font-size: 13px; max-width: 400px; margin: 0 auto 16px;">Shiurim you listen to will appear here automatically for quick resumption.</div>' +
-        '<button class="chip" onclick="switchCollection(\\'editors\\')">⭐ Browse Editor\'s Picks</button>' +
+        '<button class="chip" onclick="switchCollection(&quot;editors&quot;)">⭐ Browse Editor&#39;s Picks</button>' +
         '</div>';
       return;
     }
