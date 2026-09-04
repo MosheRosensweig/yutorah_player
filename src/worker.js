@@ -1713,7 +1713,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     <div class="transport-row">
       <button class="ctrl-btn skip" onclick="skip(-30)" title="Back 30s (Shift+←)">-30</button>
       <button class="ctrl-btn skip" onclick="skip(-10)" title="Back 10s (←)">-10</button>
-      <button class="ctrl-btn play" id="playBtn" onclick="togglePlay()" title="Play / Pause (Space)">▶</button>
+      <button class="ctrl-btn play" id="playBtn" onclick="togglePlay()" title="Play / Pause (Space)"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" style="display:block; margin-left:3px;"><path d="M8 5v14l11-7z"/></svg></button>
       <button class="ctrl-btn skip" onclick="skip(10)" title="Forward 10s (→)">+10</button>
       <button class="ctrl-btn skip" onclick="skip(30)" title="Forward 30s (Shift+→)">+30</button>
     </div>
@@ -1860,7 +1860,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
           <text x="26" y="18" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="11" font-weight="800" text-anchor="middle">-10</text>
         </svg>
       </button>
-      <button type="button" class="mini-play-btn" id="miniPlayBtn" onclick="togglePlay(); event.stopPropagation();" title="Play/Pause">▶</button>
+      <button type="button" class="mini-play-btn" id="miniPlayBtn" onclick="togglePlay(); event.stopPropagation();" title="Play/Pause"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style="display:block; margin-left:2px;"><path d="M8 5v14l11-7z"/></svg></button>
       <button type="button" class="mini-btn skip-btn" onclick="skip(10); event.stopPropagation();" title="Forward 10s">
         <svg width="44" height="28" viewBox="0 0 44 28" style="display:block;">
           <polygon points="40,14 4,2 4,26" fill="rgba(255,255,255,0.18)" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" stroke-linejoin="round"/>
@@ -2821,16 +2821,25 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
   window.addEventListener('touchmove', (e) => { if (isScrubbing) seekToPosition(e); }, { passive: true });
   window.addEventListener('touchend', () => { isScrubbing = false; });
 
+  // Play / Pause SVG Icons (Clean white lines without emoji background)
+  const PLAY_ICON_MAIN = '<svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" style="display:block; margin-left:3px;"><path d="M8 5v14l11-7z"/></svg>';
+  const PAUSE_ICON_MAIN = '<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" style="display:block;"><rect x="5" y="4" width="4" height="16" rx="1.5"/><rect x="15" y="4" width="4" height="16" rx="1.5"/></svg>';
+  const PLAY_ICON_MINI = '<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style="display:block; margin-left:2px;"><path d="M8 5v14l11-7z"/></svg>';
+  const PAUSE_ICON_MINI = '<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style="display:block;"><rect x="5" y="4" width="4" height="16" rx="1.5"/><rect x="15" y="4" width="4" height="16" rx="1.5"/></svg>';
+
+  function updatePlayPauseIcons(isPlaying) {
+    const mainBtn = document.getElementById('playBtn');
+    if (mainBtn) mainBtn.innerHTML = isPlaying ? PAUSE_ICON_MAIN : PLAY_ICON_MAIN;
+    const miniBtn = document.getElementById('miniPlayBtn');
+    if (miniBtn) miniBtn.innerHTML = isPlaying ? PAUSE_ICON_MINI : PLAY_ICON_MINI;
+  }
+
   // Audio Events
   audio.addEventListener('play', () => {
-    document.getElementById('playBtn').textContent = '⏸';
-    const miniBtn = document.getElementById('miniPlayBtn');
-    if (miniBtn) miniBtn.textContent = '⏸';
+    updatePlayPauseIcons(true);
   });
   audio.addEventListener('pause', () => {
-    document.getElementById('playBtn').textContent = '▶';
-    const miniBtn = document.getElementById('miniPlayBtn');
-    if (miniBtn) miniBtn.textContent = '▶';
+    updatePlayPauseIcons(false);
     updateUrlTimestamp(true);
   });
   audio.addEventListener('timeupdate', () => {
@@ -2856,9 +2865,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     applyInitialTime();
   });
   audio.addEventListener('ended', () => {
-    document.getElementById('playBtn').textContent = '▶';
-    const miniBtn = document.getElementById('miniPlayBtn');
-    if (miniBtn) miniBtn.textContent = '▶';
+    updatePlayPauseIcons(false);
     if (currentShiurId) {
       try { localStorage.removeItem('yutorah_progress_' + currentShiurId); } catch(e) {}
     }

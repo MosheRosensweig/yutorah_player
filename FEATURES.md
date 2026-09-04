@@ -103,7 +103,7 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
   - **Speaker Thumbnail & Info**: Small avatar thumbnail, truncated title, and speaker name.
   - **Playback Time**: Live `14:20 / 46:19` counter.
   - **Triangular Skip Buttons (`-10` & `+10`)**: Dedicated directional SVG triangles pointing left and right with embedded bold numerical labels and generous padding to prevent accidental clicks.
-  - **Play/Pause Toggle (▶ / ⏸)**: Center circular play/pause button.
+  - **Play/Pause Toggle**: Center circular play/pause button using crisp SVG icons (white triangle when stopped, two clean white vertical bars when playing) with zero colored or orange emoji background on any device (Android, iOS, Samsung, Windows, macOS).
   - **"⤢ Expand" Button**: One-click restore that expands the full player card and smoothly scrolls it into view.
   - **"✕ Close" Button**: Stops playback and dismisses the mini-player.
   - Clicking anywhere on the mini-player (outside of buttons) smoothly expands the full player.
@@ -113,6 +113,9 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 ## 6. Audio Player & Transport Controls
 - **Instant In-Page Playback (`playShiurById`)**:
   - Clicking `▶ Play` on any shiur card immediately expands the player and begins audio streaming in 0 milliseconds without a page reload.
+- **Pure Vector Play / Pause Controls**:
+  - Play button switches seamlessly between a white directional play triangle and two crisp rounded white pause bars (`||`).
+  - Rendered entirely via inline SVG vectors instead of Unicode emojis, eliminating platform-specific emoji artifacts (such as Google and Samsung's default bright orange squircle background on `⏸️`).
 - **Dedicated Skip Buttons**:
   - **-30s** and **-10s**: Jump backward by 30 or 10 seconds.
   - **+10s** and **+30s**: Jump forward by 10 or 30 seconds.
