@@ -899,6 +899,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     /* Scrubber */
     .scrubber-container {
       margin-bottom: 18px;
+      user-select: none;
+      -webkit-user-select: none;
     }
     .scrubber-bar {
       width: 100%;
@@ -909,24 +911,42 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       position: relative;
       touch-action: none;
     }
+    /* Expanded hit zone so tapping/clicking is effortless and snappy */
+    .scrubber-bar::before {
+      content: '';
+      position: absolute;
+      top: -14px;
+      bottom: -14px;
+      left: 0;
+      right: 0;
+      z-index: 1;
+    }
     .scrubber-fill {
       height: 100%;
       background: var(--primary);
       border-radius: 5px;
       width: 0%;
       position: relative;
+      pointer-events: none;
     }
     .scrubber-handle {
       position: absolute;
-      right: -8px;
+      right: -9px;
       top: 50%;
       transform: translateY(-50%);
-      width: 18px;
-      height: 18px;
+      width: 20px;
+      height: 20px;
       background: var(--primary);
-      border: 2px solid #fff;
+      border: 2.5px solid #fff;
       border-radius: 50%;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.28);
+      transition: transform 0.1s ease;
+      pointer-events: none;
+      z-index: 2;
+    }
+    .scrubber-bar:hover .scrubber-handle,
+    .scrubber-bar.is-dragging .scrubber-handle {
+      transform: translateY(-50%) scale(1.25);
     }
     .time-display {
       display: flex;
@@ -987,15 +1007,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       color: #fff;
     }
 
-    /* Native Audio Player Element */
-    .native-audio-wrapper {
-      margin: 14px 0 16px;
-    }
-    .native-audio-player {
-      width: 100%;
-      height: 42px;
-      outline: none;
-    }
 
     /* Secondary Controls */
     .controls-grid {
@@ -1768,10 +1779,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       <button class="ctrl-btn skip" onclick="skip(30)" title="Forward 30s (Shift+→)">+30</button>
     </div>
 
-    <!-- Native Audio Player Controls (Direct browser fallback) -->
-    <div class="native-audio-wrapper">
-      <audio id="audioElement" class="native-audio-player" src="${escapeHtml(audioUrl)}" preload="auto" controls></audio>
-    </div>
+    <!-- Audio Engine (Headless element for high performance playback) -->
+    <audio id="audioElement" src="${escapeHtml(audioUrl)}" preload="auto" style="display:none;"></audio>
 
     <!-- Secondary Controls -->
     <div class="controls-grid">
@@ -2850,26 +2859,67 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     });
   }
 
-  // Scrubber click & drag
+  // High-performance Scrubber (Instant 60fps dragging, snappy click-to-seek)
   let isScrubbing = false;
+  let scrubPct = 0;
   const scrubberBar = document.getElementById('scrubberBar');
+  const scrubberFill = document.getElementById('scrubberFill');
+  const curTimeEl = document.getElementById('curTime');
 
-  function seekToPosition(e) {
-    if (!audio.duration) return;
+  function getScrubPct(clientX) {
     const rect = scrubberBar.getBoundingClientRect();
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    audio.currentTime = pct * audio.duration;
-    updateUrlTimestamp(true);
+    if (rect.width <= 0) return 0;
+    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
   }
 
-  scrubberBar.addEventListener('click', seekToPosition);
-  scrubberBar.addEventListener('mousedown', (e) => { isScrubbing = true; seekToPosition(e); });
-  window.addEventListener('mousemove', (e) => { if (isScrubbing) seekToPosition(e); });
-  window.addEventListener('mouseup', () => { isScrubbing = false; });
-  scrubberBar.addEventListener('touchstart', (e) => { isScrubbing = true; seekToPosition(e); }, { passive: true });
-  window.addEventListener('touchmove', (e) => { if (isScrubbing) seekToPosition(e); }, { passive: true });
-  window.addEventListener('touchend', () => { isScrubbing = false; });
+  function updateScrubberUi(pct) {
+    scrubPct = pct;
+    scrubberFill.style.width = (pct * 100) + '%';
+    if (audio.duration && !isNaN(audio.duration)) {
+      curTimeEl.textContent = formatTime(pct * audio.duration);
+      const miniFill = document.getElementById('miniProgressFill');
+      if (miniFill) miniFill.style.width = (pct * 100) + '%';
+      const miniTime = document.getElementById('miniTime');
+      if (miniTime) miniTime.textContent = formatTime(pct * audio.duration) + ' / ' + formatTime(audio.duration);
+    }
+  }
+
+  function onScrubStart(e) {
+    if (!audio.duration || isNaN(audio.duration)) return;
+    isScrubbing = true;
+    scrubberBar.classList.add('is-dragging');
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const pct = getScrubPct(clientX);
+    updateScrubberUi(pct);
+  }
+
+  function onScrubMove(e) {
+    if (!isScrubbing || !audio.duration || isNaN(audio.duration)) return;
+    if (e.cancelable) e.preventDefault();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const pct = getScrubPct(clientX);
+    updateScrubberUi(pct);
+  }
+
+  function onScrubEnd() {
+    if (!isScrubbing) return;
+    isScrubbing = false;
+    scrubberBar.classList.remove('is-dragging');
+    if (audio.duration && !isNaN(audio.duration)) {
+      const targetSec = scrubPct * audio.duration;
+      audio.currentTime = targetSec;
+      updateUrlTimestamp(true);
+    }
+  }
+
+  scrubberBar.addEventListener('mousedown', onScrubStart);
+  window.addEventListener('mousemove', onScrubMove);
+  window.addEventListener('mouseup', onScrubEnd);
+
+  scrubberBar.addEventListener('touchstart', onScrubStart, { passive: false });
+  window.addEventListener('touchmove', onScrubMove, { passive: false });
+  window.addEventListener('touchend', onScrubEnd);
+  window.addEventListener('touchcancel', onScrubEnd);
 
   // Play / Pause SVG Icons (Clean white lines without emoji background)
   const PLAY_ICON_MAIN = '<svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" style="display:block; margin-left:3px;"><path d="M8 5v14l11-7z"/></svg>';
@@ -2893,10 +2943,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     updateUrlTimestamp(true);
   });
   audio.addEventListener('timeupdate', () => {
+    if (isScrubbing) return;
     if (!audio.duration) return;
     const pct = (audio.currentTime / audio.duration) * 100;
-    document.getElementById('scrubberFill').style.width = pct + '%';
-    document.getElementById('curTime').textContent = formatTime(audio.currentTime);
+    scrubberFill.style.width = pct + '%';
+    curTimeEl.textContent = formatTime(audio.currentTime);
 
     const miniFill = document.getElementById('miniProgressFill');
     if (miniFill) miniFill.style.width = pct + '%';

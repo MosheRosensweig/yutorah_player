@@ -121,12 +121,11 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
   - **+10s** and **+30s**: Jump forward by 10 or 30 seconds.
 - **Variable Playback Speed Selector**:
   - Native speed menu with 9 speed presets: **0.5x, 0.75x, 1.0x, 1.25x, 1.5x, 1.75x, 2.0x, 2.5x, 3.0x**.
-- **Interactive Scrubber Bar**:
-  - Visual seekbar with dynamic fill and drag handle.
-  - Supports mouse click, mouse drag, and touch gestures on mobile screens.
-  - Real-time elapsed time (`curTime`) and total duration (`totalTime`) display.
-- **Dual Player Control (Custom + Native Fallback)**:
-  - Enhanced custom buttons paired with the browser's native audio controls for direct AirPlay, Bluetooth, and device routing.
+- **High-Performance Snappy Scrubber Bar**:
+  - Single streamlined primary seekbar with dynamic visual fill and enlarged hit zone (`::before` zone) for instant click and drag responses.
+  - Zero lag: Updates visual percentage and live elapsed time counter at a full 60fps/120fps during touch and mouse dragging, setting the audio playback position cleanly upon release.
+  - Prevents vertical page bouncing or scroll interference while dragging via active touch event cancellation (`passive: false`).
+  - Removed redundant secondary native browser player bar to ensure a single, distraction-free progress slider.
 - **Automatic Stream Failover**:
   - Automatically fails over between `shiurim.yutorah.net` (Cloudflare R2) and `download.yutorah.org` if any network interruption occurs.
 - **Direct MP3 Download**:
