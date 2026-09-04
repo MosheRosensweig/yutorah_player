@@ -529,15 +529,43 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       color: #e7edf7;
       border-color: #28364d;
     }
-    [data-theme="dark"] .chip,
-    [data-theme="dark"] .tab-btn {
+    [data-theme="dark"] .chip {
       background: #141f2f;
       color: #cbd5e1;
       border-color: #28364d;
     }
+    [data-theme="dark"] .tab-bar {
+      background: #111a26;
+      border: 1px solid #233147;
+    }
+    [data-theme="dark"] .tab-btn {
+      background: transparent;
+      color: #94a3b8;
+      border: none;
+    }
+    [data-theme="dark"] .tab-btn:hover {
+      color: #e7edf7;
+    }
     [data-theme="dark"] .tab-btn.active {
+      background: #1e2c40;
+      color: #7ca5de;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+    [data-theme="dark"] .quick-play-badge {
+      background: #1c2738;
+      color: #7ca5de;
+    }
+    [data-theme="dark"] .quick-card-link:hover .quick-play-badge {
       background: var(--primary);
       color: #fff;
+    }
+    [data-theme="dark"] .search-results-info {
+      background: #141f2f;
+      border: 1px solid #233147;
+      color: #e7edf7;
+    }
+    [data-theme="dark"] .quick-card-avatar {
+      background: #141f2f;
     }
     [data-theme="dark"] .ctrl-btn.skip {
       background: #1c2738;
@@ -1133,7 +1161,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     .tab-bar {
       display: flex;
       gap: 8px;
-      background: #eef2f7;
+      background: var(--border-light);
       padding: 4px;
       border-radius: 10px;
       overflow-x: auto;
