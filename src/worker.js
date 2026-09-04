@@ -678,8 +678,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     .timely-val {
       color: var(--text);
     }
+    .theme-bar-top {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      margin-bottom: 10px;
+    }
     .theme-toggle-pill {
-      background: var(--border-light);
+      background: var(--card);
       border: 1px solid var(--border);
       color: var(--text);
       font-size: 13px;
@@ -693,10 +699,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       transition: all 0.15s ease;
       flex-shrink: 0;
       white-space: nowrap;
-      margin-left: auto;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.04);
     }
     .theme-toggle-pill:hover {
-      background: var(--border);
+      background: var(--border-light);
+      border-color: var(--primary);
       transform: translateY(-1px);
     }
 
@@ -1652,6 +1659,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
 </header>
 
 <main>
+  <!-- Top Utility Bar (On top of daily study box) -->
+  <div class="theme-bar-top">
+    <button type="button" id="themeToggleBtn" class="theme-toggle-pill" onclick="toggleTheme()" title="Toggle Dark / Light Mode">
+      <span id="themeToggleIcon">🌙</span> <span id="themeToggleText">Dark Mode</span>
+    </button>
+  </div>
+
   <div class="timely-banner">
     <div class="timely-study-group">
       ${timely?.parshaStr ? `<div class="timely-item"><span class="timely-label">📖 Parsha:</span> <span class="timely-val">${escapeHtml(timely.parshaStr)}</span></div>` : ''}
@@ -1660,9 +1674,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       ${timely?.nachYomiStr ? `<div class="timely-item"><span class="timely-label">📘 Nach:</span> <span class="timely-val">${escapeHtml(timely.nachYomiStr)}</span></div>` : ''}
       ${!timely?.parshaStr && !timely?.dafStr && homepageData?.hebrewDateString ? `<div class="timely-item"><span class="timely-label">📅 Date:</span> <span class="timely-val">${escapeHtml(homepageData.hebrewDateString)}</span></div>` : ''}
     </div>
-    <button type="button" id="themeToggleBtn" class="theme-toggle-pill" onclick="toggleTheme()" title="Toggle Dark / Light Mode">
-      <span id="themeToggleIcon">🌙</span> <span id="themeToggleText">Dark Mode</span>
-    </button>
   </div>
 
   <!-- Real-time Search Card -->
