@@ -15,7 +15,7 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 5. [Persistent Floating Mini-Player (Uninterrupted Playback)](#5-persistent-floating-mini-player-uninterrupted-playback)
 6. [Audio Player & Transport Controls](#6-audio-player--transport-controls)
 7. [Automatic URL Timestamping & Session Recovery](#7-automatic-url-timestamping--session-recovery)
-8. [Mobile Lock Screen & Keyboard Shortcuts](#8-mobile-lock-screen--keyboard-shortcuts)
+8. [Mobile Responsiveness, Dark Theme & Keyboard Shortcuts](#8-mobile-responsiveness-dark-theme--keyboard-shortcuts)
 9. [Smart Recommendations](#9-smart-recommendations)
 10. [Edge Infrastructure & Performance](#10-edge-infrastructure--performance)
 11. [Product Roadmap](#11-product-roadmap)
@@ -102,7 +102,8 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
   - **Interactive Seekline**: Top mini progress bar showing playback progress with click-to-seek functionality.
   - **Speaker Thumbnail & Info**: Small avatar thumbnail, truncated title, and speaker name.
   - **Playback Time**: Live `14:20 / 46:19` counter.
-  - **Transport Buttons**: Dedicated **-10** skip, Play/Pause toggle (▶ / ⏸), and **+10** skip.
+  - **Triangular Skip Buttons (`-10` & `+10`)**: Dedicated directional SVG triangles pointing left and right with embedded bold numerical labels and generous padding to prevent accidental clicks.
+  - **Play/Pause Toggle (▶ / ⏸)**: Center circular play/pause button.
   - **"⤢ Expand" Button**: One-click restore that expands the full player card and smoothly scrolls it into view.
   - **"✕ Close" Button**: Stops playback and dismisses the mini-player.
   - Clicking anywhere on the mini-player (outside of buttons) smoothly expands the full player.
@@ -149,12 +150,19 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 
 ---
 
-## 8. Mobile Lock Screen & Keyboard Shortcuts
+## 8. Mobile Responsiveness, Dark Theme & Keyboard Shortcuts
+- **Dark Mode / Light Mode Switcher**:
+  - Dedicated theme toggle button (🌙 / ☀️) in the header next to the Hebrew date.
+  - Tailored high-contrast dark theme (`#0f141c` canvas, `#182232` cards, `#e7edf7` text, and accessible slate blue accents) optimized for night study and OLED battery savings.
+  - Instant zero-flash rendering on load via `<head>` script that reads `localStorage.getItem('yutorah_theme')`.
+  - Automatically syncs with system OS preferences (`prefers-color-scheme: dark`) when no manual override is set.
+- **Mobile-Adaptive Keyboard Hints**:
+  - On phones and touch screens (`@media (max-width: 768px), (pointer: coarse)`), the keyboard shortcut hints bar is automatically hidden to conserve precious vertical screen space.
 - **Lock-Screen & Background Playback (`navigator.mediaSession`)**:
   - Full integration with system media controllers on iOS, Android, macOS, Windows, and smartwatches.
   - Displays lecture title, speaker name, "YUTorah Online" album title, and high-res rabbi portrait.
   - Lock-screen Play, Pause, Seek Forward, and Seek Backward controls are fully wired.
-- **Keyboard Shortcuts**:
+- **Desktop Keyboard Shortcuts**:
   - <kbd>Space</kbd>: Play / Pause
   - <kbd>←</kbd> / <kbd>→</kbd>: Skip backward / forward 10 seconds
   - <kbd>Shift</kbd> + <kbd>←</kbd> / <kbd>→</kbd>: Skip backward / forward 30 seconds
@@ -188,6 +196,10 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 ## 11. Product Roadmap
 - [x] Clickable metadata filter chips (Speaker, Venue, Categories, Keywords).
 - [x] Persistent sticky bottom mini-player with uninterrupted playback across the site.
+- [x] Collapsible speaker biographies and venue descriptions with Read More / Show Less.
+- [x] Directional triangular -10 and +10 mini-player controls with touch spacing.
+- [x] Dark Mode / Light Mode toggle with zero-flicker load and localStorage persistence.
+- [x] Mobile-adaptive display (hiding keyboard shortcuts on touch devices).
 - [ ] Multi-shiur playback queue ("Play Next" / Playlist mode).
 - [ ] User favorites / bookmarking via browser localStorage.
 - [ ] Offline caching via Service Worker (PWA installable app).

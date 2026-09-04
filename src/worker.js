@@ -485,6 +485,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>${escapeHtml(title)} — YUTorah Enhanced</title>
+  <script>
+    (function() {
+      try {
+        var saved = localStorage.getItem('yutorah_theme');
+        var dark = saved ? saved === 'dark' : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        if (dark) document.documentElement.setAttribute('data-theme', 'dark');
+      } catch(e) {}
+    })();
+  </script>
   <style>
     :root {
       --primary: #2b4c7e;
@@ -500,6 +509,65 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       --shadow: 0 4px 18px rgba(0, 0, 0, 0.06);
       --shadow-hover: 0 8px 24px rgba(0, 0, 0, 0.1);
     }
+    [data-theme="dark"] {
+      --primary: #5c8ecc;
+      --primary-dark: #121b2a;
+      --primary-light: #7ca5de;
+      --accent: #e5b98a;
+      --bg: #0f141c;
+      --card: #182232;
+      --text: #e7edf7;
+      --text-muted: #94a3b8;
+      --border: #28364d;
+      --border-light: #1e2a3c;
+      --shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+      --shadow-hover: 0 8px 24px rgba(0, 0, 0, 0.5);
+    }
+    [data-theme="dark"] input,
+    [data-theme="dark"] select {
+      background: #131c2a;
+      color: #e7edf7;
+      border-color: #28364d;
+    }
+    [data-theme="dark"] .chip,
+    [data-theme="dark"] .tab-btn {
+      background: #141f2f;
+      color: #cbd5e1;
+      border-color: #28364d;
+    }
+    [data-theme="dark"] .tab-btn.active {
+      background: var(--primary);
+      color: #fff;
+    }
+    [data-theme="dark"] .ctrl-btn.skip {
+      background: #1c2738;
+      color: #e7edf7;
+      border-color: #2e3e57;
+    }
+    [data-theme="dark"] .action-btn {
+      background: #1c2738;
+      color: #cbd5e1;
+      border-color: #2e3e57;
+    }
+    [data-theme="dark"] .action-btn:hover {
+      background: #25334a;
+      color: #fff;
+    }
+    [data-theme="dark"] .mini-btn-pill {
+      background: #1c2738 !important;
+      border-color: #2e3e57 !important;
+      color: var(--primary-light) !important;
+    }
+    [data-theme="dark"] .meta-chip {
+      background: #141f2f;
+      border-color: #2e3e57;
+    }
+    [data-theme="dark"] .meta-chip.speaker-chip { border-color: #3b70a8; color: #6ba6e8; }
+    [data-theme="dark"] .meta-chip.venue-chip { border-color: #8c6a47; color: #d4a373; }
+    [data-theme="dark"] .meta-chip.category-chip { border-color: #3d663d; color: #6fc26f; }
+    [data-theme="dark"] .meta-chip.keyword-chip { border-color: #475569; color: #94a3b8; }
+    [data-theme="dark"] .scrubber-bar { background: #25334a; }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -553,6 +621,26 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       padding: 4px 12px;
       border-radius: 20px;
       white-space: nowrap;
+    }
+    .theme-toggle-btn {
+      background: rgba(255,255,255,0.18);
+      border: 1px solid rgba(255,255,255,0.3);
+      color: #fff;
+      font-size: 16px;
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      flex-shrink: 0;
+      line-height: 1;
+    }
+    .theme-toggle-btn:hover {
+      background: rgba(255,255,255,0.3);
+      transform: scale(1.08);
     }
 
     /* Main Container */
@@ -943,6 +1031,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       border-radius: 3px;
       padding: 1px 5px;
       font-size: 11px;
+    }
+    [data-theme="dark"] kbd {
+      background: #202c3e;
+      border-color: #364863;
+      color: #cbd5e1;
+    }
+    @media (max-width: 768px), (pointer: coarse) {
+      .shortcuts-hint {
+        display: none !important;
+      }
     }
 
     /* Collections & Tabs Section */
@@ -1489,7 +1587,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     <a href="/" class="brand" onclick="goHome(event)">
       🎧 YUTorah Enhanced <span>PLAYER</span>
     </a>
-    ${homepageData?.hebrewDateString ? `<div class="hebrew-date-badge">📅 ${escapeHtml(homepageData.hebrewDateString)}</div>` : ''}
+    <div style="display: flex; align-items: center; gap: 10px;">
+      ${homepageData?.hebrewDateString ? `<div class="hebrew-date-badge">📅 ${escapeHtml(homepageData.hebrewDateString)}</div>` : ''}
+      <button type="button" id="themeToggleBtn" class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Dark / Light Mode">🌙</button>
+    </div>
   </div>
 </header>
 
@@ -2827,6 +2928,49 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     }
     else if (e.key === 'm' || e.key === 'M') { audio.muted = !audio.muted; }
   });
+
+  // Theme Management (Dark / Light mode)
+  function initTheme() {
+    var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    var btn = document.getElementById('themeToggleBtn');
+    if (btn) {
+      btn.textContent = isDark ? '☀️' : '🌙';
+      btn.title = isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode';
+    }
+  }
+
+  function toggleTheme() {
+    var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    var nextDark = !isDark;
+    if (nextDark) {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      try { localStorage.setItem('yutorah_theme', 'dark'); } catch(e) {}
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+      try { localStorage.setItem('yutorah_theme', 'light'); } catch(e) {}
+    }
+    var btn = document.getElementById('themeToggleBtn');
+    if (btn) {
+      btn.textContent = nextDark ? '☀️' : '🌙';
+      btn.title = nextDark ? 'Switch to Light Mode' : 'Switch to Dark Mode';
+    }
+  }
+
+  initTheme();
+  try {
+    if (window.matchMedia) {
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
+        if (!localStorage.getItem('yutorah_theme')) {
+          if (e.matches) {
+            document.documentElement.setAttribute('data-theme', 'dark');
+          } else {
+            document.documentElement.removeAttribute('data-theme');
+          }
+          initTheme();
+        }
+      });
+    }
+  } catch(e) {}
 
   // If page loaded with audio, try to autoplay or wait for user touch
   if (hasAudio) {
