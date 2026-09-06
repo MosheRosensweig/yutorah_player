@@ -255,6 +255,117 @@ Lightweight microservice endpoint returning only the daily study trackers and he
 
 ---
 
+#### 2.1.4 Catalog Facet Discovery & Navigation API: `GET /search?searchTerm=*&rows=0&facet=true`
+Powers YUTorah's global hamburger navigation menu, catalog browsing, and autocomplete indexes across all seven taxonomy dimensions. By executing an open wildcard search (`*`) with zero rows returned and facet counting enabled, this endpoint returns complete counts and identifiers for all 440,000+ indexed lectures.
+
+- **URL:** `https://api.yutorah.org/search?searchTerm=*&rows=0&facet=true`
+- **Method:** `GET`
+- **Response Headers:**
+  ```http
+  HTTP/2 200 OK
+  content-type: application/json; charset=utf-8
+  access-control-allow-origin: *
+  cf-cache-status: DYNAMIC
+  ```
+
+- **Top-Level Structure:**
+  ```json
+  {
+    "response": {
+      "numFound": 440535,
+      "start": 0,
+      "maxScore": 0.0,
+      "docs": []
+    },
+    "facet_counts": {
+      "facet_queries": {},
+      "facet_fields": {
+        "teachers": [...],
+        "subcategories": [...],
+        "locations": [...],
+        "series": [...],
+        "publications": [...],
+        "publicationVolumes": [...],
+        "collections": [...],
+        "languages": [...],
+        "mediaTypeCategory": [...]
+      }
+    }
+  }
+  ```
+
+- **Catalog Dimensions Detailed Schemas:**
+  1. **Teachers (`teachers`) — 3,254 Speakers:**
+     ```json
+     {
+       "TeacherName": "Lebowitz, R' Aryeh",
+       "TeacherId": 80714,
+       "TeacherLastName": "Lebowitz",
+       "Match": 15001
+     }
+     ```
+  2. **Categories & Subcategories (`subcategories`) — 601 Topics:**
+     Hierarchically maps main categories (Halacha, Gemara, Tanach, Machshava, Chagim, Jewish History) into granular subcategories.
+     ```json
+     {
+       "categoryName": "Halacha",
+       "Subcategoryname": "Shabbat",
+       "SubcategoryId": 234071,
+       "Match": 16674
+     }
+     ```
+  3. **Locations / Venues (`locations`) — 405 Recording Venues:**
+     ```json
+     {
+       "LocationName": "YU Wilf Campus",
+       "LocationId": 439,
+       "Match": 32430
+     }
+     ```
+  4. **Series (`series`) — 49 Lecture Series:**
+     ```json
+     {
+       "SeriesName": "Daf Yomi",
+       "SeriesId": 4031,
+       "Match": 48142
+     }
+     ```
+  5. **Publications (`publications`) — 43 Journal & Torah Booklet Editions:**
+     ```json
+     {
+       "PublicationName": "To-Go",
+       "PublicationId": 229,
+       "Match": 1421
+     }
+     ```
+  6. **Publication Volumes (`publicationVolumes`) — 419 Volumes:**
+     ```json
+     {
+       "PublicationName": "Volume 1",
+       "PublicationVolumeId": 20282,
+       "PublicationVolume": "Volume 1",
+       "Match": 827
+     }
+     ```
+  7. **Curated Collections (`collections`) — 13,289 Curated Playlists:**
+     ```json
+     {
+       "CollectionName": "R' Jonathan Schwartz Mishna Yomis",
+       "CollectionId": 6536,
+       "Match": 2282
+     }
+     ```
+
+- **Hamburger Menu Navigation Architecture Mapping:**
+  On `www.yutorah.org`, the top-left hamburger navigation menu (`☰`) renders links that correspond directly to these seven facet dimensions:
+  - `Categories`: Expands dynamically into Halacha, Gemara, Tanach, Machshava, Chagim, and Jewish History. Selecting any subcategory opens `/search?subCategoryId={id}` or navigates to `/categories/sidebar/{id}`.
+  - `Teachers`: Links to `/teachers`, where users can search across the 3,254 faculty profiles. Selecting a teacher queries `/search?teacherId={id}`.
+  - `Venues`: Links to `/venues`, allowing venue search across 405 institutions. Selecting a venue queries `/search?locationId={id}`.
+  - `Series`: Links to `/series`, searching across the 49 recurring series (e.g. Daf Yomi, Daily Shiur, BCBM). Queries `/search?seriesId={id}`.
+  - `Publications`: Links to `/publications`, searching across the 43 journal publications (e.g. To-Go, Beit Yitzchak, Kol Zvi). Queries `/search?publicationId={id}` or `searchTerm=To-Go`.
+
+---
+
 ### 2.2 Core Application & Sidebar Microservices: `https://www.yutorah.org`
 
 #### 2.2.1 Lecture Comprehensive Data: `GET /sidebar/lectureData`

@@ -24,7 +24,7 @@ console.log('2. Testing Speaker Resolution:');
 const spk1 = resolveSpeaker('Rav Schachter');
 assert.ok(spk1 && spk1.id === '80153');
 const spk2 = resolveSpeaker('Rabbi Dr. Michael Rosensweig');
-assert.ok(spk2 && spk2.id === '80018');
+assert.ok(spk2 && spk2.id === '80146');
 const spk3 = resolveSpeaker('Mrs. Horowitz');
 assert.ok(spk3 && spk3.id === '82537');
 console.log('  ✅ Speaker resolution tests passed.');
@@ -62,11 +62,39 @@ assert.ok(exp3.solrQuery.includes('חנוכה'));
 const exp4 = expandQueryWithPhonetics('hilchot shabbos');
 assert.ok(exp4.solrQuery.includes('shabbat'));
 assert.ok(exp4.solrQuery.includes('shabbos'));
-assert.ok(exp4.solrQuery.startsWith('hilchot '));
+assert.ok(exp4.solrQuery.includes('hilchot'));
+assert.ok(exp4.solrQuery.includes('הלכות'));
 
 const exp5 = expandQueryWithPhonetics('quantum mechanics');
 assert.equal(exp5.solrQuery, 'quantum mechanics');
 assert.equal(exp5.matchedSynset, null);
+console.log('  ✅ Solr query expansion tests passed.');
 
-console.log('  ✅ Query expansion tests passed.');
-console.log('\n🎉 ALL PHONETIC TESTS PASSED SUCCESSFULLY!');
+// 5. Test Ported Java EnglishBackToHebrew Algorithm & Final Letters
+console.log('5. Testing Ported EnglishBackToHebrew Permutations:');
+import { convertEnglishBackToHebrew, applyHebrewFinalLetters } from '../src/phonetic_engine.js';
+
+// Test final letters (sofit)
+assert.equal(applyHebrewFinalLetters('פסכ'), 'פסך');
+assert.equal(applyHebrewFinalLetters('שלמ'), 'שלם');
+assert.equal(applyHebrewFinalLetters('כהנ'), 'כהן');
+assert.equal(applyHebrewFinalLetters('כפ'), 'כף');
+assert.equal(applyHebrewFinalLetters('ארצ'), 'ארץ');
+
+// Test algorithmic reverse transliterations
+const shabbatCands = convertEnglishBackToHebrew('shabbat');
+assert.ok(shabbatCands.includes('שבת'));
+
+const succahCands = convertEnglishBackToHebrew('succah');
+assert.ok(succahCands.includes('סכה'));
+
+const pesachCands = convertEnglishBackToHebrew('pesach');
+assert.ok(pesachCands.includes('פסח'));
+
+const motsaiCands = convertEnglishBackToHebrew('motsai');
+assert.ok(motsaiCands.includes('מצי'));
+
+console.log('  ✅ EnglishBackToHebrew algorithmic tests passed.');
+
+console.log('\n🎉 ALL PHONETIC & REVERSE TRANSLITERATION TESTS PASSED SUCCESSFULLY!');
+

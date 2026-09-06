@@ -223,14 +223,176 @@ export function getPhoneticSkeleton(word) {
   return s;
 }
 
-// 4. Query Expansion for Solr
-export function expandQueryWithPhonetics(rawQuery) {
+// 3b. Common secular English words and stop words that should not be algorithmically transliterated to Hebrew
+export const COMMON_ENGLISH_STOPWORDS = new Set([
+  'the', 'and', 'for', 'with', 'that', 'this', 'from', 'about', 'into', 'over', 'after',
+  'quantum', 'mechanics', 'science', 'history', 'philosophy', 'physics', 'mathematics',
+  'computer', 'university', 'college', 'medical', 'ethics', 'law', 'legal', 'business',
+  'economics', 'politics', 'society', 'community', 'family', 'children', 'parenting',
+  'education', 'school', 'music', 'art', 'literature', 'modern', 'ancient', 'world',
+  'america', 'israel', 'jerusalem', 'york', 'london', 'spring', 'summer', 'autumn', 'winter'
+]);
+
+// 4. Java EnglishBackToHebrew Algorithm Port & Enhancements
+// Ported from /recommender-system/src/main/java/EnglishBackToHebrew.java
+// Original Author: mosherosensweig (7/3/18)
+// Modernized for JavaScript / Cloudflare Workers Edge execution with combinatorial pruning
+
+export const DIGRAPH_CONSONANT_MAP = {
+  ' ': ['_'],
+  'a': ['#'],
+  'b': ['ב'],
+  'c': ['כ'],
+  'd': ['ד'],
+  'e': ['#'],
+  'f': ['פ'],
+  'g': ['ג'],
+  'h': ['ה'],
+  'i': ['#'],
+  'j': ['ג'],
+  'k': ['כ', 'ק'],
+  'l': ['ל'],
+  'm': ['מ'],
+  'n': ['נ'],
+  'o': ['#'],
+  'p': ['פ'],
+  'q': ['ק'],
+  'r': ['ר'],
+  's': ['ס', 'ש', 'ת'],
+  't': ['ט', 'ת'],
+  'u': ['#'],
+  'v': ['ב', 'ו'],
+  'w': ['ו'],
+  'x': ['כ', 'ס'],
+  'y': ['י'],
+  'z': ['ז', 'צ'],
+  // Digraphs & Geminate Consonants
+  'bb': ['ב'],
+  'cc': ['כ'],
+  'ch': ['ח', 'כ'],
+  'ck': ['ק'],
+  'dd': ['ד'],
+  'ff': ['פ'],
+  'gg': ['ג'],
+  'kh': ['ח'],
+  'kk': ['ק', 'כ'],
+  'll': ['ל'],
+  'mm': ['מ'],
+  'nn': ['נ'],
+  'ph': ['פ'],
+  'pp': ['פ'],
+  'rr': ['ר'],
+  'ss': ['ס', 'ש', 'ת'],
+  'sh': ['ש'],
+  'th': ['ת'],
+  'ts': ['צ'],
+  'tt': ['ט', 'ת'],
+  'tz': ['צ']
+};
+
+export const SUFFIX_MAP = {
+  'a': ['ה', '#'],
+  'ah': ['ה'],
+  'eh': ['ה'],
+  'ei': ['י'],
+  'ai': ['י'],
+  'ay': ['י'],
+  'os': ['ות', 'ת'],
+  'ot': ['ות', 'ת'],
+  'is': ['ית', 'ת'],
+  'im': ['ים']
+};
+
+// Final letter normalization (Sofit)
+export function applyHebrewFinalLetters(word) {
+  if (!word || word.length === 0) return '';
+  const lastChar = word[word.length - 1];
+  const stem = word.slice(0, -1);
+  switch (lastChar) {
+    case 'כ': return stem + 'ך';
+    case 'מ': return stem + 'ם';
+    case 'נ': return stem + 'ן';
+    case 'פ': return stem + 'ף';
+    case 'צ': return stem + 'ץ';
+    default: return word;
+  }
+}
+
+/**
+ * Port of EnglishBackToHebrew.convertBackToHebrewAccountForSuffixs
+ * Recursively parses English transliterations into candidate Hebrew spellings.
+ * Enhanced with combinatorial pruning to prevent exponential blowup on long words.
+ *
+ * @param {string} rawWord Input transliterated English word (e.g. 'shabbat', 'succah', 'motsai')
+ * @param {number} maxResults Maximum candidate permutations to return (default: 16)
+ * @returns {string[]} Clean Hebrew candidate strings with '#' stripped and final letters resolved.
+ */
+export function convertEnglishBackToHebrew(rawWord, maxResults = 16) {
+  if (!rawWord) return [];
+  const str = rawWord.toLowerCase().replace(/[^a-z]/g, '');
+  if (!str) return [];
+
+  const permutations = [];
+
+  function recurse(begin, currentHebrew) {
+    if (permutations.length >= maxResults * 3) return; // Combinatorial pruning guard
+
+    if (begin === str.length) {
+      // Remove placeholder '#' and double hashes
+      const clean = currentHebrew.replace(/#+/g, '');
+      if (clean.length > 0) {
+        const withSofit = applyHebrewFinalLetters(clean);
+        if (!permutations.includes(withSofit)) {
+          permutations.push(withSofit);
+        }
+      }
+      return;
+    }
+
+    const remainingLen = str.length - begin;
+
+    // Check 2-character digraph / suffix branch
+    if (remainingLen >= 2) {
+      const twoChar = str.substring(begin, begin + 2);
+      if (remainingLen === 2 && SUFFIX_MAP[twoChar]) {
+        for (const ch of SUFFIX_MAP[twoChar]) {
+          recurse(begin + 2, currentHebrew + (ch === '#' ? '' : ch));
+        }
+      } else if (DIGRAPH_CONSONANT_MAP[twoChar]) {
+        for (const ch of DIGRAPH_CONSONANT_MAP[twoChar]) {
+          recurse(begin + 2, currentHebrew + (ch === '#' ? '' : ch));
+        }
+      }
+    }
+
+    // Single character branch
+    const oneChar = str.substring(begin, begin + 1);
+    if (remainingLen === 1 && SUFFIX_MAP[oneChar]) {
+      for (const ch of SUFFIX_MAP[oneChar]) {
+        recurse(begin + 1, currentHebrew + (ch === '#' ? '' : ch));
+      }
+    } else if (DIGRAPH_CONSONANT_MAP[oneChar]) {
+      for (const ch of DIGRAPH_CONSONANT_MAP[oneChar]) {
+        recurse(begin + 1, currentHebrew + (ch === '#' ? '' : ch));
+      }
+    } else {
+      recurse(begin + 1, currentHebrew);
+    }
+  }
+
+  recurse(0, '');
+  return permutations.slice(0, maxResults);
+}
+
+// 5. Query Expansion for Solr (Integrating Synsets, Phonetic Skeleton & EnglishBackToHebrew)
+export function expandQueryWithPhonetics(rawQuery, enableDynamicHebrew = true) {
   if (!rawQuery) {
     return {
       original: '',
       solrQuery: '',
       expandedTokens: [],
-      matchedSynset: null
+      matchedSynset: null,
+      hebrewCandidates: []
     };
   }
 
@@ -240,33 +402,38 @@ export function expandQueryWithPhonetics(rawQuery) {
   // Case A: Full query exactly matches a known synset
   const directSynset = SYNSET_LOOKUP.get(lowerQuery);
   if (directSynset) {
-    const allTerms = Array.from(new Set([...directSynset.variants, ...directSynset.hebrew]));
+    const dynamicHebrew = enableDynamicHebrew ? convertEnglishBackToHebrew(lowerQuery, 4) : [];
+    const allTerms = Array.from(new Set([...directSynset.variants, ...directSynset.hebrew, ...dynamicHebrew]));
     const formatted = allTerms.map(t => t.includes(' ') ? `"${t}"` : t);
     return {
       original: query,
       solrQuery: `(${formatted.join(' OR ')})`,
       expandedTokens: allTerms,
-      matchedSynset: directSynset.canonical
+      matchedSynset: directSynset.canonical,
+      hebrewCandidates: Array.from(new Set([...directSynset.hebrew, ...dynamicHebrew]))
     };
   }
 
-  // Case B: Multi-word query - check if individual words are synsets
+  // Case B: Multi-word query - check if individual words are synsets or need algorithmic reverse transliteration
   const words = query.split(/\s+/);
   let hasExpansion = false;
   const expandedWordGroups = [];
   const allAliases = [];
+  const allHebrewCandidates = [];
 
   for (const word of words) {
     const cleanWord = word.replace(/^[^\wא-ת]+|[^\wא-ת]+$/g, '').toLowerCase();
     const wordSynset = SYNSET_LOOKUP.get(cleanWord);
     if (wordSynset) {
       hasExpansion = true;
-      const terms = Array.from(new Set([...wordSynset.variants, ...wordSynset.hebrew]));
+      const dynamicHebrew = enableDynamicHebrew ? convertEnglishBackToHebrew(cleanWord, 4) : [];
+      const terms = Array.from(new Set([...wordSynset.variants, ...wordSynset.hebrew, ...dynamicHebrew]));
       const formatted = terms.map(t => t.includes(' ') ? `"${t}"` : t);
       expandedWordGroups.push(`(${formatted.join(' OR ')})`);
       allAliases.push(...terms);
+      allHebrewCandidates.push(...wordSynset.hebrew, ...dynamicHebrew);
     } else {
-      // Check phonetic skeleton
+      // Check phonetic skeleton against known synsets
       const skeleton = getPhoneticSkeleton(cleanWord);
       let matchedBySkeleton = null;
       for (const synset of SYNSETS) {
@@ -278,10 +445,24 @@ export function expandQueryWithPhonetics(rawQuery) {
 
       if (matchedBySkeleton) {
         hasExpansion = true;
-        const terms = Array.from(new Set([...matchedBySkeleton.variants, ...matchedBySkeleton.hebrew]));
+        const dynamicHebrew = enableDynamicHebrew ? convertEnglishBackToHebrew(cleanWord, 4) : [];
+        const terms = Array.from(new Set([...matchedBySkeleton.variants, ...matchedBySkeleton.hebrew, ...dynamicHebrew]));
         const formatted = terms.map(t => t.includes(' ') ? `"${t}"` : t);
         expandedWordGroups.push(`(${formatted.join(' OR ')})`);
         allAliases.push(...terms);
+        allHebrewCandidates.push(...matchedBySkeleton.hebrew, ...dynamicHebrew);
+      } else if (enableDynamicHebrew && cleanWord.length >= 3 && /^[a-z]+$/.test(cleanWord) && !COMMON_ENGLISH_STOPWORDS.has(cleanWord)) {
+        // Algorithmic Reverse Transliteration from EnglishBackToHebrew
+        const generatedHebrew = convertEnglishBackToHebrew(cleanWord, 4);
+        if (generatedHebrew.length > 0) {
+          hasExpansion = true;
+          const terms = [word, ...generatedHebrew];
+          expandedWordGroups.push(`(${terms.join(' OR ')})`);
+          allAliases.push(...terms);
+          allHebrewCandidates.push(...generatedHebrew);
+        } else {
+          expandedWordGroups.push(word);
+        }
       } else {
         expandedWordGroups.push(word);
       }
@@ -293,15 +474,18 @@ export function expandQueryWithPhonetics(rawQuery) {
       original: query,
       solrQuery: expandedWordGroups.join(' '),
       expandedTokens: Array.from(new Set(allAliases)),
-      matchedSynset: 'multiple'
+      matchedSynset: 'multiple',
+      hebrewCandidates: Array.from(new Set(allHebrewCandidates))
     };
   }
 
-  // Case C: No synset match, return original query intact
+  // Case C: No synset or transliteration match, return original query intact
   return {
     original: query,
     solrQuery: query,
     expandedTokens: [query],
-    matchedSynset: null
+    matchedSynset: null,
+    hebrewCandidates: []
   };
 }
+

@@ -3080,6 +3080,57 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       border-radius: 6px;
       transition: all 0.15s;
     }
+    .transliteration-status-card {
+      background: linear-gradient(135deg, rgba(43, 76, 126, 0.08) 0%, rgba(99, 102, 241, 0.08) 100%);
+      border: 1.5px solid rgba(43, 76, 126, 0.2);
+      border-radius: 12px;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    [data-theme="dark"] .transliteration-status-card {
+      background: linear-gradient(135deg, rgba(59, 130, 246, 0.12) 0%, rgba(99, 102, 241, 0.12) 100%);
+      border-color: rgba(96, 165, 250, 0.3);
+    }
+    .translit-badge-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    [data-theme="dark"] .translit-badge-title {
+      color: #93c5fd;
+    }
+    .translit-badge-desc {
+      font-size: 11.5px;
+      color: var(--text-muted);
+      margin-top: 2px;
+      line-height: 1.35;
+    }
+    .filter-dimensions-hint {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 4px;
+    }
+    .dim-tag {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 12px;
+      background: rgba(0,0,0,0.04);
+      color: var(--text-muted);
+      border: 1px solid var(--border-light);
+    }
+    [data-theme="dark"] .dim-tag {
+      background: rgba(255,255,255,0.06);
+      border-color: rgba(255,255,255,0.1);
+      color: #94a3b8;
+    }
     .modal-close-btn:hover {
       color: var(--text);
       background: rgba(0,0,0,0.06);
@@ -3894,11 +3945,37 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       <button type="button" class="modal-close-btn" onclick="closeAdvancedModal()" aria-label="Close modal">✕</button>
     </div>
     <div class="modal-body">
+      <!-- Transliteration Engine Indicator & Toggle (Active by default) -->
+      <div class="transliteration-status-card">
+        <div style="flex:1;">
+          <div class="translit-badge-title">
+            <span>✨ Reverse Transliteration Engine</span>
+            <span style="font-size:10.5px; font-weight:700; background:#10b981; color:#fff; padding:1.5px 6px; border-radius:10px;">ENABLED BY DEFAULT</span>
+          </div>
+          <div class="translit-badge-desc">
+            Automatically equates Ashkenazic &amp; Sephardic phonetics (<em>Shabbos ↔ Shabbat</em>, <em>Succah ↔ Sukkah</em>) and expands English queries back to authentic Hebrew spellings (<em>שבת, סוכה, פסח, מוצאי</em>).
+          </div>
+          <div class="filter-dimensions-hint">
+            <span style="font-size:11px; font-weight:700; color:var(--text-muted); margin-right:2px;">Filter across 6 catalog dimensions:</span>
+            <span class="dim-tag">👤 Speakers</span>
+            <span class="dim-tag">🏷️ Topics</span>
+            <span class="dim-tag">📍 Venues</span>
+            <span class="dim-tag">📚 Series</span>
+            <span class="dim-tag">⏱️ Durations</span>
+            <span class="dim-tag">📅 Years</span>
+          </div>
+        </div>
+        <label style="display:flex; flex-direction:column; align-items:center; gap:4px; cursor:pointer; flex-shrink:0;">
+          <input type="checkbox" id="advPhoneticsToggle" checked style="width:18px; height:18px; accent-color:var(--primary); cursor:pointer;">
+          <span style="font-size:10.5px; font-weight:600; color:var(--text-muted);">Active</span>
+        </label>
+      </div>
+
       <!-- Keyword / Topic -->
       <div class="filter-group">
         <label class="filter-label" for="advKeywords">
           <span>Topic, Title, or Keyword</span>
-          <span class="filter-label-hint">Phonetic equivalence auto-enabled</span>
+          <span class="filter-label-hint">Phonetic &amp; Hebrew equivalence auto-applied</span>
         </label>
         <input type="text" id="advKeywords" class="filter-input" placeholder="e.g. Shabbos, Muktzah, Teshuva, Shofar...">
       </div>
@@ -3942,6 +4019,20 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
             <input type="text" id="advLocationInput" class="combobox-input" placeholder="Type venue or recording location..." autocomplete="off">
           </div>
           <div class="autocomplete-dropdown" id="locationDropdown"></div>
+        </div>
+      </div>
+
+      <!-- Series Multi-Select Autocomplete (from Hamburger Menu Series) -->
+      <div class="filter-group">
+        <label class="filter-label" for="advSeriesInput">
+          <span>Lecture Series</span>
+          <span class="filter-label-hint">Filter Daf Yomi, Daily Shiur, BCBM, etc.</span>
+        </label>
+        <div class="autocomplete-combobox" id="seriesCombobox">
+          <div class="chips-container" id="seriesChipsContainer" onclick="document.getElementById('advSeriesInput').focus()">
+            <input type="text" id="advSeriesInput" class="combobox-input" placeholder="Type series name (e.g. Daf Yomi, Daily Shiur)..." autocomplete="off">
+          </div>
+          <div class="autocomplete-dropdown" id="seriesDropdown"></div>
         </div>
       </div>
 
@@ -4973,18 +5064,21 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     teachers: [], // [{ id, name }]
     categories: [], // [{ id, name }]
     locations: [], // [{ id, name }]
+    series: [], // [{ id, name }]
     minDuration: '',
     maxDuration: '',
     durationLabel: '',
     year: '',
-    yearLabel: ''
+    yearLabel: '',
+    enablePhonetics: true
   };
 
   // Temp editing state while modal is open
   let modalTempFilters = {
     teachers: [],
     categories: [],
-    locations: []
+    locations: [],
+    series: []
   };
 
   function openAdvancedModal() {
@@ -4995,14 +5089,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     modalTempFilters.teachers = [...(activeAdvancedFilters.teachers || [])];
     modalTempFilters.categories = [...(activeAdvancedFilters.categories || [])];
     modalTempFilters.locations = [...(activeAdvancedFilters.locations || [])];
+    modalTempFilters.series = [...(activeAdvancedFilters.series || [])];
 
     document.getElementById('advKeywords').value = activeAdvancedFilters.keywords || searchInput.value.trim();
     document.getElementById('advYearSelect').value = activeAdvancedFilters.year || '';
+    const phonToggle = document.getElementById('advPhoneticsToggle');
+    if (phonToggle) phonToggle.checked = activeAdvancedFilters.enablePhonetics !== false;
 
     // Render chips in modal comboboxes
     renderComboboxChips('teacher');
     renderComboboxChips('category');
     renderComboboxChips('location');
+    renderComboboxChips('series');
 
     // Set duration buttons
     const minD = activeAdvancedFilters.minDuration;
@@ -5060,6 +5158,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       containerId = 'locationChipsContainer';
       inputId = 'advLocationInput';
       list = modalTempFilters.locations;
+    } else if (type === 'series') {
+      containerId = 'seriesChipsContainer';
+      inputId = 'advSeriesInput';
+      list = modalTempFilters.series;
     }
 
     const container = document.getElementById(containerId);
@@ -5085,6 +5187,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       modalTempFilters.categories.splice(index, 1);
     } else if (type === 'location') {
       modalTempFilters.locations.splice(index, 1);
+    } else if (type === 'series') {
+      modalTempFilters.series.splice(index, 1);
     }
     renderComboboxChips(type);
   }
@@ -5094,13 +5198,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (type === 'teacher') list = modalTempFilters.teachers;
     else if (type === 'category') list = modalTempFilters.categories;
     else if (type === 'location') list = modalTempFilters.locations;
+    else if (type === 'series') list = modalTempFilters.series;
 
     if (!list.some(item => String(item.id) === String(id))) {
       list.push({ id: String(id), name: String(name) });
     }
 
     // Clear input and close dropdown
-    let inputId = type === 'teacher' ? 'advTeacherInput' : (type === 'category' ? 'advCategoryInput' : 'advLocationInput');
+    let inputId = type === 'teacher' ? 'advTeacherInput' : (type === 'category' ? 'advCategoryInput' : (type === 'location' ? 'advLocationInput' : 'advSeriesInput'));
     let input = document.getElementById(inputId);
     if (input) {
       input.value = '';
@@ -5110,7 +5215,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     renderComboboxChips(type);
   }
 
-  // Setup Live Filtering Autocomplete for Teacher, Category, Venue inputs
+  // Setup Live Filtering Autocomplete for Teacher, Category, Venue, Series inputs
   function setupAutocompleteInput(type, inputId, dropdownId, dataKey) {
     const input = document.getElementById(inputId);
     const dropdown = document.getElementById(dropdownId);
@@ -5176,7 +5281,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         dropdown.style.display = 'none';
       } else if (e.key === 'Backspace' && input.value === '') {
         // Backspace on empty input removes last chip
-        let list = type === 'teacher' ? modalTempFilters.teachers : (type === 'category' ? modalTempFilters.categories : modalTempFilters.locations);
+        let list = type === 'teacher' ? modalTempFilters.teachers : (type === 'category' ? modalTempFilters.categories : (type === 'location' ? modalTempFilters.locations : modalTempFilters.series));
         if (list.length > 0) {
           list.pop();
           renderComboboxChips(type);
@@ -5190,6 +5295,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     setupAutocompleteInput('teacher', 'advTeacherInput', 'teacherDropdown', 'teachers');
     setupAutocompleteInput('category', 'advCategoryInput', 'categoryDropdown', 'categories');
     setupAutocompleteInput('location', 'advLocationInput', 'locationDropdown', 'venues');
+    setupAutocompleteInput('series', 'advSeriesInput', 'seriesDropdown', 'series');
 
     // Close autocomplete dropdowns on document click outside
     document.addEventListener('click', (e) => {
@@ -5211,12 +5317,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   function resetAdvancedFilters() {
     document.getElementById('advKeywords').value = '';
     document.getElementById('advYearSelect').value = '';
+    const phonToggle = document.getElementById('advPhoneticsToggle');
+    if (phonToggle) phonToggle.checked = true;
     modalTempFilters.teachers = [];
     modalTempFilters.categories = [];
     modalTempFilters.locations = [];
+    modalTempFilters.series = [];
     renderComboboxChips('teacher');
     renderComboboxChips('category');
     renderComboboxChips('location');
+    renderComboboxChips('series');
     const defBtn = document.querySelector('.duration-preset-btn[data-min=""][data-max=""]');
     if (defBtn) setDurationPreset(defBtn, '', '');
   }
@@ -5231,17 +5341,21 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const yearSelect = document.getElementById('advYearSelect');
     const year = yearSelect.value;
     const yearLabel = yearSelect.selectedIndex > 0 ? yearSelect.options[yearSelect.selectedIndex].text : '';
+    const phonToggle = document.getElementById('advPhoneticsToggle');
+    const enablePhonetics = phonToggle ? phonToggle.checked : true;
 
     activeAdvancedFilters = {
       keywords: kw,
       teachers: [...modalTempFilters.teachers],
       categories: [...modalTempFilters.categories],
       locations: [...modalTempFilters.locations],
+      series: [...modalTempFilters.series],
       minDuration,
       maxDuration,
       durationLabel,
       year,
-      yearLabel
+      yearLabel,
+      enablePhonetics
     };
 
     closeAdvancedModal();
@@ -5281,6 +5395,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       pills.push('<span class="active-filter-pill">📍 ' + escapeHtml(l.name) + ' <button type="button" onclick="removeFilterItem(&quot;locations&quot;, ' + idx + ')" title="Remove">✕</button></span>');
     });
 
+    // Series pills
+    (activeAdvancedFilters.series || []).forEach((s, idx) => {
+      pills.push('<span class="active-filter-pill">📚 ' + escapeHtml(s.name) + ' <button type="button" onclick="removeFilterItem(&quot;series&quot;, ' + idx + ')" title="Remove">✕</button></span>');
+    });
+
     // Duration pill
     if (activeAdvancedFilters.minDuration || activeAdvancedFilters.maxDuration) {
       pills.push('<span class="active-filter-pill">⏱ ' + escapeHtml(activeAdvancedFilters.durationLabel) + ' <button type="button" onclick="removeSingleFilter(&quot;duration&quot;)" title="Remove">✕</button></span>');
@@ -5289,6 +5408,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     // Year pill
     if (activeAdvancedFilters.year) {
       pills.push('<span class="active-filter-pill">📅 ' + escapeHtml(activeAdvancedFilters.yearLabel || activeAdvancedFilters.year) + ' <button type="button" onclick="removeSingleFilter(&quot;year&quot;)" title="Remove">✕</button></span>');
+    }
+
+    // Transliteration indicator badge in pills bar
+    if (activeAdvancedFilters.enablePhonetics === false) {
+      pills.push('<span class="active-filter-pill" style="background:rgba(239, 68, 68, 0.1); border-color:rgba(239, 68, 68, 0.3); color:#dc2626;">🔤 Exact Match (Phonetics Off) <button type="button" onclick="toggleFilterPhonetics(true)" title="Turn Phonetics Back On">✕</button></span>');
     }
 
     if (pills.length > 0) {
@@ -5302,6 +5426,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       const advBtn = document.getElementById('advancedSearchBtn');
       if (advBtn) advBtn.classList.remove('active');
     }
+  }
+
+  function toggleFilterPhonetics(enable) {
+    activeAdvancedFilters.enablePhonetics = Boolean(enable);
+    executeLiveSearch(activeAdvancedFilters.keywords || searchInput.value.trim(), { ...activeAdvancedFilters });
   }
 
   function removeFilterItem(listKey, index) {
@@ -5336,11 +5465,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       teachers: [],
       categories: [],
       locations: [],
+      series: [],
       minDuration: '',
       maxDuration: '',
       durationLabel: '',
       year: '',
-      yearLabel: ''
+      yearLabel: '',
+      enablePhonetics: true
     };
     executeLiveSearch(searchInput.value.trim(), {});
   }
@@ -5413,10 +5544,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       apiUrl += '&locationId=' + encodeURIComponent(l.id);
     });
 
-    if (extraParams.seriesId) apiUrl += '&seriesId=' + encodeURIComponent(extraParams.seriesId);
+    const seriesList = extraParams.series || (extraParams.seriesId ? [{ id: extraParams.seriesId }] : []);
+    seriesList.forEach(s => {
+      apiUrl += '&seriesId=' + encodeURIComponent(s.id);
+    });
+
     if (extraParams.minDuration) apiUrl += '&minDuration=' + encodeURIComponent(extraParams.minDuration);
     if (extraParams.maxDuration) apiUrl += '&maxDuration=' + encodeURIComponent(extraParams.maxDuration);
     if (extraParams.year) apiUrl += '&year=' + encodeURIComponent(extraParams.year);
+    if (extraParams.enablePhonetics === false) apiUrl += '&exact=1';
 
     try {
       const res = await fetch(apiUrl, {
@@ -5512,10 +5648,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       apiUrl += '&locationId=' + encodeURIComponent(l.id);
     });
 
-    if (currentFilterParams.seriesId) apiUrl += '&seriesId=' + encodeURIComponent(currentFilterParams.seriesId);
+    const seriesList = currentFilterParams.series || (currentFilterParams.seriesId ? [{ id: currentFilterParams.seriesId }] : []);
+    seriesList.forEach(s => {
+      apiUrl += '&seriesId=' + encodeURIComponent(s.id);
+    });
+
     if (currentFilterParams.minDuration) apiUrl += '&minDuration=' + encodeURIComponent(currentFilterParams.minDuration);
     if (currentFilterParams.maxDuration) apiUrl += '&maxDuration=' + encodeURIComponent(currentFilterParams.maxDuration);
     if (currentFilterParams.year) apiUrl += '&year=' + encodeURIComponent(currentFilterParams.year);
+    if (currentFilterParams.enablePhonetics === false) apiUrl += '&exact=1';
 
     try {
       const res = await fetch(apiUrl);
