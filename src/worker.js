@@ -1698,6 +1698,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       box-shadow: var(--shadow);
       border: 1px solid var(--border);
       margin-bottom: 28px;
+      scroll-margin-top: 70px;
       ${isPlaying ? '' : 'display: none;'}
     }
     .player-nav-back {
@@ -3182,6 +3183,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   let initialTimeApplied = false;
   let lastUrlUpdateSec = -1;
   let lastUrlUpdateTime = 0;
+  let isManuallyMinimized = false;
+  let isExpandingUntil = 0;
 
   const DAILY_SPONSOR_AUDIO = ${JSON.stringify(sponsorshipAudioUrl || '')};
   const DAILY_SPONSOR_TEXT = ${JSON.stringify(sponsorshipText || '')};
@@ -3921,8 +3924,50 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (resSection) resSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
+  function isPlayerCardInViewport() {
+    const playerCard = document.getElementById('playerCard');
+    if (!playerCard || playerCard.style.display === 'none') return false;
+    const rect = playerCard.getBoundingClientRect();
+    const header = document.getElementById('mainHeader');
+    const isPurim = document.body.classList.contains('is-purim-theme');
+    const topBoundary = (header && !isPurim) ? header.getBoundingClientRect().bottom : 0;
+    const bottomBoundary = (header && isPurim) ? header.getBoundingClientRect().top : (window.innerHeight || document.documentElement.clientHeight);
+
+    return rect.bottom > topBoundary && rect.top < bottomBoundary;
+  }
+
+  let scrollCheckScheduled = false;
+  function handleScrollAutoMiniPlayer() {
+    if (!hasAudio || isManuallyMinimized || Date.now() < isExpandingUntil) return;
+    const visible = isPlayerCardInViewport();
+    const miniPlayer = document.getElementById('miniPlayer');
+    if (!miniPlayer) return;
+
+    if (!visible) {
+      if (!miniPlayer.classList.contains('visible')) {
+        miniPlayer.classList.add('visible');
+        document.body.classList.add('mini-player-active');
+      }
+    } else {
+      if (miniPlayer.classList.contains('visible')) {
+        miniPlayer.classList.remove('visible');
+        document.body.classList.remove('mini-player-active');
+      }
+    }
+  }
+
+  function scheduleScrollAutoMiniPlayer() {
+    if (scrollCheckScheduled) return;
+    scrollCheckScheduled = true;
+    requestAnimationFrame(() => {
+      handleScrollAutoMiniPlayer();
+      scrollCheckScheduled = false;
+    });
+  }
+
   function minimizePlayer() {
     if (!hasAudio) return;
+    isManuallyMinimized = true;
     const playerCard = document.getElementById('playerCard');
     const miniPlayer = document.getElementById('miniPlayer');
     if (playerCard) playerCard.style.display = 'none';
@@ -3937,6 +3982,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   function expandPlayer() {
+    isManuallyMinimized = false;
+    isExpandingUntil = Date.now() + 800;
     const playerCard = document.getElementById('playerCard');
     const miniPlayer = document.getElementById('miniPlayer');
     if (playerCard) {
@@ -3950,6 +3997,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   function closeMiniPlayer() {
     audio.pause();
     hasAudio = false;
+    isManuallyMinimized = false;
     currentShiurId = '';
     const miniPlayer = document.getElementById('miniPlayer');
     if (miniPlayer) miniPlayer.classList.remove('visible');
@@ -4194,9 +4242,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   async function playShiurById(e, id) {
     if (e) e.preventDefault();
 
+    isManuallyMinimized = false;
+    isExpandingUntil = Date.now() + 800;
     const playerCard = document.getElementById('playerCard');
-    playerCard.style.display = 'block';
-    playerCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (playerCard) {
+      playerCard.style.display = 'block';
+      playerCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    const miniPlayer = document.getElementById('miniPlayer');
+    if (miniPlayer) miniPlayer.classList.remove('visible');
+    document.body.classList.remove('mini-player-active');
 
     document.getElementById('shiurTitle').textContent = 'Loading shiur #' + id + '...';
     document.getElementById('shiurSpeaker').textContent = 'Fetching audio stream...';
@@ -4388,6 +4443,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   function closePlayer() {
     audio.pause();
+    isManuallyMinimized = false;
     document.getElementById('playerCard').style.display = 'none';
     const miniPlayer = document.getElementById('miniPlayer');
     if (miniPlayer) miniPlayer.classList.remove('visible');
@@ -5348,6 +5404,21 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       });
     }
   } catch(e) {}
+
+  // Auto-switch mini player based on scroll position / viewport visibility
+  window.addEventListener('scroll', scheduleScrollAutoMiniPlayer, { passive: true });
+  window.addEventListener('resize', scheduleScrollAutoMiniPlayer, { passive: true });
+  window.addEventListener('orientationchange', scheduleScrollAutoMiniPlayer, { passive: true });
+  if ('IntersectionObserver' in window) {
+    var playerCardEl = document.getElementById('playerCard');
+    if (playerCardEl) {
+      var playerObserver = new IntersectionObserver(function() {
+        scheduleScrollAutoMiniPlayer();
+      }, { threshold: [0, 0.05, 0.5, 0.95, 1.0] });
+      playerObserver.observe(playerCardEl);
+    }
+  }
+  scheduleScrollAutoMiniPlayer();
 
   // If page loaded with audio, try to autoplay or wait for user touch
   if (hasAudio) {
