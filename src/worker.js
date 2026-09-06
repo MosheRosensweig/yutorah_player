@@ -4839,19 +4839,19 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
     const pills = [];
     if (activeAdvancedFilters.teacherId && activeAdvancedFilters.teacherName) {
-      pills.push('<span class="active-filter-pill">👤 Speaker: ' + escapeHtml(activeAdvancedFilters.teacherName) + ' <button type="button" onclick="removeFilter(\'teacher\')" title="Remove">✕</button></span>');
+      pills.push('<span class="active-filter-pill">👤 Speaker: ' + escapeHtml(activeAdvancedFilters.teacherName) + ' <button type="button" onclick="removeFilter(&quot;teacher&quot;)" title="Remove">✕</button></span>');
     }
     if (activeAdvancedFilters.subCategoryId && activeAdvancedFilters.categoryName) {
-      pills.push('<span class="active-filter-pill">🏷️ Topic: ' + escapeHtml(activeAdvancedFilters.categoryName) + ' <button type="button" onclick="removeFilter(\'category\')" title="Remove">✕</button></span>');
+      pills.push('<span class="active-filter-pill">🏷️ Topic: ' + escapeHtml(activeAdvancedFilters.categoryName) + ' <button type="button" onclick="removeFilter(&quot;category&quot;)" title="Remove">✕</button></span>');
     }
     if (activeAdvancedFilters.locationId && activeAdvancedFilters.locationName) {
-      pills.push('<span class="active-filter-pill">📍 Venue: ' + escapeHtml(activeAdvancedFilters.locationName) + ' <button type="button" onclick="removeFilter(\'location\')" title="Remove">✕</button></span>');
+      pills.push('<span class="active-filter-pill">📍 Venue: ' + escapeHtml(activeAdvancedFilters.locationName) + ' <button type="button" onclick="removeFilter(&quot;location&quot;)" title="Remove">✕</button></span>');
     }
     if (activeAdvancedFilters.minDuration || activeAdvancedFilters.maxDuration) {
-      pills.push('<span class="active-filter-pill">⏱ Duration: ' + escapeHtml(activeAdvancedFilters.durationLabel) + ' <button type="button" onclick="removeFilter(\'duration\')" title="Remove">✕</button></span>');
+      pills.push('<span class="active-filter-pill">⏱ Duration: ' + escapeHtml(activeAdvancedFilters.durationLabel) + ' <button type="button" onclick="removeFilter(&quot;duration&quot;)" title="Remove">✕</button></span>');
     }
     if (activeAdvancedFilters.year) {
-      pills.push('<span class="active-filter-pill">📅 Year: ' + escapeHtml(activeAdvancedFilters.yearLabel || activeAdvancedFilters.year) + ' <button type="button" onclick="removeFilter(\'year\')" title="Remove">✕</button></span>');
+      pills.push('<span class="active-filter-pill">📅 Year: ' + escapeHtml(activeAdvancedFilters.yearLabel || activeAdvancedFilters.year) + ' <button type="button" onclick="removeFilter(&quot;year&quot;)" title="Remove">✕</button></span>');
     }
 
     if (pills.length > 0) {
