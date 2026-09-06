@@ -201,9 +201,16 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 - [x] Persistent sticky bottom mini-player with uninterrupted playback across the site.
 - [x] Collapsible speaker biographies and venue descriptions with Read More / Show Less.
 - [x] Directional triangular -10 and +10 mini-player controls with touch spacing.
-- [x] Dark Mode / Light Mode toggle with zero-flicker load and localStorage persistence.
+- [x] Dark Mode / Light Mode toggle with zero-flicker load, URL parameter (`?mode=dark`), and localStorage persistence.
 - [x] Mobile-adaptive display (hiding keyboard shortcuts on touch devices).
+- [x] Playback speed URL parameter sync (`?speed=1.5`).
+- [x] Live daily YUTorah sponsorship banner sync & GiveCampus support link.
+- [ ] **User Accounts & Persistent Login** *(In Planning — see [ROADMAP.md](ROADMAP.md))*:
+  - Stay logged in automatically for as long as possible (persistent long-lived cookies).
+  - Synchronized listening history of all shiurim played.
+  - Accurate progress tracking ("where you are up to in each shiur").
+  - Organized chronologically by date.
 - [ ] Multi-shiur playback queue ("Play Next" / Playlist mode).
-- [ ] User favorites / bookmarking via browser localStorage.
 - [ ] Offline caching via Service Worker (PWA installable app).
 - [ ] Optional GitHub Pages static deployment fallback.
+

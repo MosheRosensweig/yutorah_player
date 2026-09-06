@@ -61,3 +61,12 @@ It serves the live YUTorah site under your own URL, removes frame and CORS restr
 5. Replace everything in the editor with the contents of [`src/worker.js`](src/worker.js).
 6. Click **Deploy**!
 7. Your live URL will be ready immediately.
+
+---
+
+## 🗺️ Product Roadmap
+
+Check out [`ROADMAP.md`](ROADMAP.md) for planned features and architecture, including:
+- **User Accounts & Persistent Login**: Stay logged in for as long as possible with persistent sessions.
+- **Listening History & Progress Tracking**: Automatically record listened shiurim, timestamp progress ("where you are up to"), and organize by date.
+
