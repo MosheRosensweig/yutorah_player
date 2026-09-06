@@ -205,6 +205,7 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 - [x] Mobile-adaptive display (hiding keyboard shortcuts on touch devices).
 - [x] Playback speed URL parameter sync (`?speed=1.5`).
 - [x] Live daily YUTorah sponsorship banner sync & GiveCampus support link.
+- [x] Official pre-roll daily sponsorship audio clip with live countdown, skip button, and auto-sync.
 - [ ] **User Accounts & Persistent Login** *(In Planning — see [ROADMAP.md](ROADMAP.md))*:
   - Stay logged in automatically for as long as possible (persistent long-lived cookies).
   - Synchronized listening history of all shiurim played.
