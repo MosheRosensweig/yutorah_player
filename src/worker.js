@@ -10,6 +10,7 @@ import { getHebrewDateInfo, getActiveHolidayTheme } from './hebrew_calendar.js';
 import { THEMES } from './theme_definitions.js';
 import { THEME_ASSETS } from './theme_assets.js';
 import { expandQueryWithPhonetics, resolveSpeaker, stripSpeakerHonorifics, KNOWN_SPEAKERS, SYNSETS } from './phonetic_engine.js';
+import AUTOCOMPLETE_META from './autocomplete_data.json' with { type: 'json' };
 
 const TARGET_API_ORIGIN = 'https://www.yutorah.org';
 const API_ORIGIN = 'https://api.yutorah.org';
@@ -204,13 +205,41 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
+    // 0. Autocomplete Metadata API: /api/autocomplete-meta
+    if (url.pathname === '/api/autocomplete-meta') {
+      return new Response(JSON.stringify(AUTOCOMPLETE_META), {
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800'
+        }
+      });
+    }
+
     // 1. Live Search API Proxy: /api/search?q=...
     if (url.pathname === '/api/search') {
       const rawQ = url.searchParams.get('q') || url.searchParams.get('searchTerm') || '';
-      let teacherId = url.searchParams.get('teacherId') || '';
-      const subCategoryId = url.searchParams.get('subCategoryId') || '';
-      const locationId = url.searchParams.get('locationId') || url.searchParams.get('venueId') || '';
-      const seriesId = url.searchParams.get('seriesId') || url.searchParams.get('series') || '';
+      
+      // Parse single or multi-valued IDs (can be passed as repeated params e.g. teacherId=A&teacherId=B or comma-separated)
+      function extractIdList(paramName, aliasName) {
+        const vals = [];
+        const directList = url.searchParams.getAll(paramName);
+        for (const v of directList) {
+          if (v) vals.push(...v.split(',').map(s => s.trim()).filter(Boolean));
+        }
+        if (aliasName) {
+          const aliasList = url.searchParams.getAll(aliasName);
+          for (const v of aliasList) {
+            if (v) vals.push(...v.split(',').map(s => s.trim()).filter(Boolean));
+          }
+        }
+        return [...new Set(vals)];
+      }
+
+      let teacherIds = extractIdList('teacherId');
+      const subCategoryIds = extractIdList('subCategoryId');
+      const locationIds = extractIdList('locationId', 'venueId');
+      const seriesIds = extractIdList('seriesId', 'series');
       const start = parseInt(url.searchParams.get('start') || '1', 10);
       const disablePhonetics = url.searchParams.get('exact') === '1';
 
@@ -226,10 +255,10 @@ export default {
       let expandedInfo = null;
 
       // If user typed a speaker name into the search box without selecting a teacherId, attempt auto-resolution
-      if (!teacherId && rawQ) {
+      if (teacherIds.length === 0 && rawQ) {
         const resolvedSpk = resolveSpeaker(rawQ);
         if (resolvedSpk) {
-          teacherId = resolvedSpk.id;
+          teacherIds = [resolvedSpk.id];
           effectiveQuery = ''; // Filter natively by teacherId
         }
       }
@@ -257,7 +286,10 @@ export default {
         // 2. Year check
         const docDate = doc.shiurdate || doc.shiurdatesubmitted || '';
         if (year) {
-          if (year === 'pre-2010') {
+          if (year === 'pre-2000') {
+            const docYear = docDate ? parseInt(docDate.slice(0, 4), 10) : 0;
+            if (docYear >= 2000) return false;
+          } else if (year === 'pre-2010') {
             const docYear = docDate ? parseInt(docDate.slice(0, 4), 10) : 0;
             if (docYear >= 2010) return false;
           } else if (year === '2010-2019') {
@@ -275,31 +307,55 @@ export default {
         return true;
       }
 
-      try {
-        if (!hasPostFilter) {
-          // Fast path: direct Solr call
-          let targetUrl = `${API_ORIGIN}/search?searchTerm=${encodeURIComponent(effectiveQuery)}&start=${encodeURIComponent(start)}`;
-          if (teacherId) targetUrl += `&teacherId=${encodeURIComponent(teacherId)}`;
-          if (subCategoryId) targetUrl += `&subCategoryId=${encodeURIComponent(subCategoryId)}`;
-          if (locationId) targetUrl += `&locationId=${encodeURIComponent(locationId)}`;
-          if (seriesId) targetUrl += `&seriesId=${encodeURIComponent(seriesId)}`;
+      // Helper to fetch one page of Solr search
+      async function fetchSolrSingle(query, startOffset, tId, catId, locId, sId) {
+        let targetUrl = `${API_ORIGIN}/search?searchTerm=${encodeURIComponent(query)}&start=${encodeURIComponent(startOffset)}`;
+        if (tId) targetUrl += `&teacherId=${encodeURIComponent(tId)}`;
+        if (catId) targetUrl += `&subCategoryId=${encodeURIComponent(catId)}`;
+        if (locId) targetUrl += `&locationId=${encodeURIComponent(locId)}`;
+        if (sId) targetUrl += `&seriesId=${encodeURIComponent(sId)}`;
 
-          const upstream = await fetch(targetUrl, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-              'Accept': 'application/json'
-            }
-          });
-          const json = await upstream.json();
-          if (expandedInfo && expandedInfo.expandedTokens && expandedInfo.expandedTokens.length > 1) {
-            json.phoneticExpansion = {
+        const upstream = await fetch(targetUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            'Accept': 'application/json'
+          }
+        });
+        if (!upstream.ok) return { docs: [], numFound: 0 };
+        const json = await upstream.json();
+        return {
+          docs: json?.response?.docs || [],
+          numFound: json?.response?.numFound || 0
+        };
+      }
+
+      try {
+        const isMultiTeacher = teacherIds.length > 1;
+        const isMultiLocation = locationIds.length > 1;
+        const isMultiCategory = subCategoryIds.length > 1;
+        const isMultiTarget = isMultiTeacher || isMultiLocation || isMultiCategory;
+
+        if (!isMultiTarget && !hasPostFilter) {
+          // Fast path: direct Solr single call
+          const tId = teacherIds[0] || '';
+          const catId = subCategoryIds[0] || '';
+          const locId = locationIds[0] || '';
+          const sId = seriesIds[0] || '';
+
+          const { docs, numFound } = await fetchSolrSingle(effectiveQuery, start, tId, catId, locId, sId);
+          const responsePayload = {
+            response: {
+              docs,
+              numFound,
+              start
+            },
+            phoneticExpansion: (expandedInfo && expandedInfo.expandedTokens && expandedInfo.expandedTokens.length > 1) ? {
               original: rawQ,
               tokens: expandedInfo.expandedTokens,
               synset: expandedInfo.matchedSynset
-            };
-          }
-          return new Response(JSON.stringify(json), {
-            status: upstream.status,
+            } : null
+          };
+          return new Response(JSON.stringify(responsePayload), {
             headers: {
               'Content-Type': 'application/json',
               'Access-Control-Allow-Origin': '*',
@@ -308,52 +364,84 @@ export default {
           });
         }
 
-        // Post-filtering with window accumulation to guarantee 30-item page size
+        // Multi-Target or Post-Filtering Path
+        // If multiple teachers or locations are specified, execute parallel queries across targets and merge
         const targetPageSize = 30;
         let accumulatedDocs = [];
-        let curFetchStart = start;
-        let upstreamNumFound = 0;
-        let lastUpstreamDocsLength = 0;
-        let iterations = 0;
+        let totalEstimatedFound = 0;
 
-        while (accumulatedDocs.length < targetPageSize && iterations < 5) {
-          iterations++;
-          let targetUrl = `${API_ORIGIN}/search?searchTerm=${encodeURIComponent(effectiveQuery)}&start=${curFetchStart}`;
-          if (teacherId) targetUrl += `&teacherId=${encodeURIComponent(teacherId)}`;
-          if (subCategoryId) targetUrl += `&subCategoryId=${encodeURIComponent(subCategoryId)}`;
-          if (locationId) targetUrl += `&locationId=${encodeURIComponent(locationId)}`;
-          if (seriesId) targetUrl += `&seriesId=${encodeURIComponent(seriesId)}`;
+        if (isMultiTarget) {
+          // Determine the primary multi-entity list (teachers > locations > categories)
+          const primaryMulti = isMultiTeacher ? teacherIds.map(id => ({ tId: id })) :
+                               (isMultiLocation ? locationIds.map(id => ({ locId: id })) :
+                               subCategoryIds.map(id => ({ catId: id })));
 
-          const upstream = await fetch(targetUrl, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-              'Accept': 'application/json'
-            }
+          // Fetch from all targets in parallel
+          const fetchPromises = primaryMulti.map(entity => {
+            const tId = entity.tId || teacherIds[0] || '';
+            const catId = entity.catId || subCategoryIds[0] || '';
+            const locId = entity.locId || locationIds[0] || '';
+            const sId = seriesIds[0] || '';
+            return fetchSolrSingle(effectiveQuery, start, tId, catId, locId, sId);
           });
-          if (!upstream.ok) break;
-          const json = await upstream.json();
-          const docs = json?.response?.docs || [];
-          upstreamNumFound = json?.response?.numFound || 0;
-          lastUpstreamDocsLength = docs.length;
-          if (docs.length === 0) break;
 
-          for (const doc of docs) {
-            if (matchesPostFilters(doc)) {
-              accumulatedDocs.push(doc);
-              if (accumulatedDocs.length >= targetPageSize) break;
+          const results = await Promise.all(fetchPromises);
+          const seenShiurIds = new Set();
+
+          for (const res of results) {
+            totalEstimatedFound += res.numFound;
+            for (const doc of res.docs) {
+              const docId = doc.shiurID || doc.shiurid || doc.id;
+              if (docId && !seenShiurIds.has(docId)) {
+                seenShiurIds.add(docId);
+                if (matchesPostFilters(doc)) {
+                  accumulatedDocs.push(doc);
+                }
+              }
             }
           }
 
-          curFetchStart += docs.length;
-          if (curFetchStart > upstreamNumFound || docs.length < 10) break;
+          // Sort merged results by date descending
+          accumulatedDocs.sort((a, b) => {
+            const dateA = a.shiurdate || a.shiurdatesubmitted || '';
+            const dateB = b.shiurdate || b.shiurdatesubmitted || '';
+            return dateB.localeCompare(dateA);
+          });
+
+          accumulatedDocs = accumulatedDocs.slice(0, targetPageSize);
+        } else {
+          // Single target with post-filtering window accumulation
+          const tId = teacherIds[0] || '';
+          const catId = subCategoryIds[0] || '';
+          const locId = locationIds[0] || '';
+          const sId = seriesIds[0] || '';
+          let curFetchStart = start;
+          let iterations = 0;
+
+          while (accumulatedDocs.length < targetPageSize && iterations < 5) {
+            iterations++;
+            const { docs, numFound } = await fetchSolrSingle(effectiveQuery, curFetchStart, tId, catId, locId, sId);
+            totalEstimatedFound = numFound;
+            if (docs.length === 0) break;
+
+            for (const doc of docs) {
+              if (matchesPostFilters(doc)) {
+                accumulatedDocs.push(doc);
+                if (accumulatedDocs.length >= targetPageSize) break;
+              }
+            }
+
+            curFetchStart += docs.length;
+            if (curFetchStart > numFound || docs.length < 10) break;
+          }
         }
 
         const responsePayload = {
           response: {
             docs: accumulatedDocs,
-            numFound: upstreamNumFound,
+            numFound: totalEstimatedFound || accumulatedDocs.length,
             filteredCount: accumulatedDocs.length,
-            nextStart: curFetchStart
+            start
           },
           phoneticExpansion: expandedInfo ? {
             original: rawQ,
@@ -1794,12 +1882,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     .clear-search-btn:hover {
       color: var(--text);
     }
+    .search-actions-row {
+      display: flex;
+      gap: 10px;
+    }
     .search-submit-btn {
       background: var(--primary);
       color: #fff;
       border: none;
       border-radius: 10px;
       padding: 0 22px;
+      height: 48px;
       font-size: 15px;
       font-weight: 700;
       cursor: pointer;
@@ -1807,6 +1900,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       white-space: nowrap;
       display: flex;
       align-items: center;
+      justify-content: center;
       gap: 6px;
     }
     .search-submit-btn:hover {
@@ -1818,6 +1912,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       border: none;
       border-radius: 10px;
       padding: 0 18px;
+      height: 48px;
       font-size: 14px;
       font-weight: 700;
       cursor: pointer;
@@ -1825,6 +1920,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       white-space: nowrap;
       display: flex;
       align-items: center;
+      justify-content: center;
       gap: 6px;
       box-shadow: 0 2px 6px rgba(217, 119, 6, 0.25);
     }
@@ -1845,6 +1941,27 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     [data-theme="dark"] .advanced-search-btn:hover {
       background: linear-gradient(135deg, #d97706 0%, #92400e 100%);
       color: #fff;
+    }
+
+    @media (max-width: 640px) {
+      .search-form {
+        flex-direction: column;
+        gap: 10px;
+      }
+      .search-input-wrapper {
+        width: 100%;
+      }
+      .search-actions-row {
+        width: 100%;
+        display: flex;
+        gap: 8px;
+      }
+      .search-actions-row .search-submit-btn,
+      .search-actions-row .advanced-search-btn {
+        flex: 1;
+        justify-content: center;
+        height: 44px;
+      }
     }
 
     /* Quick Filter Chips */
@@ -3017,6 +3134,136 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       background: #1a2638;
       border-color: #436ea8;
     }
+
+    /* Autocomplete Multi-Select Box */
+    .autocomplete-combobox {
+      position: relative;
+      width: 100%;
+    }
+    .chips-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      min-height: 42px;
+      padding: 6px 10px;
+      border-radius: 8px;
+      border: 1.5px solid var(--border);
+      background: #fafbfc;
+      cursor: text;
+      align-items: center;
+      transition: border-color 0.15s;
+    }
+    .chips-container:focus-within {
+      border-color: var(--primary);
+      background: #fff;
+      box-shadow: 0 0 0 3px rgba(43, 76, 126, 0.12);
+    }
+    [data-theme="dark"] .chips-container {
+      background: #131c2a;
+      border-color: #28364d;
+    }
+    [data-theme="dark"] .chips-container:focus-within {
+      background: #1a2638;
+      border-color: #436ea8;
+      box-shadow: 0 0 0 3px rgba(67, 110, 168, 0.28);
+    }
+    .combobox-token {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(43, 76, 126, 0.12);
+      color: var(--primary);
+      border: 1px solid rgba(43, 76, 126, 0.25);
+      border-radius: 6px;
+      padding: 3px 7px;
+      font-size: 12px;
+      font-weight: 600;
+      user-select: none;
+      animation: tokenFadeIn 0.15s ease-out;
+    }
+    @keyframes tokenFadeIn {
+      from { opacity: 0; transform: scale(0.9); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    [data-theme="dark"] .combobox-token {
+      background: rgba(147, 197, 253, 0.15);
+      color: #bfdbfe;
+      border-color: rgba(147, 197, 253, 0.3);
+    }
+    .token-remove-btn {
+      background: none;
+      border: none;
+      color: inherit;
+      font-size: 13px;
+      cursor: pointer;
+      line-height: 1;
+      padding: 0 2px;
+      border-radius: 3px;
+      opacity: 0.75;
+    }
+    .token-remove-btn:hover {
+      opacity: 1;
+      background: rgba(0,0,0,0.1);
+    }
+    .combobox-input {
+      border: none;
+      outline: none;
+      background: transparent;
+      font-size: 13.5px;
+      color: var(--text);
+      flex: 1;
+      min-width: 120px;
+      padding: 3px 0;
+    }
+    .combobox-input::placeholder {
+      color: var(--text-muted);
+    }
+    .autocomplete-dropdown {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      max-height: 220px;
+      overflow-y: auto;
+      background: var(--card);
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.18);
+      z-index: 2500;
+      display: none;
+    }
+    .autocomplete-item {
+      padding: 8px 12px;
+      font-size: 13px;
+      color: var(--text);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border-light);
+      transition: background 0.1s;
+    }
+    .autocomplete-item:last-child {
+      border-bottom: none;
+    }
+    .autocomplete-item:hover, .autocomplete-item.focused {
+      background: rgba(43, 76, 126, 0.08);
+      color: var(--primary);
+    }
+    [data-theme="dark"] .autocomplete-item:hover, [data-theme="dark"] .autocomplete-item.focused {
+      background: rgba(147, 197, 253, 0.12);
+      color: #93c5fd;
+    }
+    .item-count-badge {
+      font-size: 11px;
+      color: var(--text-muted);
+      background: rgba(0,0,0,0.05);
+      padding: 1px 6px;
+      border-radius: 10px;
+    }
+    [data-theme="dark"] .item-count-badge {
+      background: rgba(255,255,255,0.08);
+    }
     .duration-presets-row {
       display: flex;
       flex-wrap: wrap;
@@ -3315,8 +3562,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         >
         <button type="button" class="clear-search-btn" id="clearSearchBtn" onclick="clearSearch()" title="Clear">×</button>
       </div>
-      <button type="button" class="search-submit-btn" onclick="doSearch()">Search</button>
-      <button type="button" class="advanced-search-btn" id="advancedSearchBtn" onclick="openAdvancedModal()" title="Open Advanced Search & Multi-Criteria Filters" style="display: none !important;">🎚️ Filters</button>
+      <div class="search-actions-row">
+        <button type="button" class="search-submit-btn" onclick="doSearch()">Search</button>
+        <button type="button" class="advanced-search-btn" id="advancedSearchBtn" onclick="openAdvancedModal()" title="Open Advanced Search & Multi-Criteria Filters" style="display: none !important;">🎚️ Filters</button>
+      </div>
     </form>
 
     <!-- Quick topic / speaker chips -->
@@ -3654,83 +3903,46 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         <input type="text" id="advKeywords" class="filter-input" placeholder="e.g. Shabbos, Muktzah, Teshuva, Shofar...">
       </div>
 
-      <!-- Speaker / Teacher Selector -->
+      <!-- Speaker / Teacher Multi-Select Autocomplete -->
       <div class="filter-group">
-        <label class="filter-label" for="advTeacherSelect">
+        <label class="filter-label" for="advTeacherInput">
           <span>Speaker / Teacher</span>
-          <span class="filter-label-hint">Auto-strips honorifics (Rabbi, Rav, Dr.)</span>
+          <span class="filter-label-hint">Type name to filter 3,200+ teachers · Multi-select</span>
         </label>
-        <select id="advTeacherSelect" class="filter-select">
-          <option value="">-- Any Speaker / All Teachers --</option>
-          <optgroup label="Popular Roshei Yeshiva & Speakers">
-            <option value="80153">Rabbi Hershel Schachter</option>
-            <option value="80018">Rabbi Michael Rosensweig</option>
-            <option value="80020">Rabbi Mayer Twersky</option>
-            <option value="80753">Rabbi Aryeh Lebowitz</option>
-            <option value="80124">Rabbi Yaakov Neuburger</option>
-            <option value="80307">Rabbi Moshe Taragin</option>
-            <option value="80068">Rabbi Mordechai Willig</option>
-            <option value="80287">Rabbi Daniel Z. Feldman</option>
-            <option value="80112">Rabbi Menachem Penner</option>
-            <option value="80137">Rabbi Jeremy Wieder</option>
-            <option value="80346">Rabbi Ally Ehrman</option>
-            <option value="82537">Mrs. Michal Horowitz</option>
-            <option value="83175">Mrs. Emma Katz</option>
-          </optgroup>
-        </select>
+        <div class="autocomplete-combobox" id="teacherCombobox">
+          <div class="chips-container" id="teacherChipsContainer" onclick="document.getElementById('advTeacherInput').focus()">
+            <input type="text" id="advTeacherInput" class="combobox-input" placeholder="Type teacher name (e.g. Schachter, Rosensweig)..." autocomplete="off">
+          </div>
+          <div class="autocomplete-dropdown" id="teacherDropdown"></div>
+        </div>
       </div>
 
-      <!-- Category / Topic Subcategory -->
+      <!-- Category / Topic Multi-Select Autocomplete -->
       <div class="filter-group">
-        <label class="filter-label" for="advCategorySelect">
-          <span>Category / Halachic Topic</span>
+        <label class="filter-label" for="advCategoryInput">
+          <span>Category / Topic</span>
+          <span class="filter-label-hint">Type topic (e.g. Shabbat, Muktzah, Pesachim) · Multi-select</span>
         </label>
-        <select id="advCategorySelect" class="filter-select">
-          <option value="">-- All Categories & Topics --</option>
-          <optgroup label="Shabbat & Holidays (Moadim)">
-            <option value="234910">Shabbat (General)</option>
-            <option value="234065">Shabbat — Melachot & Halacha</option>
-            <option value="234066">Muktzah</option>
-            <option value="234047">Elul & Teshuvah</option>
-            <option value="234068">Rosh Hashanah</option>
-            <option value="235059">Yom Kippur</option>
-            <option value="234067">Sukkot & Arba Minim</option>
-            <option value="234041">Chanukah</option>
-            <option value="234060">Purim</option>
-            <option value="234061">Pesach & Seder</option>
-            <option value="234064">Shavuot</option>
-            <option value="234069">Three Weeks & Tisha B'Av</option>
-          </optgroup>
-          <optgroup label="Daily Learning Programs">
-            <option value="234949">Daf Yomi (Talmud)</option>
-            <option value="234877">Nach Yomi (Prophets & Writings)</option>
-            <option value="234050">Parshat HaShavua</option>
-          </optgroup>
-          <optgroup label="Halacha & Hashkafa">
-            <option value="234040">Kashrus & Food Halacha</option>
-            <option value="234053">Tefillah & Berachot</option>
-            <option value="234051">Jewish Thought & Machshava</option>
-          </optgroup>
-        </select>
+        <div class="autocomplete-combobox" id="categoryCombobox">
+          <div class="chips-container" id="categoryChipsContainer" onclick="document.getElementById('advCategoryInput').focus()">
+            <input type="text" id="advCategoryInput" class="combobox-input" placeholder="Type category or topic..." autocomplete="off">
+          </div>
+          <div class="autocomplete-dropdown" id="categoryDropdown"></div>
+        </div>
       </div>
 
-      <!-- Venue / Location -->
+      <!-- Venue / Location Multi-Select Autocomplete -->
       <div class="filter-group">
-        <label class="filter-label" for="advLocationSelect">
+        <label class="filter-label" for="advLocationInput">
           <span>Venue / Recording Location</span>
+          <span class="filter-label-hint">Type location (e.g. Wilf Campus, Har Etzion, BMT) · Multi-select</span>
         </label>
-        <select id="advLocationSelect" class="filter-select">
-          <option value="">-- All Locations / Venues --</option>
-          <option value="439">YU Wilf Campus (New York, NY)</option>
-          <option value="529">Yeshivat Har Etzion / Gush (Alon Shvut)</option>
-          <option value="507">Cong. KINS (Chicago, IL)</option>
-          <option value="417">Cong. Beth Abraham (Bergenfield, NJ)</option>
-          <option value="588">BMT — Beit Midrash Torani Leumi (Beit Shemesh)</option>
-          <option value="643">BAYT — Beth Avraham Yoseph of Toronto</option>
-          <option value="593">Young Israel of Woodmere (Woodmere, NY)</option>
-          <option value="562">Young Israel of Lawrence-Cedarhurst</option>
-          <option value="845">Virtual / Zoom</option>
-        </select>
+        <div class="autocomplete-combobox" id="locationCombobox">
+          <div class="chips-container" id="locationChipsContainer" onclick="document.getElementById('advLocationInput').focus()">
+            <input type="text" id="advLocationInput" class="combobox-input" placeholder="Type venue or recording location..." autocomplete="off">
+          </div>
+          <div class="autocomplete-dropdown" id="locationDropdown"></div>
+        </div>
       </div>
 
       <!-- Duration Presets & Range -->
@@ -3747,22 +3959,52 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         </div>
       </div>
 
-      <!-- Year / Era -->
+      <!-- Year / Era (Complete from 2026 down to Pre-2000) -->
       <div class="filter-group">
         <label class="filter-label" for="advYearSelect">
-          <span>Recording Year</span>
+          <span>Recording Year / Archive Era</span>
+          <span class="filter-label-hint">Individual years 2026 down to 2000 &amp; archive</span>
         </label>
         <select id="advYearSelect" class="filter-select">
-          <option value="">-- All Years --</option>
-          <option value="2026">2026 (5786)</option>
-          <option value="2025">2025 (5785)</option>
-          <option value="2024">2024 (5784)</option>
-          <option value="2023">2023 (5783)</option>
-          <option value="2022">2022 (5782)</option>
-          <option value="2021">2021 (5781)</option>
-          <option value="2020">2020 (5780)</option>
-          <option value="2010-2019">2010–2019 Decade</option>
-          <option value="pre-2010">Pre-2010 Archive</option>
+          <option value="">-- All Recording Years --</option>
+          <optgroup label="Recent Years (2020–2026)">
+            <option value="2026">2026 (5786)</option>
+            <option value="2025">2025 (5785)</option>
+            <option value="2024">2024 (5784)</option>
+            <option value="2023">2023 (5783)</option>
+            <option value="2022">2022 (5782)</option>
+            <option value="2021">2021 (5781)</option>
+            <option value="2020">2020 (5780)</option>
+          </optgroup>
+          <optgroup label="2010s Decade (2010–2019)">
+            <option value="2010-2019">Entire 2010–2019 Decade</option>
+            <option value="2019">2019 (5779–5780)</option>
+            <option value="2018">2018 (5778–5779)</option>
+            <option value="2017">2017 (5777–5778)</option>
+            <option value="2016">2016 (5776–5777)</option>
+            <option value="2015">2015 (5775–5776)</option>
+            <option value="2014">2014 (5774–5775)</option>
+            <option value="2013">2013 (5773–5774)</option>
+            <option value="2012">2012 (5772–5773)</option>
+            <option value="2011">2011 (5771–5772)</option>
+            <option value="2010">2010 (5770–5771)</option>
+          </optgroup>
+          <optgroup label="2000s Decade (2000–2009)">
+            <option value="2009">2009</option>
+            <option value="2008">2008</option>
+            <option value="2007">2007</option>
+            <option value="2006">2006</option>
+            <option value="2005">2005</option>
+            <option value="2004">2004</option>
+            <option value="2003">2003</option>
+            <option value="2002">2002</option>
+            <option value="2001">2001</option>
+            <option value="2000">2000</option>
+          </optgroup>
+          <optgroup label="Historical Archives">
+            <option value="pre-2010">Pre-2010 Archive</option>
+            <option value="pre-2000">Pre-2000 Vintage Archive</option>
+          </optgroup>
         </select>
       </div>
     </div>
@@ -4704,15 +4946,33 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     updateUrlTimestamp(true);
   }
 
-  // Active Advanced Filter State
+  // Autocomplete Metadata Cache
+  let autocompleteData = null;
+  let isFetchingAutocomplete = false;
+
+  async function loadAutocompleteMeta() {
+    if (autocompleteData) return autocompleteData;
+    if (isFetchingAutocomplete) return null;
+    isFetchingAutocomplete = true;
+    try {
+      const res = await fetch('/api/autocomplete-meta');
+      if (res.ok) {
+        autocompleteData = await res.json();
+      }
+    } catch(e) {
+      console.error('Failed to load autocomplete metadata:', e);
+    } finally {
+      isFetchingAutocomplete = false;
+    }
+    return autocompleteData;
+  }
+
+  // Active Advanced Filter State (Multi-Entity Supported)
   let activeAdvancedFilters = {
     keywords: '',
-    teacherId: '',
-    teacherName: '',
-    subCategoryId: '',
-    categoryName: '',
-    locationId: '',
-    locationName: '',
+    teachers: [], // [{ id, name }]
+    categories: [], // [{ id, name }]
+    locations: [], // [{ id, name }]
     minDuration: '',
     maxDuration: '',
     durationLabel: '',
@@ -4720,16 +4980,29 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     yearLabel: ''
   };
 
+  // Temp editing state while modal is open
+  let modalTempFilters = {
+    teachers: [],
+    categories: [],
+    locations: []
+  };
+
   function openAdvancedModal() {
-    // Populate modal inputs from current state
     const modal = document.getElementById('advancedSearchModal');
     if (!modal) return;
 
+    // Clone current active filters into temp editing state
+    modalTempFilters.teachers = [...(activeAdvancedFilters.teachers || [])];
+    modalTempFilters.categories = [...(activeAdvancedFilters.categories || [])];
+    modalTempFilters.locations = [...(activeAdvancedFilters.locations || [])];
+
     document.getElementById('advKeywords').value = activeAdvancedFilters.keywords || searchInput.value.trim();
-    document.getElementById('advTeacherSelect').value = activeAdvancedFilters.teacherId || '';
-    document.getElementById('advCategorySelect').value = activeAdvancedFilters.subCategoryId || '';
-    document.getElementById('advLocationSelect').value = activeAdvancedFilters.locationId || '';
     document.getElementById('advYearSelect').value = activeAdvancedFilters.year || '';
+
+    // Render chips in modal comboboxes
+    renderComboboxChips('teacher');
+    renderComboboxChips('category');
+    renderComboboxChips('location');
 
     // Set duration buttons
     const minD = activeAdvancedFilters.minDuration;
@@ -4746,12 +5019,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     });
 
     modal.classList.add('open');
+    loadAutocompleteMeta(); // Preload data in background
     document.getElementById('advKeywords').focus();
   }
 
   function closeAdvancedModal() {
     const modal = document.getElementById('advancedSearchModal');
     if (modal) modal.classList.remove('open');
+    closeAllAutocompleteDropdowns();
   }
 
   function handleAdvancedBackdropClick(e) {
@@ -4759,6 +5034,170 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       closeAdvancedModal();
     }
   }
+
+  function closeAllAutocompleteDropdowns() {
+    document.querySelectorAll('.autocomplete-dropdown').forEach(d => {
+      d.style.display = 'none';
+      d.innerHTML = '';
+    });
+  }
+
+  // Multi-Select Combobox & Token Management
+  function renderComboboxChips(type) {
+    let containerId = '';
+    let inputId = '';
+    let list = [];
+
+    if (type === 'teacher') {
+      containerId = 'teacherChipsContainer';
+      inputId = 'advTeacherInput';
+      list = modalTempFilters.teachers;
+    } else if (type === 'category') {
+      containerId = 'categoryChipsContainer';
+      inputId = 'advCategoryInput';
+      list = modalTempFilters.categories;
+    } else if (type === 'location') {
+      containerId = 'locationChipsContainer';
+      inputId = 'advLocationInput';
+      list = modalTempFilters.locations;
+    }
+
+    const container = document.getElementById(containerId);
+    const input = document.getElementById(inputId);
+    if (!container || !input) return;
+
+    // Remove existing tokens
+    container.querySelectorAll('.combobox-token').forEach(el => el.remove());
+
+    // Insert tokens before input
+    list.forEach((item, index) => {
+      const token = document.createElement('span');
+      token.className = 'combobox-token';
+      token.innerHTML = '<span>' + escapeHtml(item.name) + '</span><button type="button" class="token-remove-btn" onclick="removeComboboxToken(&quot;' + type + '&quot;, ' + index + ')" title="Remove">✕</button>';
+      container.insertBefore(token, input);
+    });
+  }
+
+  function removeComboboxToken(type, index) {
+    if (type === 'teacher') {
+      modalTempFilters.teachers.splice(index, 1);
+    } else if (type === 'category') {
+      modalTempFilters.categories.splice(index, 1);
+    } else if (type === 'location') {
+      modalTempFilters.locations.splice(index, 1);
+    }
+    renderComboboxChips(type);
+  }
+
+  function addComboboxToken(type, id, name) {
+    let list = [];
+    if (type === 'teacher') list = modalTempFilters.teachers;
+    else if (type === 'category') list = modalTempFilters.categories;
+    else if (type === 'location') list = modalTempFilters.locations;
+
+    if (!list.some(item => String(item.id) === String(id))) {
+      list.push({ id: String(id), name: String(name) });
+    }
+
+    // Clear input and close dropdown
+    let inputId = type === 'teacher' ? 'advTeacherInput' : (type === 'category' ? 'advCategoryInput' : 'advLocationInput');
+    let input = document.getElementById(inputId);
+    if (input) {
+      input.value = '';
+      input.focus();
+    }
+    closeAllAutocompleteDropdowns();
+    renderComboboxChips(type);
+  }
+
+  // Setup Live Filtering Autocomplete for Teacher, Category, Venue inputs
+  function setupAutocompleteInput(type, inputId, dropdownId, dataKey) {
+    const input = document.getElementById(inputId);
+    const dropdown = document.getElementById(dropdownId);
+    if (!input || !dropdown) return;
+
+    let debounceTimer = null;
+
+    input.addEventListener('input', () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(async () => {
+        const val = input.value.trim().toLowerCase();
+        if (val.length < 1) {
+          dropdown.style.display = 'none';
+          dropdown.innerHTML = '';
+          return;
+        }
+
+        const meta = await loadAutocompleteMeta();
+        if (!meta || !meta[dataKey]) return;
+
+        const items = meta[dataKey];
+        // Strip titles/honorifics from query if searching teachers
+        const cleanVal = type === 'teacher' ? val.replace(/^(rabbi|rav|dr\.|dr|mrs\.|mrs|rebbetzin|r')\s+/i, '').trim() : val;
+        
+        let matches = [];
+        for (const item of items) {
+          const itemName = (item.name || '').toLowerCase();
+          const cleanItemName = type === 'teacher' ? itemName.replace(/^(rabbi|rav|dr\.|dr|mrs\.|mrs|rebbetzin|r')\s+/i, '') : itemName;
+          if (itemName.includes(val) || cleanItemName.includes(cleanVal)) {
+            matches.push(item);
+            if (matches.length >= 25) break;
+          }
+        }
+
+        if (matches.length === 0) {
+          dropdown.innerHTML = '<div style="padding:10px 12px; font-size:12.5px; color:var(--text-muted); text-align:center;">No matching ' + type + 's found</div>';
+          dropdown.style.display = 'block';
+          return;
+        }
+
+        dropdown.innerHTML = matches.map(m => {
+          const countBadge = m.count ? ('<span class="item-count-badge">' + Number(m.count).toLocaleString() + '</span>') : '';
+          return '<div class="autocomplete-item" data-id="' + escapeHtml(m.id) + '" data-name="' + escapeHtml(m.name) + '">' +
+            '<span>' + escapeHtml(m.name) + '</span>' + countBadge +
+          '</div>';
+        }).join('');
+        dropdown.style.display = 'block';
+      }, 100);
+    });
+
+    dropdown.addEventListener('click', (e) => {
+      const item = e.target.closest('.autocomplete-item');
+      if (!item) return;
+      const id = item.getAttribute('data-id');
+      const name = item.getAttribute('data-name');
+      if (id && name) {
+        addComboboxToken(type, id, name);
+      }
+    });
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        dropdown.style.display = 'none';
+      } else if (e.key === 'Backspace' && input.value === '') {
+        // Backspace on empty input removes last chip
+        let list = type === 'teacher' ? modalTempFilters.teachers : (type === 'category' ? modalTempFilters.categories : modalTempFilters.locations);
+        if (list.length > 0) {
+          list.pop();
+          renderComboboxChips(type);
+        }
+      }
+    });
+  }
+
+  // Initialize listeners on DOMContentLoaded
+  document.addEventListener('DOMContentLoaded', () => {
+    setupAutocompleteInput('teacher', 'advTeacherInput', 'teacherDropdown', 'teachers');
+    setupAutocompleteInput('category', 'advCategoryInput', 'categoryDropdown', 'categories');
+    setupAutocompleteInput('location', 'advLocationInput', 'locationDropdown', 'venues');
+
+    // Close autocomplete dropdowns on document click outside
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.autocomplete-combobox')) {
+        closeAllAutocompleteDropdowns();
+      }
+    });
+  });
 
   function setDurationPreset(btn, min, max) {
     document.querySelectorAll('.duration-preset-btn').forEach(b => b.classList.remove('selected'));
@@ -4771,28 +5210,19 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   function resetAdvancedFilters() {
     document.getElementById('advKeywords').value = '';
-    document.getElementById('advTeacherSelect').value = '';
-    document.getElementById('advCategorySelect').value = '';
-    document.getElementById('advLocationSelect').value = '';
     document.getElementById('advYearSelect').value = '';
+    modalTempFilters.teachers = [];
+    modalTempFilters.categories = [];
+    modalTempFilters.locations = [];
+    renderComboboxChips('teacher');
+    renderComboboxChips('category');
+    renderComboboxChips('location');
     const defBtn = document.querySelector('.duration-preset-btn[data-min=""][data-max=""]');
     if (defBtn) setDurationPreset(defBtn, '', '');
   }
 
   function applyAdvancedFilters() {
     const kw = document.getElementById('advKeywords').value.trim();
-    const teacherSelect = document.getElementById('advTeacherSelect');
-    const teacherId = teacherSelect.value;
-    const teacherName = teacherSelect.selectedIndex > 0 ? teacherSelect.options[teacherSelect.selectedIndex].text : '';
-
-    const catSelect = document.getElementById('advCategorySelect');
-    const subCategoryId = catSelect.value;
-    const categoryName = catSelect.selectedIndex > 0 ? catSelect.options[catSelect.selectedIndex].text : '';
-
-    const locSelect = document.getElementById('advLocationSelect');
-    const locationId = locSelect.value;
-    const locationName = locSelect.selectedIndex > 0 ? locSelect.options[locSelect.selectedIndex].text : '';
-
     const selDurationBtn = document.querySelector('.duration-preset-btn.selected');
     const minDuration = selDurationBtn ? selDurationBtn.getAttribute('data-min') : '';
     const maxDuration = selDurationBtn ? selDurationBtn.getAttribute('data-max') : '';
@@ -4804,12 +5234,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
     activeAdvancedFilters = {
       keywords: kw,
-      teacherId,
-      teacherName,
-      subCategoryId,
-      categoryName,
-      locationId,
-      locationName,
+      teachers: [...modalTempFilters.teachers],
+      categories: [...modalTempFilters.categories],
+      locations: [...modalTempFilters.locations],
       minDuration,
       maxDuration,
       durationLabel,
@@ -4819,11 +5246,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
     closeAdvancedModal();
 
-    // Update search bar value with keywords or descriptive search
+    // Update search bar value with keywords or primary speaker if keywords empty
     if (kw) {
       searchInput.value = kw;
-    } else if (teacherName) {
-      searchInput.value = teacherName;
+    } else if (activeAdvancedFilters.teachers.length > 0) {
+      searchInput.value = activeAdvancedFilters.teachers.map(t => t.name).join(', ');
     }
 
     // Execute multi-criteria search
@@ -4838,20 +5265,30 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (!bar) return;
 
     const pills = [];
-    if (activeAdvancedFilters.teacherId && activeAdvancedFilters.teacherName) {
-      pills.push('<span class="active-filter-pill">👤 Speaker: ' + escapeHtml(activeAdvancedFilters.teacherName) + ' <button type="button" onclick="removeFilter(&quot;teacher&quot;)" title="Remove">✕</button></span>');
-    }
-    if (activeAdvancedFilters.subCategoryId && activeAdvancedFilters.categoryName) {
-      pills.push('<span class="active-filter-pill">🏷️ Topic: ' + escapeHtml(activeAdvancedFilters.categoryName) + ' <button type="button" onclick="removeFilter(&quot;category&quot;)" title="Remove">✕</button></span>');
-    }
-    if (activeAdvancedFilters.locationId && activeAdvancedFilters.locationName) {
-      pills.push('<span class="active-filter-pill">📍 Venue: ' + escapeHtml(activeAdvancedFilters.locationName) + ' <button type="button" onclick="removeFilter(&quot;location&quot;)" title="Remove">✕</button></span>');
-    }
+
+    // Teacher pills
+    (activeAdvancedFilters.teachers || []).forEach((t, idx) => {
+      pills.push('<span class="active-filter-pill">👤 ' + escapeHtml(t.name) + ' <button type="button" onclick="removeFilterItem(&quot;teachers&quot;, ' + idx + ')" title="Remove">✕</button></span>');
+    });
+
+    // Category pills
+    (activeAdvancedFilters.categories || []).forEach((c, idx) => {
+      pills.push('<span class="active-filter-pill">🏷️ ' + escapeHtml(c.name) + ' <button type="button" onclick="removeFilterItem(&quot;categories&quot;, ' + idx + ')" title="Remove">✕</button></span>');
+    });
+
+    // Location pills
+    (activeAdvancedFilters.locations || []).forEach((l, idx) => {
+      pills.push('<span class="active-filter-pill">📍 ' + escapeHtml(l.name) + ' <button type="button" onclick="removeFilterItem(&quot;locations&quot;, ' + idx + ')" title="Remove">✕</button></span>');
+    });
+
+    // Duration pill
     if (activeAdvancedFilters.minDuration || activeAdvancedFilters.maxDuration) {
-      pills.push('<span class="active-filter-pill">⏱ Duration: ' + escapeHtml(activeAdvancedFilters.durationLabel) + ' <button type="button" onclick="removeFilter(&quot;duration&quot;)" title="Remove">✕</button></span>');
+      pills.push('<span class="active-filter-pill">⏱ ' + escapeHtml(activeAdvancedFilters.durationLabel) + ' <button type="button" onclick="removeSingleFilter(&quot;duration&quot;)" title="Remove">✕</button></span>');
     }
+
+    // Year pill
     if (activeAdvancedFilters.year) {
-      pills.push('<span class="active-filter-pill">📅 Year: ' + escapeHtml(activeAdvancedFilters.yearLabel || activeAdvancedFilters.year) + ' <button type="button" onclick="removeFilter(&quot;year&quot;)" title="Remove">✕</button></span>');
+      pills.push('<span class="active-filter-pill">📅 ' + escapeHtml(activeAdvancedFilters.yearLabel || activeAdvancedFilters.year) + ' <button type="button" onclick="removeSingleFilter(&quot;year&quot;)" title="Remove">✕</button></span>');
     }
 
     if (pills.length > 0) {
@@ -4867,17 +5304,22 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
   }
 
-  function removeFilter(type) {
-    if (type === 'teacher') {
-      activeAdvancedFilters.teacherId = '';
-      activeAdvancedFilters.teacherName = '';
-    } else if (type === 'category') {
-      activeAdvancedFilters.subCategoryId = '';
-      activeAdvancedFilters.categoryName = '';
-    } else if (type === 'location') {
-      activeAdvancedFilters.locationId = '';
-      activeAdvancedFilters.locationName = '';
-    } else if (type === 'duration') {
+  function removeFilterItem(listKey, index) {
+    if (Array.isArray(activeAdvancedFilters[listKey])) {
+      activeAdvancedFilters[listKey].splice(index, 1);
+    }
+    if (!activeAdvancedFilters.keywords) {
+      if (activeAdvancedFilters.teachers && activeAdvancedFilters.teachers.length > 0) {
+        searchInput.value = activeAdvancedFilters.teachers.map(t => t.name).join(', ');
+      } else {
+        searchInput.value = '';
+      }
+    }
+    executeLiveSearch(activeAdvancedFilters.keywords || '', { ...activeAdvancedFilters });
+  }
+
+  function removeSingleFilter(type) {
+    if (type === 'duration') {
       activeAdvancedFilters.minDuration = '';
       activeAdvancedFilters.maxDuration = '';
       activeAdvancedFilters.durationLabel = '';
@@ -4885,18 +5327,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       activeAdvancedFilters.year = '';
       activeAdvancedFilters.yearLabel = '';
     }
-    executeLiveSearch(activeAdvancedFilters.keywords || searchInput.value.trim(), { ...activeAdvancedFilters });
+    executeLiveSearch(activeAdvancedFilters.keywords || '', { ...activeAdvancedFilters });
   }
 
   function clearAllFilters() {
     activeAdvancedFilters = {
       keywords: '',
-      teacherId: '',
-      teacherName: '',
-      subCategoryId: '',
-      categoryName: '',
-      locationId: '',
-      locationName: '',
+      teachers: [],
+      categories: [],
+      locations: [],
       minDuration: '',
       maxDuration: '',
       durationLabel: '',
@@ -4957,9 +5396,23 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     currentSearchAbort = new AbortController();
 
     let apiUrl = '/api/search?q=' + encodeURIComponent(query || '') + '&start=1';
-    if (extraParams.teacherId) apiUrl += '&teacherId=' + encodeURIComponent(extraParams.teacherId);
-    if (extraParams.locationId) apiUrl += '&locationId=' + encodeURIComponent(extraParams.locationId);
-    if (extraParams.subCategoryId) apiUrl += '&subCategoryId=' + encodeURIComponent(extraParams.subCategoryId);
+
+    // Build multi-valued teacher, category, and location params
+    const teachersList = extraParams.teachers || (extraParams.teacherId ? [{ id: extraParams.teacherId }] : []);
+    teachersList.forEach(t => {
+      apiUrl += '&teacherId=' + encodeURIComponent(t.id);
+    });
+
+    const categoriesList = extraParams.categories || (extraParams.subCategoryId ? [{ id: extraParams.subCategoryId }] : []);
+    categoriesList.forEach(c => {
+      apiUrl += '&subCategoryId=' + encodeURIComponent(c.id);
+    });
+
+    const locationsList = extraParams.locations || (extraParams.locationId ? [{ id: extraParams.locationId }] : []);
+    locationsList.forEach(l => {
+      apiUrl += '&locationId=' + encodeURIComponent(l.id);
+    });
+
     if (extraParams.seriesId) apiUrl += '&seriesId=' + encodeURIComponent(extraParams.seriesId);
     if (extraParams.minDuration) apiUrl += '&minDuration=' + encodeURIComponent(extraParams.minDuration);
     if (extraParams.maxDuration) apiUrl += '&maxDuration=' + encodeURIComponent(extraParams.maxDuration);
@@ -5043,9 +5496,22 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const nextStart = currentLoadedDocsCount + 1;
 
     let apiUrl = '/api/search?q=' + encodeURIComponent(currentSearchQuery || '') + '&start=' + nextStart;
-    if (currentFilterParams.teacherId) apiUrl += '&teacherId=' + encodeURIComponent(currentFilterParams.teacherId);
-    if (currentFilterParams.locationId) apiUrl += '&locationId=' + encodeURIComponent(currentFilterParams.locationId);
-    if (currentFilterParams.subCategoryId) apiUrl += '&subCategoryId=' + encodeURIComponent(currentFilterParams.subCategoryId);
+
+    const teachersList = currentFilterParams.teachers || (currentFilterParams.teacherId ? [{ id: currentFilterParams.teacherId }] : []);
+    teachersList.forEach(t => {
+      apiUrl += '&teacherId=' + encodeURIComponent(t.id);
+    });
+
+    const categoriesList = currentFilterParams.categories || (currentFilterParams.subCategoryId ? [{ id: currentFilterParams.subCategoryId }] : []);
+    categoriesList.forEach(c => {
+      apiUrl += '&subCategoryId=' + encodeURIComponent(c.id);
+    });
+
+    const locationsList = currentFilterParams.locations || (currentFilterParams.locationId ? [{ id: currentFilterParams.locationId }] : []);
+    locationsList.forEach(l => {
+      apiUrl += '&locationId=' + encodeURIComponent(l.id);
+    });
+
     if (currentFilterParams.seriesId) apiUrl += '&seriesId=' + encodeURIComponent(currentFilterParams.seriesId);
     if (currentFilterParams.minDuration) apiUrl += '&minDuration=' + encodeURIComponent(currentFilterParams.minDuration);
     if (currentFilterParams.maxDuration) apiUrl += '&maxDuration=' + encodeURIComponent(currentFilterParams.maxDuration);
@@ -5079,7 +5545,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     } catch (err) {
       console.error('Failed to load more results:', err);
       btn.disabled = false;
-      btnText.textContent = 'Retry Loading More';
+      btnText.textContent = '🔽 Load More Results';
       spinner.style.display = 'none';
     } finally {
       isLoadingMore = false;

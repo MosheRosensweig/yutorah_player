@@ -169,18 +169,20 @@ export function stripSpeakerHonorifics(speakerName) {
 // Known Top Speakers Directory for Quick Resolving
 export const KNOWN_SPEAKERS = [
   { id: '80153', name: 'Rabbi Hershel Schachter', aliases: ['hershel schachter', 'schachter'] },
-  { id: '80018', name: 'Rabbi Michael Rosensweig', aliases: ['michael rosensweig', 'rosensweig'] },
-  { id: '80020', name: 'Rabbi Mayer Twersky', aliases: ['mayer twersky', 'twersky'] },
-  { id: '80753', name: 'Rabbi Aryeh Lebowitz', aliases: ['aryeh lebowitz', 'lebowitz'] },
-  { id: '80124', name: 'Rabbi Yaakov Neuburger', aliases: ['yaakov neuburger', 'neuburger'] },
+  { id: '80146', name: 'Rabbi Michael Rosensweig', aliases: ['michael rosensweig', 'rosensweig'] },
+  { id: '80198', name: 'Rabbi Mayer E. Twersky', aliases: ['mayer twersky', 'twersky', 'mayer e twersky'] },
+  { id: '80714', name: 'Rabbi Aryeh Lebowitz', aliases: ['aryeh lebowitz', 'lebowitz'] },
+  { id: '80124', name: 'Rabbi Yaakov B. Neuburger', aliases: ['yaakov neuburger', 'neuburger', 'yaakov b neuburger'] },
   { id: '80307', name: 'Rabbi Moshe Taragin', aliases: ['moshe taragin', 'taragin'] },
-  { id: '80068', name: 'Rabbi Mordechai Willig', aliases: ['mordechai willig', 'willig'] },
-  { id: '80287', name: 'Rabbi Daniel Z. Feldman', aliases: ['daniel feldman', 'daniel z feldman', 'feldman'] },
-  { id: '80112', name: 'Rabbi Menachem Penner', aliases: ['menachem penner', 'penner'] },
-  { id: '80137', name: 'Rabbi Jeremy Wieder', aliases: ['jeremy wieder', 'wieder'] },
+  { id: '80215', name: 'Rabbi Mordechai I. Willig', aliases: ['mordechai willig', 'willig', 'mordechai i willig'] },
+  { id: '80056', name: 'Rabbi Daniel Z. Feldman', aliases: ['daniel feldman', 'daniel z feldman', 'feldman'] },
+  { id: '80236', name: 'Rabbi Menachem Penner', aliases: ['menachem penner', 'penner'] },
+  { id: '80214', name: 'Rabbi Jeremy Wieder', aliases: ['jeremy wieder', 'wieder'] },
   { id: '82537', name: 'Mrs. Michal Horowitz', aliases: ['michal horowitz', 'horowitz'] },
   { id: '83175', name: 'Mrs. Emma Katz', aliases: ['emma katz'] },
-  { id: '80346', name: 'Rabbi Ally Ehrman', aliases: ['ally ehrman', 'ehrman'] }
+  { id: '80346', name: 'Rabbi Ally Ehrman', aliases: ['ally ehrman', 'ehrman'] },
+  { id: '80182', name: 'Rabbi Zvi Sobolofsky', aliases: ['zvi sobolofsky', 'sobolofsky'] },
+  { id: '80179', name: 'Rabbi Baruch Simon', aliases: ['baruch simon', 'simon'] }
 ];
 
 export function resolveSpeaker(query) {
