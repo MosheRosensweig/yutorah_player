@@ -861,6 +861,51 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       padding: 4px 12px;
       border-radius: 20px;
       white-space: nowrap;
+      cursor: pointer;
+      user-select: none;
+      -webkit-user-select: none;
+      transition: background 0.15s ease;
+    }
+    .hebrew-date-badge:active {
+      background: rgba(0,0,0,0.28);
+    }
+
+    /* Secret Pre-Roll Toggle Toast / Flash HUD */
+    .secret-toast {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0.85);
+      background: rgba(18, 26, 38, 0.95);
+      color: #ffffff;
+      padding: 16px 28px;
+      border-radius: 16px;
+      font-size: 16px;
+      font-weight: 700;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+      border: 1.5px solid rgba(255, 255, 255, 0.2);
+      z-index: 9999999;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-align: center;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+    .secret-toast.visible {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
+    .secret-toast.toast-disabled {
+      border-color: rgba(239, 68, 68, 0.6);
+      box-shadow: 0 12px 40px rgba(239, 68, 68, 0.3);
+    }
+    .secret-toast.toast-enabled {
+      border-color: rgba(34, 197, 94, 0.6);
+      box-shadow: 0 12px 40px rgba(34, 197, 94, 0.3);
     }
 
     /* Main Container */
@@ -2645,10 +2690,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       </div>
       <a href="https://www.givecampus.com/campaigns/50770/donations/new" target="_blank" rel="noopener noreferrer" class="support-yutorah-btn" title="Support YUTorah & Sponsor Learning (Opens in new window)">❤️ Support YUTorah</a>
       <button type="button" id="themeToggleBtn" class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Dark / Light Mode">🌙</button>
-      ${homepageData?.hebrewDateString ? `<div class="hebrew-date-badge">📅 ${escapeHtml(homepageData.hebrewDateString)}</div>` : ''}
+      <div class="hebrew-date-badge" id="hebrewDateBadge" onclick="handleCalendarSecretClick(event)" title="">📅 ${escapeHtml(homepageData?.hebrewDateString || 'Calendar')}</div>
     </div>
   </div>
 </header>
+<div id="secretToast" class="secret-toast" style="display: none;"></div>
 <div class="header-spacer" id="headerSpacer"></div>
 
 <div class="sponsorship-banner">
@@ -3060,6 +3106,77 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   });
   setInterval(refreshDailySponsorship, 900000);
 
+  function isPreRollDisabled() {
+    try {
+      return localStorage.getItem('yutorah_preroll_disabled') === '1';
+    } catch(e) {
+      return false;
+    }
+  }
+
+  // Secret Triple-Click on Calendar Icon to Toggle Pre-roll
+  let calendarClickCount = 0;
+  let calendarClickTimer = null;
+  let toastTimer = null;
+
+  function handleCalendarSecretClick(e) {
+    if (e) {
+      e.stopPropagation();
+    }
+    calendarClickCount++;
+    clearTimeout(calendarClickTimer);
+
+    if (calendarClickCount >= 3) {
+      calendarClickCount = 0;
+      togglePreRollSetting();
+    } else {
+      // 1 or 2 clicks have zero visual effect; reset counter after 1.5s
+      calendarClickTimer = setTimeout(() => {
+        calendarClickCount = 0;
+      }, 1500);
+    }
+  }
+
+  function togglePreRollSetting() {
+    const currentlyDisabled = isPreRollDisabled();
+    const newDisabled = !currentlyDisabled;
+
+    try {
+      if (newDisabled) {
+        localStorage.setItem('yutorah_preroll_disabled', '1');
+      } else {
+        localStorage.removeItem('yutorah_preroll_disabled');
+      }
+    } catch(e) {}
+
+    // If currently playing sponsor audio and user disabled it, immediately skip to shiur!
+    if (newDisabled && isSponsorPlaying && pendingShiur) {
+      skipSponsorAudio();
+    }
+
+    flashToast(newDisabled ? '🚫 Pre-roll Disabled' : '✅ Pre-roll Enabled', newDisabled);
+  }
+
+  function flashToast(msg, isDisabled) {
+    const toast = document.getElementById('secretToast');
+    if (!toast) return;
+    clearTimeout(toastTimer);
+    toast.textContent = msg;
+    toast.className = 'secret-toast ' + (isDisabled ? 'toast-disabled' : 'toast-enabled');
+    toast.style.display = 'flex';
+    void toast.offsetWidth; // Trigger reflow for CSS animation
+    toast.classList.add('visible');
+
+    toastTimer = setTimeout(() => {
+      toast.classList.remove('visible');
+      setTimeout(() => {
+        if (!toast.classList.contains('visible')) {
+          toast.style.display = 'none';
+        }
+      }, 250);
+    }, 1500);
+  }
+
   let isSponsorPlaying = false;
   let sponsorPlayedForThisShiur = false;
   let pendingShiur = null;
@@ -3080,7 +3197,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   function playSponsorPreRoll(shiurObj) {
-    if (!currentSponsorAudio) {
+    if (isPreRollDisabled() || !currentSponsorAudio) {
       startShiurPlayback(shiurObj);
       return;
     }
@@ -4027,7 +4144,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       // Render rich metadata immediately
       renderMetadataBox(data);
 
-      if (DAILY_SPONSOR_AUDIO) {
+      if (currentSponsorAudio && !isPreRollDisabled()) {
         playSponsorPreRoll(shiurObj);
       } else {
         startShiurPlayback(shiurObj);
@@ -4600,7 +4717,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   function togglePlay() {
     if (!audio.src) {
       if (pendingShiur) {
-        if (!sponsorPlayedForThisShiur && DAILY_SPONSOR_AUDIO) {
+        if (!sponsorPlayedForThisShiur && currentSponsorAudio && !isPreRollDisabled()) {
           playSponsorPreRoll(pendingShiur);
           return;
         } else {
@@ -4614,7 +4731,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       return;
     }
     if (audio.paused) {
-      if (!sponsorPlayedForThisShiur && DAILY_SPONSOR_AUDIO && pendingShiur && !isSponsorPlaying) {
+      if (!sponsorPlayedForThisShiur && currentSponsorAudio && pendingShiur && !isSponsorPlaying && !isPreRollDisabled()) {
         playSponsorPreRoll(pendingShiur);
         return;
       }
