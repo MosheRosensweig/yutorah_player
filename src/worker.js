@@ -613,6 +613,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     audioUrl = directAudio;
   }
 
+  let currentTeacherId = '';
+  if (shiurData) {
+    if (Array.isArray(shiurData.shiurTeachers) && shiurData.shiurTeachers[0]) {
+      currentTeacherId = String(shiurData.shiurTeachers[0].teacherID || shiurData.shiurTeachers[0].id || '');
+    }
+    if (!currentTeacherId && shiurData.teacherID) {
+      currentTeacherId = String(shiurData.teacherID);
+    }
+  }
+
   // Collections data
   let editorsPicks = [];
   let featuredSeries = [];
@@ -1747,6 +1757,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       font-weight: 600;
       color: var(--primary);
       margin-bottom: 4px;
+      cursor: pointer;
+      display: inline-block;
     }
     .shiur-meta {
       font-size: 13px;
@@ -2916,10 +2928,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
     <!-- Main Shiur Header (Always preserved on top) -->
     <div class="shiur-header">
-      <img id="speakerImg" class="speaker-photo" src="${escapeHtml(photo)}" alt="${escapeHtml(speaker)}">
+      <img id="speakerImg" class="speaker-photo" src="${escapeHtml(photo)}" alt="${escapeHtml(speaker)}" onclick="handleSpeakerClick()" style="cursor: pointer;" title="View speaker page">
       <div class="shiur-details">
         <h1 id="shiurTitle" class="shiur-title">${escapeHtml(title)}</h1>
-        <div id="shiurSpeaker" class="shiur-speaker">${escapeHtml(speaker)}</div>
+        <div id="shiurSpeaker" class="shiur-speaker" onclick="handleSpeakerClick()" title="View speaker page">${escapeHtml(speaker)}</div>
         <div id="shiurMeta" class="shiur-meta">${escapeHtml(meta)}</div>
       </div>
     </div>
@@ -2992,7 +3004,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       ${shiurTeachers.length > 0 ? `
       <div class="meta-row">
         <span class="meta-label">👤 Speaker</span>
-        ${shiurTeachers.map(t => `<button class="meta-chip speaker-chip" onclick="filterByTeacher(${JSON.stringify(t.id)}, ${JSON.stringify(t.name).replace(/'/g, '&#39;')})">${escapeHtml(t.name)}</button>`).join('')}
+        ${shiurTeachers.map(t => `<button class="meta-chip speaker-chip" onclick='filterByTeacher(${JSON.stringify(t.id)}, ${JSON.stringify(t.name).replace(/'/g, '&#39;')})'>${escapeHtml(t.name)}</button>`).join('')}
       </div>` : ''}
       ${shiurDate ? `
       <div class="meta-row">
@@ -3002,20 +3014,20 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       ${shiurLocations.length > 0 ? `
       <div class="meta-row">
         <span class="meta-label">📍 Venue</span>
-        ${shiurLocations.map(loc => `<button class="meta-chip venue-chip" onclick="filterByLocation(${JSON.stringify(loc.id)}, ${JSON.stringify(loc.name).replace(/'/g, '&#39;')})">${escapeHtml(loc.name)}</button>`).join('')}
+        ${shiurLocations.map(loc => `<button class="meta-chip venue-chip" onclick='filterByLocation(${JSON.stringify(loc.id)}, ${JSON.stringify(loc.name).replace(/'/g, '&#39;')})'>${escapeHtml(loc.name)}</button>`).join('')}
       </div>` : ''}
       ${Object.keys(shiurCategories).length > 0 ? `
       <div class="meta-row">
         <span class="meta-label">📂 Topics</span>
         ${Object.entries(shiurCategories).map(([groupName, cats]) =>
           `<span class="meta-group-name">${escapeHtml(groupName)}:</span>` +
-          cats.map(c => `<button class="meta-chip category-chip" onclick="filterByCategory(${JSON.stringify(c.id)}, ${JSON.stringify(c.name).replace(/'/g, '&#39;')})">${escapeHtml(c.name)}</button>`).join('')
+          cats.map(c => `<button class="meta-chip category-chip" onclick='filterByCategory(${JSON.stringify(c.id)}, ${JSON.stringify(c.name).replace(/'/g, '&#39;')})'>${escapeHtml(c.name)}</button>`).join('')
         ).join(' ')}
       </div>` : ''}
       ${shiurKeywords.length > 0 ? `
       <div class="meta-row">
         <span class="meta-label">🏷️ Tags</span>
-        ${shiurKeywords.map(k => `<button class="meta-chip keyword-chip" onclick="searchFor(${JSON.stringify(k.title).replace(/'/g, '&#39;')})">${escapeHtml(k.title)}</button>`).join('')}
+        ${shiurKeywords.map(k => `<button class="meta-chip keyword-chip" onclick='searchFor(${JSON.stringify(k.title).replace(/'/g, '&#39;')})'>${escapeHtml(k.title)}</button>`).join('')}
       </div>` : ''}
     </div>
   </div>
@@ -3185,6 +3197,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   let lastUrlUpdateTime = 0;
   let isManuallyMinimized = false;
   let isExpandingUntil = 0;
+  let currentSpeakerTeacherId = ${JSON.stringify(currentTeacherId || '')};
+  let currentSpeakerName = ${JSON.stringify(speaker || '')};
+
+  function handleSpeakerClick() {
+    if (currentSpeakerTeacherId) {
+      filterByTeacher(currentSpeakerTeacherId, currentSpeakerName);
+    } else if (currentSpeakerName) {
+      searchFor(currentSpeakerName);
+    }
+  }
 
   const DAILY_SPONSOR_AUDIO = ${JSON.stringify(sponsorshipAudioUrl || '')};
   const DAILY_SPONSOR_TEXT = ${JSON.stringify(sponsorshipText || '')};
@@ -3330,6 +3352,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       id: currentShiurId,
       title: ${JSON.stringify(title || '')},
       speaker: ${JSON.stringify(speaker || '')},
+      teacherId: ${JSON.stringify(currentTeacherId || '')},
       photo: ${JSON.stringify(photo || '')},
       duration: ${JSON.stringify(duration || '')},
       meta: ${JSON.stringify(meta || '')},
@@ -3356,6 +3379,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (bodyEl && currentSponsorText) bodyEl.innerHTML = currentSponsorText;
       const countdownEl = document.getElementById('sponsorCountdown');
       if (countdownEl) countdownEl.textContent = '10';
+    }
+
+    if (shiurObj) {
+      currentSpeakerTeacherId = shiurObj.teacherId || '';
+      currentSpeakerName = shiurObj.speaker || '';
     }
 
     document.title = shiurObj.title + " — YUTorah Enhanced";
@@ -3443,6 +3471,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (scrubberBar) scrubberBar.classList.remove('is-sponsor-preroll');
     const miniBar = document.getElementById('miniProgressBar');
     if (miniBar) miniBar.classList.remove('is-sponsor-preroll');
+
+    if (shiurObj) {
+      currentSpeakerTeacherId = shiurObj.teacherId || '';
+      currentSpeakerName = shiurObj.speaker || '';
+    }
 
     document.title = shiurObj.title + ' — YUTorah Enhanced';
     const titleEl = document.getElementById('shiurTitle');
@@ -4285,6 +4318,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       const audioSrc = data.playerDownloadURL || (data.shiurURL ? 'https://shiurim.yutorah.net' + data.shiurURL : '') || data.downloadURL || '';
       const dlSrc = data.downloadURL || audioSrc;
 
+      let teacherId = '';
+      if (Array.isArray(data.shiurTeachers) && data.shiurTeachers[0]) {
+        teacherId = String(data.shiurTeachers[0].teacherID || data.shiurTeachers[0].id || '');
+      }
+      if (!teacherId && data.teacherID) {
+        teacherId = String(data.teacherID);
+      }
+      currentSpeakerTeacherId = teacherId;
+      currentSpeakerName = speaker;
+
       document.title = title + ' — YUTorah Enhanced';
       document.getElementById('shiurTitle').textContent = title;
       document.getElementById('shiurSpeaker').textContent = speaker;
@@ -4347,6 +4390,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         id: id,
         title: title,
         speaker: speaker,
+        teacherId: teacherId,
         photo: photo,
         duration: duration,
         date: date,
