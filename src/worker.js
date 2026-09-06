@@ -1325,9 +1325,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         gap: 5px;
       }
       .support-yutorah-btn {
-        font-size: 11px;
-        padding: 3px 7px;
-        gap: 3px;
+        display: none !important;
       }
       .theme-toggle-btn {
         font-size: 18px;
@@ -1339,7 +1337,19 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       }
       .sponsorship-banner {
         font-size: 11.5px;
-        padding: 6px 10px;
+        padding: 8px 12px;
+      }
+      .sponsorship-content {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 6px;
+      }
+      .sponsorship-support-pill {
+        margin-left: 0;
+        margin-top: 4px;
+        padding: 4px 14px;
+        font-size: 11.5px;
       }
       .timely-banner {
         padding: 8px 10px;
