@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <!-- Morning Dawn Sun Rays behind Shofar -->
+  <circle cx="50" cy="50" r="38" fill="#fcf6ec" stroke="#e8d3b8" stroke-width="1.5"/>
+  <path d="M50 16 L50 22 M50 78 L50 84 M16 50 L22 50 M78 50 L84 50" stroke="#d4a373" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+  <!-- Shofar horn resting across center -->
+  <path d="M22 68 C 30 64, 38 50, 50 40 C 62 30, 72 26, 82 26 C 85 26, 86 28, 86 31 C 86 39, 78 48, 68 53 C 54 60, 44 62, 32 74 C 26 80, 19 78, 18 73 C 17 70, 19 69, 22 68 Z" 
+        fill="#b88646" stroke="#5c3813" stroke-width="2.5" stroke-linejoin="round"/>
+  <ellipse cx="82" cy="34" rx="3.5" ry="8" fill="#3d2105"/>
+  <circle cx="19" cy="71" r="2.5" fill="#3d2105"/>
+</svg>

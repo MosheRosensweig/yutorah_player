@@ -6,6 +6,10 @@
  * and proxies real-time searches across 440,000+ YUTorah shiurim without Cloudflare blocking.
  */
 
+import { getHebrewDateInfo, getActiveHolidayTheme } from './hebrew_calendar.js';
+import { THEMES } from './theme_definitions.js';
+import { THEME_ASSETS } from './theme_assets.js';
+
 const TARGET_API_ORIGIN = 'https://www.yutorah.org';
 const API_ORIGIN = 'https://api.yutorah.org';
 
@@ -31,6 +35,54 @@ async function getHomepageData() {
     console.error('Error fetching homepage data:', e);
   }
   return homeDataCache;
+}
+
+// In-memory cache for live daily sponsorship (10 minutes)
+let sponsorshipCache = null;
+let sponsorshipCacheTime = 0;
+
+async function getDailySponsorship() {
+  const now = Date.now();
+  if (sponsorshipCache && (now - sponsorshipCacheTime < 600000)) {
+    return sponsorshipCache;
+  }
+  try {
+    const res = await fetch('https://www.yutorah.org/', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+      }
+    });
+    if (res.ok) {
+      const html = await res.text();
+      const match = html.match(/Learning on the Marcos and Adina Katz YUTorah site is sponsored today[\s\S]*?<\/p>/i);
+      if (match) {
+        const nameMatch = match[0].match(/id="sponsorSpan_sponsorName">([\s\S]*?)<\/span>/i);
+        const sponsorName = nameMatch ? nameMatch[1].replace(/<[^>]+>/g, '').trim() : '';
+        const fullText = match[0].replace(/<\/p>/i, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+
+        let formatted = escapeHtml(fullText);
+        if (sponsorName && fullText.includes(sponsorName)) {
+          const parts = fullText.split(sponsorName);
+          formatted = escapeHtml(parts[0]) + '<strong>' + escapeHtml(sponsorName) + '</strong>' + escapeHtml(parts.slice(1).join(sponsorName));
+        }
+
+        if (formatted) {
+          sponsorshipCache = formatted;
+          sponsorshipCacheTime = now;
+          return sponsorshipCache;
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Error fetching live sponsorship:', e);
+  }
+
+  // Fallback if live fetch fails or no current sponsor
+  if (!sponsorshipCache) {
+    sponsorshipCache = 'Learning on the Marcos and Adina Katz YUTorah site is sponsored today by <strong>The Ohayon family in Hamilton, ON</strong> to mark the yahrtzeit of Shimon ben Issaschar Ruimy on 24 Elul and for a refuah shleima for Avraham Yitzchak Fishel ben Chaina Shifra';
+  }
+  return sponsorshipCache;
 }
 
 // Fallback featured shiurim if API is unreachable
@@ -241,6 +293,22 @@ export default {
       }
     }
 
+    // 3b. Serve Theme SVG Assets: /assets/themes/:file
+    if (url.pathname.startsWith('/assets/themes/')) {
+      const filename = url.pathname.replace('/assets/themes/', '');
+      const svgContent = THEME_ASSETS[filename];
+      if (svgContent) {
+        return new Response(svgContent, {
+          headers: {
+            'Content-Type': 'image/svg+xml; charset=utf-8',
+            'Cache-Control': 'public, max-age=86400',
+            'Access-Control-Allow-Origin': '*'
+          }
+        });
+      }
+      return new Response('Theme asset not found', { status: 404 });
+    }
+
     // 4. Extract Shiur ID or Search Query from URL
     let shiurId = url.searchParams.get('shiurId') || url.searchParams.get('shiurID') || url.searchParams.get('id');
     const pathMatch = url.pathname.match(/^\/(?:lectures\/)?([0-9]+)/);
@@ -251,6 +319,14 @@ export default {
     const searchQuery = url.searchParams.get('search') || url.searchParams.get('q') || '';
     const directAudio = url.searchParams.get('audioUrl') || url.searchParams.get('url');
     const timestamp = url.searchParams.get('t') || '';
+    const speedParam = url.searchParams.get('speed') || url.searchParams.get('rate') || '';
+    const rawThemeParam = (url.searchParams.get('theme') || url.searchParams.get('mode') || '').toLowerCase();
+    let themeMode = '';
+    if (rawThemeParam === 'dark' || url.searchParams.get('dark') === '1' || (url.searchParams.has('dark') && url.searchParams.get('dark') !== '0')) {
+      themeMode = 'dark';
+    } else if (rawThemeParam === 'light' || url.searchParams.get('dark') === '0' || url.searchParams.get('light') === '1') {
+      themeMode = 'light';
+    }
 
     // 5. If a shiurId is requested, pre-fetch metadata
     let shiurData = null;
@@ -291,8 +367,12 @@ export default {
       }
     }
 
-    // Pre-fetch homepage collections for cards
-    homepageData = await getHomepageData();
+    // Pre-fetch homepage collections and live daily sponsorship in parallel
+    let sponsorshipText = '';
+    [homepageData, sponsorshipText] = await Promise.all([
+      getHomepageData(),
+      getDailySponsorship()
+    ]);
 
     // 7. Render and return the HTML app
     return new Response(renderAppHtml({
@@ -300,7 +380,10 @@ export default {
       shiurId,
       directAudio,
       timestamp,
+      playbackSpeed: speedParam,
+      themeMode,
       homepageData,
+      sponsorshipText,
       searchQuery,
       initialSearchResults,
       initialNumFound
@@ -382,7 +465,7 @@ function normalizeShiur(s) {
   return { id, title, speaker, photo, duration, date, category };
 }
 
-function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageData, searchQuery, initialSearchResults, initialNumFound = 0 }) {
+function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpeed = '', themeMode = '', homepageData, sponsorshipText = '', searchQuery, initialSearchResults, initialNumFound = 0 }) {
   const isPlaying = Boolean(shiurData || directAudio);
 
   let title = 'YUTorah Enhanced Player';
@@ -487,18 +570,63 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
   const parshaCatMatch = timely?.parshaURL ? timely.parshaURL.match(/category=([0-9]+)/) : null;
   const parshaCatId = parshaCatMatch ? parshaCatMatch[1] : '233995';
 
+  const baseSpeeds = [
+    { val: '0.5', label: '0.5x' },
+    { val: '0.75', label: '0.75x' },
+    { val: '1', label: '1.0x' },
+    { val: '1.25', label: '1.25x' },
+    { val: '1.5', label: '1.5x' },
+    { val: '1.75', label: '1.75x' },
+    { val: '2', label: '2.0x' },
+    { val: '2.5', label: '2.5x' },
+    { val: '3', label: '3.0x' }
+  ];
+  const activeSpeedNum = (playbackSpeed && !isNaN(parseFloat(playbackSpeed)) && parseFloat(playbackSpeed) > 0) ? parseFloat(playbackSpeed) : 1;
+  const activeSpeedStr = String(activeSpeedNum);
+  const allSpeeds = [...baseSpeeds];
+  if (!baseSpeeds.some(s => parseFloat(s.val) === activeSpeedNum) && activeSpeedNum <= 5) {
+    allSpeeds.push({ val: activeSpeedStr, label: activeSpeedStr + 'x' });
+    allSpeeds.sort((a, b) => parseFloat(a.val) - parseFloat(b.val));
+  }
+  const speedOptionsHtml = allSpeeds.map(s => {
+    const isSelected = parseFloat(s.val) === activeSpeedNum;
+    return `<option value="${s.val}" ${isSelected ? 'selected' : ''}>${s.label}</option>`;
+  }).join('\n          ');
+
+  const htmlThemeAttr = themeMode === 'dark' ? ' data-theme="dark"' : '';
+
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en"${htmlThemeAttr}>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>${escapeHtml(title)} — YUTorah Enhanced</title>
+  <link rel="icon" type="image/png" href="https://cdnyutorah.cachefly.net/public/v3/images/logo-university-2x.png">
   <script>
     (function() {
       try {
-        var saved = localStorage.getItem('yutorah_theme');
-        var dark = saved ? saved === 'dark' : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
-        if (dark) document.documentElement.setAttribute('data-theme', 'dark');
+        var p = new URLSearchParams(window.location.search);
+        var urlTheme = (p.get('theme') || p.get('mode') || '').toLowerCase();
+        var dark = false;
+        if (urlTheme === 'dark' || p.get('dark') === '1' || (p.has('dark') && p.get('dark') !== '0')) {
+          dark = true;
+          try { localStorage.setItem('yutorah_theme', 'dark'); } catch(e) {}
+        } else if (urlTheme === 'light' || p.get('dark') === '0' || p.get('light') === '1') {
+          dark = false;
+          try { localStorage.setItem('yutorah_theme', 'light'); } catch(e) {}
+        } else {
+          var saved = localStorage.getItem('yutorah_theme');
+          dark = saved ? saved === 'dark' : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        }
+        if (dark) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        } else {
+          document.documentElement.removeAttribute('data-theme');
+        }
+
+        // [DEAD CODE / INACTIVE] Simple View mode switcher
+        // var savedMode = localStorage.getItem('yutorah_view_mode');
+        // if (savedMode === 'simple') document.documentElement.setAttribute('data-view', 'simple');
       } catch(e) {}
     })();
   </script>
@@ -536,6 +664,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       background: #131c2a;
       color: #e7edf7;
       border-color: #28364d;
+    }
+    [data-theme="dark"] input:focus,
+    [data-theme="dark"] select:focus {
+      background: #1a2638;
+      color: #ffffff;
+      border-color: #436ea8;
+      box-shadow: 0 0 0 3px rgba(67, 110, 168, 0.25);
     }
     [data-theme="dark"] .chip {
       background: #141f2f;
@@ -798,6 +933,30 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       color: #3b2c06;
       font-weight: 700;
     }
+    .sponsorship-support-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-left: 6px;
+      padding: 2px 10px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #4a3600;
+      background: rgba(184, 134, 11, 0.12);
+      border: 1px solid rgba(184, 134, 11, 0.35);
+      border-radius: 12px;
+      text-decoration: none;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+      vertical-align: middle;
+    }
+    .sponsorship-support-pill:hover {
+      background: rgba(184, 134, 11, 0.22);
+      border-color: rgba(184, 134, 11, 0.55);
+      transform: translateY(-1px);
+      color: #2b1f00;
+      text-decoration: none;
+    }
     [data-theme="dark"] .sponsorship-banner {
       background: linear-gradient(90deg, #141a24 0%, #1a2230 50%, #141a24 100%);
       border-bottom: 1px solid #29384e;
@@ -807,12 +966,57 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     [data-theme="dark"] .sponsorship-banner strong {
       color: #fae4a5;
     }
+    [data-theme="dark"] .sponsorship-support-pill {
+      color: #fae4a5;
+      background: rgba(250, 228, 165, 0.12);
+      border-color: rgba(250, 228, 165, 0.3);
+    }
+    [data-theme="dark"] .sponsorship-support-pill:hover {
+      background: rgba(250, 228, 165, 0.24);
+      border-color: rgba(250, 228, 165, 0.55);
+      color: #ffffff;
+    }
 
     .header-right {
       display: flex;
       align-items: center;
       gap: 8px;
       flex-shrink: 0;
+    }
+    .support-yutorah-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      color: #ffffff !important;
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 14px;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+      line-height: 1.3;
+      flex-shrink: 0;
+    }
+    .support-yutorah-btn:hover {
+      background: rgba(255, 255, 255, 0.24);
+      border-color: rgba(255, 255, 255, 0.45);
+      transform: translateY(-1px);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+      color: #ffffff !important;
+      text-decoration: none;
+    }
+    [data-theme="dark"] .support-yutorah-btn {
+      background: rgba(92, 142, 204, 0.15);
+      border-color: rgba(92, 142, 204, 0.3);
+      color: #e2eeff !important;
+    }
+    [data-theme="dark"] .support-yutorah-btn:hover {
+      background: rgba(92, 142, 204, 0.28);
+      border-color: rgba(92, 142, 204, 0.5);
+      color: #ffffff !important;
     }
     .theme-toggle-btn {
       background: none !important;
@@ -847,6 +1051,259 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       transform: scale(1.22);
     }
 
+    /* [DEAD CODE / INACTIVE] Settings Dropdown, Simple View & Theme Picker */
+    .settings-wrapper {
+      position: relative;
+      display: none !important; /* Hidden as requested */
+      align-items: center;
+    }
+    .settings-btn {
+      font-size: 19px !important;
+      padding: 0 3px;
+      cursor: pointer;
+      line-height: 1;
+      transition: transform 0.25s ease;
+    }
+    .settings-btn:hover {
+      transform: rotate(45deg);
+    }
+    .settings-menu {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+      min-width: 220px;
+      padding: 6px;
+      z-index: 1100;
+      animation: menuFadeIn 0.15s ease-out;
+    }
+    @keyframes menuFadeIn {
+      from { opacity: 0; transform: translateY(-6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .settings-menu-item {
+      width: 100%;
+      text-align: left;
+      background: none;
+      border: none;
+      padding: 10px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: background 0.15s ease, color 0.15s ease;
+      white-space: nowrap;
+      outline: none !important;
+      -webkit-tap-highlight-color: transparent !important;
+    }
+    .settings-menu-item:hover {
+      background: var(--border-light);
+      color: var(--primary);
+    }
+    [data-theme="dark"] .settings-menu {
+      background: #182232;
+      border-color: #28364d;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    }
+    [data-theme="dark"] .settings-menu-item:hover {
+      background: #243247;
+      color: #7ca5de;
+    }
+
+    /* Settings Menu Section & Controls */
+    .settings-menu-divider {
+      height: 1px;
+      background: var(--border);
+      margin: 6px 0;
+    }
+    .settings-menu-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--text-muted);
+      padding: 6px 12px 2px;
+    }
+    .theme-select-wrap {
+      padding: 4px 10px 8px;
+    }
+    .theme-select {
+      width: 100%;
+      padding: 6px 8px;
+      font-size: 12px;
+      font-weight: 600;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--text);
+      cursor: pointer;
+      outline: none;
+    }
+    .variant-toggle-wrap {
+      display: flex;
+      gap: 4px;
+      padding: 4px 10px 8px;
+    }
+    .variant-btn {
+      flex: 1;
+      padding: 5px 8px;
+      font-size: 11px;
+      font-weight: 700;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text-muted);
+      border-radius: 5px;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s ease;
+    }
+    .variant-btn.active {
+      background: var(--primary);
+      color: #ffffff;
+      border-color: var(--primary);
+    }
+    .chanukah-day-select-wrap {
+      padding: 2px 10px 8px;
+    }
+
+    /* Holiday Theme Header Motif & Tagline Banner */
+    .holiday-motif-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 10px;
+      background: rgba(255, 255, 255, 0.7);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--primary);
+      margin-left: 6px;
+      vertical-align: middle;
+      transition: all 0.3s ease;
+    }
+    .holiday-motif-icon {
+      width: 20px;
+      height: 20px;
+      display: inline-block;
+      vertical-align: middle;
+      flex-shrink: 0;
+    }
+    .holiday-motif-title {
+      white-space: nowrap;
+    }
+    .holiday-tagline-bar {
+      text-align: center;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--primary);
+      padding: 3px 12px;
+      background: rgba(255, 255, 255, 0.5);
+      border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+      letter-spacing: 0.3px;
+    }
+    [data-theme="dark"] .holiday-motif-wrap,
+    [data-theme="dark"] .holiday-tagline-bar {
+      display: none !important;
+    }
+
+    /* Mode Switch Overlay ("CSR" / "MGR") */
+    .mode-switch-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 999999;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(15, 20, 28, 0.45);
+      backdrop-filter: blur(5px);
+      -webkit-backdrop-filter: blur(5px);
+      animation: overlayFade 1s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+    }
+    .mode-switch-text {
+      font-size: clamp(80px, 22vw, 170px);
+      font-weight: 900;
+      letter-spacing: 12px;
+      color: #ffffff;
+      text-shadow: 0 4px 25px rgba(0, 0, 0, 0.7), 0 0 60px rgba(67, 110, 168, 0.9), 0 0 120px rgba(43, 76, 126, 0.7);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+      animation: growAndFade 1s cubic-bezier(0.15, 0.85, 0.35, 1) forwards;
+    }
+    @keyframes overlayFade {
+      0% { opacity: 0; }
+      20% { opacity: 1; }
+      75% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+    @keyframes growAndFade {
+      0% {
+        opacity: 0;
+        transform: scale(0.3);
+        filter: blur(10px);
+      }
+      25% {
+        opacity: 1;
+        transform: scale(1.0);
+        filter: blur(0);
+      }
+      75% {
+        opacity: 1;
+        transform: scale(1.35);
+        filter: blur(0);
+      }
+      100% {
+        opacity: 0;
+        transform: scale(1.75);
+        filter: blur(14px);
+      }
+    }
+
+    /* Popular tab hidden by default in full mode, shown in simple mode */
+    #tab-popular {
+      display: none;
+    }
+
+    /* Simple View Mode Overrides (Classic Clean 4-Tab Look) */
+    [data-view="simple"] #tab-series,
+    [data-view="simple"] #tab-viewed,
+    [data-view="simple"] #tab-parsha,
+    [data-view="simple"] #tab-trending {
+      display: none !important;
+    }
+    [data-view="simple"] #grid-series,
+    [data-view="simple"] #grid-viewed,
+    [data-view="simple"] #grid-parsha,
+    [data-view="simple"] #grid-trending {
+      display: none !important;
+    }
+    [data-view="simple"] #tab-popular {
+      display: inline-flex !important;
+    }
+    [data-view="simple"] .bio-banner {
+      display: none !important;
+    }
+    [data-view="simple"] .timely-link {
+      background: none !important;
+      border: none !important;
+      padding: 0 !important;
+      transform: none !important;
+      box-shadow: none !important;
+      cursor: default;
+    }
+    [data-view="simple"] .timely-link .timely-val {
+      text-decoration: none !important;
+    }
+
     @media (max-width: 600px) {
       header {
         padding: 8px 10px;
@@ -865,7 +1322,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
         letter-spacing: 0.4px;
       }
       .header-right {
-        gap: 4px;
+        gap: 5px;
+      }
+      .support-yutorah-btn {
+        font-size: 11px;
+        padding: 3px 7px;
+        gap: 3px;
       }
       .theme-toggle-btn {
         font-size: 18px;
@@ -930,6 +1392,23 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       border-color: var(--primary);
       background: #fff;
       box-shadow: 0 0 0 3px rgba(43, 76, 126, 0.12);
+    }
+    [data-theme="dark"] .search-input {
+      background: #131c2a;
+      color: #e7edf7;
+      border-color: #28364d;
+    }
+    [data-theme="dark"] .search-input:focus {
+      background: #1a2638 !important;
+      color: #ffffff !important;
+      border-color: #436ea8 !important;
+      box-shadow: 0 0 0 3px rgba(67, 110, 168, 0.28) !important;
+    }
+    [data-theme="dark"] .search-input::placeholder {
+      color: #7b8fa7;
+    }
+    [data-theme="dark"] .search-icon {
+      color: #7b8fa7;
     }
     .clear-search-btn {
       position: absolute;
@@ -1962,6 +2441,76 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       🎧 YUTorah Enhanced <span>PLAYER</span>
     </a>
     <div class="header-right">
+      <div id="holidayMotifWrap" class="holiday-motif-wrap" style="display: none;">
+        <span id="holidayMotifIcon" class="holiday-motif-icon"></span>
+        <span id="holidayMotifTitle" class="holiday-motif-title"></span>
+      </div>
+      <!-- [DEAD CODE / TEMPORARILY HIDDEN] Settings button, Simple View switch, and Holiday Theme preview picker -->
+      <div class="settings-wrapper" style="display: none !important;" aria-hidden="true">
+        <button type="button" id="settingsBtn" class="theme-toggle-btn settings-btn" onclick="toggleSettingsMenu(event)" title="Settings" style="display: none !important;">⚙️</button>
+        <div id="settingsMenu" class="settings-menu" style="display: none !important;">
+          <!-- [DEAD CODE / INACTIVE] Switch to Simple View -->
+          <button type="button" id="toggleViewModeBtn" class="settings-menu-item" onclick="toggleViewMode(event)" style="display: none !important;">
+            <span id="viewModeIcon">✨</span> <span id="viewModeText">Switch to Simple View</span>
+          </button>
+          <div class="settings-menu-divider" style="display: none !important;"></div>
+          <!-- [DEAD CODE / INACTIVE] Holiday Theme Preview Picker -->
+          <div class="settings-menu-label" style="display: none !important;">🎨 Holiday Theme Preview</div>
+          <div class="theme-select-wrap" style="display: none !important;">
+            <select id="holidayThemeSelect" class="theme-select" onchange="onHolidayThemeSelect(this.value)">
+              <option value="auto">✨ Auto-Detect (Hebrew Date)</option>
+              <optgroup label="High Holidays & Fall">
+                <option value="elul">✓ Chodesh Elul (Variant A — Classic Shofar)</option>
+                <option value="rosh_hashanah">✓ Rosh Hashanah (Random A/B)</option>
+                <option value="teshuva">Aseres Yemei Teshuva</option>
+                <option value="yom_kippur">✓ Yom Kippur (Variant A — Beis HaMikdash Heichal)</option>
+                <option value="sukkos">✓ Sukkos (Random A/B)</option>
+                <option value="hoshana_rabbah">Hoshana Rabbah (Aravos)</option>
+                <option value="simchas_torah">✓ Simchas Torah (Random A/B)</option>
+                <option value="rosh_chodesh_cheshvan">Rosh Chodesh Mar Cheshvan</option>
+              </optgroup>
+              <optgroup label="Chanukah (8 Days)">
+                <option value="chanukah_1">✓ Chanukah — Night 1 (1 Candle)</option>
+                <option value="chanukah_2">✓ Chanukah — Night 2 (2 Candles)</option>
+                <option value="chanukah_3">✓ Chanukah — Night 3 (3 Candles)</option>
+                <option value="chanukah_4">✓ Chanukah — Night 4 (4 Candles)</option>
+                <option value="chanukah_5">✓ Chanukah — Night 5 (5 Candles)</option>
+                <option value="chanukah_6">✓ Chanukah — Night 6 (6 Candles)</option>
+                <option value="chanukah_7">✓ Chanukah — Night 7 (7 Candles)</option>
+                <option value="chanukah_8">✓ Chanukah — Night 8 (8 Candles)</option>
+              </optgroup>
+              <optgroup label="Winter & Spring">
+                <option value="tubshevat">✓ Tu B'Shevat (Variant A — Flowering Fruit Tree)</option>
+                <option value="adar_buildup">✓ Rosh Chodesh Adar (Random A/B)</option>
+                <option value="taanis_esther">✓ Ta'anis Esther (Variant A — Royal Megillah Scroll)</option>
+                <option value="purim">✓ Purim (Variant A — Royal Shushan Crown & Megillah)</option>
+                <option value="nissan_buildup">✓ Rosh Chodesh Nissan → Pesach (Random A/B)</option>
+                <option value="pesach">✓ Pesach (Random A/B)</option>
+                <option value="omer">✓ Sefiras HaOmer (Variant A — Random Icon A/B)</option>
+                <option value="yom_hazikaron">✓ Yom HaZikaron (Variant A — Memorial Flame)</option>
+                <option value="yom_haatzmaut">✓ Yom HaAtzmaut (Variant B — Waving Flag)</option>
+                <option value="lag_baomer">✓ Lag BaOmer (Random A/B — Clean)</option>
+                <option value="yom_yerushalayim">✓ Yom Yerushalayim (Variant A — Golden Kotel)</option>
+                <option value="shavuos">✓ Shavuos (Random A/B)</option>
+              </optgroup>
+              <optgroup label="Summer">
+                <option value="july4">✓ July 4th (Variant A — American Flag)</option>
+                <option value="three_weeks">✓ The Three Weeks (Variant A — Sandstone Candle)</option>
+                <option value="nine_days">✓ The Nine Days (Random A/B)</option>
+                <option value="tisha_bav">✓ Tisha B'Av (Variant A — Solitary Flame on Kotel Stone)</option>
+                <option value="tubav">✓ Tu B'Av (Variant A — Vine Blossom & Heart)</option>
+                <option value="rosh_chodesh">✓ Rosh Chodesh (Variant A — Crescent Moon)</option>
+              </optgroup>
+            </select>
+          </div>
+          <div class="variant-toggle-wrap" style="display: none !important;">
+            <button type="button" id="variantBtnA" class="variant-btn active" onclick="setThemeVariant('a')">Variant A</button>
+            <button type="button" id="variantBtnB" class="variant-btn" onclick="setThemeVariant('b')">Variant B</button>
+            <button type="button" id="variantBtnC" class="variant-btn" onclick="setThemeVariant('c')" style="display:none;">Variant C</button>
+          </div>
+        </div>
+      </div>
+      <a href="https://www.givecampus.com/campaigns/50770/donations/new" target="_blank" rel="noopener noreferrer" class="support-yutorah-btn" title="Support YUTorah & Sponsor Learning (Opens in new window)">❤️ Support YUTorah</a>
       <button type="button" id="themeToggleBtn" class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Dark / Light Mode">🌙</button>
       ${homepageData?.hebrewDateString ? `<div class="hebrew-date-badge">📅 ${escapeHtml(homepageData.hebrewDateString)}</div>` : ''}
     </div>
@@ -1971,9 +2520,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
 
 <div class="sponsorship-banner">
   <div class="sponsorship-content">
-    <span class="sponsorship-text">Learning on the Marcos and Adina Katz YUTorah site is sponsored today for a refuah shleimah for <strong>Avraham Yitzchak Fishel ben Chaina Shifra</strong></span>
+    <span class="sponsorship-text">${sponsorshipText || 'Learning on the Marcos and Adina Katz YUTorah site is sponsored today by <strong>The Ohayon family in Hamilton, ON</strong> to mark the yahrtzeit of Shimon ben Issaschar Ruimy on 24 Elul and for a refuah shleima for Avraham Yitzchak Fishel ben Chaina Shifra'}</span>
+    <a href="https://www.givecampus.com/campaigns/50770/donations/new" target="_blank" rel="noopener noreferrer" class="sponsorship-support-pill" title="Support YUTorah (Opens in new window)">Support YUTorah ↗</a>
   </div>
 </div>
+<div id="holidayTaglineBar" class="holiday-tagline-bar" style="display: none;"></div>
 
 <main>
 
@@ -2109,15 +2660,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       <div class="ctrl-group">
         <span class="ctrl-label">Speed</span>
         <select id="speedSelect" class="speed-select" onchange="setSpeed(this.value)">
-          <option value="0.5">0.5x</option>
-          <option value="0.75">0.75x</option>
-          <option value="1" selected>1.0x</option>
-          <option value="1.25">1.25x</option>
-          <option value="1.5">1.5x</option>
-          <option value="1.75">1.75x</option>
-          <option value="2">2.0x</option>
-          <option value="2.5">2.5x</option>
-          <option value="3">3.0x</option>
+          ${speedOptionsHtml}
         </select>
       </div>
 
@@ -2198,6 +2741,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
         <button class="tab-btn active" id="tab-editors" onclick="switchCollection('editors')">⭐ Editor's Picks</button>
         <button class="tab-btn" id="tab-series" onclick="switchCollection('series')">📚 Featured Series</button>
         <button class="tab-btn" id="tab-recent" onclick="switchCollection('recent')">⏱️ Recently Uploaded</button>
+        <button class="tab-btn" id="tab-popular" onclick="switchCollection('popular')">🔥 Most Popular</button>
         <button class="tab-btn" id="tab-viewed" onclick="switchCollection('viewed')">👁️ Recently Viewed</button>
         <button class="tab-btn" id="tab-parsha" onclick="switchCollection('parsha')">📖 Parsha Shiurim</button>
         <button class="tab-btn" id="tab-daily" onclick="switchCollection('daily')">📜 Daily Shiur</button>
@@ -2216,6 +2760,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
 
     <div class="shiur-cards-grid" id="grid-recent" style="display: none;">
       ${recentlyUploaded.map(renderShiurCardHtml).join('')}
+    </div>
+
+    <div class="shiur-cards-grid" id="grid-popular" style="display: none;">
+      ${popularShiurim.map(renderShiurCardHtml).join('')}
     </div>
 
     <div class="shiur-cards-grid" id="grid-viewed" style="display: none;">
@@ -2304,7 +2852,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
 </div>
 
 <footer>
-  <p>YUTorah Enhanced Player · Standalone zero-friction audio player for <a href="https://www.yutorah.org" target="_blank">YUTorah.org</a></p>
+  <p>YUTorah Enhanced Player · Standalone zero-friction audio player for <a href="https://www.yutorah.org" target="_blank" rel="noopener noreferrer">YUTorah.org</a> · <a href="https://www.givecampus.com/campaigns/50770/donations/new" target="_blank" rel="noopener noreferrer" style="font-weight: 600;">❤️ Support YUTorah</a></p>
 </footer>
 
 <script>
@@ -2320,11 +2868,27 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
 
   const audio = document.getElementById('audioElement');
   let initialTimestamp = ${JSON.stringify(timestamp)};
+  let initialPlaybackSpeed = ${JSON.stringify(playbackSpeed || '')};
   let hasAudio = ${JSON.stringify(Boolean(audioUrl))};
   let currentShiurId = ${JSON.stringify(shiurId || '')};
   let initialTimeApplied = false;
   let lastUrlUpdateSec = -1;
   let lastUrlUpdateTime = 0;
+
+  // Initialize playback rate from URL or server-rendered initial speed
+  let currentPlaybackRate = 1;
+  try {
+    const initSpeedParam = new URL(window.location.href).searchParams.get('speed') || new URL(window.location.href).searchParams.get('rate') || initialPlaybackSpeed;
+    if (initSpeedParam) {
+      const parsedSpeed = parseFloat(initSpeedParam);
+      if (!isNaN(parsedSpeed) && parsedSpeed > 0 && parsedSpeed <= 5) {
+        currentPlaybackRate = parsedSpeed;
+      }
+    }
+  } catch(e) {}
+  if (audio && currentPlaybackRate !== 1) {
+    audio.playbackRate = currentPlaybackRate;
+  }
 
   function updateUrlTimestamp(force) {
     if (!hasAudio || !audio.src) return;
@@ -2993,7 +3557,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     document.getElementById('shiurMeta').textContent = '';
     document.getElementById('shiurDesc').style.display = 'none';
 
-    history.pushState({ shiurId: id }, '', '/' + id);
+    const newUrl = new URL('/' + id, window.location.origin);
+    if (currentPlaybackRate && currentPlaybackRate !== 1) {
+      newUrl.searchParams.set('speed', currentPlaybackRate);
+    }
+    const curParams = new URL(window.location.href).searchParams;
+    const activeTheme = curParams.get('theme') || curParams.get('mode');
+    if (activeTheme) {
+      const k = curParams.has('theme') ? 'theme' : 'mode';
+      newUrl.searchParams.set(k, activeTheme);
+    }
+    history.pushState({ shiurId: id }, '', newUrl.pathname + newUrl.search);
 
     try {
       const res = await fetch('/sidebar/lecturedata?shiurID=' + encodeURIComponent(id));
@@ -3070,16 +3644,22 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
 
       // Start playing
       audio.src = audioSrc;
+      if (currentPlaybackRate) {
+        audio.playbackRate = currentPlaybackRate;
+      }
       audio.load();
 
-      if (resumeSec > 0) {
-        const onLoaded = function() {
-          audio.removeEventListener('loadedmetadata', onLoaded);
+      const onLoaded = function() {
+        audio.removeEventListener('loadedmetadata', onLoaded);
+        if (currentPlaybackRate) {
+          audio.playbackRate = currentPlaybackRate;
+        }
+        if (resumeSec > 0) {
           audio.currentTime = resumeSec;
           updateUrlTimestamp(true);
-        };
-        audio.addEventListener('loadedmetadata', onLoaded);
-      }
+        }
+      };
+      audio.addEventListener('loadedmetadata', onLoaded);
 
       const p = audio.play();
       if (p !== undefined) {
@@ -3280,17 +3860,373 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     }
   }
 
-  // Switch Collection Tabs (All 7 original YUTorah tabs)
-  const collections = ['editors', 'series', 'recent', 'viewed', 'parsha', 'daily', 'trending'];
+  // Switch Collection Tabs
+  const collections = ['editors', 'series', 'recent', 'popular', 'viewed', 'parsha', 'daily', 'trending'];
   const collectionTitles = {
     editors: "⭐ Editor's Picks",
     series: "📚 Featured Series",
     recent: "⏱️ Recently Uploaded",
+    popular: "🔥 Most Popular",
     viewed: "👁️ Recently Viewed",
     parsha: "📖 Parsha Shiurim",
     daily: "📜 Daily Shiur",
     trending: "🔥 Trending Keywords"
   };
+
+  // =========================================================================
+  // [DEAD CODE / INACTIVE] Simple View switcher & Settings menu handlers.
+  // Kept in codebase for reference as requested, but hidden from the UI.
+  // =========================================================================
+  function isSimpleMode() {
+    return document.documentElement.getAttribute('data-view') === 'simple';
+  }
+
+  function updateSettingsMenuText() {
+    const textEl = document.getElementById('viewModeText');
+    const iconEl = document.getElementById('viewModeIcon');
+    const simple = isSimpleMode();
+    if (textEl) {
+      textEl.textContent = simple ? 'Revert to Full View' : 'Switch to Simple View';
+    }
+    if (iconEl) {
+      iconEl.textContent = simple ? '🔄' : '✨';
+    }
+  }
+
+  function toggleSettingsMenu(e) {
+    if (e) e.stopPropagation();
+    const menu = document.getElementById('settingsMenu');
+    if (!menu) return;
+    const isOpen = menu.style.display === 'block';
+    menu.style.display = isOpen ? 'none' : 'block';
+    if (!isOpen) {
+      updateSettingsMenuText();
+    }
+  }
+
+  function triggerModeOverlay(text) {
+    const oldOverlay = document.getElementById('modeOverlay');
+    if (oldOverlay) oldOverlay.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'modeOverlay';
+    overlay.className = 'mode-switch-overlay';
+    overlay.innerHTML = '<div class="mode-switch-text">' + text + '</div>';
+    document.body.appendChild(overlay);
+
+    setTimeout(() => {
+      if (overlay && overlay.parentNode) {
+        overlay.parentNode.removeChild(overlay);
+      }
+    }, 1000);
+  }
+
+  function toggleViewMode(e) {
+    if (e) e.stopPropagation();
+    const menu = document.getElementById('settingsMenu');
+    if (menu) menu.style.display = 'none';
+
+    const currentlySimple = isSimpleMode();
+    if (currentlySimple) {
+      // Switch back to Full View
+      document.documentElement.removeAttribute('data-view');
+      try { localStorage.setItem('yutorah_view_mode', 'full'); } catch(err) {}
+      triggerModeOverlay('MGR');
+    } else {
+      // Switch to Simple View
+      document.documentElement.setAttribute('data-view', 'simple');
+      try { localStorage.setItem('yutorah_view_mode', 'simple'); } catch(err) {}
+      triggerModeOverlay('CSR');
+
+      // If active tab was one of the complex tabs, switch back to editors
+      const activeTab = document.querySelector('.tab-btn.active');
+      if (activeTab && (activeTab.id === 'tab-series' || activeTab.id === 'tab-viewed' || activeTab.id === 'tab-parsha' || activeTab.id === 'tab-trending')) {
+        switchCollection('editors');
+      }
+    }
+    updateSettingsMenuText();
+    syncHeaderSpacer();
+  }
+
+  // Holiday & Seasonal Theme Management (Light Mode Exclusively)
+  const clientThemes = ${JSON.stringify(THEMES)};
+
+  function getClientHebrewDate() {
+    try {
+      const formatter = new Intl.DateTimeFormat('en-u-ca-hebrew', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      });
+      const parts = formatter.formatToParts(new Date());
+      const day = parseInt(parts.find(p => p.type === 'day')?.value || '1', 10);
+      const month = (parts.find(p => p.type === 'month')?.value || 'Elul').trim();
+      const year = parseInt(parts.find(p => p.type === 'year')?.value || '5786', 10);
+
+      const d = new Date();
+      let omerDay = 0;
+      if (month === 'Nisan' && day >= 16) {
+        omerDay = day - 15;
+      } else if (month === 'Iyar') {
+        omerDay = 15 + day;
+      } else if (month === 'Sivan' && day <= 5) {
+        omerDay = 44 + day;
+      }
+
+      return { day, month, year, omerDay, gregorianMonth: d.getMonth() + 1, gregorianDay: d.getDate() };
+    } catch (e) {
+      return { day: 22, month: 'Elul', year: 5786, omerDay: 0, gregorianMonth: 9, gregorianDay: 4 };
+    }
+  }
+
+  function detectCurrentHoliday() {
+    const h = getClientHebrewDate();
+    const { day, month, omerDay, gregorianMonth, gregorianDay } = h;
+
+    if (gregorianMonth === 7 && gregorianDay === 4) return { key: 'july4', chanukahDay: 0 };
+
+    // Erev Yom Tov (Eve of Melacha-forbidden festivals) with 50/50 random overlap selection
+    // Erev Rosh Hashanah (29 Elul) -> 50/50 between Rosh Hashanah and Chodesh Elul
+    if (month === 'Elul' && day === 29) {
+      return Math.random() < 0.5
+        ? { key: 'rosh_hashanah', chanukahDay: 0 }
+        : { key: 'elul', chanukahDay: 0 };
+    }
+
+    // Erev Yom Kippur (9 Tishrei) -> 50/50 between Yom Kippur and Aseres Yemei Teshuva
+    if (month === 'Tishri' && day === 9) {
+      return Math.random() < 0.5
+        ? { key: 'yom_kippur', chanukahDay: 0 }
+        : { key: 'teshuva', chanukahDay: 0 };
+    }
+
+    // Erev Sukkos (14 Tishrei) -> Sukkos theme
+    if (month === 'Tishri' && day === 14) {
+      return { key: 'sukkos', chanukahDay: 0 };
+    }
+
+    // Erev Shemini Atzeres / Simchas Torah (21 Tishrei) -> 50/50 between Simchas Torah and Hoshana Rabbah
+    if (month === 'Tishri' && day === 21) {
+      return Math.random() < 0.5
+        ? { key: 'simchas_torah', chanukahDay: 0 }
+        : { key: 'hoshana_rabbah', chanukahDay: 0 };
+    }
+
+    // Erev Pesach (14 Nisan) -> 50/50 between Pesach and Nissan buildup
+    if (month === 'Nisan' && day === 14) {
+      return Math.random() < 0.5
+        ? { key: 'pesach', chanukahDay: 0 }
+        : { key: 'nissan_buildup', chanukahDay: 0 };
+    }
+
+    // Erev Shavuos (5 Sivan) -> 50/50 between Shavuos and Sefiras HaOmer (Day 49)
+    if (month === 'Sivan' && day === 5) {
+      return Math.random() < 0.5
+        ? { key: 'shavuos', chanukahDay: 0 }
+        : { key: 'omer', omerDay: 49, chanukahDay: 0 };
+    }
+
+    if (month === 'Tishri' && day === 10) return { key: 'yom_kippur', chanukahDay: 0 };
+    if (month === 'Tishri' && (day === 1 || day === 2)) return { key: 'rosh_hashanah', chanukahDay: 0 };
+    if (month === 'Tishri' && day >= 3 && day <= 8) return { key: 'teshuva', chanukahDay: 0 };
+    if (month === 'Tishri' && (day === 22 || day === 23)) return { key: 'simchas_torah', chanukahDay: 0 };
+    if (month === 'Tishri' && day >= 15 && day <= 20) return { key: 'sukkos', chanukahDay: 0 };
+
+    if ((month === 'Heshvan' && day === 1) || (month === 'Tishri' && day === 30)) {
+      return { key: 'rosh_chodesh_cheshvan', chanukahDay: 0 };
+    }
+
+    if (month === 'Kislev' && day >= 25) {
+      return { key: 'chanukah', chanukahDay: day - 24 };
+    }
+    if (month === 'Tevet' && day <= 3) {
+      return { key: 'chanukah', chanukahDay: Math.min(8, 5 + day) };
+    }
+
+    if (month === 'Shevat' && day === 15) return { key: 'tubshevat', chanukahDay: 0 };
+
+    const isPurimMonth = month === 'Adar II' || month === 'Adar';
+    if (isPurimMonth && (day === 14 || day === 15)) return { key: 'purim', chanukahDay: 0 };
+    if (isPurimMonth && (day === 13 || day === 11)) return { key: 'taanis_esther', chanukahDay: 0 };
+    if (isPurimMonth && day < 13) return { key: 'adar_buildup', chanukahDay: 0 };
+
+    if (month === 'Nisan' && day >= 15 && day <= 22) return { key: 'pesach', chanukahDay: 0 };
+    if (month === 'Nisan' && day < 15) return { key: 'nissan_buildup', chanukahDay: 0 };
+
+    if (month === 'Iyar' && (day === 3 || day === 4)) return { key: 'yom_hazikaron', chanukahDay: 0 };
+    if (month === 'Iyar' && (day === 5 || day === 6)) return { key: 'yom_haatzmaut', chanukahDay: 0 };
+    if (month === 'Iyar' && day === 18) return { key: 'lag_baomer', chanukahDay: 0 };
+    if (month === 'Iyar' && day === 28) return { key: 'yom_yerushalayim', chanukahDay: 0 };
+
+    if (month === 'Sivan' && (day === 6 || day === 7)) return { key: 'shavuos', chanukahDay: 0 };
+    if (omerDay > 0) return { key: 'omer', omerDay, chanukahDay: 0 };
+
+    if (month === 'Av' && (day === 9 || day === 10)) return { key: 'tisha_bav', chanukahDay: 0 };
+    if (month === 'Av' && day >= 1 && day <= 8) return { key: 'nine_days', chanukahDay: 0 };
+    if (month === 'Tamuz' && day >= 17) return { key: 'three_weeks', chanukahDay: 0 };
+    if (month === 'Av' && day === 15) return { key: 'tubav', chanukahDay: 0 };
+
+    if (month === 'Elul') return { key: 'elul', chanukahDay: 0 };
+    if (day === 1 || day === 30) return { key: 'rosh_chodesh', chanukahDay: 0 };
+
+    return { key: 'default', chanukahDay: 0 };
+  }
+
+  // [DEAD CODE / INACTIVE] Manual Theme Preview Override Controls
+  // The theme engine now operates 100% automatically in the background using the Hebrew calendar.
+  let activeThemeKey = 'auto';
+  let activeVariant = 'a';
+
+  function applyHolidayTheme() {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const motifWrap = document.getElementById('holidayMotifWrap');
+    const motifIcon = document.getElementById('holidayMotifIcon');
+    const motifTitle = document.getElementById('holidayMotifTitle');
+    const taglineBar = document.getElementById('holidayTaglineBar');
+
+    // Clean up previous dynamic theme style tag
+    let themeStyleEl = document.getElementById('holidayThemeDynamicStyles');
+    if (themeStyleEl) themeStyleEl.remove();
+
+    if (isDark) {
+      if (motifWrap) motifWrap.style.display = 'none';
+      if (taglineBar) taglineBar.style.display = 'none';
+      return;
+    }
+
+    let resolvedKey = activeThemeKey;
+    let chanukahDay = 0;
+    if (resolvedKey.startsWith('chanukah_')) {
+      chanukahDay = parseInt(resolvedKey.replace('chanukah_', ''), 10);
+      resolvedKey = 'chanukah';
+    }
+
+    if (resolvedKey === 'auto') {
+      const detected = detectCurrentHoliday();
+      resolvedKey = detected.key;
+      chanukahDay = detected.chanukahDay || 1;
+    }
+
+    if (!resolvedKey || resolvedKey === 'default' || !clientThemes[resolvedKey]) {
+      if (motifWrap) motifWrap.style.display = 'none';
+      if (taglineBar) taglineBar.style.display = 'none';
+      return;
+    }
+
+    const themeDef = clientThemes[resolvedKey];
+    let variantData;
+
+    // For approved themes in auto mode (or if chosen in dropdown), randomly pick between A and B or lock to approved variant
+    let effectiveVariant = activeVariant;
+    const randomApprovedThemes = ['rosh_hashanah', 'sukkos', 'simchas_torah', 'adar_buildup', 'nissan_buildup', 'pesach', 'lag_baomer', 'shavuos', 'nine_days'];
+    if (randomApprovedThemes.includes(resolvedKey) && activeThemeKey === 'auto') {
+      effectiveVariant = Math.random() < 0.5 ? 'a' : 'b';
+    }
+    const lockedThemesToA = ['elul', 'yom_kippur', 'tubshevat', 'purim', 'taanis_esther', 'omer', 'yom_hazikaron', 'yom_yerushalayim', 'july4', 'three_weeks', 'tisha_bav', 'tubav', 'rosh_chodesh'];
+    if (lockedThemesToA.includes(resolvedKey) && activeThemeKey === 'auto') {
+      effectiveVariant = 'a';
+    }
+    const lockedThemesToB = ['yom_haatzmaut'];
+    if (lockedThemesToB.includes(resolvedKey) && activeThemeKey === 'auto') {
+      effectiveVariant = 'b';
+    }
+
+    if (resolvedKey === 'chanukah') {
+      const dayNum = chanukahDay || 1;
+      variantData = Object.assign({}, themeDef.variants['a']);
+      variantData.icon = 'chanukah_a_' + dayNum + '.svg';
+      variantData.title = 'Chanukah (Night ' + dayNum + ')';
+      variantData.tagline = 'חנוכה שמח · Night ' + dayNum + ' of 8';
+    } else if (resolvedKey === 'omer') {
+      variantData = Object.assign({}, themeDef.variants['a']);
+      // Randomly select between the two icons (flip calendar vs parchment scroll)
+      variantData.icon = Math.random() < 0.5 ? 'omer_a.svg' : 'omer_b.svg';
+      const h = getClientHebrewDate();
+      if (h.omerDay > 0) {
+        variantData.tagline = 'היום ' + h.omerDay + ' ימים לעומר · Count: Day ' + h.omerDay + ' of 49';
+      }
+    } else {
+      variantData = themeDef.variants[effectiveVariant] || themeDef.variants['a'];
+    }
+
+    if (!variantData) return;
+
+    // Apply CSS Variables to root
+    if (variantData.primary) document.documentElement.style.setProperty('--primary', variantData.primary);
+    if (variantData.accent) document.documentElement.style.setProperty('--accent', variantData.accent);
+    if (variantData.bannerBg) document.documentElement.style.setProperty('--banner-bg', variantData.bannerBg);
+
+    // Render Motif Badge in Header
+    if (motifWrap && motifIcon && motifTitle) {
+      motifWrap.style.display = 'inline-flex';
+      motifIcon.innerHTML = '<img src="/assets/themes/' + variantData.icon + '" alt="icon" style="width:100%; height:100%; display:block;" onerror="this.style.display=&quot;none&quot;">';
+      motifTitle.textContent = themeDef.badge || themeDef.name;
+      motifWrap.title = variantData.title;
+    }
+
+    // Render Tagline Bar below sponsorship banner
+    if (taglineBar && variantData.tagline) {
+      taglineBar.style.display = 'block';
+      taglineBar.textContent = variantData.tagline;
+    } else if (taglineBar) {
+      taglineBar.style.display = 'none';
+    }
+
+    // Inject custom CSS for theme variant
+    if (variantData.css) {
+      themeStyleEl = document.createElement('style');
+      themeStyleEl.id = 'holidayThemeDynamicStyles';
+      themeStyleEl.textContent = variantData.css;
+      document.head.appendChild(themeStyleEl);
+    }
+
+    // Update controls in Settings menu
+    const sel = document.getElementById('holidayThemeSelect');
+    if (sel) sel.value = activeThemeKey;
+    const btnA = document.getElementById('variantBtnA');
+    const btnB = document.getElementById('variantBtnB');
+    const btnC = document.getElementById('variantBtnC');
+    if (btnA) btnA.classList.toggle('active', activeVariant === 'a');
+    if (btnB) btnB.classList.toggle('active', activeVariant === 'b');
+    if (btnC) {
+      if (resolvedKey === 'elul') {
+        btnC.style.display = 'block';
+        btnC.classList.toggle('active', activeVariant === 'c');
+      } else {
+        btnC.style.display = 'none';
+      }
+    }
+
+    syncHeaderSpacer();
+  }
+
+  function onHolidayThemeSelect(val) {
+    activeThemeKey = val;
+    if (val === 'yom_haatzmaut') {
+      activeVariant = 'b';
+    } else if (lockedThemesToA.includes(val)) {
+      activeVariant = 'a';
+    }
+    try { localStorage.setItem('yutorah_preview_theme', val); } catch(e) {}
+    try { localStorage.setItem('yutorah_preview_variant', activeVariant); } catch(e) {}
+    applyHolidayTheme();
+  }
+
+  function setThemeVariant(variant) {
+    activeVariant = variant;
+    try { localStorage.setItem('yutorah_preview_variant', variant); } catch(e) {}
+    applyHolidayTheme();
+  }
+
+  document.addEventListener('click', function(e) {
+    const menu = document.getElementById('settingsMenu');
+    const btn = document.getElementById('settingsBtn');
+    if (menu && menu.style.display === 'block') {
+      if (btn && !btn.contains(e.target) && !menu.contains(e.target)) {
+        menu.style.display = 'none';
+      }
+    }
+  });
 
   function switchCollection(activeName) {
     collections.forEach(name => {
@@ -3338,13 +4274,63 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
   }
 
   function setSpeed(rate) {
-    audio.playbackRate = parseFloat(rate);
+    const r = parseFloat(rate);
+    if (isNaN(r) || r <= 0) return;
+    currentPlaybackRate = r;
+    audio.playbackRate = r;
+    const sel = document.getElementById('speedSelect');
+    if (sel) {
+      let found = false;
+      for (let i = 0; i < sel.options.length; i++) {
+        if (parseFloat(sel.options[i].value) === r) {
+          sel.selectedIndex = i;
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        const opt = document.createElement('option');
+        opt.value = String(r);
+        opt.textContent = r + 'x';
+        opt.selected = true;
+        sel.appendChild(opt);
+      }
+    }
+    try {
+      const url = new URL(window.location.href);
+      if (r === 1) {
+        url.searchParams.delete('speed');
+        url.searchParams.delete('rate');
+      } else {
+        url.searchParams.delete('rate');
+        url.searchParams.set('speed', r);
+      }
+      history.replaceState(history.state, '', url.toString());
+    } catch(e) {}
   }
 
   function copyShareLink() {
     const curSec = Math.floor(audio.currentTime);
     const url = new URL(window.location.href);
     url.searchParams.set('t', curSec);
+    const rate = currentPlaybackRate || audio.playbackRate;
+    if (rate && rate !== 1) {
+      url.searchParams.delete('rate');
+      url.searchParams.set('speed', rate);
+    } else {
+      url.searchParams.delete('speed');
+      url.searchParams.delete('rate');
+    }
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const hasExplicitTheme = url.searchParams.has('mode') || url.searchParams.has('theme') || Boolean(localStorage.getItem('yutorah_theme'));
+    if (hasExplicitTheme) {
+      const themeKey = url.searchParams.has('theme') ? 'theme' : 'mode';
+      url.searchParams.delete('dark');
+      url.searchParams.delete('light');
+      url.searchParams.delete('mode');
+      url.searchParams.delete('theme');
+      url.searchParams.set(themeKey, isDark ? 'dark' : 'light');
+    }
     navigator.clipboard.writeText(url.toString()).then(() => {
       const btn = document.getElementById('copyLinkBtn');
       btn.textContent = '✅ Copied (' + formatTime(curSec) + ')!';
@@ -3454,12 +4440,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     updateUrlTimestamp(false);
   });
   audio.addEventListener('loadedmetadata', () => {
+    if (currentPlaybackRate) {
+      audio.playbackRate = currentPlaybackRate;
+    }
     document.getElementById('totalTime').textContent = formatTime(audio.duration);
     const miniTime = document.getElementById('miniTime');
     if (miniTime) miniTime.textContent = formatTime(audio.currentTime) + ' / ' + formatTime(audio.duration);
     applyInitialTime();
   });
   audio.addEventListener('canplay', () => {
+    if (currentPlaybackRate) {
+      audio.playbackRate = currentPlaybackRate;
+    }
     applyInitialTime();
   });
   audio.addEventListener('ended', () => {
@@ -3534,6 +4526,36 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
     else if (e.key === 'm' || e.key === 'M') { audio.muted = !audio.muted; }
   });
 
+  // Browser Back/Forward navigation sync
+  window.addEventListener('popstate', () => {
+    try {
+      const p = new URL(window.location.href).searchParams;
+      const s = p.get('speed') || p.get('rate');
+      if (s) {
+        const parsed = parseFloat(s);
+        if (!isNaN(parsed) && parsed > 0 && parsed !== currentPlaybackRate) {
+          setSpeed(parsed);
+        }
+      } else if (currentPlaybackRate !== 1) {
+        setSpeed(1);
+      }
+
+      // Sync light/dark mode on back/forward navigation
+      const rawTheme = (p.get('theme') || p.get('mode') || '').toLowerCase();
+      if (rawTheme === 'dark' || p.get('dark') === '1' || (p.has('dark') && p.get('dark') !== '0')) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        try { localStorage.setItem('yutorah_theme', 'dark'); } catch(e) {}
+        initTheme();
+        applyHolidayTheme();
+      } else if (rawTheme === 'light' || p.get('dark') === '0' || p.get('light') === '1') {
+        document.documentElement.removeAttribute('data-theme');
+        try { localStorage.setItem('yutorah_theme', 'light'); } catch(e) {}
+        initTheme();
+        applyHolidayTheme();
+      }
+    } catch(e) {}
+  });
+
   // Theme Management (Dark / Light mode)
   function initTheme() {
     var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
@@ -3559,6 +4581,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
       btn.textContent = nextDark ? '☀️' : '🌙';
       btn.title = nextDark ? 'Switch to Light Mode' : 'Switch to Dark Mode';
     }
+    applyHolidayTheme();
+
+    try {
+      var url = new URL(window.location.href);
+      var key = url.searchParams.has('theme') ? 'theme' : 'mode';
+      url.searchParams.delete('dark');
+      url.searchParams.delete('light');
+      url.searchParams.delete('mode');
+      url.searchParams.delete('theme');
+      url.searchParams.set(key, nextDark ? 'dark' : 'light');
+      history.replaceState(history.state, '', url.toString());
+    } catch(e) {}
   }
 
   function syncHeaderSpacer() {
@@ -3572,6 +4606,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
   window.addEventListener('resize', syncHeaderSpacer);
 
   initTheme();
+  updateSettingsMenuText();
+  applyHolidayTheme();
   try {
     if (window.matchMedia) {
       window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
@@ -3582,6 +4618,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, homepageDat
             document.documentElement.removeAttribute('data-theme');
           }
           initTheme();
+          applyHolidayTheme();
         }
       });
     }

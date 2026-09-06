@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <!-- Classic Majestic Beis HaMikdash Heichal Façade -->
+  <!-- Stepped base / Ulam platform -->
+  <rect x="10" y="82" width="80" height="6" rx="1" fill="#dfd7cb" stroke="#8c7f70" stroke-width="2"/>
+  <rect x="14" y="76" width="72" height="6" rx="1" fill="#ede7dc" stroke="#8c7f70" stroke-width="1.8"/>
+  <rect x="18" y="70" width="64" height="6" rx="1" fill="#f5f0e6" stroke="#8c7f70" stroke-width="1.8"/>
+  
+  <!-- Main Heichal Body (Golden-tinted Jerusalem Stone) -->
+  <rect x="22" y="28" width="56" height="42" fill="#faf6ee" stroke="#8c7f70" stroke-width="2"/>
+  
+  <!-- Golden Crowned Cornice / parapet / Chochiyos -->
+  <rect x="18" y="22" width="64" height="6" rx="1" fill="#d4af37" stroke="#9a7d0a" stroke-width="1.8"/>
+  <path d="M19 22 L22 15 L25 22 M31 22 L34 15 L37 22 M43 22 L46 15 L49 22 M55 22 L58 15 L61 22 M67 22 L70 15 L73 22 M79 22 L82 15 L85 22" 
+        stroke="#9a7d0a" stroke-width="1.8" fill="#f4d03f"/>
+  
+  <!-- Grand Heichal Golden Entrance (Petchah) with Paroches drape -->
+  <rect x="40" y="38" width="20" height="32" rx="2" fill="#2c3e50" stroke="#8c7f70" stroke-width="1.8"/>
+  <path d="M40 38 Q 50 32 60 38" stroke="#8c7f70" stroke-width="1.8" fill="#2c3e50"/>
+  <!-- Golden inner glow / Menorah aura within -->
+  <ellipse cx="50" cy="54" rx="6" ry="12" fill="#f9e79f" opacity="0.65"/>
+  <path d="M42 42 Q 50 48 58 42" stroke="#d4af37" stroke-width="1.5" fill="none"/>
+  
+  <!-- Massive Jerusalem Stone Columns (Yachin & Boaz style decorative pillars) -->
+  <rect x="26" y="30" width="8" height="40" fill="#ede6d8" stroke="#8c7f70" stroke-width="1.5"/>
+  <rect x="66" y="30" width="8" height="40" fill="#ede6d8" stroke="#8c7f70" stroke-width="1.5"/>
+  <!-- Column Capitals -->
+  <rect x="24" y="28" width="12" height="4" rx="1" fill="#d4af37" stroke="#9a7d0a" stroke-width="1.2"/>
+  <rect x="64" y="28" width="12" height="4" rx="1" fill="#d4af37" stroke="#9a7d0a" stroke-width="1.2"/>
+</svg>

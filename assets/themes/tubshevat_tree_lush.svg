@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <!-- Majestic Flowering Fruit Tree / Oak for Tu B'Shevat -->
+  <!-- Ground Mound with Grass -->
+  <path d="M12 90 Q 50 82 88 90" stroke="#7a5528" stroke-width="3" stroke-linecap="round"/>
+  <path d="M18 90 C 26 84, 74 84, 82 90 Z" fill="#e8f5e9" opacity="0.6"/>
+  
+  <!-- Sturdy Tree Trunk & Gnarled Roots -->
+  <path d="M44 88 C 44 72, 42 62, 38 52 C 37 50, 39 48, 41 50 C 46 54, 48 58, 50 62 C 52 58, 55 52, 60 48 C 62 46, 64 48, 63 50 C 58 60, 56 70, 56 88 Z" 
+        fill="#6d4c24" stroke="#4a3215" stroke-width="1.8" stroke-linejoin="round"/>
+  <!-- Root flares -->
+  <path d="M44 86 C 40 88, 32 89, 26 90 M56 86 C 60 88, 68 89, 74 90" stroke="#4a3215" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- Lush Canopy Clusters -->
+  <!-- Back / Shadow Canopy -->
+  <circle cx="34" cy="42" r="16" fill="#1b5e20"/>
+  <circle cx="66" cy="42" r="16" fill="#1b5e20"/>
+  <circle cx="50" cy="30" r="18" fill="#1b5e20"/>
+
+  <!-- Front Vibrant Green Canopy -->
+  <circle cx="32" cy="40" r="15" fill="#2e7d32" stroke="#1b5e20" stroke-width="1.2"/>
+  <circle cx="68" cy="40" r="15" fill="#2e7d32" stroke="#1b5e20" stroke-width="1.2"/>
+  <circle cx="50" cy="28" r="17" fill="#388e3c" stroke="#1b5e20" stroke-width="1.2"/>
+  <circle cx="40" cy="44" r="14" fill="#43a047" stroke="#1b5e20" stroke-width="1"/>
+  <circle cx="60" cy="44" r="14" fill="#43a047" stroke="#1b5e20" stroke-width="1"/>
+  <circle cx="50" cy="38" r="15" fill="#4caf50" stroke="#2e7d32" stroke-width="1"/>
+
+  <!-- Fruit / Pomegranates / Figs nestled in foliage -->
+  <circle cx="30" cy="36" r="3" fill="#d32f2f" stroke="#b71c1c" stroke-width="0.8"/>
+  <circle cx="42" cy="24" r="3" fill="#f57c00" stroke="#e65100" stroke-width="0.8"/>
+  <circle cx="58" cy="22" r="3" fill="#d32f2f" stroke="#b71c1c" stroke-width="0.8"/>
+  <circle cx="70" cy="35" r="3" fill="#f57c00" stroke="#e65100" stroke-width="0.8"/>
+  <circle cx="48" cy="36" r="3" fill="#7b1fa2" stroke="#4a148c" stroke-width="0.8"/>
+  <circle cx="38" cy="48" r="3" fill="#d32f2f" stroke="#b71c1c" stroke-width="0.8"/>
+  <circle cx="62" cy="48" r="3" fill="#f57c00" stroke="#e65100" stroke-width="0.8"/>
+
+  <!-- Delicate White / Pink Blossoms -->
+  <circle cx="24" cy="42" r="1.5" fill="#ffffff"/>
+  <circle cx="52" cy="18" r="1.5" fill="#ffffff"/>
+  <circle cx="76" cy="42" r="1.5" fill="#ffffff"/>
+  <circle cx="44" cy="30" r="1.5" fill="#ffebee"/>
+  <circle cx="56" cy="32" r="1.5" fill="#ffebee"/>
+</svg>

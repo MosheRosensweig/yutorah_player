@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <!-- Ancient Jerusalem Olive Tree with Silvery Leaves & Olives -->
+  <path d="M15 90 Q 50 84 85 90" stroke="#5c4028" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- Ancient Twisted Trunk -->
+  <path d="M42 88 C 42 74, 46 64, 38 52 C 43 54, 47 50, 49 46 C 51 52, 56 50, 62 52 C 54 64, 58 74, 58 88 Z" 
+        fill="#755233" stroke="#4a3018" stroke-width="2" stroke-linejoin="round"/>
+  <!-- Canopy Silhouettes -->
+  <ellipse cx="50" cy="32" rx="24" ry="16" fill="#33691e" stroke="#1b5e20" stroke-width="1.5"/>
+  <ellipse cx="32" cy="42" rx="18" ry="14" fill="#558b2f" stroke="#33691e" stroke-width="1.5"/>
+  <ellipse cx="68" cy="42" rx="18" ry="14" fill="#558b2f" stroke="#33691e" stroke-width="1.5"/>
+  <ellipse cx="50" cy="38" rx="20" ry="14" fill="#689f38" stroke="#33691e" stroke-width="1.2"/>
+  <!-- Purple Olives -->
+  <circle cx="34" cy="38" r="2.5" fill="#311b92"/>
+  <circle cx="46" cy="28" r="2.5" fill="#311b92"/>
+  <circle cx="64" cy="36" r="2.5" fill="#311b92"/>
+  <circle cx="54" cy="42" r="2.5" fill="#311b92"/>
+  <circle cx="40" cy="48" r="2.5" fill="#311b92"/>
+</svg>

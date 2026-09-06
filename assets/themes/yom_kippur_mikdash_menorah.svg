@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <!-- Beis HaMikdash Sanctuary & Golden Menorah Emblem -->
+  <!-- Outer Sanctuary arch border -->
+  <path d="M18 84 L18 42 A 32 32 0 0 1 82 42 L82 84 Z" fill="#faf7f0" stroke="#8c7f70" stroke-width="2.5"/>
+  <path d="M26 84 L26 44 A 24 24 0 0 1 74 44 L74 84 Z" fill="#f4ede0" stroke="#b0a290" stroke-width="1.5"/>
+  
+  <!-- Stepped Base of the Kodesh Menorah -->
+  <path d="M38 82 L62 82 L58 76 L42 76 Z" fill="#d4af37" stroke="#9a7d0a" stroke-width="1.8"/>
+  <rect x="48" y="44" width="4" height="32" fill="#d4af37" stroke="#9a7d0a" stroke-width="1.5"/>
+  
+  <!-- 6 curved golden branches -->
+  <!-- Inner branches -->
+  <path d="M44 68 C 36 68 36 48 36 46" stroke="#9a7d0a" stroke-width="2.5" fill="none"/>
+  <path d="M56 68 C 64 68 64 48 64 46" stroke="#9a7d0a" stroke-width="2.5" fill="none"/>
+  <!-- Middle branches -->
+  <path d="M45 72 C 30 72 30 48 30 46" stroke="#9a7d0a" stroke-width="2.5" fill="none"/>
+  <path d="M55 72 C 70 72 70 48 70 46" stroke="#9a7d0a" stroke-width="2.5" fill="none"/>
+  <!-- Outer branches -->
+  <path d="M46 75 C 24 75 24 48 24 46" stroke="#9a7d0a" stroke-width="2.5" fill="none"/>
+  <path d="M54 75 C 76 75 76 48 76 46" stroke="#9a7d0a" stroke-width="2.5" fill="none"/>
+  
+  <!-- 7 Flames lit by the Kohen Gadol on Yom Kippur -->
+  <g fill="#f39c12">
+    <circle cx="24" cy="40" r="3"/>
+    <circle cx="30" cy="40" r="3"/>
+    <circle cx="36" cy="40" r="3"/>
+    <circle cx="50" cy="38" r="3.5" fill="#e67e22"/>
+    <circle cx="64" cy="40" r="3"/>
+    <circle cx="70" cy="40" r="3"/>
+    <circle cx="76" cy="40" r="3"/>
+  </g>
+</svg>

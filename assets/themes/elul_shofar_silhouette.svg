@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <!-- Clean bold minimalist vector Shofar -->
+  <path d="M14 74 C 26 70, 36 52, 50 40 C 64 28, 76 24, 88 24 C 91 24, 92 26, 92 30 C 92 40, 82 52, 70 58 C 54 66, 42 68, 28 82 C 20 89, 11 86, 9 80 C 8 77, 11 75, 14 74 Z" 
+        fill="#c99a5b" stroke="#7c4a1e" stroke-width="3" stroke-linejoin="round"/>
+  <!-- Opening & Mouthpiece -->
+  <ellipse cx="88" cy="34" rx="4" ry="10" fill="#7c4a1e"/>
+  <ellipse cx="11" cy="77" rx="3" ry="3" fill="#4a280d"/>
+  <!-- Polished ridges -->
+  <path d="M46 44 C 50 48, 51 55, 47 62" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" opacity="0.6"/>
+  <path d="M60 34 C 65 39, 66 47, 62 53" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" opacity="0.6"/>
+  <path d="M74 28 C 79 33, 80 40, 77 46" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" opacity="0.6"/>
+</svg>
