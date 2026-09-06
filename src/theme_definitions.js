@@ -76,7 +76,7 @@ export const THEMES = {
     badge: 'Chodesh Elul',
     variants: {
       a: {
-        title: "Variant A — Iconic Curved Ram's Horn Shofar Photo",
+        title: "Variant A — Iconic Curved Ram's Horn Shofar Icon",
         primary: '#2b4c7e',
         accent: '#c99a5b',
         bannerBg: '#fbf7f2',
