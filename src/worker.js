@@ -855,7 +855,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       min-height: 100vh;
       display: flex;
       flex-direction: column;
-      padding-bottom: var(--sponsor-banner-height, 42px);
     }
 
     /* Frozen Top Header (Always Fixed to Top of Viewport) */
@@ -1031,30 +1030,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       text-decoration-color: rgba(92, 142, 204, 0.5);
     }
 
-    /* Sponsorship Banner - Locked to Bottom */
-    :root {
-      --sponsor-banner-height: 42px;
-    }
-    @media (max-width: 600px) {
-      :root {
-        --sponsor-banner-height: 56px;
-      }
-    }
+    /* Sponsorship Banner */
     .sponsorship-banner {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      z-index: 1000;
       background: linear-gradient(90deg, #fdf8eb 0%, #fffdf7 50%, #fdf8eb 100%);
-      border-top: 1px solid #e7d8b5;
-      border-bottom: none;
+      border-bottom: 1px solid #e7d8b5;
       color: #634d17;
-      font-size: 12.5px;
-      padding: 7px 16px;
+      font-size: 13px;
+      padding: 8px 16px;
       text-align: center;
-      line-height: 1.4;
-      box-shadow: 0 -2px 10px rgba(0,0,0,0.08);
+      line-height: 1.45;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
     }
     .sponsorship-content {
       max-width: 960px;
@@ -1095,10 +1080,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     [data-theme="dark"] .sponsorship-banner {
       background: linear-gradient(90deg, #141a24 0%, #1a2230 50%, #141a24 100%);
-      border-top: 1px solid #29384e;
-      border-bottom: none;
+      border-bottom: 1px solid #29384e;
       color: #e8ce8f;
-      box-shadow: 0 -2px 10px rgba(0,0,0,0.3);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
     }
     [data-theme="dark"] .sponsorship-banner strong {
       color: #fae4a5;
@@ -1428,9 +1412,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       border-bottom: 1px solid rgba(0, 0, 0, 0.05);
       letter-spacing: 0.3px;
     }
-    [data-theme="dark"] .holiday-motif-wrap,
     [data-theme="dark"] .holiday-tagline-bar {
       display: none !important;
+    }
+    [data-theme="dark"] .holiday-motif-wrap {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(212, 163, 115, 0.45);
+      color: #fae4a5;
     }
 
     /* Mode Switch Overlay ("CSR" / "MGR") */
@@ -2436,7 +2424,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     /* Mini Player (persistent bottom bar) */
     #miniPlayer {
       position: fixed;
-      bottom: var(--sponsor-banner-height, 42px);
+      bottom: 0;
       left: 0;
       right: 0;
       z-index: 1001;
@@ -2613,7 +2601,26 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     .mini-btn.close-btn:hover { opacity: 1; }
 
     body.mini-player-active {
-      padding-bottom: calc(var(--sponsor-banner-height, 42px) + 64px);
+      padding-bottom: 64px;
+    }
+
+    /* Purim Venahafoch Hu Shtick: Invert header to bottom */
+    body.is-purim-theme header#mainHeader {
+      top: auto;
+      bottom: 0;
+      box-shadow: 0 -2px 10px rgba(0,0,0,0.15);
+    }
+    body.is-purim-theme .header-spacer {
+      display: none;
+    }
+    body.is-purim-theme {
+      padding-bottom: 54px;
+    }
+    body.is-purim-theme.mini-player-active {
+      padding-bottom: 118px;
+    }
+    body.is-purim-theme #miniPlayer {
+      bottom: 50px;
     }
 
     /* Speaker & Venue Bio / Description Banner */
@@ -2724,7 +2731,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       🎧 YUTorah Enhanced <span>PLAYER</span>
     </a>
     <div class="header-right">
-      <div id="holidayMotifWrap" class="holiday-motif-wrap" style="display: none;">
+      <div id="holidayMotifWrap" class="holiday-motif-wrap" onclick="handleCalendarSecretClick(event)" style="display: none;" title="Triple-click to toggle pre-roll">
         <span id="holidayMotifIcon" class="holiday-motif-icon"></span>
         <span id="holidayMotifTitle" class="holiday-motif-title"></span>
       </div>
@@ -2802,6 +2809,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 <div id="secretToast" class="secret-toast" style="display: none;"></div>
 <div class="header-spacer" id="headerSpacer"></div>
 
+<div class="sponsorship-banner">
+  <div class="sponsorship-content">
+    <span class="sponsorship-text">${sponsorshipText || 'Learning on the Marcos and Adina Katz YUTorah site is sponsored today by <strong>The Ohayon family in Hamilton, ON</strong> to mark the yahrtzeit of Shimon ben Issaschar Ruimy on 24 Elul and for a refuah shleima for Avraham Yitzchak Fishel ben Chaina Shifra'}</span>
+    <a href="https://www.givecampus.com/campaigns/50770/donations/new" target="_blank" rel="noopener noreferrer" class="sponsorship-support-pill" title="Support YUTorah (Opens in new window)">Support YUTorah ↗</a>
+  </div>
+</div>
 <div id="holidayTaglineBar" class="holiday-tagline-bar" style="display: none;"></div>
 
 <main>
@@ -3149,14 +3162,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 <footer>
   <p>YUTorah Enhanced Player · Standalone zero-friction audio player for <a href="https://www.yutorah.org" target="_blank" rel="noopener noreferrer">YUTorah.org</a> · <a href="https://www.givecampus.com/campaigns/50770/donations/new" target="_blank" rel="noopener noreferrer" style="font-weight: 600;">❤️ Support YUTorah</a></p>
 </footer>
-
-<!-- Bottom Locked Sponsorship Dedication Banner -->
-<div class="sponsorship-banner">
-  <div class="sponsorship-content">
-    <span class="sponsorship-text">${sponsorshipText || 'Learning on the Marcos and Adina Katz YUTorah site is sponsored today by <strong>The Ohayon family in Hamilton, ON</strong> to mark the yahrtzeit of Shimon ben Issaschar Ruimy on 24 Elul and for a refuah shleima for Avraham Yitzchak Fishel ben Chaina Shifra'}</span>
-    <a href="https://www.givecampus.com/campaigns/50770/donations/new" target="_blank" rel="noopener noreferrer" class="sponsorship-support-pill" title="Support YUTorah (Opens in new window)">Support YUTorah ↗</a>
-  </div>
-</div>
 
 <script>
   function escapeHtml(str) {
@@ -4708,10 +4713,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     let themeStyleEl = document.getElementById('holidayThemeDynamicStyles');
     if (themeStyleEl) themeStyleEl.remove();
 
-    if (isDark) {
-      if (motifWrap) motifWrap.style.display = 'none';
-      if (taglineBar) taglineBar.style.display = 'none';
-      return;
+    if (isDark && taglineBar) {
+      taglineBar.style.display = 'none';
     }
 
     let resolvedKey = activeThemeKey;
@@ -4730,6 +4733,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (!resolvedKey || resolvedKey === 'default' || !clientThemes[resolvedKey]) {
       if (motifWrap) motifWrap.style.display = 'none';
       if (taglineBar) taglineBar.style.display = 'none';
+      document.body.classList.remove('is-purim-theme');
+      checkCalendarOverflow();
       return;
     }
 
@@ -4771,21 +4776,30 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
     if (!variantData) return;
 
-    // Apply CSS Variables to root
-    if (variantData.primary) document.documentElement.style.setProperty('--primary', variantData.primary);
-    if (variantData.accent) document.documentElement.style.setProperty('--accent', variantData.accent);
-    if (variantData.bannerBg) document.documentElement.style.setProperty('--banner-bg', variantData.bannerBg);
+    // Apply CSS Variables to root (light mode only)
+    if (!isDark) {
+      if (variantData.primary) document.documentElement.style.setProperty('--primary', variantData.primary);
+      if (variantData.accent) document.documentElement.style.setProperty('--accent', variantData.accent);
+      if (variantData.bannerBg) document.documentElement.style.setProperty('--banner-bg', variantData.bannerBg);
+    }
 
-    // Render Motif Badge in Header
+    // Render Motif Badge in Header (both light and dark mode)
     if (motifWrap && motifIcon && motifTitle) {
       motifWrap.style.display = 'inline-flex';
       motifIcon.innerHTML = '<img src="/assets/themes/' + variantData.icon + '" alt="icon" style="width:100%; height:100%; display:block;" onerror="this.style.display=&quot;none&quot;">';
       motifTitle.textContent = themeDef.badge || themeDef.name;
-      motifWrap.title = variantData.title;
+      motifWrap.title = variantData.title + ' (Triple-click to toggle pre-roll)';
+    }
+
+    // Toggle Purim Inverted Header Mode
+    if (resolvedKey === 'purim') {
+      document.body.classList.add('is-purim-theme');
+    } else {
+      document.body.classList.remove('is-purim-theme');
     }
 
     // Render Tagline Bar below sponsorship banner
-    if (taglineBar && variantData.tagline) {
+    if (taglineBar && variantData.tagline && !isDark) {
       taglineBar.style.display = 'block';
       taglineBar.textContent = variantData.tagline;
     } else if (taglineBar) {
@@ -4793,12 +4807,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
 
     // Inject custom CSS for theme variant
-    if (variantData.css) {
+    if (variantData.css && !isDark) {
       themeStyleEl = document.createElement('style');
       themeStyleEl.id = 'holidayThemeDynamicStyles';
       themeStyleEl.textContent = variantData.css;
       document.head.appendChild(themeStyleEl);
     }
+    checkCalendarOverflow();
 
     // Update controls in Settings menu
     const sel = document.getElementById('holidayThemeSelect');
@@ -5291,17 +5306,29 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   syncHeaderSpacer();
   window.addEventListener('resize', syncHeaderSpacer);
 
-  function syncSponsorshipHeight() {
-    var b = document.querySelector('.sponsorship-banner');
-    if (b) {
-      var h = b.offsetHeight;
-      if (h > 0) {
-        document.documentElement.style.setProperty('--sponsor-banner-height', h + 'px');
-      }
+  function checkCalendarOverflow() {
+    var badge = document.getElementById('hebrewDateBadge');
+    var header = document.getElementById('mainHeader');
+    if (!badge || !header) return;
+
+    if (window.innerWidth <= 520) {
+      badge.style.display = 'none';
+      return;
+    }
+
+    badge.style.display = 'inline-flex';
+    var bRect = badge.getBoundingClientRect();
+    var hRect = header.getBoundingClientRect();
+    var wWidth = window.innerWidth || document.documentElement.clientWidth;
+
+    if (bRect.right > wWidth - 8 || bRect.right > hRect.right - 6 || bRect.left < 0 || bRect.top > hRect.top + 45) {
+      badge.style.display = 'none';
+    } else {
+      badge.style.display = 'inline-flex';
     }
   }
-  syncSponsorshipHeight();
-  window.addEventListener('resize', syncSponsorshipHeight);
+  checkCalendarOverflow();
+  window.addEventListener('resize', checkCalendarOverflow);
 
   initTheme();
   updateSettingsMenuText();
