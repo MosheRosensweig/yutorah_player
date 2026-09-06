@@ -9,6 +9,7 @@
 import { getHebrewDateInfo, getActiveHolidayTheme } from './hebrew_calendar.js';
 import { THEMES } from './theme_definitions.js';
 import { THEME_ASSETS } from './theme_assets.js';
+import { expandQueryWithPhonetics, resolveSpeaker, stripSpeakerHonorifics, KNOWN_SPEAKERS, SYNSETS } from './phonetic_engine.js';
 
 const TARGET_API_ORIGIN = 'https://www.yutorah.org';
 const API_ORIGIN = 'https://api.yutorah.org';
@@ -205,33 +206,168 @@ export default {
 
     // 1. Live Search API Proxy: /api/search?q=...
     if (url.pathname === '/api/search') {
-      const q = url.searchParams.get('q') || url.searchParams.get('searchTerm') || '';
-      const teacherId = url.searchParams.get('teacherId') || '';
+      const rawQ = url.searchParams.get('q') || url.searchParams.get('searchTerm') || '';
+      let teacherId = url.searchParams.get('teacherId') || '';
       const subCategoryId = url.searchParams.get('subCategoryId') || '';
       const locationId = url.searchParams.get('locationId') || url.searchParams.get('venueId') || '';
       const seriesId = url.searchParams.get('seriesId') || url.searchParams.get('series') || '';
-      const start = url.searchParams.get('start') || '1';
+      const start = parseInt(url.searchParams.get('start') || '1', 10);
+      const disablePhonetics = url.searchParams.get('exact') === '1';
 
-      let targetUrl = `${API_ORIGIN}/search?searchTerm=${encodeURIComponent(q)}&start=${encodeURIComponent(start)}`;
-      if (teacherId) targetUrl += `&teacherId=${encodeURIComponent(teacherId)}`;
-      if (subCategoryId) targetUrl += `&subCategoryId=${encodeURIComponent(subCategoryId)}`;
-      if (locationId) targetUrl += `&locationId=${encodeURIComponent(locationId)}`;
-      if (seriesId) targetUrl += `&seriesId=${encodeURIComponent(seriesId)}`;
+      // Advanced post-filters
+      const minDuration = url.searchParams.get('minDuration') ? parseInt(url.searchParams.get('minDuration'), 10) : null;
+      const maxDuration = url.searchParams.get('maxDuration') ? parseInt(url.searchParams.get('maxDuration'), 10) : null;
+      const year = url.searchParams.get('year') || '';
+      const fromDate = url.searchParams.get('fromDate') || '';
+      const toDate = url.searchParams.get('toDate') || '';
+
+      // Phonetic & Speaker Auto-Resolution
+      let effectiveQuery = rawQ;
+      let expandedInfo = null;
+
+      // If user typed a speaker name into the search box without selecting a teacherId, attempt auto-resolution
+      if (!teacherId && rawQ) {
+        const resolvedSpk = resolveSpeaker(rawQ);
+        if (resolvedSpk) {
+          teacherId = resolvedSpk.id;
+          effectiveQuery = ''; // Filter natively by teacherId
+        }
+      }
+
+      // If a specific 4-digit year is requested, add it to effectiveQuery so Solr returns matching year records
+      if (year && /^\d{4}$/.test(year)) {
+        effectiveQuery = effectiveQuery ? `${effectiveQuery} ${year}` : year;
+      }
+
+      if (effectiveQuery && !disablePhonetics) {
+        expandedInfo = expandQueryWithPhonetics(effectiveQuery);
+        effectiveQuery = expandedInfo.solrQuery;
+      }
+
+      const hasPostFilter = (minDuration !== null) || (maxDuration !== null) || year || fromDate || toDate;
+
+      // Helper function to match post filters on a doc
+      function matchesPostFilters(doc) {
+        if (!doc) return false;
+        // 1. Duration check
+        const dur = typeof doc.duration === 'number' ? doc.duration : 0;
+        if (minDuration !== null && minDuration > 0 && dur < minDuration) return false;
+        if (maxDuration !== null && maxDuration > 0 && dur > maxDuration) return false;
+
+        // 2. Year check
+        const docDate = doc.shiurdate || doc.shiurdatesubmitted || '';
+        if (year) {
+          if (year === 'pre-2010') {
+            const docYear = docDate ? parseInt(docDate.slice(0, 4), 10) : 0;
+            if (docYear >= 2010) return false;
+          } else if (year === '2010-2019') {
+            const docYear = docDate ? parseInt(docDate.slice(0, 4), 10) : 0;
+            if (docYear < 2010 || docYear > 2019) return false;
+          } else {
+            if (!docDate.startsWith(year)) return false;
+          }
+        }
+
+        // 3. Date window
+        if (fromDate && docDate && docDate.slice(0, 10) < fromDate) return false;
+        if (toDate && docDate && docDate.slice(0, 10) > toDate) return false;
+
+        return true;
+      }
 
       try {
-        const upstream = await fetch(targetUrl, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-            'Accept': 'application/json'
+        if (!hasPostFilter) {
+          // Fast path: direct Solr call
+          let targetUrl = `${API_ORIGIN}/search?searchTerm=${encodeURIComponent(effectiveQuery)}&start=${encodeURIComponent(start)}`;
+          if (teacherId) targetUrl += `&teacherId=${encodeURIComponent(teacherId)}`;
+          if (subCategoryId) targetUrl += `&subCategoryId=${encodeURIComponent(subCategoryId)}`;
+          if (locationId) targetUrl += `&locationId=${encodeURIComponent(locationId)}`;
+          if (seriesId) targetUrl += `&seriesId=${encodeURIComponent(seriesId)}`;
+
+          const upstream = await fetch(targetUrl, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+              'Accept': 'application/json'
+            }
+          });
+          const json = await upstream.json();
+          if (expandedInfo && expandedInfo.expandedTokens && expandedInfo.expandedTokens.length > 1) {
+            json.phoneticExpansion = {
+              original: rawQ,
+              tokens: expandedInfo.expandedTokens,
+              synset: expandedInfo.matchedSynset
+            };
           }
-        });
-        const data = await upstream.text();
-        return new Response(data, {
-          status: upstream.status,
+          return new Response(JSON.stringify(json), {
+            status: upstream.status,
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*',
+              'Cache-Control': 'public, max-age=300'
+            }
+          });
+        }
+
+        // Post-filtering with window accumulation to guarantee 30-item page size
+        const targetPageSize = 30;
+        let accumulatedDocs = [];
+        let curFetchStart = start;
+        let upstreamNumFound = 0;
+        let lastUpstreamDocsLength = 0;
+        let iterations = 0;
+
+        while (accumulatedDocs.length < targetPageSize && iterations < 5) {
+          iterations++;
+          let targetUrl = `${API_ORIGIN}/search?searchTerm=${encodeURIComponent(effectiveQuery)}&start=${curFetchStart}`;
+          if (teacherId) targetUrl += `&teacherId=${encodeURIComponent(teacherId)}`;
+          if (subCategoryId) targetUrl += `&subCategoryId=${encodeURIComponent(subCategoryId)}`;
+          if (locationId) targetUrl += `&locationId=${encodeURIComponent(locationId)}`;
+          if (seriesId) targetUrl += `&seriesId=${encodeURIComponent(seriesId)}`;
+
+          const upstream = await fetch(targetUrl, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+              'Accept': 'application/json'
+            }
+          });
+          if (!upstream.ok) break;
+          const json = await upstream.json();
+          const docs = json?.response?.docs || [];
+          upstreamNumFound = json?.response?.numFound || 0;
+          lastUpstreamDocsLength = docs.length;
+          if (docs.length === 0) break;
+
+          for (const doc of docs) {
+            if (matchesPostFilters(doc)) {
+              accumulatedDocs.push(doc);
+              if (accumulatedDocs.length >= targetPageSize) break;
+            }
+          }
+
+          curFetchStart += docs.length;
+          if (curFetchStart > upstreamNumFound || docs.length < 10) break;
+        }
+
+        const responsePayload = {
+          response: {
+            docs: accumulatedDocs,
+            numFound: upstreamNumFound,
+            filteredCount: accumulatedDocs.length,
+            nextStart: curFetchStart
+          },
+          phoneticExpansion: expandedInfo ? {
+            original: rawQ,
+            tokens: expandedInfo.expandedTokens,
+            synset: expandedInfo.matchedSynset
+          } : null
+        };
+
+        return new Response(JSON.stringify(responsePayload), {
+          status: 200,
           headers: {
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*',
-            'Cache-Control': 'public, max-age=300'
+            'Cache-Control': 'public, max-age=120'
           }
         });
       } catch (err) {
@@ -965,6 +1101,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       border-color: rgba(34, 197, 94, 0.6);
       box-shadow: 0 12px 40px rgba(34, 197, 94, 0.3);
     }
+    .secret-toast.toast-dev {
+      border-color: rgba(245, 158, 11, 0.9);
+      box-shadow: 0 12px 40px rgba(245, 158, 11, 0.45);
+      background: rgba(26, 20, 10, 0.96);
+      color: #fef3c7;
+    }
 
     /* Main Container */
     main {
@@ -1669,6 +1811,40 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     .search-submit-btn:hover {
       background: var(--primary-dark);
+    }
+    .advanced-search-btn {
+      background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 0 18px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 2px 6px rgba(217, 119, 6, 0.25);
+    }
+    .advanced-search-btn:hover {
+      background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 10px rgba(217, 119, 6, 0.35);
+    }
+    .advanced-search-btn.active {
+      background: #b45309;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.25);
+    }
+    [data-theme="dark"] .advanced-search-btn {
+      background: linear-gradient(135deg, #b45309 0%, #78350f 100%);
+      border: 1px solid #d97706;
+      color: #fef3c7;
+    }
+    [data-theme="dark"] .advanced-search-btn:hover {
+      background: linear-gradient(135deg, #d97706 0%, #92400e 100%);
+      color: #fff;
     }
 
     /* Quick Filter Chips */
@@ -2717,6 +2893,286 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       .mini-thumb { width: 34px; height: 34px; }
     }
 
+    /* Advanced Search Modal & Filter Pills */
+    .advanced-modal-backdrop {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(10, 25, 47, 0.6);
+      backdrop-filter: blur(5px);
+      -webkit-backdrop-filter: blur(5px);
+      z-index: 2000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+    .advanced-modal-backdrop.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .advanced-modal-card {
+      background: var(--card);
+      border-radius: 16px;
+      width: 100%;
+      max-width: 640px;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+      border: 1px solid var(--border);
+      overflow: hidden;
+      transform: translateY(20px) scale(0.97);
+      transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .advanced-modal-backdrop.open .advanced-modal-card {
+      transform: translateY(0) scale(1);
+    }
+    .modal-header {
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--card);
+    }
+    .modal-title {
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    [data-theme="dark"] .modal-title {
+      color: #93c5fd;
+    }
+    .modal-close-btn {
+      background: none;
+      border: none;
+      font-size: 24px;
+      line-height: 1;
+      cursor: pointer;
+      color: var(--text-muted);
+      padding: 4px;
+      border-radius: 6px;
+      transition: all 0.15s;
+    }
+    .modal-close-btn:hover {
+      color: var(--text);
+      background: rgba(0,0,0,0.06);
+    }
+    .modal-body {
+      padding: 20px 24px;
+      overflow-y: auto;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .filter-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .filter-label {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .filter-label-hint {
+      font-size: 11px;
+      font-weight: 400;
+      color: var(--text-muted);
+    }
+    .filter-input, .filter-select {
+      width: 100%;
+      padding: 10px 14px;
+      border-radius: 8px;
+      border: 1.5px solid var(--border);
+      background: #fafbfc;
+      color: var(--text);
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .filter-input:focus, .filter-select:focus {
+      border-color: var(--primary);
+      background: #fff;
+    }
+    [data-theme="dark"] .filter-input, [data-theme="dark"] .filter-select {
+      background: #131c2a;
+      border-color: #28364d;
+      color: #e7edf7;
+    }
+    [data-theme="dark"] .filter-input:focus, [data-theme="dark"] .filter-select:focus {
+      background: #1a2638;
+      border-color: #436ea8;
+    }
+    .duration-presets-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .duration-preset-btn {
+      flex: 1;
+      min-width: 90px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s;
+    }
+    .duration-preset-btn:hover {
+      border-color: var(--primary);
+      background: rgba(43, 76, 126, 0.05);
+    }
+    .duration-preset-btn.selected {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+    }
+    .modal-footer {
+      padding: 16px 24px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--card);
+    }
+    .modal-reset-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 13.5px;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 8px 12px;
+      border-radius: 6px;
+    }
+    .modal-reset-btn:hover {
+      color: #c0392b;
+      text-decoration: underline;
+    }
+    .modal-action-btns {
+      display: flex;
+      gap: 10px;
+    }
+    .modal-cancel-btn {
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .modal-submit-btn {
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      padding: 8px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(43, 76, 126, 0.3);
+    }
+    .modal-submit-btn:hover {
+      background: var(--primary-dark);
+    }
+
+    /* Active Filter Pills Bar */
+    .active-filters-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+      padding: 10px 14px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    .active-filter-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(43, 76, 126, 0.08);
+      color: var(--primary);
+      border: 1px solid rgba(43, 76, 126, 0.2);
+      font-size: 12.5px;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 14px;
+    }
+    [data-theme="dark"] .active-filter-pill {
+      background: rgba(147, 197, 253, 0.12);
+      color: #93c5fd;
+      border-color: rgba(147, 197, 253, 0.3);
+    }
+    .active-filter-pill button {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      line-height: 1;
+      padding: 0;
+      color: inherit;
+      opacity: 0.7;
+    }
+    .active-filter-pill button:hover {
+      opacity: 1;
+    }
+
+    /* Phonetic Expansion Notice Banner */
+    .phonetic-notice-banner {
+      background: linear-gradient(135deg, rgba(217, 119, 6, 0.1) 0%, rgba(245, 158, 11, 0.05) 100%);
+      border: 1px solid rgba(217, 119, 6, 0.3);
+      border-radius: 10px;
+      padding: 10px 14px;
+      margin-bottom: 14px;
+      font-size: 13px;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .phonetic-notice-tags {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-left: 4px;
+    }
+    .phonetic-tag {
+      background: rgba(217, 119, 6, 0.15);
+      color: #b45309;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    [data-theme="dark"] .phonetic-tag {
+      background: rgba(245, 158, 11, 0.2);
+      color: #fbbf24;
+    }
+
     /* Footer */
     footer {
       text-align: center;
@@ -2860,6 +3316,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         <button type="button" class="clear-search-btn" id="clearSearchBtn" onclick="clearSearch()" title="Clear">×</button>
       </div>
       <button type="button" class="search-submit-btn" onclick="doSearch()">Search</button>
+      <button type="button" class="advanced-search-btn" id="advancedSearchBtn" onclick="openAdvancedModal()" title="Open Advanced Search & Multi-Criteria Filters" style="display: none !important;">🎚️ Filters</button>
     </form>
 
     <!-- Quick topic / speaker chips -->
@@ -2879,6 +3336,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   <!-- Dynamic Search Results Section (Shown when search or filter is active) -->
   <div id="searchResultsSection" style="${initialSearchResults ? '' : 'display: none;'}">
+    <!-- Active Filter Pills Bar (Shown when multi-criteria filters are active) -->
+    <div id="activeFiltersBar" class="active-filters-bar" style="display: none;"></div>
+
+    <!-- Phonetic Expansion Notice Banner (Shown when transliteration synonyms were searched) -->
+    <div id="phoneticNoticeBanner" class="phonetic-notice-banner" style="display: none;"></div>
+
     <!-- Speaker & Venue Bio / Description Banner -->
     <div class="bio-banner" id="bioBanner" style="display: none;">
       <div class="bio-header">
@@ -3172,6 +3635,147 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   </div>
 </div>
 
+<!-- Advanced Search & Multi-Criteria Filtering Modal (#4) -->
+<div id="advancedSearchModal" class="advanced-modal-backdrop" onclick="handleAdvancedBackdropClick(event)">
+  <div class="advanced-modal-card" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <div class="modal-title">
+        <span>🎚️</span> Advanced Search & Filters
+      </div>
+      <button type="button" class="modal-close-btn" onclick="closeAdvancedModal()" aria-label="Close modal">✕</button>
+    </div>
+    <div class="modal-body">
+      <!-- Keyword / Topic -->
+      <div class="filter-group">
+        <label class="filter-label" for="advKeywords">
+          <span>Topic, Title, or Keyword</span>
+          <span class="filter-label-hint">Phonetic equivalence auto-enabled</span>
+        </label>
+        <input type="text" id="advKeywords" class="filter-input" placeholder="e.g. Shabbos, Muktzah, Teshuva, Shofar...">
+      </div>
+
+      <!-- Speaker / Teacher Selector -->
+      <div class="filter-group">
+        <label class="filter-label" for="advTeacherSelect">
+          <span>Speaker / Teacher</span>
+          <span class="filter-label-hint">Auto-strips honorifics (Rabbi, Rav, Dr.)</span>
+        </label>
+        <select id="advTeacherSelect" class="filter-select">
+          <option value="">-- Any Speaker / All Teachers --</option>
+          <optgroup label="Popular Roshei Yeshiva & Speakers">
+            <option value="80153">Rabbi Hershel Schachter</option>
+            <option value="80018">Rabbi Michael Rosensweig</option>
+            <option value="80020">Rabbi Mayer Twersky</option>
+            <option value="80753">Rabbi Aryeh Lebowitz</option>
+            <option value="80124">Rabbi Yaakov Neuburger</option>
+            <option value="80307">Rabbi Moshe Taragin</option>
+            <option value="80068">Rabbi Mordechai Willig</option>
+            <option value="80287">Rabbi Daniel Z. Feldman</option>
+            <option value="80112">Rabbi Menachem Penner</option>
+            <option value="80137">Rabbi Jeremy Wieder</option>
+            <option value="80346">Rabbi Ally Ehrman</option>
+            <option value="82537">Mrs. Michal Horowitz</option>
+            <option value="83175">Mrs. Emma Katz</option>
+          </optgroup>
+        </select>
+      </div>
+
+      <!-- Category / Topic Subcategory -->
+      <div class="filter-group">
+        <label class="filter-label" for="advCategorySelect">
+          <span>Category / Halachic Topic</span>
+        </label>
+        <select id="advCategorySelect" class="filter-select">
+          <option value="">-- All Categories & Topics --</option>
+          <optgroup label="Shabbat & Holidays (Moadim)">
+            <option value="234910">Shabbat (General)</option>
+            <option value="234065">Shabbat — Melachot & Halacha</option>
+            <option value="234066">Muktzah</option>
+            <option value="234047">Elul & Teshuvah</option>
+            <option value="234068">Rosh Hashanah</option>
+            <option value="235059">Yom Kippur</option>
+            <option value="234067">Sukkot & Arba Minim</option>
+            <option value="234041">Chanukah</option>
+            <option value="234060">Purim</option>
+            <option value="234061">Pesach & Seder</option>
+            <option value="234064">Shavuot</option>
+            <option value="234069">Three Weeks & Tisha B'Av</option>
+          </optgroup>
+          <optgroup label="Daily Learning Programs">
+            <option value="234949">Daf Yomi (Talmud)</option>
+            <option value="234877">Nach Yomi (Prophets & Writings)</option>
+            <option value="234050">Parshat HaShavua</option>
+          </optgroup>
+          <optgroup label="Halacha & Hashkafa">
+            <option value="234040">Kashrus & Food Halacha</option>
+            <option value="234053">Tefillah & Berachot</option>
+            <option value="234051">Jewish Thought & Machshava</option>
+          </optgroup>
+        </select>
+      </div>
+
+      <!-- Venue / Location -->
+      <div class="filter-group">
+        <label class="filter-label" for="advLocationSelect">
+          <span>Venue / Recording Location</span>
+        </label>
+        <select id="advLocationSelect" class="filter-select">
+          <option value="">-- All Locations / Venues --</option>
+          <option value="439">YU Wilf Campus (New York, NY)</option>
+          <option value="529">Yeshivat Har Etzion / Gush (Alon Shvut)</option>
+          <option value="507">Cong. KINS (Chicago, IL)</option>
+          <option value="417">Cong. Beth Abraham (Bergenfield, NJ)</option>
+          <option value="588">BMT — Beit Midrash Torani Leumi (Beit Shemesh)</option>
+          <option value="643">BAYT — Beth Avraham Yoseph of Toronto</option>
+          <option value="593">Young Israel of Woodmere (Woodmere, NY)</option>
+          <option value="562">Young Israel of Lawrence-Cedarhurst</option>
+          <option value="845">Virtual / Zoom</option>
+        </select>
+      </div>
+
+      <!-- Duration Presets & Range -->
+      <div class="filter-group">
+        <label class="filter-label">
+          <span>Shiur Duration</span>
+          <span class="filter-label-hint" id="durationHint">Any Length</span>
+        </label>
+        <div class="duration-presets-row">
+          <button type="button" class="duration-preset-btn selected" data-min="" data-max="" onclick="setDurationPreset(this, '', '')">Any Length</button>
+          <button type="button" class="duration-preset-btn" data-min="1" data-max="15" onclick="setDurationPreset(this, 1, 15)">⚡ Short (&lt;15m)</button>
+          <button type="button" class="duration-preset-btn" data-min="15" data-max="45" onclick="setDurationPreset(this, 15, 45)">🎙️ Mid (15–45m)</button>
+          <button type="button" class="duration-preset-btn" data-min="45" data-max="" onclick="setDurationPreset(this, 45, '')">📚 Deep (&gt;45m)</button>
+        </div>
+      </div>
+
+      <!-- Year / Era -->
+      <div class="filter-group">
+        <label class="filter-label" for="advYearSelect">
+          <span>Recording Year</span>
+        </label>
+        <select id="advYearSelect" class="filter-select">
+          <option value="">-- All Years --</option>
+          <option value="2026">2026 (5786)</option>
+          <option value="2025">2025 (5785)</option>
+          <option value="2024">2024 (5784)</option>
+          <option value="2023">2023 (5783)</option>
+          <option value="2022">2022 (5782)</option>
+          <option value="2021">2021 (5781)</option>
+          <option value="2020">2020 (5780)</option>
+          <option value="2010-2019">2010–2019 Decade</option>
+          <option value="pre-2010">Pre-2010 Archive</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="modal-reset-btn" onclick="resetAdvancedFilters()">Reset All Filters</button>
+      <div class="modal-action-btns">
+        <button type="button" class="modal-cancel-btn" onclick="closeAdvancedModal()">Cancel</button>
+        <button type="button" class="modal-submit-btn" onclick="applyAdvancedFilters()">Apply Filters 🔍</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <footer>
   <p>YUTorah Enhanced Player · Standalone zero-friction audio player for <a href="https://www.yutorah.org" target="_blank" rel="noopener noreferrer">YUTorah.org</a> · <a href="https://www.givecampus.com/campaigns/50770/donations/new" target="_blank" rel="noopener noreferrer" style="font-weight: 600;">❤️ Support YUTorah</a></p>
 </footer>
@@ -3254,7 +3858,37 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
   }
 
-  // Secret Triple-Click on Calendar Icon to Toggle Pre-roll
+  // Developer Mode (Active for current session until reload upon secret triple-click)
+  let isDevMode = false;
+
+  function activateDevMode() {
+    if (isDevMode) return false;
+    isDevMode = true;
+    document.body.classList.add('dev-mode-active');
+
+    // Reveal hidden settings wrapper and advanced search button
+    const settingsWrap = document.querySelector('.settings-wrapper');
+    if (settingsWrap) {
+      settingsWrap.style.setProperty('display', 'block', 'important');
+      settingsWrap.removeAttribute('aria-hidden');
+    }
+    const settingsBtn = document.getElementById('settingsBtn');
+    if (settingsBtn) settingsBtn.style.setProperty('display', 'inline-flex', 'important');
+    const settingsMenu = document.getElementById('settingsMenu');
+    if (settingsMenu) {
+      settingsMenu.querySelectorAll('[style*="display: none !important"]').forEach(el => {
+        el.style.removeProperty('display');
+      });
+    }
+
+    const advBtn = document.getElementById('advancedSearchBtn');
+    if (advBtn) {
+      advBtn.style.setProperty('display', 'inline-flex', 'important');
+    }
+    return true;
+  }
+
+  // Secret Triple-Click on Calendar Icon or Holiday Motif
   let calendarClickCount = 0;
   let calendarClickTimer = null;
   let toastTimer = null;
@@ -3268,7 +3902,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
     if (calendarClickCount >= 3) {
       calendarClickCount = 0;
-      togglePreRollSetting();
+      handleSecretTripleClick();
     } else {
       // 1 or 2 clicks have zero visual effect; reset counter after 1.5s
       calendarClickTimer = setTimeout(() => {
@@ -3277,7 +3911,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
   }
 
-  function togglePreRollSetting() {
+  function handleSecretTripleClick() {
+    // 1. Check if entering Dev Mode for the first time this session
+    const justUnlockedDev = !isDevMode;
+    if (justUnlockedDev) {
+      activateDevMode();
+    }
+
+    // 2. Toggle Pre-roll setting
     const currentlyDisabled = isPreRollDisabled();
     const newDisabled = !currentlyDisabled;
 
@@ -3294,15 +3935,21 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       skipSponsorAudio();
     }
 
-    flashToast(newDisabled ? '🚫 Pre-roll Disabled' : '✅ Pre-roll Enabled', newDisabled);
+    // 3. Flash informative HUD toast
+    const preRollStatus = newDisabled ? '🚫 Pre-roll Disabled' : '✅ Pre-roll Enabled';
+    if (justUnlockedDev) {
+      flashToast('🛠️ Dev Mode Unlocked! · ' + preRollStatus, newDisabled, true);
+    } else {
+      flashToast(preRollStatus, newDisabled, false);
+    }
   }
 
-  function flashToast(msg, isDisabled) {
+  function flashToast(msg, isDisabled, isDevUnlock = false) {
     const toast = document.getElementById('secretToast');
     if (!toast) return;
     clearTimeout(toastTimer);
     toast.textContent = msg;
-    toast.className = 'secret-toast ' + (isDisabled ? 'toast-disabled' : 'toast-enabled');
+    toast.className = 'secret-toast ' + (isDevUnlock ? 'toast-dev' : (isDisabled ? 'toast-disabled' : 'toast-enabled'));
     toast.style.display = 'flex';
     void toast.offsetWidth; // Trigger reflow for CSS animation
     toast.classList.add('visible');
@@ -3314,7 +3961,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           toast.style.display = 'none';
         }
       }, 250);
-    }, 1500);
+    }, isDevUnlock ? 2400 : 1500);
   }
 
   let isSponsorPlaying = false;
@@ -4057,6 +4704,208 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     updateUrlTimestamp(true);
   }
 
+  // Active Advanced Filter State
+  let activeAdvancedFilters = {
+    keywords: '',
+    teacherId: '',
+    teacherName: '',
+    subCategoryId: '',
+    categoryName: '',
+    locationId: '',
+    locationName: '',
+    minDuration: '',
+    maxDuration: '',
+    durationLabel: '',
+    year: '',
+    yearLabel: ''
+  };
+
+  function openAdvancedModal() {
+    // Populate modal inputs from current state
+    const modal = document.getElementById('advancedSearchModal');
+    if (!modal) return;
+
+    document.getElementById('advKeywords').value = activeAdvancedFilters.keywords || searchInput.value.trim();
+    document.getElementById('advTeacherSelect').value = activeAdvancedFilters.teacherId || '';
+    document.getElementById('advCategorySelect').value = activeAdvancedFilters.subCategoryId || '';
+    document.getElementById('advLocationSelect').value = activeAdvancedFilters.locationId || '';
+    document.getElementById('advYearSelect').value = activeAdvancedFilters.year || '';
+
+    // Set duration buttons
+    const minD = activeAdvancedFilters.minDuration;
+    const maxD = activeAdvancedFilters.maxDuration;
+    const btns = document.querySelectorAll('.duration-preset-btn');
+    btns.forEach(b => {
+      const bMin = b.getAttribute('data-min') || '';
+      const bMax = b.getAttribute('data-max') || '';
+      if (String(bMin) === String(minD || '') && String(bMax) === String(maxD || '')) {
+        b.classList.add('selected');
+      } else {
+        b.classList.remove('selected');
+      }
+    });
+
+    modal.classList.add('open');
+    document.getElementById('advKeywords').focus();
+  }
+
+  function closeAdvancedModal() {
+    const modal = document.getElementById('advancedSearchModal');
+    if (modal) modal.classList.remove('open');
+  }
+
+  function handleAdvancedBackdropClick(e) {
+    if (e.target.id === 'advancedSearchModal') {
+      closeAdvancedModal();
+    }
+  }
+
+  function setDurationPreset(btn, min, max) {
+    document.querySelectorAll('.duration-preset-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    const hint = document.getElementById('durationHint');
+    if (hint) {
+      hint.textContent = btn.textContent;
+    }
+  }
+
+  function resetAdvancedFilters() {
+    document.getElementById('advKeywords').value = '';
+    document.getElementById('advTeacherSelect').value = '';
+    document.getElementById('advCategorySelect').value = '';
+    document.getElementById('advLocationSelect').value = '';
+    document.getElementById('advYearSelect').value = '';
+    const defBtn = document.querySelector('.duration-preset-btn[data-min=""][data-max=""]');
+    if (defBtn) setDurationPreset(defBtn, '', '');
+  }
+
+  function applyAdvancedFilters() {
+    const kw = document.getElementById('advKeywords').value.trim();
+    const teacherSelect = document.getElementById('advTeacherSelect');
+    const teacherId = teacherSelect.value;
+    const teacherName = teacherSelect.selectedIndex > 0 ? teacherSelect.options[teacherSelect.selectedIndex].text : '';
+
+    const catSelect = document.getElementById('advCategorySelect');
+    const subCategoryId = catSelect.value;
+    const categoryName = catSelect.selectedIndex > 0 ? catSelect.options[catSelect.selectedIndex].text : '';
+
+    const locSelect = document.getElementById('advLocationSelect');
+    const locationId = locSelect.value;
+    const locationName = locSelect.selectedIndex > 0 ? locSelect.options[locSelect.selectedIndex].text : '';
+
+    const selDurationBtn = document.querySelector('.duration-preset-btn.selected');
+    const minDuration = selDurationBtn ? selDurationBtn.getAttribute('data-min') : '';
+    const maxDuration = selDurationBtn ? selDurationBtn.getAttribute('data-max') : '';
+    const durationLabel = selDurationBtn && selDurationBtn.getAttribute('data-min') !== '' ? selDurationBtn.textContent : '';
+
+    const yearSelect = document.getElementById('advYearSelect');
+    const year = yearSelect.value;
+    const yearLabel = yearSelect.selectedIndex > 0 ? yearSelect.options[yearSelect.selectedIndex].text : '';
+
+    activeAdvancedFilters = {
+      keywords: kw,
+      teacherId,
+      teacherName,
+      subCategoryId,
+      categoryName,
+      locationId,
+      locationName,
+      minDuration,
+      maxDuration,
+      durationLabel,
+      year,
+      yearLabel
+    };
+
+    closeAdvancedModal();
+
+    // Update search bar value with keywords or descriptive search
+    if (kw) {
+      searchInput.value = kw;
+    } else if (teacherName) {
+      searchInput.value = teacherName;
+    }
+
+    // Execute multi-criteria search
+    executeLiveSearch(kw, {
+      ...activeAdvancedFilters,
+      fromAdvancedModal: true
+    });
+  }
+
+  function renderActiveFilterPills() {
+    const bar = document.getElementById('activeFiltersBar');
+    if (!bar) return;
+
+    const pills = [];
+    if (activeAdvancedFilters.teacherId && activeAdvancedFilters.teacherName) {
+      pills.push('<span class="active-filter-pill">👤 Speaker: ' + escapeHtml(activeAdvancedFilters.teacherName) + ' <button type="button" onclick="removeFilter(\'teacher\')" title="Remove">✕</button></span>');
+    }
+    if (activeAdvancedFilters.subCategoryId && activeAdvancedFilters.categoryName) {
+      pills.push('<span class="active-filter-pill">🏷️ Topic: ' + escapeHtml(activeAdvancedFilters.categoryName) + ' <button type="button" onclick="removeFilter(\'category\')" title="Remove">✕</button></span>');
+    }
+    if (activeAdvancedFilters.locationId && activeAdvancedFilters.locationName) {
+      pills.push('<span class="active-filter-pill">📍 Venue: ' + escapeHtml(activeAdvancedFilters.locationName) + ' <button type="button" onclick="removeFilter(\'location\')" title="Remove">✕</button></span>');
+    }
+    if (activeAdvancedFilters.minDuration || activeAdvancedFilters.maxDuration) {
+      pills.push('<span class="active-filter-pill">⏱ Duration: ' + escapeHtml(activeAdvancedFilters.durationLabel) + ' <button type="button" onclick="removeFilter(\'duration\')" title="Remove">✕</button></span>');
+    }
+    if (activeAdvancedFilters.year) {
+      pills.push('<span class="active-filter-pill">📅 Year: ' + escapeHtml(activeAdvancedFilters.yearLabel || activeAdvancedFilters.year) + ' <button type="button" onclick="removeFilter(\'year\')" title="Remove">✕</button></span>');
+    }
+
+    if (pills.length > 0) {
+      bar.innerHTML = '<span style="font-size:12px; font-weight:700; color:var(--text-muted);">Active Filters:</span> ' + pills.join('') + ' <button type="button" class="modal-reset-btn" style="padding:2px 8px; font-size:12px;" onclick="clearAllFilters()">Clear All</button>';
+      bar.style.display = 'flex';
+      const advBtn = document.getElementById('advancedSearchBtn');
+      if (advBtn) advBtn.classList.add('active');
+    } else {
+      bar.innerHTML = '';
+      bar.style.display = 'none';
+      const advBtn = document.getElementById('advancedSearchBtn');
+      if (advBtn) advBtn.classList.remove('active');
+    }
+  }
+
+  function removeFilter(type) {
+    if (type === 'teacher') {
+      activeAdvancedFilters.teacherId = '';
+      activeAdvancedFilters.teacherName = '';
+    } else if (type === 'category') {
+      activeAdvancedFilters.subCategoryId = '';
+      activeAdvancedFilters.categoryName = '';
+    } else if (type === 'location') {
+      activeAdvancedFilters.locationId = '';
+      activeAdvancedFilters.locationName = '';
+    } else if (type === 'duration') {
+      activeAdvancedFilters.minDuration = '';
+      activeAdvancedFilters.maxDuration = '';
+      activeAdvancedFilters.durationLabel = '';
+    } else if (type === 'year') {
+      activeAdvancedFilters.year = '';
+      activeAdvancedFilters.yearLabel = '';
+    }
+    executeLiveSearch(activeAdvancedFilters.keywords || searchInput.value.trim(), { ...activeAdvancedFilters });
+  }
+
+  function clearAllFilters() {
+    activeAdvancedFilters = {
+      keywords: '',
+      teacherId: '',
+      teacherName: '',
+      subCategoryId: '',
+      categoryName: '',
+      locationId: '',
+      locationName: '',
+      minDuration: '',
+      maxDuration: '',
+      durationLabel: '',
+      year: '',
+      yearLabel: ''
+    };
+    executeLiveSearch(searchInput.value.trim(), {});
+  }
+
   async function executeLiveSearch(query, extraParams = {}) {
     currentSearchQuery = query;
     currentFilterParams = extraParams;
@@ -4082,12 +4931,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const grid = document.getElementById('searchResultsGrid');
     const label = document.getElementById('searchResultsLabel');
     const loadMoreBox = document.getElementById('loadMoreContainer');
+    const phoneticBanner = document.getElementById('phoneticNoticeBanner');
 
-    const displayLabel = extraParams.label || ('Searching for "' + query + '"...');
+    renderActiveFilterPills();
+
+    const displayLabel = extraParams.label || (query ? ('Searching for "' + query + '"...') : 'Filtering shiurim...');
     label.textContent = displayLabel;
     grid.innerHTML = '';
     spinner.style.display = 'block';
     loadMoreBox.style.display = 'none';
+    if (phoneticBanner) phoneticBanner.style.display = 'none';
 
     // Update browser URL without reload
     const newUrl = new URL(window.location.href);
@@ -4108,6 +4961,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (extraParams.locationId) apiUrl += '&locationId=' + encodeURIComponent(extraParams.locationId);
     if (extraParams.subCategoryId) apiUrl += '&subCategoryId=' + encodeURIComponent(extraParams.subCategoryId);
     if (extraParams.seriesId) apiUrl += '&seriesId=' + encodeURIComponent(extraParams.seriesId);
+    if (extraParams.minDuration) apiUrl += '&minDuration=' + encodeURIComponent(extraParams.minDuration);
+    if (extraParams.maxDuration) apiUrl += '&maxDuration=' + encodeURIComponent(extraParams.maxDuration);
+    if (extraParams.year) apiUrl += '&year=' + encodeURIComponent(extraParams.year);
 
     try {
       const res = await fetch(apiUrl, {
@@ -4120,13 +4976,25 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       totalSearchResults = data?.response?.numFound || docs.length;
       currentLoadedDocsCount = docs.length;
 
+      // Handle Phonetic Expansion Notice
+      if (data?.phoneticExpansion && phoneticBanner) {
+        const pTokens = data.phoneticExpansion.tokens || [];
+        const original = data.phoneticExpansion.original;
+        if (pTokens.length > 1) {
+          const tagsHtml = pTokens.slice(0, 8).map(t => '<span class="phonetic-tag">' + escapeHtml(t) + '</span>').join('');
+          phoneticBanner.innerHTML = '<div><span>✨ Phonetic Equivalence included synonyms:</span> <div class="phonetic-notice-tags">' + tagsHtml + '</div></div>' +
+            '<span style="font-size:11px; opacity:0.8;">Ashkenazic &amp; Sephardic variations searched</span>';
+          phoneticBanner.style.display = 'flex';
+        }
+      }
+
       const resultsTitle = extraParams.label
         ? (extraParams.label + ' (' + currentLoadedDocsCount + (totalSearchResults ? ' of ' + totalSearchResults.toLocaleString() : '') + ')')
-        : ('Showing ' + currentLoadedDocsCount + (totalSearchResults ? ' of ' + totalSearchResults.toLocaleString() : '') + ' results for "' + query + '"');
+        : ('Showing ' + currentLoadedDocsCount + (totalSearchResults ? ' of ' + totalSearchResults.toLocaleString() : '') + ' results' + (query ? ' for "' + query + '"' : ''));
       label.textContent = resultsTitle;
 
       if (docs.length === 0) {
-        grid.innerHTML = '<div style="padding: 30px; text-align: center; color: var(--text-muted); grid-column: 1/-1;">No shiurim found. Try searching for speaker name, topic, or venue.</div>';
+        grid.innerHTML = '<div style="padding: 30px; text-align: center; color: var(--text-muted); grid-column: 1/-1;">No shiurim found matching these criteria. Try adjusting your filters or search keywords.</div>';
         loadMoreBox.style.display = 'none';
         return;
       }
@@ -4179,6 +5047,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (currentFilterParams.locationId) apiUrl += '&locationId=' + encodeURIComponent(currentFilterParams.locationId);
     if (currentFilterParams.subCategoryId) apiUrl += '&subCategoryId=' + encodeURIComponent(currentFilterParams.subCategoryId);
     if (currentFilterParams.seriesId) apiUrl += '&seriesId=' + encodeURIComponent(currentFilterParams.seriesId);
+    if (currentFilterParams.minDuration) apiUrl += '&minDuration=' + encodeURIComponent(currentFilterParams.minDuration);
+    if (currentFilterParams.maxDuration) apiUrl += '&maxDuration=' + encodeURIComponent(currentFilterParams.maxDuration);
+    if (currentFilterParams.year) apiUrl += '&year=' + encodeURIComponent(currentFilterParams.year);
 
     try {
       const res = await fetch(apiUrl);
@@ -4215,6 +5086,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
   }
 
+  // Keyboard shortcut: Escape closes modal
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeAdvancedModal();
+    }
+  });
+
   function clearSearch() {
     searchInput.value = '';
     clearSearchBtn.style.display = 'none';
@@ -4222,6 +5100,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     document.getElementById('loadMoreContainer').style.display = 'none';
     const bioBanner = document.getElementById('bioBanner');
     if (bioBanner) bioBanner.style.display = 'none';
+    const bar = document.getElementById('activeFiltersBar');
+    if (bar) bar.style.display = 'none';
+    const pNotice = document.getElementById('phoneticNoticeBanner');
+    if (pNotice) pNotice.style.display = 'none';
 
     // If has audio and was on a shiur page, re-expand player and show recommendations
     const playerCard = document.getElementById('playerCard');
