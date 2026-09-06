@@ -1,23 +1,32 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
-  <!-- Classic recognizable curved Ram's Horn Shofar -->
-  <path d="M12 76 C 22 72, 34 54, 48 42 C 60 32, 74 26, 88 26 C 91 26, 93 28, 93 32 C 93 42, 85 52, 74 58 C 58 66, 44 68, 28 82 C 20 90, 10 88, 8 82 C 7 79, 9 77, 12 76 Z" 
-        fill="url(#shofarGrad)" stroke="#6e4215" stroke-width="2.5" stroke-linejoin="round"/>
-  <!-- Ridges & texture along horn -->
-  <path d="M42 45 C 47 50, 48 57, 43 64" stroke="#8d5620" stroke-width="2" stroke-linecap="round"/>
-  <path d="M55 36 C 61 42, 63 50, 58 57" stroke="#8d5620" stroke-width="2" stroke-linecap="round"/>
-  <path d="M68 30 C 74 36, 76 43, 72 50" stroke="#8d5620" stroke-width="2" stroke-linecap="round"/>
-  <path d="M80 27 C 85 33, 86 40, 83 45" stroke="#8d5620" stroke-width="2" stroke-linecap="round"/>
-  <!-- Bell / opening ellipse -->
-  <ellipse cx="89" cy="35" rx="4" ry="9" fill="#4a2909" stroke="#6e4215" stroke-width="2"/>
-  <!-- Mouthpiece -->
-  <circle cx="10" cy="79" r="3.5" fill="#3a1e05" stroke="#6e4215" stroke-width="1.5"/>
+  <!-- Classic Deeply Curved Ram's Horn Shofar -->
   <defs>
-    <linearGradient id="shofarGrad" x1="10" y1="85" x2="90" y2="30" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#4a280d"/>
-      <stop offset="25%" stop-color="#8c5828"/>
-      <stop offset="60%" stop-color="#d4a373"/>
-      <stop offset="85%" stop-color="#fae1b8"/>
-      <stop offset="100%" stop-color="#e8c28c"/>
+    <linearGradient id="shofarGrad" x1="15%" y1="85%" x2="85%" y2="20%">
+      <stop offset="0%" stop-color="#42210b"/>
+      <stop offset="25%" stop-color="#784017"/>
+      <stop offset="50%" stop-color="#ad6a28"/>
+      <stop offset="75%" stop-color="#d89b4e"/>
+      <stop offset="90%" stop-color="#fae0ad"/>
+      <stop offset="100%" stop-color="#e4b775"/>
+    </linearGradient>
+    <linearGradient id="shofarBell" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#261204"/>
+      <stop offset="100%" stop-color="#4a2609"/>
     </linearGradient>
   </defs>
+  <!-- Outer horn path: sweeps down into a deep belly curve, curves up into iconic hook with wide flared bell -->
+  <path d="M 14 58 C 14 68, 22 86, 38 88 C 56 90, 74 78, 80 60 C 85 45, 87 32, 89 20 C 85 19, 78 22, 73 28 C 71 40, 67 52, 58 60 C 48 70, 36 72, 24 66 C 18 63, 14 57, 14 58 Z" 
+        fill="url(#shofarGrad)" stroke="#4a2307" stroke-width="2.2" stroke-linejoin="round"/>
+  <!-- Flared Bell opening -->
+  <ellipse cx="81" cy="24" rx="7.5" ry="12" transform="rotate(35 81 24)" fill="url(#shofarBell)" stroke="#5c2e0b" stroke-width="2"/>
+  <!-- Mouthpiece tip -->
+  <circle cx="14" cy="58" r="3" fill="#2a1303" stroke="#4a2307" stroke-width="1.5"/>
+  <!-- Transverse natural ridges / rings of the horn -->
+  <path d="M 29 84 C 33 78, 32 71, 26 67" stroke="#703c14" stroke-width="2" stroke-linecap="round" opacity="0.8"/>
+  <path d="M 42 84 C 47 77, 45 68, 38 63" stroke="#703c14" stroke-width="2" stroke-linecap="round" opacity="0.8"/>
+  <path d="M 56 79 C 62 71, 59 62, 51 57" stroke="#874b1c" stroke-width="2" stroke-linecap="round" opacity="0.8"/>
+  <path d="M 69 69 C 75 60, 71 49, 63 45" stroke="#9e5c26" stroke-width="2" stroke-linecap="round" opacity="0.8"/>
+  <path d="M 78 54 C 83 45, 79 36, 72 32" stroke="#ba7536" stroke-width="2" stroke-linecap="round" opacity="0.8"/>
+  <!-- Gloss highlight along outer spine -->
+  <path d="M 26 84 C 44 87, 65 80, 75 62 C 81 49, 84 36, 87 22" stroke="#fff1d4" stroke-width="1.6" stroke-linecap="round" opacity="0.55"/>
 </svg>

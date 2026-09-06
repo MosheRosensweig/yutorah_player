@@ -49,7 +49,7 @@ async function getDailySponsorship() {
   let result = {
     text: '',
     plainText: '',
-    audioUrl: 'https://cdn.yutorah.net/_media/sponsorshipAudio/112521.mp3'
+    audioUrl: ''
   };
 
   try {
@@ -76,16 +76,64 @@ async function getDailySponsorship() {
         result.text = formatted;
       }
 
+      // Check if HTML has a non-placeholder audio URL
       const audioMatch = html.match(/_sponsorshipAudioURL\s*=\s*['"]([^'"]+)['"]/i);
       if (audioMatch && audioMatch[1] && audioMatch[1].trim()) {
-        let audioUrl = audioMatch[1].trim();
-        audioUrl = audioUrl.replace('https://www.yutorah.org/_cdn/', 'https://cdn.yutorah.net/');
-        audioUrl = audioUrl.replace('http://www.yutorah.org/_cdn/', 'https://cdn.yutorah.net/');
-        result.audioUrl = audioUrl;
+        let rawUrl = audioMatch[1].trim();
+        rawUrl = rawUrl.replace('https://www.yutorah.org/_cdn/', 'https://cdn.yutorah.net/');
+        rawUrl = rawUrl.replace('http://www.yutorah.org/_cdn/', 'https://cdn.yutorah.net/');
+        if (!rawUrl.includes('112521.mp3')) {
+          result.audioUrl = rawUrl;
+        }
       }
     }
   } catch (e) {
     console.error('Error fetching live sponsorship:', e);
+  }
+
+  // YUTorah uploads daily pre-rolls as MMDDYY.mp3 based on America/New_York calendar date
+  try {
+    const nyFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      year: '2-digit',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    const parts = nyFormatter.formatToParts(new Date());
+    const mm = parts.find(p => p.type === 'month')?.value;
+    const dd = parts.find(p => p.type === 'day')?.value;
+    const yy = parts.find(p => p.type === 'year')?.value;
+
+    if (mm && dd && yy) {
+      const todayAudio = `https://cdn.yutorah.net/_media/sponsorshipAudio/${mm}${dd}${yy}.mp3`;
+      const headCheck = await fetch(todayAudio, { method: 'HEAD', redirect: 'follow' });
+      if (headCheck.ok) {
+        result.audioUrl = todayAudio;
+      }
+    }
+
+    // Fallback to yesterday's audio if today's isn't uploaded yet
+    if (!result.audioUrl) {
+      const yesterday = new Date(Date.now() - 86400000);
+      const yParts = nyFormatter.formatToParts(yesterday);
+      const ymm = yParts.find(p => p.type === 'month')?.value;
+      const ydd = yParts.find(p => p.type === 'day')?.value;
+      const yyy = yParts.find(p => p.type === 'year')?.value;
+      if (ymm && ydd && yyy) {
+        const yAudio = `https://cdn.yutorah.net/_media/sponsorshipAudio/${ymm}${ydd}${yyy}.mp3`;
+        const yHead = await fetch(yAudio, { method: 'HEAD', redirect: 'follow' });
+        if (yHead.ok) {
+          result.audioUrl = yAudio;
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Error determining daily sponsorship audio URL:', err);
+  }
+
+  // Safe fallback if no audio URL could be verified
+  if (!result.audioUrl) {
+    result.audioUrl = 'https://cdn.yutorah.net/_media/sponsorshipAudio/090626.mp3';
   }
 
   // Fallback if live fetch fails or no current sponsor
@@ -807,6 +855,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       min-height: 100vh;
       display: flex;
       flex-direction: column;
+      padding-bottom: var(--sponsor-banner-height, 42px);
     }
 
     /* Frozen Top Header (Always Fixed to Top of Viewport) */
@@ -982,16 +1031,30 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       text-decoration-color: rgba(92, 142, 204, 0.5);
     }
 
-    /* Sponsorship Banner */
+    /* Sponsorship Banner - Locked to Bottom */
+    :root {
+      --sponsor-banner-height: 42px;
+    }
+    @media (max-width: 600px) {
+      :root {
+        --sponsor-banner-height: 56px;
+      }
+    }
     .sponsorship-banner {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 1000;
       background: linear-gradient(90deg, #fdf8eb 0%, #fffdf7 50%, #fdf8eb 100%);
-      border-bottom: 1px solid #e7d8b5;
+      border-top: 1px solid #e7d8b5;
+      border-bottom: none;
       color: #634d17;
-      font-size: 13px;
-      padding: 8px 16px;
+      font-size: 12.5px;
+      padding: 7px 16px;
       text-align: center;
-      line-height: 1.45;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      line-height: 1.4;
+      box-shadow: 0 -2px 10px rgba(0,0,0,0.08);
     }
     .sponsorship-content {
       max-width: 960px;
@@ -1032,9 +1095,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     [data-theme="dark"] .sponsorship-banner {
       background: linear-gradient(90deg, #141a24 0%, #1a2230 50%, #141a24 100%);
-      border-bottom: 1px solid #29384e;
+      border-top: 1px solid #29384e;
+      border-bottom: none;
       color: #e8ce8f;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      box-shadow: 0 -2px 10px rgba(0,0,0,0.3);
     }
     [data-theme="dark"] .sponsorship-banner strong {
       color: #fae4a5;
@@ -1050,7 +1114,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       color: #ffffff;
     }
 
-    /* Sponsor Pre-Roll Banner inside Player Card */
+    /* Sponsor Pre-Roll Overlayment Banner inside Player Card (Under Shiur Title) */
     .sponsor-preroll-banner {
       background: linear-gradient(135deg, rgba(212, 163, 115, 0.16) 0%, rgba(43, 76, 126, 0.08) 100%);
       border: 1.5px solid rgba(212, 163, 115, 0.55);
@@ -1092,30 +1156,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       border-radius: 20px;
       box-shadow: 0 2px 5px rgba(0,0,0,0.12);
     }
-    .sponsor-skip-btn {
-      background: #2b4c7e;
-      color: #ffffff;
-      border: none;
+    .sponsor-preroll-status {
       font-size: 12px;
       font-weight: 700;
-      padding: 6px 14px;
-      border-radius: 20px;
-      cursor: pointer;
+      color: var(--primary);
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-      transition: all 0.2s ease;
-      box-shadow: 0 2px 6px rgba(43, 76, 126, 0.25);
+      gap: 5px;
     }
-    .sponsor-skip-btn:hover {
-      background: #1b3356;
-      transform: scale(1.03);
-    }
-    [data-theme="dark"] .sponsor-skip-btn {
-      background: #436ea8;
-    }
-    [data-theme="dark"] .sponsor-skip-btn:hover {
-      background: #5a87c5;
+    [data-theme="dark"] .sponsor-preroll-status {
+      color: #fae4a5;
     }
     .sponsor-preroll-body {
       font-size: 13.5px;
@@ -2358,10 +2408,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     /* Mini Player (persistent bottom bar) */
     #miniPlayer {
       position: fixed;
-      bottom: 0;
+      bottom: var(--sponsor-banner-height, 42px);
       left: 0;
       right: 0;
-      z-index: 999;
+      z-index: 1001;
       background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%);
       color: #fff;
       display: none;
@@ -2508,7 +2558,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     .mini-btn.close-btn:hover { opacity: 1; }
 
     body.mini-player-active {
-      padding-bottom: 64px;
+      padding-bottom: calc(var(--sponsor-banner-height, 42px) + 64px);
     }
 
     /* Speaker & Venue Bio / Description Banner */
@@ -2697,12 +2747,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 <div id="secretToast" class="secret-toast" style="display: none;"></div>
 <div class="header-spacer" id="headerSpacer"></div>
 
-<div class="sponsorship-banner">
-  <div class="sponsorship-content">
-    <span class="sponsorship-text">${sponsorshipText || 'Learning on the Marcos and Adina Katz YUTorah site is sponsored today by <strong>The Ohayon family in Hamilton, ON</strong> to mark the yahrtzeit of Shimon ben Issaschar Ruimy on 24 Elul and for a refuah shleima for Avraham Yitzchak Fishel ben Chaina Shifra'}</span>
-    <a href="https://www.givecampus.com/campaigns/50770/donations/new" target="_blank" rel="noopener noreferrer" class="sponsorship-support-pill" title="Support YUTorah (Opens in new window)">Support YUTorah ↗</a>
-  </div>
-</div>
 <div id="holidayTaglineBar" class="holiday-tagline-bar" style="display: none;"></div>
 
 <main>
@@ -2801,25 +2845,26 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       <button type="button" class="mini-btn-pill" onclick="minimizePlayer()" title="Minimize to mini-player" style="background: #eef2f7; border: 1px solid #dbe2ed; color: var(--primary); font-size: 13px; font-weight: 700; padding: 5px 12px; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="pointer-events:none;"><path d="M7 10l5 5 5-5z"/></svg> Minimize</button>
     </div>
 
-    <!-- Pre-roll Sponsor Banner (visible when sponsor audio is playing) -->
-    <div id="sponsorPreRollBanner" class="sponsor-preroll-banner" style="display: none;">
-      <div class="sponsor-preroll-header">
-        <span class="sponsor-preroll-badge"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" style="display:inline-block; vertical-align:middle; margin-right:4px;"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg> TODAY'S SPONSOR DEDICATION</span>
-        <button type="button" class="sponsor-skip-btn" id="sponsorSkipBtn" onclick="skipSponsorAudio()" title="Skip sponsor and play shiur immediately">Skip to Shiur ⏭</button>
-      </div>
-      <div class="sponsor-preroll-body" id="sponsorPreRollText">${sponsorshipText || ''}</div>
-      <div class="sponsor-preroll-footer">
-        <div class="sponsor-preroll-countdown">🎙️ Shiur starts in <span id="sponsorCountdown">10</span>s...</div>
-        <span style="font-size:11.5px; opacity:0.85;">Audio dedication playing</span>
-      </div>
-    </div>
-
+    <!-- Main Shiur Header (Always preserved on top) -->
     <div class="shiur-header">
       <img id="speakerImg" class="speaker-photo" src="${escapeHtml(photo)}" alt="${escapeHtml(speaker)}">
       <div class="shiur-details">
         <h1 id="shiurTitle" class="shiur-title">${escapeHtml(title)}</h1>
         <div id="shiurSpeaker" class="shiur-speaker">${escapeHtml(speaker)}</div>
         <div id="shiurMeta" class="shiur-meta">${escapeHtml(meta)}</div>
+      </div>
+    </div>
+
+    <!-- Pre-roll Sponsor Overlayment Banner (under title, visible when sponsor audio is playing) -->
+    <div id="sponsorPreRollBanner" class="sponsor-preroll-banner" style="display: none;">
+      <div class="sponsor-preroll-header">
+        <span class="sponsor-preroll-badge"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" style="display:inline-block; vertical-align:middle; margin-right:4px;"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg> TODAY'S SPONSOR DEDICATION</span>
+        <span class="sponsor-preroll-status">🎙️ Audio Dedication Playing</span>
+      </div>
+      <div class="sponsor-preroll-body" id="sponsorPreRollText">${sponsorshipText || ''}</div>
+      <div class="sponsor-preroll-footer">
+        <div class="sponsor-preroll-countdown">🎙️ Shiur begins in <span id="sponsorCountdown">10</span>s...</div>
+        <span style="font-size:11.5px; opacity:0.85;">Plays automatically before shiur</span>
       </div>
     </div>
 
@@ -3048,6 +3093,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   <p>YUTorah Enhanced Player · Standalone zero-friction audio player for <a href="https://www.yutorah.org" target="_blank" rel="noopener noreferrer">YUTorah.org</a> · <a href="https://www.givecampus.com/campaigns/50770/donations/new" target="_blank" rel="noopener noreferrer" style="font-weight: 600;">❤️ Support YUTorah</a></p>
 </footer>
 
+<!-- Bottom Locked Sponsorship Dedication Banner -->
+<div class="sponsorship-banner">
+  <div class="sponsorship-content">
+    <span class="sponsorship-text">${sponsorshipText || 'Learning on the Marcos and Adina Katz YUTorah site is sponsored today by <strong>The Ohayon family in Hamilton, ON</strong> to mark the yahrtzeit of Shimon ben Issaschar Ruimy on 24 Elul and for a refuah shleima for Avraham Yitzchak Fishel ben Chaina Shifra'}</span>
+    <a href="https://www.givecampus.com/campaigns/50770/donations/new" target="_blank" rel="noopener noreferrer" class="sponsorship-support-pill" title="Support YUTorah (Opens in new window)">Support YUTorah ↗</a>
+  </div>
+</div>
+
 <script>
   function escapeHtml(str) {
     if (!str) return '';
@@ -3214,24 +3267,28 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (countdownEl) countdownEl.textContent = '10';
     }
 
-    document.title = "📢 Today's Sponsor Dedication — YUTorah Enhanced";
+    document.title = shiurObj.title + " — YUTorah Enhanced";
     const titleEl = document.getElementById('shiurTitle');
-    if (titleEl) titleEl.textContent = "📢 Today's Sponsorship Dedication";
+    if (titleEl) titleEl.textContent = shiurObj.title;
     const speakerEl = document.getElementById('shiurSpeaker');
-    if (speakerEl) speakerEl.textContent = 'Upcoming Shiur: ' + shiurObj.title + (shiurObj.speaker ? ' (' + shiurObj.speaker + ')' : '');
+    if (speakerEl) speakerEl.textContent = shiurObj.speaker || '';
     const metaEl = document.getElementById('shiurMeta');
-    if (metaEl) metaEl.textContent = 'Sponsorship Announcement · Shiur will begin automatically';
+    if (metaEl) metaEl.textContent = shiurObj.meta || (shiurObj.duration ? shiurObj.duration : '');
 
     const img = document.getElementById('speakerImg');
     if (img) {
-      img.src = 'https://cdnyutorah.cachefly.net/public/v3/images/logo-university-2x.png';
-      img.style.display = 'block';
+      if (shiurObj.photo) {
+        img.src = shiurObj.photo;
+        img.style.display = 'block';
+      } else {
+        img.style.display = 'none';
+      }
     }
 
     const curTimeEl = document.getElementById('curTime');
     if (curTimeEl) curTimeEl.textContent = '0:00';
     const totalTimeEl = document.getElementById('totalTime');
-    if (totalTimeEl) totalTimeEl.textContent = '0:10';
+    if (totalTimeEl) totalTimeEl.textContent = '0:12';
     const scrubberFill = document.getElementById('scrubberFill');
     if (scrubberFill) scrubberFill.style.width = '0%';
 
@@ -3239,17 +3296,24 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const miniSpeaker = document.getElementById('miniSpeaker');
     const miniThumb = document.getElementById('miniThumb');
     const miniTime = document.getElementById('miniTime');
-    if (miniTitle) miniTitle.textContent = "📢 Today's Sponsorship Dedication";
-    if (miniSpeaker) miniSpeaker.textContent = 'Next: ' + shiurObj.title;
-    if (miniThumb) miniThumb.src = 'https://cdnyutorah.cachefly.net/public/v3/images/logo-university-2x.png';
-    if (miniTime) miniTime.textContent = '0:00 / 0:10';
+    if (miniTitle) miniTitle.textContent = shiurObj.title;
+    if (miniSpeaker) miniSpeaker.textContent = (shiurObj.speaker ? shiurObj.speaker + ' · ' : '') + "🎙️ Playing Sponsor Dedication";
+    if (miniThumb) {
+      if (shiurObj.photo) {
+        miniThumb.src = shiurObj.photo;
+        miniThumb.style.display = 'block';
+      } else {
+        miniThumb.style.display = 'none';
+      }
+    }
+    if (miniTime) miniTime.textContent = '0:00 / 0:12';
 
     if ('mediaSession' in navigator) {
       navigator.mediaSession.metadata = new MediaMetadata({
-        title: "YUTorah Daily Sponsorship",
-        artist: "Today's Dedication",
+        title: shiurObj.title + " (Sponsorship)",
+        artist: (shiurObj.speaker ? shiurObj.speaker + " · " : "") + "Today's Dedication",
         album: 'YUTorah Online',
-        artwork: [{ src: 'https://cdnyutorah.cachefly.net/public/v3/images/logo-university-2x.png', sizes: '200x200', type: 'image/png' }]
+        artwork: shiurObj.photo ? [{ src: shiurObj.photo, sizes: '200x200', type: 'image/jpeg' }] : []
       });
     }
 
@@ -4742,12 +4806,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   function skip(sec) {
-    if (isSponsorPlaying) {
-      if (sec > 0) {
-        skipSponsorAudio();
-      }
-      return;
-    }
+    if (isSponsorPlaying) return;
     if (!audio.src) return;
     audio.currentTime = Math.max(0, Math.min(audio.duration || Infinity, audio.currentTime + sec));
     updateUrlTimestamp(true);
@@ -4848,7 +4907,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   function onScrubStart(e) {
-    if (!audio.duration || isNaN(audio.duration)) return;
+    if (isSponsorPlaying || !audio.duration || isNaN(audio.duration)) return;
     isScrubbing = true;
     scrubberBar.classList.add('is-dragging');
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
@@ -5109,6 +5168,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
   syncHeaderSpacer();
   window.addEventListener('resize', syncHeaderSpacer);
+
+  function syncSponsorshipHeight() {
+    var b = document.querySelector('.sponsorship-banner');
+    if (b) {
+      var h = b.offsetHeight;
+      if (h > 0) {
+        document.documentElement.style.setProperty('--sponsor-banner-height', h + 'px');
+      }
+    }
+  }
+  syncSponsorshipHeight();
+  window.addEventListener('resize', syncSponsorshipHeight);
 
   initTheme();
   updateSettingsMenuText();
