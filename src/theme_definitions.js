@@ -76,7 +76,7 @@ export const THEMES = {
     badge: 'Chodesh Elul',
     variants: {
       a: {
-        title: "Variant A — Classic Polished Ram's Horn Shofar",
+        title: "Variant A — Iconic Curved Ram's Horn Shofar Photo",
         primary: '#2b4c7e',
         accent: '#c99a5b',
         bannerBg: '#fbf7f2',
@@ -85,7 +85,7 @@ export const THEMES = {
         tagline: 'אני לדודי ודודי לי · Season of Teshuva',
         css: `
           .holiday-motif-wrap { background: #fdf6ec; border-color: #c99a5b; }
-          .sponsorship-banner { border-bottom: 2px solid #dfb987; }
+          .sponsorship-banner { border-top: 2px solid #dfb987; }
         `
       },
       b: {

@@ -1174,6 +1174,40 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       margin-bottom: 8px;
       font-weight: 500;
     }
+    .sponsor-preroll-progress-wrap {
+      margin: 10px 0 8px;
+    }
+    .sponsor-preroll-progress-track {
+      width: 100%;
+      height: 6px;
+      background: rgba(43, 76, 126, 0.12);
+      border-radius: 6px;
+      position: relative;
+      overflow: visible;
+    }
+    [data-theme="dark"] .sponsor-preroll-progress-track {
+      background: rgba(255, 255, 255, 0.15);
+    }
+    .sponsor-preroll-progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #b8860b 0%, #d4a373 100%);
+      border-radius: 6px;
+      width: 0%;
+      position: relative;
+      transition: width 0.15s linear;
+    }
+    .sponsor-preroll-circle {
+      position: absolute;
+      right: -7px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 14px;
+      height: 14px;
+      background: #d4a373;
+      border: 2px solid #ffffff;
+      border-radius: 50%;
+      box-shadow: 0 0 8px rgba(212, 163, 115, 0.75), 0 2px 5px rgba(0,0,0,0.25);
+    }
     .sponsor-preroll-footer {
       display: flex;
       align-items: center;
@@ -1795,10 +1829,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       width: 0%;
       position: relative;
       pointer-events: none;
+      transition: width 0.15s linear;
+    }
+    .scrubber-bar.is-dragging .scrubber-fill {
+      transition: none !important;
     }
     .scrubber-handle {
       position: absolute;
-      right: -9px;
+      right: -10px;
       top: 50%;
       transform: translateY(-50%);
       width: 20px;
@@ -1807,13 +1845,25 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       border: 2.5px solid #fff;
       border-radius: 50%;
       box-shadow: 0 2px 8px rgba(0,0,0,0.28);
-      transition: transform 0.1s ease;
+      transition: transform 0.1s ease, background-color 0.2s ease, box-shadow 0.2s ease;
       pointer-events: none;
       z-index: 2;
     }
     .scrubber-bar:hover .scrubber-handle,
     .scrubber-bar.is-dragging .scrubber-handle {
       transform: translateY(-50%) scale(1.25);
+    }
+    .scrubber-bar.is-sponsor-preroll {
+      cursor: default;
+    }
+    .scrubber-bar.is-sponsor-preroll .scrubber-fill {
+      background: linear-gradient(90deg, #b8860b 0%, #d4a373 100%);
+    }
+    .scrubber-bar.is-sponsor-preroll .scrubber-handle {
+      background: #d4a373;
+      border-color: #ffffff;
+      box-shadow: 0 0 12px rgba(212, 163, 115, 0.85), 0 2px 6px rgba(0,0,0,0.3);
+      transform: translateY(-50%) scale(1.2);
     }
     .time-display {
       display: flex;
@@ -2421,15 +2471,30 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     #miniPlayer.visible { display: flex; }
     .mini-progress-track {
       width: 100%;
-      height: 3px;
-      background: rgba(255,255,255,0.2);
+      height: 4px;
+      background: rgba(255,255,255,0.25);
       cursor: pointer;
+      position: relative;
+      overflow: visible;
     }
     .mini-progress-fill {
       height: 100%;
       background: var(--accent);
       width: 0%;
-      transition: width 0.3s linear;
+      position: relative;
+      transition: width 0.15s linear;
+    }
+    .mini-progress-circle {
+      position: absolute;
+      right: -5px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 10px;
+      height: 10px;
+      background: #ffffff;
+      border-radius: 50%;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+      pointer-events: none;
     }
     .mini-content {
       display: flex;
@@ -2862,6 +2927,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         <span class="sponsor-preroll-status">🎙️ Audio Dedication Playing</span>
       </div>
       <div class="sponsor-preroll-body" id="sponsorPreRollText">${sponsorshipText || ''}</div>
+      <div class="sponsor-preroll-progress-wrap">
+        <div class="sponsor-preroll-progress-track">
+          <div class="sponsor-preroll-progress-fill" id="sponsorProgressFill">
+            <div class="sponsor-preroll-circle"></div>
+          </div>
+        </div>
+      </div>
       <div class="sponsor-preroll-footer">
         <div class="sponsor-preroll-countdown">🎙️ Shiur begins in <span id="sponsorCountdown">10</span>s...</div>
         <span style="font-size:11.5px; opacity:0.85;">Plays automatically before shiur</span>
@@ -3060,7 +3132,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 <!-- Floating Mini-Player (Persistent Bottom Bar across entire site) -->
 <div id="miniPlayer" onclick="handleMiniPlayerClick(event)">
   <div class="mini-progress-track" id="miniProgressTrack" onclick="seekMiniProgress(event)">
-    <div class="mini-progress-fill" id="miniProgressFill"></div>
+    <div class="mini-progress-fill" id="miniProgressFill">
+      <div class="mini-progress-circle"></div>
+    </div>
   </div>
   <div class="mini-content">
     <img id="miniThumb" class="mini-thumb" src="${escapeHtml(photo)}" alt="Speaker" onerror="handleImgError(this)">
@@ -3289,8 +3363,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (curTimeEl) curTimeEl.textContent = '0:00';
     const totalTimeEl = document.getElementById('totalTime');
     if (totalTimeEl) totalTimeEl.textContent = '0:12';
+    const scrubberBar = document.getElementById('scrubberBar');
+    if (scrubberBar) scrubberBar.classList.add('is-sponsor-preroll');
     const scrubberFill = document.getElementById('scrubberFill');
     if (scrubberFill) scrubberFill.style.width = '0%';
+    const sponsorProgressFill = document.getElementById('sponsorProgressFill');
+    if (sponsorProgressFill) sponsorProgressFill.style.width = '0%';
 
     const miniTitle = document.getElementById('miniTitle');
     const miniSpeaker = document.getElementById('miniSpeaker');
@@ -3341,6 +3419,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
     const banner = document.getElementById('sponsorPreRollBanner');
     if (banner) banner.style.display = 'none';
+
+    const scrubberBar = document.getElementById('scrubberBar');
+    if (scrubberBar) scrubberBar.classList.remove('is-sponsor-preroll');
 
     document.title = shiurObj.title + ' — YUTorah Enhanced';
     const titleEl = document.getElementById('shiurTitle');
@@ -3471,6 +3552,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   function applyInitialTime() {
+    if (isSponsorPlaying) return;
     if (initialTimeApplied) return;
     let targetSec = 0;
     if (initialTimestamp) {
@@ -4971,9 +5053,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         const countdownEl = document.getElementById('sponsorCountdown');
         if (countdownEl) countdownEl.textContent = rem;
         const pct = (audio.currentTime / audio.duration) * 100;
-        scrubberFill.style.width = pct + '%';
+        if (scrubberFill) scrubberFill.style.width = pct + '%';
         curTimeEl.textContent = formatTime(audio.currentTime);
         document.getElementById('totalTime').textContent = formatTime(audio.duration);
+        const sponsorFill = document.getElementById('sponsorProgressFill');
+        if (sponsorFill) sponsorFill.style.width = pct + '%';
         const miniFill = document.getElementById('miniProgressFill');
         if (miniFill) miniFill.style.width = pct + '%';
         const miniTime = document.getElementById('miniTime');
