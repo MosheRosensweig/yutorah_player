@@ -3307,6 +3307,32 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   let isSponsorPlaying = false;
   let sponsorPlayedForThisShiur = false;
   let pendingShiur = null;
+  let sponsorWatchdog = null;
+  let sponsorStallTimer = null;
+
+  function clearSponsorTimers() {
+    if (sponsorWatchdog) {
+      clearTimeout(sponsorWatchdog);
+      sponsorWatchdog = null;
+    }
+    if (sponsorStallTimer) {
+      clearTimeout(sponsorStallTimer);
+      sponsorStallTimer = null;
+    }
+  }
+
+  function resetSponsorWatchdog() {
+    clearSponsorTimers();
+    if (isSponsorPlaying && pendingShiur) {
+      // 25 second safety watchdog: guarantees player never gets stuck in pre-roll
+      sponsorWatchdog = setTimeout(() => {
+        if (isSponsorPlaying && pendingShiur && !audio.paused) {
+          console.warn('Sponsor pre-roll safety watchdog triggered (25s timeout), advancing to shiur');
+          startShiurPlayback(pendingShiur);
+        }
+      }, 25000);
+    }
+  }
 
   if (hasAudio && currentShiurId) {
     pendingShiur = {
@@ -3399,6 +3425,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     audio.src = currentSponsorAudio;
     audio.playbackRate = 1;
     audio.load();
+    resetSponsorWatchdog();
 
     const p = audio.play();
     if (p !== undefined) {
@@ -3414,6 +3441,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   function startShiurPlayback(shiurObj) {
+    clearSponsorTimers();
     isSponsorPlaying = false;
     sponsorPlayedForThisShiur = true;
 
@@ -5041,14 +5069,41 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   // Audio Events
   audio.addEventListener('play', () => {
     updatePlayPauseIcons(true);
+    if (isSponsorPlaying) {
+      resetSponsorWatchdog();
+    }
   });
   audio.addEventListener('pause', () => {
     updatePlayPauseIcons(false);
     updateUrlTimestamp(true);
+    if (isSponsorPlaying) {
+      clearSponsorTimers();
+    }
+  });
+  audio.addEventListener('waiting', () => {
+    if (isSponsorPlaying && pendingShiur) {
+      if (sponsorStallTimer) clearTimeout(sponsorStallTimer);
+      sponsorStallTimer = setTimeout(() => {
+        if (isSponsorPlaying && pendingShiur && audio.readyState < 3) {
+          console.warn('Sponsor audio stalled for >8s, advancing to shiur');
+          startShiurPlayback(pendingShiur);
+        }
+      }, 8000);
+    }
+  });
+  audio.addEventListener('playing', () => {
+    if (sponsorStallTimer) {
+      clearTimeout(sponsorStallTimer);
+      sponsorStallTimer = null;
+    }
   });
   audio.addEventListener('timeupdate', () => {
     if (isSponsorPlaying) {
       if (audio.duration && !isNaN(audio.duration)) {
+        if (audio.currentTime >= audio.duration - 0.25) {
+          startShiurPlayback(pendingShiur);
+          return;
+        }
         const rem = Math.max(0, Math.ceil(audio.duration - audio.currentTime));
         const countdownEl = document.getElementById('sponsorCountdown');
         if (countdownEl) countdownEl.textContent = rem;
