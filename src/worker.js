@@ -2008,7 +2008,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       letter-spacing: 0.3px;
     }
     [data-theme="dark"] .holiday-tagline-bar {
-      display: none !important;
+      background: rgba(20, 27, 38, 0.85);
+      color: #fae4a5;
+      border-bottom: 1px solid rgba(212, 163, 115, 0.25);
     }
     [data-theme="dark"] .holiday-motif-wrap {
       background: rgba(255, 255, 255, 0.08);
@@ -8149,10 +8151,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     let themeStyleEl = document.getElementById('holidayThemeDynamicStyles');
     if (themeStyleEl) themeStyleEl.remove();
 
-    if (isDark && taglineBar) {
-      taglineBar.style.display = 'none';
-    }
-
     let resolvedKey = activeThemeKey;
     let chanukahDay = 0;
     if (resolvedKey.startsWith('chanukah_')) {
@@ -8235,7 +8233,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
 
     // Render Tagline Bar below sponsorship banner
-    if (taglineBar && variantData.tagline && !isDark) {
+    if (taglineBar && variantData.tagline) {
       taglineBar.style.display = 'block';
       taglineBar.textContent = variantData.tagline;
     } else if (taglineBar) {
