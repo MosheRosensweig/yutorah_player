@@ -1050,6 +1050,37 @@ export const COMMON_ENGLISH_STOPWORDS = new Set([
   'america', 'israel', 'jerusalem', 'york', 'london', 'spring', 'summer', 'autumn', 'winter'
 ]);
 
+// 3c. Community, Institutional & Shul Acronyms (Case-insensitive)
+// Should remain exact English terms and NEVER be transliterated to Hebrew letters
+export const KNOWN_COMMUNITY_ACRONYMS = new Set([
+  'yije',     // Young Israel of Jamaica Estates
+  'yih',      // Young Israel of Hollywood
+  'yihl',     // Young Israel of Hewlett
+  'yish',     // Young Israel of Scarsdale
+  'yifh',     // Young Israel of Forest Hills
+  'yist',     // Young Israel of Staten Island
+  'yiw',      // Young Israel of Woodmere
+  'yipc',     // Young Israel of Plainview
+  'yioz',     // Young Israel of Oceanside
+  'yibc',     // Young Israel of Bal Harbour / Brookline
+  'bmt',      // Beit Midrash Torani / BMT
+  'bcbm',     // Beit Chaverim Beit Midrash / Bergen County Beit Midrash
+  'riets',    // Rabbi Isaac Elchanan Theological Seminary
+  'yu',       // Yeshiva University
+  'yutorah',  // YUTorah
+  'ou',       // Orthodox Union
+  'ncsy',     // NCSY
+  'wits',     // Wisconsin Institute of Torah Study
+  'htc',      // Hebrew Theological College
+  'mtj',      // Mesivtha Tifereth Jerusalem
+  'rjts',     // Rabbi Jacob Joseph School
+  'kby',      // Kerem B'Yavneh
+  'gush',     // Yeshivat Har Etzion
+  'mmt',      // Michlelet Mevaseret Yerushalayim
+  'bj',       // Bais Yaakov
+  'by'        // Bais Yaakov
+]);
+
 // 4. Java EnglishBackToHebrew Algorithm Port & Enhancements
 // Ported from /recommender-system/src/main/java/EnglishBackToHebrew.java
 // Original Author: mosherosensweig (7/3/18)
@@ -1268,9 +1299,11 @@ export function expandQueryWithPhonetics(rawQuery, enableDynamicHebrew = true) {
         expandedWordGroups.push(`(${formatted.join(' OR ')})`);
         allAliases.push(...terms);
         allHebrewCandidates.push(...matchedBySkeleton.hebrew, ...dynamicHebrew);
-      } else if (enableDynamicHebrew && cleanWord.length >= 3 && /^[a-z]+$/.test(cleanWord) && !COMMON_ENGLISH_STOPWORDS.has(cleanWord)) {
+      } else if (enableDynamicHebrew && cleanWord.length >= 3 && /^[a-z]+$/.test(cleanWord) && !COMMON_ENGLISH_STOPWORDS.has(cleanWord) && !KNOWN_COMMUNITY_ACRONYMS.has(cleanWord)) {
         // Algorithmic Reverse Transliteration from EnglishBackToHebrew
-        const generatedHebrew = convertEnglishBackToHebrew(cleanWord, 4);
+        // Filter out short <= 2 letter Hebrew tokens (e.g. 'יג', 'יד', 'טו') which are daf/chapter numbers in source sheets
+        const rawGenerated = convertEnglishBackToHebrew(cleanWord, 8);
+        const generatedHebrew = rawGenerated.filter(h => h.length >= 3).slice(0, 4);
         if (generatedHebrew.length > 0) {
           hasExpansion = true;
           const terms = [word, ...generatedHebrew];

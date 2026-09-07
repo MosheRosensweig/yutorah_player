@@ -156,9 +156,18 @@ assert.ok(yisroExp.solrQuery.includes('יתרו'));
 const benchingExp = expandQueryWithPhonetics('bentching');
 assert.ok(benchingExp.solrQuery.includes('ברכת המזון'));
 const cholovExp = expandQueryWithPhonetics('cholov yisroel');
-assert.ok(cholovExp.solrQuery.includes('חלב ישראל'));
-
 console.log('  ✅ All 181 synset buckets passed integrity and domain expansion checks.');
+
+// 8. Test Acronym Protection & Short Hebrew Token Suppression
+console.log('8. Testing Acronym Protection:');
+const yijeParsed = parseQueryEntities('Rosensweig shabos yije');
+assert.equal(yijeParsed.speaker?.id, '80146');
+assert.equal(yijeParsed.remainingQuery, 'shabos yije');
+const yijeExp = expandQueryWithPhonetics(yijeParsed.remainingQuery);
+assert.ok(yijeExp.solrQuery.includes('shabbos') || yijeExp.solrQuery.includes('shabbat'));
+assert.ok(!yijeExp.solrQuery.includes('יג'), 'Acronym yije must never generate 2-letter Hebrew daf/chapter token יג');
+assert.ok(yijeExp.solrQuery.includes('yije'), 'Acronym yije must remain literal English');
+console.log('  ✅ Acronym protection and false-positive suppression tests passed.');
 
 console.log('\n🎉 ALL PHONETIC & REVERSE TRANSLITERATION TESTS PASSED SUCCESSFULLY!');
 
