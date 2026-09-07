@@ -251,7 +251,11 @@ export default {
       const subCategoryIds = extractIdList('subCategoryId');
       const locationIds = extractIdList('locationId', 'venueId');
       const seriesIds = extractIdList('seriesId', 'series');
-      const start = parseInt(url.searchParams.get('start') || '1', 10);
+      let start = parseInt(url.searchParams.get('page') || url.searchParams.get('start') || '1', 10);
+      // If start is given as an item offset (e.g. 31, 61) rather than page number (1, 2, 3):
+      if (!url.searchParams.has('page') && start > 30) {
+        start = Math.floor((start - 1) / 30) + 1;
+      }
       const disablePhonetics = url.searchParams.get('exact') === '1';
 
       // Advanced post-filters
@@ -469,8 +473,9 @@ export default {
               }
             }
 
-            curFetchStart += docs.length;
-            if (curFetchStart > numFound || docs.length < 10) break;
+            curFetchStart++;
+            const totalPages = Math.ceil((numFound || 0) / 30);
+            if (curFetchStart > totalPages || docs.length === 0) break;
           }
         }
 
@@ -5782,6 +5787,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   let currentFilterParams = {};
   let currentLoadedDocsCount = ${JSON.stringify(initialSearchResults ? initialSearchResults.length : 0)};
   let totalSearchResults = ${JSON.stringify(initialNumFound || 0)};
+  let currentSearchPage = Math.floor(${JSON.stringify(initialSearchResults ? initialSearchResults.length : 0)} / 30) || 1;
   let isLoadingMore = false;
   let currentSearchAbort = null;
   let currentPhoneticTokens = [];
@@ -6792,6 +6798,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   async function executeLiveSearch(query, extraParams = {}) {
     currentSearchQuery = query;
     currentFilterParams = extraParams;
+    currentSearchPage = 1;
     currentLoadedDocsCount = 0;
     totalSearchResults = 0;
     isLoadingMore = false;
@@ -6947,9 +6954,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     btnText.textContent = 'Loading more shiurim...';
     spinner.style.display = 'inline-block';
 
-    const nextStart = currentLoadedDocsCount + 1;
+    const nextPage = currentSearchPage + 1;
 
-    let apiUrl = '/api/search?q=' + encodeURIComponent(currentSearchQuery || '') + '&start=' + nextStart;
+    let apiUrl = '/api/search?q=' + encodeURIComponent(currentSearchQuery || '') + '&page=' + nextPage + '&start=' + nextPage;
 
     const teachersList = currentFilterParams.teachers || (currentFilterParams.teacherId ? [{ id: currentFilterParams.teacherId }] : []);
     teachersList.forEach(t => {
@@ -6982,6 +6989,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       const newDocs = data?.response?.docs || [];
 
       if (newDocs.length > 0) {
+        currentSearchPage = nextPage;
         currentLoadedDocsCount += newDocs.length;
         currentSearchDocs = currentSearchDocs.concat(newDocs);
         const grid = document.getElementById('searchResultsGrid');
@@ -7035,6 +7043,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
     currentSearchDocs = [];
     currentPhoneticTokens = [];
+    currentSearchPage = 1;
     showMatchReasons = false;
     const matchToggle = document.getElementById('toggleMatchExplain');
     if (matchToggle) matchToggle.checked = false;
