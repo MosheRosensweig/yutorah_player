@@ -214,6 +214,242 @@ const FALLBACK_SHIURIM = [
   }
 ];
 
+async function executeSearchInternal(searchParams) {
+  const rawQ = searchParams.get('q') || searchParams.get('searchTerm') || searchParams.get('search') || '';
+
+  // Parse single or multi-valued IDs (can be passed as repeated params e.g. teacherId=A&teacherId=B or comma-separated)
+  function extractIdList(paramName, aliasName) {
+    const vals = [];
+    const directList = searchParams.getAll(paramName);
+    for (const v of directList) {
+      if (v) vals.push(...v.split(',').map(s => s.trim()).filter(Boolean));
+    }
+    if (aliasName) {
+      const aliasList = searchParams.getAll(aliasName);
+      for (const v of aliasList) {
+        if (v) vals.push(...v.split(',').map(s => s.trim()).filter(Boolean));
+      }
+    }
+    return [...new Set(vals)];
+  }
+
+  let teacherIds = extractIdList('teacherId');
+  const subCategoryIds = extractIdList('subCategoryId');
+  const locationIds = extractIdList('locationId', 'venueId');
+  const seriesIds = extractIdList('seriesId', 'series');
+  let start = parseInt(searchParams.get('page') || searchParams.get('start') || '1', 10);
+  if (!searchParams.has('page') && start > 30) {
+    start = Math.floor((start - 1) / 30) + 1;
+  }
+  const disablePhonetics = searchParams.get('exact') === '1' || searchParams.get('classic') === '1';
+
+  // Advanced post-filters
+  const minDuration = searchParams.get('minDuration') ? parseInt(searchParams.get('minDuration'), 10) : null;
+  const maxDuration = searchParams.get('maxDuration') ? parseInt(searchParams.get('maxDuration'), 10) : null;
+  const year = searchParams.get('year') || '';
+  const fromDate = searchParams.get('fromDate') || '';
+  const toDate = searchParams.get('toDate') || '';
+
+  // Phonetic & Speaker Auto-Resolution
+  let effectiveQuery = rawQ;
+  let expandedInfo = null;
+
+  if (teacherIds.length === 0 && rawQ && !disablePhonetics) {
+    const entityParse = parseQueryEntities(rawQ);
+    if (entityParse.speaker) {
+      teacherIds = [entityParse.speaker.id];
+      effectiveQuery = entityParse.remainingQuery;
+    }
+  } else if (teacherIds.length === 0 && rawQ && disablePhonetics) {
+    const resolvedSpk = resolveSpeaker(rawQ);
+    if (resolvedSpk) {
+      teacherIds = [resolvedSpk.id];
+      effectiveQuery = '';
+    }
+  }
+
+  if (year && /^\d{4}$/.test(year)) {
+    effectiveQuery = effectiveQuery ? `${effectiveQuery} ${year}` : year;
+  }
+
+  if (effectiveQuery && !disablePhonetics) {
+    expandedInfo = expandQueryWithPhonetics(effectiveQuery);
+    effectiveQuery = expandedInfo.solrQuery;
+  }
+
+  const hasPostFilter = (minDuration !== null) || (maxDuration !== null) || year || fromDate || toDate;
+
+  function matchesPostFilters(doc) {
+    if (!doc) return false;
+    const dur = typeof doc.duration === 'number' ? doc.duration : 0;
+    if (minDuration !== null && minDuration > 0 && dur < minDuration) return false;
+    if (maxDuration !== null && maxDuration > 0 && dur > maxDuration) return false;
+
+    const docDate = doc.shiurdate || doc.shiurdatesubmitted || '';
+    if (year) {
+      if (year === 'pre-2000') {
+        const docYear = docDate ? parseInt(docDate.slice(0, 4), 10) : 0;
+        if (docYear >= 2000) return false;
+      } else if (year === 'pre-2010') {
+        const docYear = docDate ? parseInt(docDate.slice(0, 4), 10) : 0;
+        if (docYear >= 2010) return false;
+      } else if (year === '2010-2019') {
+        const docYear = docDate ? parseInt(docDate.slice(0, 4), 10) : 0;
+        if (docYear < 2010 || docYear > 2019) return false;
+      } else {
+        if (!docDate.startsWith(year)) return false;
+      }
+    }
+
+    if (fromDate && docDate && docDate.slice(0, 10) < fromDate) return false;
+    if (toDate && docDate && docDate.slice(0, 10) > toDate) return false;
+
+    return true;
+  }
+
+  async function fetchSolrSingle(query, startOffset, tId, catId, locId, sId) {
+    let targetUrl = `${API_ORIGIN}/search?searchTerm=${encodeURIComponent(query)}&start=${encodeURIComponent(startOffset)}`;
+    if (tId) targetUrl += `&teacherId=${encodeURIComponent(tId)}`;
+    if (catId) targetUrl += `&subCategoryId=${encodeURIComponent(catId)}`;
+    if (locId) targetUrl += `&locationId=${encodeURIComponent(locId)}`;
+    if (sId) targetUrl += `&seriesId=${encodeURIComponent(sId)}`;
+
+    const upstream = await fetch(targetUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        'Accept': 'application/json'
+      }
+    });
+    if (!upstream.ok) return { docs: [], numFound: 0 };
+    const json = await upstream.json();
+    return {
+      docs: json?.response?.docs || [],
+      numFound: json?.response?.numFound || 0
+    };
+  }
+
+  const isMultiTeacher = teacherIds.length > 1;
+  const isMultiLocation = locationIds.length > 1;
+  const isMultiCategory = subCategoryIds.length > 1;
+  const isMultiTarget = isMultiTeacher || isMultiLocation || isMultiCategory;
+
+  if (!isMultiTarget && !hasPostFilter) {
+    const tId = teacherIds[0] || '';
+    const catId = subCategoryIds[0] || '';
+    const locId = locationIds[0] || '';
+    const sId = seriesIds[0] || '';
+
+    const { docs, numFound } = await fetchSolrSingle(effectiveQuery, start, tId, catId, locId, sId);
+
+    const filteredDocs = tId ? docs.filter(doc => {
+      const docTeacherId = String(doc.teacherid || doc.teacherId || '');
+      return docTeacherId === String(tId);
+    }) : docs;
+
+    return {
+      response: {
+        docs: filteredDocs,
+        numFound: tId ? Math.min(numFound, filteredDocs.length + (numFound - docs.length)) : numFound,
+        start
+      },
+      phoneticExpansion: (expandedInfo && expandedInfo.expandedTokens && expandedInfo.expandedTokens.length > 1) ? {
+        original: rawQ,
+        tokens: expandedInfo.expandedTokens,
+        synset: expandedInfo.matchedSynset
+      } : null
+    };
+  }
+
+  // Multi-Target or Post-Filtering Path
+  const targetPageSize = 30;
+  let accumulatedDocs = [];
+  let totalEstimatedFound = 0;
+
+  if (isMultiTarget) {
+    let branchingEntities = [];
+    if (isMultiTeacher) {
+      branchingEntities = teacherIds.map(id => ({ tId: id, catId: subCategoryIds[0] || '', locId: locationIds[0] || '', sId: seriesIds[0] || '' }));
+    } else if (isMultiCategory) {
+      branchingEntities = subCategoryIds.map(id => ({ tId: teacherIds[0] || '', catId: id, locId: locationIds[0] || '', sId: seriesIds[0] || '' }));
+    } else if (isMultiLocation) {
+      branchingEntities = locationIds.map(id => ({ tId: teacherIds[0] || '', catId: subCategoryIds[0] || '', locId: id, sId: seriesIds[0] || '' }));
+    } else {
+      branchingEntities = seriesIds.map(id => ({ tId: teacherIds[0] || '', catId: subCategoryIds[0] || '', locId: locationIds[0] || '', sId: id }));
+    }
+
+    const fetchPromises = branchingEntities.map(entity => {
+      return fetchSolrSingle(effectiveQuery, start, entity.tId, entity.catId, entity.locId, entity.sId);
+    });
+
+    const results = await Promise.all(fetchPromises);
+    const seenShiurIds = new Set();
+
+    for (const res of results) {
+      totalEstimatedFound += res.numFound;
+      for (const doc of res.docs) {
+        const docId = doc.shiurID || doc.shiurid || doc.id;
+        if (docId && !seenShiurIds.has(docId)) {
+          seenShiurIds.add(docId);
+          const docTeacherId = String(doc.teacherid || doc.teacherId || '');
+          const teacherMatches = teacherIds.length === 0 || teacherIds.includes(docTeacherId);
+          if (teacherMatches && matchesPostFilters(doc)) {
+            accumulatedDocs.push(doc);
+          }
+        }
+      }
+    }
+
+    accumulatedDocs.sort((a, b) => {
+      const dateA = a.shiurdate || a.shiurdatesubmitted || '';
+      const dateB = b.shiurdate || b.shiurdatesubmitted || '';
+      return dateB.localeCompare(dateA);
+    });
+
+    accumulatedDocs = accumulatedDocs.slice(0, targetPageSize);
+  } else {
+    const tId = teacherIds[0] || '';
+    const catId = subCategoryIds[0] || '';
+    const locId = locationIds[0] || '';
+    const sId = seriesIds[0] || '';
+    let curFetchStart = start;
+    let iterations = 0;
+
+    while (accumulatedDocs.length < targetPageSize && iterations < 5) {
+      iterations++;
+      const { docs, numFound } = await fetchSolrSingle(effectiveQuery, curFetchStart, tId, catId, locId, sId);
+      totalEstimatedFound = numFound;
+      if (docs.length === 0) break;
+
+      for (const doc of docs) {
+        const docTeacherId = String(doc.teacherid || doc.teacherId || '');
+        const teacherMatches = teacherIds.length === 0 || teacherIds.includes(docTeacherId);
+        if (teacherMatches && matchesPostFilters(doc)) {
+          accumulatedDocs.push(doc);
+          if (accumulatedDocs.length >= targetPageSize) break;
+        }
+      }
+
+      curFetchStart++;
+      const totalPages = Math.ceil((numFound || 0) / 30);
+      if (curFetchStart > totalPages || docs.length === 0) break;
+    }
+  }
+
+  return {
+    response: {
+      docs: accumulatedDocs,
+      numFound: totalEstimatedFound || accumulatedDocs.length,
+      filteredCount: accumulatedDocs.length,
+      start
+    },
+    phoneticExpansion: expandedInfo ? {
+      original: rawQ,
+      tokens: expandedInfo.expandedTokens,
+      synset: expandedInfo.matchedSynset
+    } : null
+  };
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -231,270 +467,8 @@ export default {
 
     // 1. Live Search API Proxy: /api/search?q=...
     if (url.pathname === '/api/search') {
-      const rawQ = url.searchParams.get('q') || url.searchParams.get('searchTerm') || '';
-      
-      // Parse single or multi-valued IDs (can be passed as repeated params e.g. teacherId=A&teacherId=B or comma-separated)
-      function extractIdList(paramName, aliasName) {
-        const vals = [];
-        const directList = url.searchParams.getAll(paramName);
-        for (const v of directList) {
-          if (v) vals.push(...v.split(',').map(s => s.trim()).filter(Boolean));
-        }
-        if (aliasName) {
-          const aliasList = url.searchParams.getAll(aliasName);
-          for (const v of aliasList) {
-            if (v) vals.push(...v.split(',').map(s => s.trim()).filter(Boolean));
-          }
-        }
-        return [...new Set(vals)];
-      }
-
-      let teacherIds = extractIdList('teacherId');
-      const subCategoryIds = extractIdList('subCategoryId');
-      const locationIds = extractIdList('locationId', 'venueId');
-      const seriesIds = extractIdList('seriesId', 'series');
-      let start = parseInt(url.searchParams.get('page') || url.searchParams.get('start') || '1', 10);
-      // If start is given as an item offset (e.g. 31, 61) rather than page number (1, 2, 3):
-      if (!url.searchParams.has('page') && start > 30) {
-        start = Math.floor((start - 1) / 30) + 1;
-      }
-      const disablePhonetics = url.searchParams.get('exact') === '1';
-
-      // Advanced post-filters
-      const minDuration = url.searchParams.get('minDuration') ? parseInt(url.searchParams.get('minDuration'), 10) : null;
-      const maxDuration = url.searchParams.get('maxDuration') ? parseInt(url.searchParams.get('maxDuration'), 10) : null;
-      const year = url.searchParams.get('year') || '';
-      const fromDate = url.searchParams.get('fromDate') || '';
-      const toDate = url.searchParams.get('toDate') || '';
-
-      // Phonetic & Speaker Auto-Resolution
-      let effectiveQuery = rawQ;
-      let expandedInfo = null;
-
-      // If user typed a query without explicitly setting teacherId in filters,
-      // intelligently extract if part or all of the query is a recognized speaker (e.g. "Rosensweig Shabbos")
-      if (teacherIds.length === 0 && rawQ && !disablePhonetics) {
-        const entityParse = parseQueryEntities(rawQ);
-        if (entityParse.speaker) {
-          teacherIds = [entityParse.speaker.id];
-          effectiveQuery = entityParse.remainingQuery; // Filter teacherId natively, keep topic keywords
-        }
-      } else if (teacherIds.length === 0 && rawQ && disablePhonetics) {
-        // In classic mode, still check exact full speaker match
-        const resolvedSpk = resolveSpeaker(rawQ);
-        if (resolvedSpk) {
-          teacherIds = [resolvedSpk.id];
-          effectiveQuery = '';
-        }
-      }
-
-      // If a specific 4-digit year is requested, add it to effectiveQuery so Solr returns matching year records
-      if (year && /^\d{4}$/.test(year)) {
-        effectiveQuery = effectiveQuery ? `${effectiveQuery} ${year}` : year;
-      }
-
-      if (effectiveQuery && !disablePhonetics) {
-        expandedInfo = expandQueryWithPhonetics(effectiveQuery);
-        effectiveQuery = expandedInfo.solrQuery;
-      }
-
-      const hasPostFilter = (minDuration !== null) || (maxDuration !== null) || year || fromDate || toDate;
-
-      // Helper function to match post filters on a doc
-      function matchesPostFilters(doc) {
-        if (!doc) return false;
-        // 1. Duration check
-        const dur = typeof doc.duration === 'number' ? doc.duration : 0;
-        if (minDuration !== null && minDuration > 0 && dur < minDuration) return false;
-        if (maxDuration !== null && maxDuration > 0 && dur > maxDuration) return false;
-
-        // 2. Year check
-        const docDate = doc.shiurdate || doc.shiurdatesubmitted || '';
-        if (year) {
-          if (year === 'pre-2000') {
-            const docYear = docDate ? parseInt(docDate.slice(0, 4), 10) : 0;
-            if (docYear >= 2000) return false;
-          } else if (year === 'pre-2010') {
-            const docYear = docDate ? parseInt(docDate.slice(0, 4), 10) : 0;
-            if (docYear >= 2010) return false;
-          } else if (year === '2010-2019') {
-            const docYear = docDate ? parseInt(docDate.slice(0, 4), 10) : 0;
-            if (docYear < 2010 || docYear > 2019) return false;
-          } else {
-            if (!docDate.startsWith(year)) return false;
-          }
-        }
-
-        // 3. Date window
-        if (fromDate && docDate && docDate.slice(0, 10) < fromDate) return false;
-        if (toDate && docDate && docDate.slice(0, 10) > toDate) return false;
-
-        return true;
-      }
-
-      // Helper to fetch one page of Solr search
-      async function fetchSolrSingle(query, startOffset, tId, catId, locId, sId) {
-        let targetUrl = `${API_ORIGIN}/search?searchTerm=${encodeURIComponent(query)}&start=${encodeURIComponent(startOffset)}`;
-        if (tId) targetUrl += `&teacherId=${encodeURIComponent(tId)}`;
-        if (catId) targetUrl += `&subCategoryId=${encodeURIComponent(catId)}`;
-        if (locId) targetUrl += `&locationId=${encodeURIComponent(locId)}`;
-        if (sId) targetUrl += `&seriesId=${encodeURIComponent(sId)}`;
-
-        const upstream = await fetch(targetUrl, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-            'Accept': 'application/json'
-          }
-        });
-        if (!upstream.ok) return { docs: [], numFound: 0 };
-        const json = await upstream.json();
-        return {
-          docs: json?.response?.docs || [],
-          numFound: json?.response?.numFound || 0
-        };
-      }
-
       try {
-        const isMultiTeacher = teacherIds.length > 1;
-        const isMultiLocation = locationIds.length > 1;
-        const isMultiCategory = subCategoryIds.length > 1;
-        const isMultiTarget = isMultiTeacher || isMultiLocation || isMultiCategory;
-
-        if (!isMultiTarget && !hasPostFilter) {
-          // Fast path: direct Solr single call
-          const tId = teacherIds[0] || '';
-          const catId = subCategoryIds[0] || '';
-          const locId = locationIds[0] || '';
-          const sId = seriesIds[0] || '';
-
-          const { docs, numFound } = await fetchSolrSingle(effectiveQuery, start, tId, catId, locId, sId);
-
-          // Post-filter to guarantee strict teacher intersection:
-          // Solr sometimes returns docs where the queried teacherId is a secondary/co-teacher
-          // but the primary teacherid field shows a different teacher.
-          const filteredDocs = tId ? docs.filter(doc => {
-            const docTeacherId = String(doc.teacherid || doc.teacherId || '');
-            return docTeacherId === String(tId);
-          }) : docs;
-
-          const responsePayload = {
-            response: {
-              docs: filteredDocs,
-              numFound: tId ? Math.min(numFound, filteredDocs.length + (numFound - docs.length)) : numFound,
-              start
-            },
-            phoneticExpansion: (expandedInfo && expandedInfo.expandedTokens && expandedInfo.expandedTokens.length > 1) ? {
-              original: rawQ,
-              tokens: expandedInfo.expandedTokens,
-              synset: expandedInfo.matchedSynset
-            } : null
-          };
-          return new Response(JSON.stringify(responsePayload), {
-            headers: {
-              'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*',
-              'Cache-Control': 'public, max-age=300'
-            }
-          });
-        }
-
-        // Multi-Target or Post-Filtering Path
-        // If multiple targets are specified (e.g. multiple teachers, multiple categories, multiple locations),
-        // execute queries and strictly enforce dimensional intersection (AND between dimensions, OR across multiple selections within same dimension).
-        const targetPageSize = 30;
-        let accumulatedDocs = [];
-        let totalEstimatedFound = 0;
-
-        if (isMultiTarget) {
-          // If multiple teachers are selected, each teacher represents a union branch, but each branch MUST intersect with all other selected dimensions (category, location, series)
-          // If multiple locations or categories are selected without multiple teachers, similarly branch on that dimension while preserving all others.
-          let branchingEntities = [];
-          if (isMultiTeacher) {
-            branchingEntities = teacherIds.map(id => ({ tId: id, catId: subCategoryIds[0] || '', locId: locationIds[0] || '', sId: seriesIds[0] || '' }));
-          } else if (isMultiCategory) {
-            branchingEntities = subCategoryIds.map(id => ({ tId: teacherIds[0] || '', catId: id, locId: locationIds[0] || '', sId: seriesIds[0] || '' }));
-          } else if (isMultiLocation) {
-            branchingEntities = locationIds.map(id => ({ tId: teacherIds[0] || '', catId: subCategoryIds[0] || '', locId: id, sId: seriesIds[0] || '' }));
-          } else {
-            branchingEntities = seriesIds.map(id => ({ tId: teacherIds[0] || '', catId: subCategoryIds[0] || '', locId: locationIds[0] || '', sId: id }));
-          }
-
-          // Fetch from all branches with full dimensional constraints
-          const fetchPromises = branchingEntities.map(entity => {
-            return fetchSolrSingle(effectiveQuery, start, entity.tId, entity.catId, entity.locId, entity.sId);
-          });
-
-          const results = await Promise.all(fetchPromises);
-          const seenShiurIds = new Set();
-
-          for (const res of results) {
-            totalEstimatedFound += res.numFound;
-            for (const doc of res.docs) {
-              const docId = doc.shiurID || doc.shiurid || doc.id;
-              if (docId && !seenShiurIds.has(docId)) {
-                seenShiurIds.add(docId);
-                // Verify strict dimensional intersection
-                const docTeacherId = String(doc.teacherid || doc.teacherId || '');
-                const teacherMatches = teacherIds.length === 0 || teacherIds.includes(docTeacherId);
-                if (teacherMatches && matchesPostFilters(doc)) {
-                  accumulatedDocs.push(doc);
-                }
-              }
-            }
-          }
-
-          // Sort merged results by date descending
-          accumulatedDocs.sort((a, b) => {
-            const dateA = a.shiurdate || a.shiurdatesubmitted || '';
-            const dateB = b.shiurdate || b.shiurdatesubmitted || '';
-            return dateB.localeCompare(dateA);
-          });
-
-          accumulatedDocs = accumulatedDocs.slice(0, targetPageSize);
-        } else {
-          // Single target across dimensions with post-filtering window accumulation
-          const tId = teacherIds[0] || '';
-          const catId = subCategoryIds[0] || '';
-          const locId = locationIds[0] || '';
-          const sId = seriesIds[0] || '';
-          let curFetchStart = start;
-          let iterations = 0;
-
-          while (accumulatedDocs.length < targetPageSize && iterations < 5) {
-            iterations++;
-            const { docs, numFound } = await fetchSolrSingle(effectiveQuery, curFetchStart, tId, catId, locId, sId);
-            totalEstimatedFound = numFound;
-            if (docs.length === 0) break;
-
-            for (const doc of docs) {
-              const docTeacherId = String(doc.teacherid || doc.teacherId || '');
-              const teacherMatches = teacherIds.length === 0 || teacherIds.includes(docTeacherId);
-              if (teacherMatches && matchesPostFilters(doc)) {
-                accumulatedDocs.push(doc);
-                if (accumulatedDocs.length >= targetPageSize) break;
-              }
-            }
-
-            curFetchStart++;
-            const totalPages = Math.ceil((numFound || 0) / 30);
-            if (curFetchStart > totalPages || docs.length === 0) break;
-          }
-        }
-
-        const responsePayload = {
-          response: {
-            docs: accumulatedDocs,
-            numFound: totalEstimatedFound || accumulatedDocs.length,
-            filteredCount: accumulatedDocs.length,
-            start
-          },
-          phoneticExpansion: expandedInfo ? {
-            original: rawQ,
-            tokens: expandedInfo.expandedTokens,
-            synset: expandedInfo.matchedSynset
-          } : null
-        };
-
+        const responsePayload = await executeSearchInternal(url.searchParams);
         return new Response(JSON.stringify(responsePayload), {
           status: 200,
           headers: {
@@ -694,19 +668,16 @@ export default {
     let homepageData = null;
     let initialSearchResults = null;
     let initialNumFound = 0;
+    let initialPhoneticExpansion = null;
 
     if (!shiurData && searchQuery) {
       try {
-        const searchResp = await fetch(`${API_ORIGIN}/search?searchTerm=${encodeURIComponent(searchQuery)}`, {
-          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
-        });
-        if (searchResp.ok) {
-          const searchJson = await searchResp.json();
-          initialSearchResults = (searchJson?.response?.docs || []).map(normalizeShiur);
-          initialNumFound = searchJson?.response?.numFound || initialSearchResults.length;
-        }
+        const searchPayload = await executeSearchInternal(url.searchParams);
+        initialSearchResults = searchPayload?.response?.docs || [];
+        initialNumFound = searchPayload?.response?.numFound || initialSearchResults.length;
+        initialPhoneticExpansion = searchPayload?.phoneticExpansion || null;
       } catch (e) {
-        console.error('Error pre-fetching search:', e);
+        console.error('Error pre-fetching search in SSR:', e);
       }
     }
 
@@ -716,6 +687,8 @@ export default {
       getHomepageData(),
       getDailySponsorship()
     ]);
+
+    const isClassicSearch = url.searchParams.get('exact') === '1' || url.searchParams.get('classic') === '1';
 
     // 7. Render and return the HTML app
     return new Response(renderAppHtml({
@@ -731,7 +704,9 @@ export default {
       sponsorshipAudioUrl: sponsorship.audioUrl,
       searchQuery,
       initialSearchResults,
-      initialNumFound
+      initialNumFound,
+      initialPhoneticExpansion,
+      isClassicSearch
     }), {
       headers: {
         'Content-Type': 'text/html; charset=utf-8',
@@ -877,7 +852,7 @@ function normalizeShiur(s) {
   return { id, title, speaker, photo, duration, date, category, isNew, description, keywords, series, location };
 }
 
-function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpeed = '', themeMode = '', homepageData, sponsorshipText = '', sponsorshipPlainText = '', sponsorshipAudioUrl = '', searchQuery, initialSearchResults, initialNumFound = 0 }) {
+function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpeed = '', themeMode = '', homepageData, sponsorshipText = '', sponsorshipPlainText = '', sponsorshipAudioUrl = '', searchQuery, initialSearchResults, initialNumFound = 0, initialPhoneticExpansion = null, isClassicSearch = false }) {
   const isPlaying = Boolean(shiurData || directAudio);
 
   const initialSearchTerms = [];
@@ -891,6 +866,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         }
       }
     }
+    if (initialPhoneticExpansion && Array.isArray(initialPhoneticExpansion.tokens)) {
+      for (const t of initialPhoneticExpansion.tokens) {
+        if (t && t.length >= 2) initialSearchTerms.push(t.toLowerCase());
+      }
+    }
+  }
+
+  let initialGridHtml = '';
+  if (initialSearchResults && initialSearchResults.length > 0) {
+    const grouped = groupAndRankDocs(initialSearchResults, initialSearchTerms, searchQuery);
+    initialGridHtml = grouped.map(item => renderGroupItemHtml(item, initialSearchTerms)).join('');
   }
 
   let title = 'YUTorah Enhanced Player';
@@ -2979,6 +2965,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       gap: 14px;
       flex-wrap: wrap;
     }
+    .search-toggles-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
     .search-results-text {
       font-size: 14px;
       font-weight: 600;
@@ -4450,7 +4442,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     <div id="activeFiltersBar" class="active-filters-bar" style="display: none;"></div>
 
     <!-- Phonetic Expansion Notice Banner (Shown when transliteration synonyms were searched) -->
-    <div id="phoneticNoticeBanner" class="phonetic-notice-banner" style="display: none;"></div>
+    <div id="phoneticNoticeBanner" class="phonetic-notice-banner" style="${initialPhoneticExpansion && initialPhoneticExpansion.tokens && initialPhoneticExpansion.tokens.length > 1 ? 'display: flex;' : 'display: none;'}">
+      ${initialPhoneticExpansion && initialPhoneticExpansion.tokens && initialPhoneticExpansion.tokens.length > 1 ? `
+        <div><span>✨ Phonetic Equivalence included synonyms:</span> <div class="phonetic-notice-tags">${initialPhoneticExpansion.tokens.slice(0, 8).map(t => `<span class="phonetic-tag">${escapeHtml(t)}</span>`).join('')}</div></div>
+        <span style="font-size:11px; opacity:0.8;">Ashkenazic &amp; Sephardic variations searched</span>
+      ` : ''}
+    </div>
 
     <!-- Speaker & Venue Bio / Description Banner -->
     <div class="bio-banner" id="bioBanner" style="display: none;">
@@ -4467,16 +4464,32 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
     <div class="search-results-info">
       <span class="search-results-text" id="searchResultsLabel">
-        ${initialSearchResults ? `Showing ${initialSearchResults.length} results for "${escapeHtml(searchQuery)}"` : 'Search Results'}
+        ${initialSearchResults ? `Showing ${initialSearchResults.length}${initialNumFound > initialSearchResults.length ? ` of ${initialNumFound.toLocaleString()}` : ''} results for "${escapeHtml(searchQuery)}"` : 'Search Results'}
       </span>
       <div class="search-results-actions">
-        <label class="match-explain-toggle" id="matchExplainToggleContainer" title="Highlight matched search terms &amp; preview snippets from descriptions, tags, and venues">
-          <input type="checkbox" id="toggleMatchExplain" onchange="onToggleMatchExplain(this.checked)">
-          <span class="match-toggle-track">
-            <span class="match-toggle-thumb"></span>
-          </span>
-          <span class="match-toggle-label">🎯 Explain Matches</span>
-        </label>
+        <div class="search-toggles-wrap">
+          <label class="match-explain-toggle" id="matchExplainToggleContainer" title="Highlight matched search terms &amp; preview snippets from descriptions, tags, and venues">
+            <input type="checkbox" id="toggleMatchExplain" onchange="onToggleMatchExplain(this.checked)">
+            <span class="match-toggle-track">
+              <span class="match-toggle-thumb"></span>
+            </span>
+            <span class="match-toggle-label">🎯 Explain Matches</span>
+          </label>
+          <label class="match-explain-toggle" id="classicSearchToggleContainer" title="Use classic old YUTorah Solr search (disables transliteration expansion &amp; entity recognition)">
+            <input type="checkbox" id="toggleClassicSearch" ${isClassicSearch ? 'checked' : ''} onchange="onToggleClassicSearch(this.checked)">
+            <span class="match-toggle-track">
+              <span class="match-toggle-thumb"></span>
+            </span>
+            <span class="match-toggle-label">🏛️ Use Classic Search</span>
+          </label>
+          <label class="match-explain-toggle" id="stackSeriesToggleContainer" title="Stack shiurim belonging to the same series under an interactive cover card">
+            <input type="checkbox" id="toggleStackSeries" checked onchange="onToggleStackSeries(this.checked)">
+            <span class="match-toggle-track">
+              <span class="match-toggle-thumb"></span>
+            </span>
+            <span class="match-toggle-label">📚 Stack Series</span>
+          </label>
+        </div>
         <button class="close-results-btn" onclick="clearSearch()">Clear Search ×</button>
       </div>
     </div>
@@ -4487,7 +4500,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     </div>
 
     <div class="shiur-cards-grid" id="searchResultsGrid">
-      ${initialSearchResults ? initialSearchResults.map(s => renderShiurCardHtml(s, initialSearchTerms)).join('') : ''}
+      ${initialGridHtml}
     </div>
 
     <div id="loadMoreContainer" style="text-align: center; margin-top: 26px; ${initialSearchResults && initialSearchResults.length < initialNumFound ? '' : 'display: none;'}">
@@ -5934,9 +5947,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   let currentSearchPage = Math.floor(${JSON.stringify(initialSearchResults ? initialSearchResults.length : 0)} / 30) || 1;
   let isLoadingMore = false;
   let currentSearchAbort = null;
-  let currentPhoneticTokens = [];
+  let currentPhoneticTokens = ${JSON.stringify(initialPhoneticExpansion?.tokens || [])};
   let currentSearchDocs = ${JSON.stringify(initialSearchResults || [])};
   let showMatchReasons = false;
+  let useClassicSearch = ${Boolean(isClassicSearch)};
+  let stackSeriesEnabled = true;
 
   const COMMUNITY_ACRONYM_PHRASES = {
     yije: ['Young Israel of Jamaica Estates', 'Jamaica Estates', 'YIJE'],
@@ -6302,6 +6317,62 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         ? '<span class="series-expand-icon">➖</span> <span class="series-expand-text">Minimize series</span>'
         : '<span class="series-expand-icon">➕</span> <span class="series-expand-text">View ' + count + ' more in series</span>';
     }
+  }
+
+  function onToggleClassicSearch(checked) {
+    useClassicSearch = !!checked;
+
+    const advCheckbox = document.getElementById('advEnablePhonetics');
+    if (advCheckbox) {
+      advCheckbox.checked = !useClassicSearch;
+    }
+    if (activeAdvancedFilters) {
+      activeAdvancedFilters.enablePhonetics = !useClassicSearch;
+    }
+
+    const newUrl = new URL(window.location.href);
+    if (useClassicSearch) {
+      newUrl.searchParams.set('exact', '1');
+    } else {
+      newUrl.searchParams.delete('exact');
+    }
+    history.pushState(history.state || {}, '', newUrl.toString());
+
+    if (currentSearchQuery || (activeAdvancedFilters && Object.values(activeAdvancedFilters).some(Boolean))) {
+      executeLiveSearch(currentSearchQuery, {
+        ...activeAdvancedFilters,
+        enablePhonetics: !useClassicSearch
+      });
+    }
+  }
+
+  function onToggleStackSeries(checked) {
+    stackSeriesEnabled = !!checked;
+    renderCurrentSearchResults();
+  }
+
+  function renderCurrentSearchResults() {
+    const grid = document.getElementById('searchResultsGrid');
+    if (!grid || !currentSearchDocs || currentSearchDocs.length === 0) return;
+
+    const terms = getActiveSearchTerms();
+
+    if (stackSeriesEnabled) {
+      const grouped = groupAndRankDocs(currentSearchDocs, terms, currentSearchQuery);
+      grid.innerHTML = grouped.map(renderGroupItem).join('');
+    } else {
+      const unstacked = [...currentSearchDocs].sort((a, b) => {
+        const sa = computeRelevanceScore(a, terms, currentSearchQuery);
+        const sb = computeRelevanceScore(b, terms, currentSearchQuery);
+        if (sb !== sa) return sb - sa;
+        const da = a.shiurdate || a.shiurdatesubmitted || '';
+        const db = b.shiurdate || b.shiurdatesubmitted || '';
+        return db.localeCompare(da);
+      });
+      grid.innerHTML = unstacked.map(d => renderDocToCard(d)).join('');
+    }
+
+    grid.classList.toggle('explain-matches-active', showMatchReasons);
   }
 
   function goHome(e) {
@@ -7166,7 +7237,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (extraParams.minDuration) apiUrl += '&minDuration=' + encodeURIComponent(extraParams.minDuration);
     if (extraParams.maxDuration) apiUrl += '&maxDuration=' + encodeURIComponent(extraParams.maxDuration);
     if (extraParams.year) apiUrl += '&year=' + encodeURIComponent(extraParams.year);
-    if (extraParams.enablePhonetics === false) apiUrl += '&exact=1';
+    if (extraParams.enablePhonetics === false || (extraParams.enablePhonetics === undefined && useClassicSearch)) {
+      apiUrl += '&exact=1';
+    }
 
     try {
       const res = await fetch(apiUrl, {
@@ -7180,7 +7253,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       currentLoadedDocsCount = docs.length;
 
       // Handle Phonetic Expansion Notice
-      if (data?.phoneticExpansion) {
+      if (data?.phoneticExpansion && !useClassicSearch) {
         currentPhoneticTokens = data.phoneticExpansion.tokens || [];
         const original = data.phoneticExpansion.original;
         if (phoneticBanner && currentPhoneticTokens.length > 1) {
@@ -7191,6 +7264,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         }
       } else {
         currentPhoneticTokens = [];
+        if (phoneticBanner) phoneticBanner.style.display = 'none';
       }
 
       const resultsTitle = extraParams.label
@@ -7206,10 +7280,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       }
 
       currentSearchDocs = docs;
-      const terms = getActiveSearchTerms();
-      const grouped = groupAndRankDocs(docs, terms, query);
-      grid.innerHTML = grouped.map(renderGroupItem).join('');
-      grid.classList.toggle('explain-matches-active', showMatchReasons);
+      renderCurrentSearchResults();
 
       // Setup Load More button
       const totalInfo = document.getElementById('searchTotalInfo');
@@ -7277,7 +7348,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (currentFilterParams.minDuration) apiUrl += '&minDuration=' + encodeURIComponent(currentFilterParams.minDuration);
     if (currentFilterParams.maxDuration) apiUrl += '&maxDuration=' + encodeURIComponent(currentFilterParams.maxDuration);
     if (currentFilterParams.year) apiUrl += '&year=' + encodeURIComponent(currentFilterParams.year);
-    if (currentFilterParams.enablePhonetics === false) apiUrl += '&exact=1';
+    if (currentFilterParams.enablePhonetics === false || (currentFilterParams.enablePhonetics === undefined && useClassicSearch)) {
+      apiUrl += '&exact=1';
+    }
 
     try {
       const res = await fetch(apiUrl);
@@ -7288,11 +7361,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         currentSearchPage = nextPage;
         currentLoadedDocsCount += newDocs.length;
         currentSearchDocs = currentSearchDocs.concat(newDocs);
-        const terms = getActiveSearchTerms();
-        const grouped = groupAndRankDocs(currentSearchDocs, terms, currentSearchQuery);
-        const grid = document.getElementById('searchResultsGrid');
-        grid.innerHTML = grouped.map(renderGroupItem).join('');
-        grid.classList.toggle('explain-matches-active', showMatchReasons);
+        renderCurrentSearchResults();
 
         const resultsTitle = currentFilterParams.label
           ? (currentFilterParams.label + ' (' + currentLoadedDocsCount + (totalSearchResults ? ' of ' + totalSearchResults.toLocaleString() : '') + ')')
@@ -7344,8 +7413,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     currentPhoneticTokens = [];
     currentSearchPage = 1;
     showMatchReasons = false;
+    useClassicSearch = false;
+    stackSeriesEnabled = true;
     const matchToggle = document.getElementById('toggleMatchExplain');
     if (matchToggle) matchToggle.checked = false;
+    const classicToggle = document.getElementById('toggleClassicSearch');
+    if (classicToggle) classicToggle.checked = false;
+    const stackToggle = document.getElementById('toggleStackSeries');
+    if (stackToggle) stackToggle.checked = true;
     const resGrid = document.getElementById('searchResultsGrid');
     if (resGrid) resGrid.classList.remove('explain-matches-active');
 
@@ -7381,6 +7456,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const newUrl = new URL(window.location.href);
     newUrl.searchParams.delete('search');
     newUrl.searchParams.delete('q');
+    newUrl.searchParams.delete('exact');
+    newUrl.searchParams.delete('classic');
     history.pushState({}, '', newUrl.toString());
   }
 
@@ -8738,23 +8815,51 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 `;
 }
 
-function renderShiurCardHtml(s, searchTerms = []) {
+function renderShiurCardHtml(s, searchTerms = [], options = {}) {
+  const id = s.shiurid || s.shiurID || s.id || '';
+  const title = s.shiurtitle || s.shiurTitle || s.title || 'Untitled Shiur';
+  let speaker = s.teacherfullname || '';
+  let photo = '';
+  if (s.shiurTeachers && s.shiurTeachers[0]) {
+    speaker = s.shiurTeachers[0].teacherName || s.shiurTeachers[0].teacherFullName || speaker;
+    photo = s.shiurTeachers[0].teacherPhotoURL || s.shiurTeachers[0].teacherPhotoURL_lp || '';
+  } else if (s.speaker) {
+    speaker = s.speaker;
+    photo = s.speakerPhoto || s.photo || '';
+  }
+  if (!speaker) speaker = 'YUTorah';
+
+  if (!photo && s.PHOTO) {
+    photo = s.PHOTO.startsWith('http') ? s.PHOTO : `https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/${s.PHOTO}`;
+  }
+  if (!photo && s.photo) {
+    photo = s.photo.startsWith('http') ? s.photo : `https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/${s.photo}`;
+  }
+  if (!photo) {
+    photo = 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/_default.jpg';
+  }
+
+  const duration = s.durationformatted || (typeof s.duration === 'number' ? s.duration + ' min' : (s.duration || ''));
+  const rawDate = s.shiurdateformatted || s.shiurDateFormatted || s.shiurdate || s.shiurDate || s.shiurdatesubmitted || s.shiurDateSubmitted || s.date || '';
+  const dateStr = formatShiurDate(rawDate);
+  const isNew = isShiurNew(s.shiurdatesubmitted || s.shiurDateSubmitted || rawDate);
+  const newBadge = isNew ? '<span class="quick-card-new-badge">NEW</span>' : '';
+  const category = (Array.isArray(s.categoryname) && s.categoryname[0]) || (Array.isArray(s.subcategoryname) && s.subcategoryname[0]) || s.category || '';
+
   const metaParts = [];
-  if (s.duration) metaParts.push('⏱ ' + escapeHtml(s.duration));
-  const dateStr = formatShiurDate(s.date || '');
+  if (duration) metaParts.push('⏱ ' + escapeHtml(duration));
   if (dateStr) metaParts.push(escapeHtml(dateStr));
   const bottomMeta = metaParts.join(' · ');
-  const newBadge = s.isNew ? '<span class="quick-card-new-badge">NEW</span>' : '';
 
-  let displayTitle = escapeHtml(s.title);
-  let displaySpeaker = escapeHtml(s.speaker);
-  let displayCategory = s.category ? escapeHtml(s.category) : '';
+  let displayTitle = escapeHtml(title);
+  let displaySpeaker = escapeHtml(speaker);
+  let displayCategory = category ? escapeHtml(category) : '';
   let matchReasonHtml = '';
 
   if (searchTerms && searchTerms.length > 0) {
-    displayTitle = highlightMatches(s.title, searchTerms);
-    displaySpeaker = highlightMatches(s.speaker, searchTerms);
-    if (s.category) displayCategory = highlightMatches(s.category, searchTerms);
+    displayTitle = highlightMatches(title, searchTerms);
+    displaySpeaker = highlightMatches(speaker, searchTerms);
+    if (category) displayCategory = highlightMatches(category, searchTerms);
 
     const reasons = buildMatchReasons(s, searchTerms);
     if (reasons.length > 0) {
@@ -8782,11 +8887,18 @@ function renderShiurCardHtml(s, searchTerms = []) {
     }
   }
 
+  const isCover = options.isCover;
+  const seriesBadge = isCover
+    ? `<div class="series-cover-badge">📚 Series · ${options.seriesCount || 'Multi-Part'} Shiurim</div>`
+    : '';
+  const coverClass = isCover ? ' is-series-cover' : '';
+
   return `
-    <a href="/${s.id}" class="quick-card-link" onclick="playShiurById(event, this.dataset.id)" data-id="${s.id}">
+    <a href="/${id}" class="quick-card-link${coverClass}" onclick="playShiurById(event, this.dataset.id)" data-id="${id}">
       ${newBadge}
+      ${seriesBadge}
       <div class="quick-card-top">
-        <img class="quick-card-avatar" src="${escapeHtml(s.photo)}" alt="${escapeHtml(s.speaker)}" loading="lazy" onerror="handleImgError(this)">
+        <img class="quick-card-avatar" src="${escapeHtml(photo)}" alt="${escapeHtml(speaker)}" loading="lazy" onerror="handleImgError(this)">
         <div class="quick-card-info">
           <div class="quick-card-title">${displayTitle}</div>
           <div class="quick-card-speaker">${displaySpeaker}</div>
@@ -8799,6 +8911,68 @@ function renderShiurCardHtml(s, searchTerms = []) {
         <span class="quick-play-badge">▶ Play</span>
       </div>
     </a>
+  `;
+}
+
+function renderSeriesSubCardHtml(sub, partNumber, searchTerms = []) {
+  const id = sub.shiurid || sub.shiurID || sub.id || '';
+  const title = sub.shiurtitle || sub.shiurTitle || sub.title || 'Untitled';
+  const duration = sub.durationformatted || (typeof sub.duration === 'number' ? sub.duration + ' min' : (sub.duration || ''));
+  const rawDate = sub.shiurdateformatted || sub.shiurDateFormatted || sub.shiurdate || sub.shiurdatesubmitted || '';
+  const dateStr = formatShiurDate(rawDate);
+  const displayTitle = searchTerms.length > 0 ? highlightMatches(title, searchTerms) : escapeHtml(title);
+
+  let matchReasonHtml = '';
+  if (searchTerms.length > 0) {
+    const reasons = buildMatchReasons(sub, searchTerms);
+    if (reasons.length > 0) {
+      matchReasonHtml = '<div class="quick-card-match-reason">' +
+        reasons.map(r => 
+          '<div class="match-reason-item">' +
+            '<div class="match-reason-header"><span class="match-reason-badge">' + escapeHtml(r.badge) + '</span></div>' +
+            '<div class="match-reason-snippet" dir="auto">' + r.snippet + '</div>' +
+          '</div>'
+        ).join('') +
+      '</div>';
+    }
+  }
+
+  const metaParts = [];
+  if (duration) metaParts.push('⏱ ' + escapeHtml(duration));
+  if (dateStr) metaParts.push(escapeHtml(dateStr));
+
+  return `
+    <a href="/${id}" class="series-sub-card" onclick="playShiurById(event, this.dataset.id)" data-id="${id}">
+      <div class="series-sub-header">
+        <div class="series-sub-title"><span style="opacity:0.75; font-weight:700; margin-right:4px;">#${partNumber}</span> ${displayTitle}</div>
+        <span class="series-sub-play">▶ Play</span>
+      </div>
+      ${matchReasonHtml}
+      ${metaParts.length > 0 ? `<div class="series-sub-meta">${metaParts.join(' · ')}</div>` : ''}
+    </a>
+  `;
+}
+
+function renderGroupItemHtml(item, searchTerms = []) {
+  if (!item.isSeries) {
+    return renderShiurCardHtml(item.doc, searchTerms);
+  }
+  const cover = item.cover;
+  const subDocs = item.subDocs;
+  const drawerId = 'series_drawer_' + (cover.shiurid || cover.shiurID || cover.id || '') + '_' + Math.random().toString(36).substring(2, 7);
+  const coverHtml = renderShiurCardHtml(cover, searchTerms, { isCover: true, seriesTitle: item.title, seriesCount: item.docs.length });
+  const subCardsHtml = subDocs.map((sub, idx) => renderSeriesSubCardHtml(sub, idx + 2, searchTerms)).join('');
+
+  return `
+    <div class="quick-card-series-group">
+      ${coverHtml}
+      <button type="button" class="series-expand-btn" data-drawer-target="${drawerId}" data-sub-count="${subDocs.length}" onclick="toggleSeriesDrawer(event, '${drawerId}')">
+        <span class="series-expand-icon">➕</span> <span class="series-expand-text">View ${subDocs.length} more in series</span>
+      </button>
+      <div id="${drawerId}" class="series-drawer" style="display: none;">
+        ${subCardsHtml}
+      </div>
+    </div>
   `;
 }
 

@@ -409,5 +409,28 @@ To eliminate confusion about why a shiur appeared in search results (such as whe
 6. **Case Study Verification**: Documented the 32 vs 29 comparison for `rosensweig shabos yije` (`7abe1d3`).
 7. **Explain Matches Toggle**: Added header toggle, query term highlighting, and hidden-field snippet preview callouts (`42f1b56`).
 8. **Page-Number Pagination Fix**: Normalized `start` parameter handling in client and worker to correctly advance by 1-based page number, displaying "All 32 shiurim loaded!" accurately (`1bb8895`).
-9. **Title-Weighted Relevance Sorting & Series Grouping**: Solved the `halachos of muktzeh` ranking issue and grouped multi-lecture series under earliest-first cover cards with expandable sub-drawers.
+9. **Title-Weighted Relevance Sorting & Series Grouping**: Solved the `halachos of muktzeh` ranking issue and grouped multi-lecture series under earliest-first cover cards with expandable sub-drawers (`4492b2f`).
+10. **Unified SSR Search Pipeline**: Replaced raw Solr fetch on initial page load with `executeSearchInternal`, guaranteeing that page reloads (e.g. `?search=rosensweig+shabos+yije`) yield the exact same enhanced 32 results as client-side live search.
+11. **"Use Classic Search" Toggle**: Added an interactive toggle directly next to Explain Matches that seamlessly re-runs the search using classic Solr search (`exact=1`) when checked (yielding 29 results) and restores enhanced transliteration search when unchecked (yielding 32 results).
+12. **"Stack Series" Toggle**: Added an on/off toggle for Series Grouping (enabled by default); when toggled off, shiurim are unstacked and displayed as standalone cards sorted by relevance.
+
+---
+
+## Part 15: Search Results Controls & Toggles Suite
+
+To give users complete transparency and control over their search experience, three interactive switches are provided right above search results:
+
+1. **🎯 Explain Matches** (Default: *Off*):
+   - Illuminates matching terms across title, speaker, and category.
+   - Reveals contextual preview callouts for terms matched in hidden fields (description, venue, keywords, series).
+
+2. **🏛️ Use Classic Search** (Default: *Off*):
+   - Switches between Enhanced Search (with Reverse Transliteration, Synset expansion, and Speaker Entity parsing) and Classic Search (raw Solr queries).
+   - Instant re-query: toggling re-fetches and dynamically updates the result count (e.g., 32 results in Enhanced vs. 29 in Classic for `"rosensweig shabos yije"`).
+   - Syncs with URL parameter `&exact=1` so shared or bookmarked URLs reflect the exact engine mode chosen.
+
+3. **📚 Stack Series** (Default: *On*):
+   - Groups matching lectures in the same series under an earliest-first Cover Card with an expandable `➕ View X more in series` drawer.
+   - When unchecked, instantly unstacks the results in-place without network requests, displaying every lecture as its own standalone card sorted by relevance and date.
+
 
