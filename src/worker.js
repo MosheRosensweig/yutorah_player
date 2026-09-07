@@ -3144,12 +3144,23 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       border-radius: 4px;
       overflow: hidden;
       display: block;
+      width: fit-content;
+      max-width: none;
+      margin: 0 auto;
       transition: transform 0.15s ease;
     }
     .pdf-canvas-card canvas {
       display: block;
-      max-width: 100%;
       height: auto !important;
+    }
+    .article-viewer-wrap:fullscreen {
+      background: var(--bg);
+      padding: 24px;
+      border-radius: 0;
+      width: 100vw;
+      height: 100vh;
+      box-sizing: border-box;
+      overflow-y: auto;
     }
 
     /* Reader Loading State */
@@ -5148,16 +5159,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
             <button type="button" class="font-size-btn" onclick="adjustArticleFontSize(1)" title="Increase text size">A+</button>
           </div>
         </div>
-        <div class="article-toolbar-center" id="articlePageNav">
-          <button type="button" class="article-btn" id="prevPageBtn" onclick="changeArticlePage(-1)">‹ Prev</button>
-          <span class="article-page-info" id="articlePageNum">Page 1 of 1</span>
-          <button type="button" class="article-btn" id="nextPageBtn" onclick="changeArticlePage(1)">Next ›</button>
+        <div class="article-toolbar-center" id="articlePageNav" style="display: none;">
+          <button type="button" class="article-btn" id="prevPageBtn" onclick="changeArticlePage(-1)" aria-label="Previous page">‹ Prev</button>
+          <span class="article-page-info" id="articlePageNum" aria-live="polite">Page 1 of 1</span>
+          <button type="button" class="article-btn" id="nextPageBtn" onclick="changeArticlePage(1)" aria-label="Next page">Next ›</button>
         </div>
         <div class="article-toolbar-right">
-          <button type="button" class="article-btn" id="zoomOutBtn" onclick="adjustArticleZoom(-0.2)" title="Zoom out">🔍 -</button>
-          <button type="button" class="article-btn" id="zoomInBtn" onclick="adjustArticleZoom(0.2)" title="Zoom in">🔍 +</button>
-          <a class="article-btn" id="dlPdfBtn" href="${escapeHtml(downloadUrl || articlePdfUrl)}" target="_blank" download title="Download PDF document">⬇️ PDF</a>
-          <button type="button" class="article-btn" onclick="toggleArticleFullscreen()" title="Toggle Fullscreen">⛶</button>
+          <button type="button" class="article-btn" id="zoomOutBtn" onclick="adjustArticleZoom(-0.2)" title="Zoom out" aria-label="Zoom out" style="display: none;">🔍 -</button>
+          <button type="button" class="article-btn" id="zoomInBtn" onclick="adjustArticleZoom(0.2)" title="Zoom in" aria-label="Zoom in" style="display: none;">🔍 +</button>
+          <a class="article-btn" id="dlPdfBtn" href="${escapeHtml(downloadUrl || articlePdfUrl)}" target="_blank" download title="Download PDF document" aria-label="Download PDF">⬇️ PDF</a>
+          <button type="button" class="article-btn" onclick="toggleArticleFullscreen()" title="Toggle Fullscreen" aria-label="Toggle Fullscreen">⛶</button>
         </div>
       </div>
 
@@ -8354,7 +8365,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         speaker: speaker,
         photo: photo,
         duration: duration,
-        date: date
+        date: date,
+        isArticle: isArticle
       });
 
       // Render rich metadata immediately
@@ -8534,7 +8546,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         photo: shiur.photo || '',
         duration: shiur.duration || '',
         date: shiur.date || '',
-        category: shiur.category || ''
+        category: shiur.category || '',
+        isArticle: Boolean(shiur.isArticle)
       });
       if (history.length > 24) history = history.slice(0, 24);
       localStorage.setItem('yutorah_recent_history', JSON.stringify(history));
@@ -8560,10 +8573,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       const dateStr = formatShiurDate(rawDate);
       const isNew = isShiurNew(rawDate);
       const newBadge = isNew ? '<span class="quick-card-new-badge">NEW</span>' : '';
+      const isDoc = Boolean(item.isArticle);
       const metaParts = [];
-      if (item.duration) metaParts.push('⏱ ' + escapeHtml(item.duration));
+      if (isDoc) {
+        metaParts.push('📄 Article');
+      } else if (item.duration) {
+        metaParts.push('⏱ ' + escapeHtml(item.duration));
+      }
       if (dateStr) metaParts.push(escapeHtml(dateStr));
       const bottomMeta = metaParts.join(' · ');
+      const actionBadge = isDoc
+        ? '<span class="quick-play-badge" style="background:#10b981; color:#fff;">📄 Read</span>'
+        : '<span class="quick-play-badge">▶ Resume</span>';
       return '<a href="/' + item.id + '" class="quick-card-link" onclick="playShiurById(event, this.dataset.id)" data-id="' + item.id + '">' +
         newBadge +
         '<div class="quick-card-top">' +
@@ -8576,7 +8597,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         '</div>' +
         '<div class="quick-card-bottom">' +
           '<span>' + bottomMeta + '</span>' +
-          '<span class="quick-play-badge">▶ Resume</span>' +
+          actionBadge +
         '</div>' +
       '</a>';
     }).join('');
@@ -9334,6 +9355,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   // Keyboard Shortcuts
   document.addEventListener('keydown', (e) => {
     if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+    if (isCurrentShiurArticle) return; // Allow natural space scrolling and keyboard navigation in article mode
     if (e.key === ' ') { e.preventDefault(); togglePlay(); }
     else if (e.key === 'ArrowLeft') { e.preventDefault(); skip(e.shiftKey ? -30 : -10); }
     else if (e.key === 'ArrowRight') { e.preventDefault(); skip(e.shiftKey ? 30 : 10); }
@@ -9728,11 +9750,20 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const audioWrap = document.getElementById('audioControlsWrap');
     if (audioWrap) audioWrap.style.display = 'none';
 
-    // Pause audio if playing
-    if (audio && !audio.paused) {
-      audio.pause();
+    // Pause audio if playing and clear src so background playback does not trigger
+    if (audio) {
+      if (!audio.paused) audio.pause();
+      try { audio.src = ''; audio.load(); } catch(e){}
     }
     hasAudio = false;
+
+    // Clean up previous pdfDoc to release memory and web worker
+    if (pdfDoc) {
+      try {
+        pdfDoc.destroy();
+      } catch(e) {}
+      pdfDoc = null;
+    }
 
     // Determine initial mode based on screen width & orientation:
     // Mobile portrait (<768px and height > width) defaults to Liquid Mode
