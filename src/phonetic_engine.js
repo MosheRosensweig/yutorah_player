@@ -1151,6 +1151,28 @@ export const SUFFIX_MAP = {
   'im': ['ים']
 };
 
+// [UPGRADE - Vowel Matres Lectionis & Initial Vowels Engine]
+// Extends original 2018 Java algorithm:
+// 1. Initial vowels in Hebrew must begin with Alef (א) or Ayin (ע) (e.g. Elul -> אלול, Omer -> עומר).
+// 2. Vowel digraphs (oo/ou -> ו, ee/ei -> י) represent explicit Hebrew letters.
+export const INITIAL_VOWEL_MAP = {
+  'a': ['א', 'ע', '#'],
+  'e': ['א', 'ע', '#'],
+  'i': ['א', 'ע', 'י', '#'],
+  'o': ['א', 'ע', 'ו', '#'],
+  'u': ['א', 'ע', 'ו', '#']
+};
+
+export const VOWEL_DIGRAPH_MAP = {
+  'oo': ['ו'],
+  'ou': ['ו'],
+  'ee': ['י'],
+  'ei': ['י'],
+  'ai': ['י'],
+  'ay': ['י'],
+  'ey': ['י']
+};
+
 // Final letter normalization (Sofit)
 export function applyHebrewFinalLetters(word) {
   if (!word || word.length === 0) return '';
@@ -1199,12 +1221,17 @@ export function convertEnglishBackToHebrew(rawWord, maxResults = 16) {
 
     const remainingLen = str.length - begin;
 
-    // Check 2-character digraph / suffix branch
+    // 1. Check 2-character digraph / suffix branch
     if (remainingLen >= 2) {
       const twoChar = str.substring(begin, begin + 2);
       if (remainingLen === 2 && SUFFIX_MAP[twoChar]) {
         for (const ch of SUFFIX_MAP[twoChar]) {
           recurse(begin + 2, currentHebrew + (ch === '#' ? '' : ch));
+        }
+      } else if (VOWEL_DIGRAPH_MAP[twoChar]) {
+        // [UPGRADE] Explicit vowel digraphs (oo/ou -> ו, ee/ei/ai/ay -> י)
+        for (const ch of VOWEL_DIGRAPH_MAP[twoChar]) {
+          recurse(begin + 2, currentHebrew + ch);
         }
       } else if (DIGRAPH_CONSONANT_MAP[twoChar]) {
         for (const ch of DIGRAPH_CONSONANT_MAP[twoChar]) {
@@ -1213,8 +1240,17 @@ export function convertEnglishBackToHebrew(rawWord, maxResults = 16) {
       }
     }
 
-    // Single character branch
+    // 2. Single character branch
     const oneChar = str.substring(begin, begin + 1);
+
+    // [UPGRADE] Initial vowel handling: Hebrew words starting with a vowel begin with Alef (א) or Ayin (ע)
+    if (begin === 0 && INITIAL_VOWEL_MAP[oneChar]) {
+      for (const ch of INITIAL_VOWEL_MAP[oneChar]) {
+        recurse(begin + 1, currentHebrew + (ch === '#' ? '' : ch));
+      }
+      return;
+    }
+
     if (remainingLen === 1 && SUFFIX_MAP[oneChar]) {
       for (const ch of SUFFIX_MAP[oneChar]) {
         recurse(begin + 1, currentHebrew + (ch === '#' ? '' : ch));
@@ -1222,6 +1258,12 @@ export function convertEnglishBackToHebrew(rawWord, maxResults = 16) {
     } else if (DIGRAPH_CONSONANT_MAP[oneChar]) {
       for (const ch of DIGRAPH_CONSONANT_MAP[oneChar]) {
         recurse(begin + 1, currentHebrew + (ch === '#' ? '' : ch));
+      }
+      // [UPGRADE] Medial Matres Lectionis: o and u can optionally generate Vav (ו); i can optionally generate Yud (י)
+      if (oneChar === 'o' || oneChar === 'u') {
+        recurse(begin + 1, currentHebrew + 'ו');
+      } else if (oneChar === 'i') {
+        recurse(begin + 1, currentHebrew + 'י');
       }
     } else {
       recurse(begin + 1, currentHebrew);
@@ -1302,8 +1344,8 @@ export function expandQueryWithPhonetics(rawQuery, enableDynamicHebrew = true) {
       } else if (enableDynamicHebrew && cleanWord.length >= 3 && /^[a-z]+$/.test(cleanWord) && !COMMON_ENGLISH_STOPWORDS.has(cleanWord) && !KNOWN_COMMUNITY_ACRONYMS.has(cleanWord)) {
         // Algorithmic Reverse Transliteration from EnglishBackToHebrew
         // Filter out short <= 2 letter Hebrew tokens (e.g. 'יג', 'יד', 'טו') which are daf/chapter numbers in source sheets
-        const rawGenerated = convertEnglishBackToHebrew(cleanWord, 8);
-        const generatedHebrew = rawGenerated.filter(h => h.length >= 3).slice(0, 4);
+        const rawGenerated = convertEnglishBackToHebrew(cleanWord, 16);
+        const generatedHebrew = rawGenerated.filter(h => h.length >= 3).slice(0, 6);
         if (generatedHebrew.length > 0) {
           hasExpansion = true;
           const terms = [word, ...generatedHebrew];

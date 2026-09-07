@@ -87,6 +87,7 @@ assert.ok(shabbatCands.includes('שבת'));
 
 const succahCands = convertEnglishBackToHebrew('succah');
 assert.ok(succahCands.includes('סכה'));
+assert.ok(succahCands.includes('סוכה'), 'Upgraded vowel engine should generate full spelling סוכה');
 
 const pesachCands = convertEnglishBackToHebrew('pesach');
 assert.ok(pesachCands.includes('פסח'));
@@ -94,7 +95,17 @@ assert.ok(pesachCands.includes('פסח'));
 const motsaiCands = convertEnglishBackToHebrew('motsai');
 assert.ok(motsaiCands.includes('מצי'));
 
-console.log('  ✅ EnglishBackToHebrew algorithmic tests passed.');
+// [UPGRADE TESTS] Initial Vowels (Alef / Ayin) and Medial Matres Lectionis
+const elulCands = convertEnglishBackToHebrew('elul');
+assert.ok(elulCands.includes('אלול') || elulCands.includes('אלל'), 'Initial e- should generate Alef (אלול)');
+
+const omerCands = convertEnglishBackToHebrew('omer');
+assert.ok(omerCands.includes('עמר') || omerCands.includes('אמר'), 'Initial o- should generate Ayin / Alef (עמר / אמר)');
+
+const lulavCands = convertEnglishBackToHebrew('lulav');
+assert.ok(lulavCands.includes('לולב') || lulavCands.includes('ללב'), 'Medial -u- should generate Vav (לולב)');
+
+console.log('  ✅ EnglishBackToHebrew algorithmic tests and vowel upgrades passed.');
 
 // 6. Test parseQueryEntities (Speaker vs Topic Separation)
 console.log('6. Testing Query Entity Parsing:');
