@@ -162,6 +162,146 @@ The test suite in `tests/phonetic_engine.test.mjs` verifies all aspects of the a
 
 ---
 
+---
+
+## Part 5: Titles vs. Tags vs. Descriptions in Solr
+
+A frequent question is: *Does Solr only search shiur titles, or does it also search tags and descriptions?*
+
+When `searchTerm` is sent to `https://api.yutorah.org/search?searchTerm=...`, Solr matches against an **aggregated text field** in its Solr schema that indexes all of the following:
+1. **`shiurtitle`**: The title of the shiur.
+2. **`categoryname` & `subcategoryname`**: The primary topic and subcategory tags (e.g. `Shabbat`, `Halacha`, `Gemara`).
+3. **`teacherfullname`**: The speaker's name.
+4. **`shiurdescription`**: The written synopsis, summary, or source sheet text.
+5. **`shiurkeywords`**: Explicit tags added by uploaders or editors.
+6. **`seriesname`**: The title of the series if the shiur belongs to one.
+
+Because Solr searches all these fields simultaneously, a shiur whose title is in Hebrew (`Shiur #4 - רמב״ם פיה״מ והתחלת פרק כירה`) without the English word "shabbos" anywhere in the title will still match if its subcategory is `Shabbat`!
+
+---
+
+## Part 6: How the Top 30 Results are Picked: Classic vs. Your Algorithm
+
+When a search matches 40,000+ shiurim, how are the top 30 chosen?
+
+### Classic Search: Naive TF-IDF Score
+Solr calculates relevance using standard Lucene TF-IDF (Term Frequency–Inverse Document Frequency):
+- If you type `"Rosensweig Shabbos"` in classic search, Solr looks for any document containing both words anywhere in its text.
+- If a guest lecturer’s summary mentions: *"In this lecture we discuss Rav Rosensweig's chiddush on Shabbos, following Rav Rosensweig..."*, that shiur mentions the word "Rosensweig" multiple times.
+- **Problem**: Solr gives that guest lecture a higher TF-IDF score than an authentic shiur by Rabbi Rosensweig whose title is simply `"Melacha on Shabbat"`. Irrelevant mentions crowd out the top 30!
+
+### Your Algorithm: Entity Disambiguation + Multi-Tier Scoring
+Your algorithm parses `"Rosensweig Shabbos"` into **discrete structured criteria**:
+1. **Speaker Entity**: Detects `"Rosensweig"` as Rabbi Michael Rosensweig $\to$ applies `teacherId=80146`.
+   - **Result**: 100% of the returned results are guaranteed to be by Rabbi Michael Rosensweig. Zero guest lectures or false mentions can pollute the top 30.
+2. **Concept Expansion**: Expands `"Shabbos"` to `(shabbos OR shabbat OR "שבת")`.
+   - **Result**: Shiurim with Hebrew-only titles (e.g. `קדושת שבת ומהות המלאכה`) receive full relevance scores and rise into the top 30, whereas classic search gave them a score of 0.
+3. **Field Relevance**: Matches in titles and categories receive higher priority than passing mentions in descriptions.
+4. **Freshness / Popularity Tie-Breaking**: Between two shiurim with identical relevance, newer shiurim and shiurim with higher listen counts (`shiurvisitsnum`) are favored.
+
+---
+
+## Part 7: Catalog of Word Buckets (Synsets)
+
+The engine contains **62 curated synset buckets** covering all major Halachic topics, Moadim (Holidays), and Talmudic tractates. In addition to these 62 buckets, the engine dynamically uses `EnglishBackToHebrew` to generate valid Hebrew roots on the fly for any unmapped transliterated word.
+
+### Summary of Word Buckets Catalog (62 Total)
+
+| Category | Canonical Concept | English Variations | Hebrew Mappings |
+| :--- | :--- | :--- | :--- |
+| **Shabbat & Eruv** | `shabbat` | shabbat, shabbos, shabos, shabbis, shabot, chabbos | שבת |
+| | `eruv` | eruv, eiruv, eruvin, eiruvin | עירוב, עירובין |
+| | `muktzah` | muktzah, muktza, muktzeh, muktze, mukzah | מוקצה |
+| | `challah` | challah, challa, halla, hallah | חלה |
+| | `havdalah` | havdalah, havdala, havdallah | הבדלה |
+| | `kiddush` | kiddush, kidush | קידוש |
+| **High Holidays & Elul** | `rosh hashanah` | rosh hashanah, rosh hashana, rosh hashonoh, rosh hashono | ראש השנה |
+| | `yom kippur` | yom kippur, yom kipur, yom hakippurim, yom kippurim | יום כיפור, יום הכיפורים |
+| | `shofar` | shofar, shofros, shofrot | שופר |
+| | `selichos` | selichos, selichot, slichos, slichot | סליחות, סליחה |
+| | `teshuvah` | teshuvah, teshuva, tshuvah, tshuva, tshuvoh, teshuvot | תשובה |
+| **Sukkot** | `sukkah` | sukkah, sukka, succah, succa, succos, sukkot, sukkos | סוכה, סוכות |
+| | `lulav` | lulav, arba minim, daled minim | לולב |
+| | `esrog` | esrog, etrog, esrogim, etrogim | אתרוג |
+| | `hoshana rabba` | hoshana rabba, hoshana rabbah, hoshana raba | הושענא רבה |
+| | `simchas torah` | simchas torah, simchat torah, simchas tora | שמחת תורה |
+| **Pesach** | `pesach` | pesach, passover, pesah, pesakh | פסח |
+| | `chometz` | chometz, chametz, chameitz, hometz, hametz | חמץ |
+| | `matzah` | matzah, matza, matzot, matzos, matzoh | מצה, מצות |
+| | `seder` | seder, pesach seder, passover seder | סדר |
+| **Other Holidays & Fast Days**| `purim` | purim, pooreem | פורים |
+| | `megillah` | megillah, megila, megilat esther, megillat esther | מגילה |
+| | `chanukah` | chanukah, hanukkah, channukah, channuka, chanuka, hanukah, hannukah | חנוכה |
+| | `shavuos` | shavuos, shavuot, shavuoth | שבועות |
+| | `tisha bav` | tisha bav, tisha b'av, tishah bav, tishah b'av, 9 av, 9th of av | תשעה באב |
+| **Daily Halacha & Mitzvot** | `kashrus` | kashrus, kashrut, kashruth, kosher | כשרות |
+| | `tefillah` | tefillah, tefilah, tefillos, tefillot, tefilot, tefila | תפילה, תפילות |
+| | `brachos` | brachos, berakhot, berachot, brachot, beracha, bracha, brochos | ברכות, ברכה |
+| | `tzitzis` | tzitzis, tzitzit, zizit, tsitsit | ציצית |
+| | `tefillin` | tefillin, tefilin, tfillin | תפילין |
+| | `mezuzah` | mezuzah, mezuza, mezuzot, mezuzos | מזוזה, מזוזות |
+| | `mikvah` | mikvah, mikveh, mikva, mikve | מקוה, מקווה |
+| | `nidah` | nidah, niddah, nida, taharat hamishpacha, taharas hamishpacha | נדה, נידה |
+| | `berit milah` | brit milah, bris milah, bris, brit | ברית מילה, ברית |
+| | `kaddish` | kaddish, kadish | קדיש |
+| | `kedushah` | kedushah, kedusha | קדושה |
+| | `motzoei` | motzoei, motzei, motsai, motzaei, motza | מוצאי |
+| | `shemittah` | shemittah, shemita, shmita, shmittah | שמיטה |
+| | `mussar` | mussar, musar | מוסר |
+| | `chassidus` | chassidus, chassidut, chasidus, hasidism, chasidut | חסידות |
+| | `parsha` | parsha, parshah, parashah, parashat hashavua, parshas hashavua | פרשה, פרשת השבוע |
+| | `haftarah` | haftarah, haftara, haftorah | הפטרה |
+| **Masechtot & Seder Moed/Nashim/Nezikin** | `bava kamma` | bava kamma, bava kama, bavam kamma, bk | בבא קמא |
+| | `bava metzia` | bava metzia, bava metziah, bava mezia, bm | בבא מציעא |
+| | `bava basra` | bava basra, bava batra, bb | בבא בתרא |
+| | `sanhedrin` | sanhedrin, sanhedryn | סנהדרין |
+| | `kiddushin` | kiddushin, kidushin, kedushin | קידושין |
+| | `chagigah` | chagigah, chagiga, hagigah, hagiga | חגיגה |
+| | `chullin` | chullin, chulin, hullin | חולין |
+| | `pesachim` | pesachim, psachim | פסחים |
+| | `berachot` | berachot, brachot, berakhot, brochos | ברכות |
+| | `ketubot` | ketubot, kesuvos, ketuvot, kesubos | כתובות |
+| | `yevamot` | yevamot, yevamos | יבמות |
+| | `gittin` | gittin, gitin | גיטין |
+| | `sotah` | sotah, sota | סוטה |
+| | `nazir` | nazir | נזיר |
+| | `nedarim` | nedarim | נדרים |
+| | `menachot` | menachot, menachos | מנחות |
+| | `zevachim` | zevachim, zvachim | זבחים |
+| | `taharot` | taharot, taharos, tohorot, tohoros | טהרות |
+| | `keilim` | keilim, kelim | כלים |
+| | `negaim` | negaim, negayim | נגעים |
+
+---
+
+## Part 8: Debounced Live Search Suggestions & Results Dropdown
+
+Like the original YUTorah experience (but faster and without page reloads), typing in the search bar triggers an intelligent debounced live preview:
+1. **Debounce (250ms)**: As the user types, keystrokes are debounced to prevent excessive network calls.
+2. **Suggested Topics & Speakers**:
+   - Matches against top teachers and high-frequency topics.
+   - Clicking a suggested speaker immediately applies that speaker filter and displays their catalog.
+3. **Top Matching Shiurim Preview**:
+   - Shows the top 5 live results with title, speaker, and duration.
+   - Clicking any shiur immediately loads and plays it in the audio player without a full page reload.
+4. **"View All Results" Action**:
+   - Clicking the footer or pressing `Enter` executes the full query and renders the entire search results grid.
+5. **Dismissal**:
+   - Clicking outside the search bar, pressing `Escape`, or clicking "Clear" immediately closes the dropdown.
+
+---
+
+## Part 9: Default Search vs. Classic Old YUTorah Search Toggle
+
+- **Default State**: Reverse Transliteration, Phonetic Equivalence, and Speaker Entity Disambiguation are **enabled by default** for all users across the standard search bar and advanced modal.
+- **Classic Fallback Option**:
+  - In the Advanced Search Modal (`🎚️ Filters`), the Transliteration Engine card contains a checkbox.
+  - The card clearly informs users:
+    > *"Unchecking this box uses the classic old YUTorah website search (strict literal match only)."*
+  - Unchecking it passes `exact=1` to the API, disabling phonetic expansion and speaker extraction, returning Solr's raw unexpanded results.
+
+---
+
 ## Summary Matrix
 
 | Search Term | Classic YUTorah Search Results | Your Algorithm Search Results |
@@ -169,4 +309,6 @@ The test suite in `tests/phonetic_engine.test.mjs` verifies all aspects of the a
 | `"shabbos"` | Misses all shiurim titled `"Shabbat"` or `"שבת"` | Retrieves Ashkenazic (`shabbos`), Sephardic (`shabbat`), and Hebrew (`שבת`) |
 | `"succah"` | Misses all shiurim spelled `"sukkah"`, `"succos"`, or `"סוכה"` | Retrieves all 5 phonetic variations |
 | `"channukah"` | Misses `"Chanukah"`, `"Hanukkah"`, and `"חנוכה"` | Matches single 'n', double 'n', 'H' vs 'Ch', and Hebrew |
-| `"Rav Rosensweig"` | Confused by the word "Rav"; ranks any shiur mentioning "Rav" | Strips "Rav" to match `teacherId: 80072` (Rabbi Michael Rosensweig) |
+| `"Rosensweig Shabbos"` | Returns mixed results of anyone mentioning "Rosensweig" | Pins `teacherId: 80146` and searches his catalog for `shabbos` / `shabbat` / `שבת` |
+| `"michael rosensweig shabbos"` | Requires literal phrase match across text | Strips honorifics, resolves teacher `80146`, and searches Shabbat topics |
+| `"Pesach Schachter"` | Searches text for both words; pollutes with quotes | Resolves Rabbi Schachter (`80153`) + expands Pesach (`pesach`, `passover`, `פסח`) |

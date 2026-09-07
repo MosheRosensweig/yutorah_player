@@ -9,7 +9,7 @@
 import { getHebrewDateInfo, getActiveHolidayTheme } from './hebrew_calendar.js';
 import { THEMES } from './theme_definitions.js';
 import { THEME_ASSETS } from './theme_assets.js';
-import { expandQueryWithPhonetics, resolveSpeaker, stripSpeakerHonorifics, KNOWN_SPEAKERS, SYNSETS } from './phonetic_engine.js';
+import { expandQueryWithPhonetics, resolveSpeaker, parseQueryEntities, stripSpeakerHonorifics, KNOWN_SPEAKERS, SYNSETS } from './phonetic_engine.js';
 import AUTOCOMPLETE_META from './autocomplete_data.json' with { type: 'json' };
 
 const TARGET_API_ORIGIN = 'https://www.yutorah.org';
@@ -254,12 +254,20 @@ export default {
       let effectiveQuery = rawQ;
       let expandedInfo = null;
 
-      // If user typed a speaker name into the search box without selecting a teacherId, attempt auto-resolution
-      if (teacherIds.length === 0 && rawQ) {
+      // If user typed a query without explicitly setting teacherId in filters,
+      // intelligently extract if part or all of the query is a recognized speaker (e.g. "Rosensweig Shabbos")
+      if (teacherIds.length === 0 && rawQ && !disablePhonetics) {
+        const entityParse = parseQueryEntities(rawQ);
+        if (entityParse.speaker) {
+          teacherIds = [entityParse.speaker.id];
+          effectiveQuery = entityParse.remainingQuery; // Filter teacherId natively, keep topic keywords
+        }
+      } else if (teacherIds.length === 0 && rawQ && disablePhonetics) {
+        // In classic mode, still check exact full speaker match
         const resolvedSpk = resolveSpeaker(rawQ);
         if (resolvedSpk) {
           teacherIds = [resolvedSpk.id];
-          effectiveQuery = ''; // Filter natively by teacherId
+          effectiveQuery = '';
         }
       }
 
@@ -2200,6 +2208,123 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     [data-theme="dark"] .advanced-search-btn {
       background: linear-gradient(135deg, #b45309 0%, #78350f 100%);
+    }
+
+    /* Live Search Preview Dropdown */
+    .search-preview-dropdown {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      right: 0;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.16);
+      z-index: 1000;
+      overflow: hidden;
+      display: none;
+      animation: previewFadeIn 0.15s ease-out;
+    }
+    @keyframes previewFadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .preview-section-title {
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--text-muted);
+      padding: 10px 14px 6px;
+      background: rgba(0,0,0,0.02);
+      border-bottom: 1px solid var(--border-light);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    [data-theme="dark"] .preview-section-title {
+      background: rgba(255,255,255,0.02);
+    }
+    .preview-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 9px 14px;
+      text-decoration: none;
+      color: var(--text);
+      border-bottom: 1px solid var(--border-light);
+      cursor: pointer;
+      transition: background 0.12s;
+    }
+    .preview-item:last-child {
+      border-bottom: none;
+    }
+    .preview-item:hover, .preview-item.active {
+      background: rgba(43, 76, 126, 0.08);
+    }
+    [data-theme="dark"] .preview-item:hover, [data-theme="dark"] .preview-item.active {
+      background: rgba(92, 142, 204, 0.15);
+    }
+    .preview-item-icon {
+      font-size: 18px;
+      flex-shrink: 0;
+      width: 24px;
+      text-align: center;
+    }
+    .preview-item-body {
+      flex: 1;
+      min-width: 0;
+    }
+    .preview-item-title {
+      font-size: 13.5px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--text);
+    }
+    .preview-item-sub {
+      font-size: 11.5px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 1px;
+    }
+    .preview-item-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 6px;
+      background: rgba(43, 76, 126, 0.08);
+      color: var(--primary);
+      flex-shrink: 0;
+    }
+    [data-theme="dark"] .preview-item-badge {
+      background: rgba(92, 142, 204, 0.18);
+      color: var(--primary-light);
+    }
+    .preview-footer-view-all {
+      display: block;
+      padding: 10px 14px;
+      text-align: center;
+      font-size: 12.5px;
+      font-weight: 700;
+      color: var(--primary);
+      background: rgba(43, 76, 126, 0.04);
+      cursor: pointer;
+      text-decoration: none;
+      border-top: 1px solid var(--border);
+    }
+    .preview-footer-view-all:hover {
+      background: rgba(43, 76, 126, 0.1);
+    }
+    [data-theme="dark"] .preview-footer-view-all {
+      color: var(--primary-light);
+      background: rgba(92, 142, 204, 0.08);
+    }
+
+    [data-theme="dark"] .advanced-search-btn {
       border: 1px solid #d97706;
       color: #fef3c7;
     }
@@ -3935,6 +4060,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           onkeydown="if(event.key === 'Enter'){ event.preventDefault(); doSearch(); }"
         >
         <button type="button" class="clear-search-btn" id="clearSearchBtn" onclick="clearSearch()" title="Clear">×</button>
+        <!-- Debounced Live Search Suggestions & Results Preview Dropdown -->
+        <div class="search-preview-dropdown" id="searchPreviewDropdown"></div>
       </div>
       <div class="search-actions-row">
         <button type="button" class="search-submit-btn" onclick="doSearch()">Search</button>
@@ -4276,7 +4403,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
             <span style="font-size:10.5px; font-weight:700; background:#10b981; color:#fff; padding:1.5px 6px; border-radius:10px;">ENABLED BY DEFAULT</span>
           </div>
           <div class="translit-badge-desc">
-            Automatically equates Ashkenazic &amp; Sephardic phonetics (<em>Shabbos ↔ Shabbat</em>, <em>Succah ↔ Sukkah</em>) and expands English queries back to authentic Hebrew spellings (<em>שבת, סוכה, פסח, מוצאי</em>).
+            Automatically equates Ashkenazic &amp; Sephardic phonetics (<em>Shabbos ↔ Shabbat</em>, <em>Succah ↔ Sukkah</em>), expands English to Hebrew (<em>שבת, סוכה, פסח, מוצאי</em>), and auto-detects speakers. <strong>Unchecking this box uses the classic old YUTorah website search</strong> (strict literal match only).
           </div>
           <div class="filter-dimensions-hint">
             <span style="font-size:11px; font-weight:700; color:var(--text-muted); margin-right:2px;">Filter across 6 catalog dimensions:</span>
@@ -4290,7 +4417,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         </div>
         <label style="display:flex; flex-direction:column; align-items:center; gap:4px; cursor:pointer; flex-shrink:0;">
           <input type="checkbox" id="advPhoneticsToggle" checked style="width:18px; height:18px; accent-color:var(--primary); cursor:pointer;">
-          <span style="font-size:10.5px; font-weight:600; color:var(--text-muted);">Active</span>
+          <span style="font-size:10.5px; font-weight:700; color:var(--text);" id="advPhoneticsToggleLabel">Enhanced</span>
         </label>
       </div>
 
@@ -5098,7 +5225,197 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   // Handle Search input
   const searchInput = document.getElementById('searchInput');
   const clearSearchBtn = document.getElementById('clearSearchBtn');
+  const searchPreviewDropdown = document.getElementById('searchPreviewDropdown');
   let searchDebounceTimer = null;
+  let previewAbortCtrl = null;
+  let currentPreviewReqId = 0;
+
+  function closeSearchPreview() {
+    if (previewAbortCtrl) {
+      previewAbortCtrl.abort();
+      previewAbortCtrl = null;
+    }
+    currentPreviewReqId++;
+    if (searchPreviewDropdown) {
+      searchPreviewDropdown.style.display = 'none';
+      searchPreviewDropdown.innerHTML = '';
+    }
+  }
+
+  // Click outside closes search preview
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.search-input-wrapper')) {
+      closeSearchPreview();
+    }
+  });
+
+  async function fetchSearchPreview(query) {
+    if (previewAbortCtrl) previewAbortCtrl.abort();
+    previewAbortCtrl = new AbortController();
+    const thisReqId = ++currentPreviewReqId;
+
+    try {
+      // 1. Check local entity matches (speakers and categories from cached AUTOCOMPLETE_META)
+      const suggestions = [];
+      const qLower = query.toLowerCase();
+
+      // Look up speakers
+      if (typeof autocompleteCache !== 'undefined' && autocompleteCache?.teachers) {
+        const matchedTeachers = autocompleteCache.teachers
+          .filter(t => t.name.toLowerCase().includes(qLower))
+          .slice(0, 3);
+        matchedTeachers.forEach(t => {
+          suggestions.push({
+            type: 'speaker',
+            icon: '👤',
+            title: t.name,
+            sub: (t.count ? t.count.toLocaleString() + ' shiurim' : 'Speaker'),
+            action: () => {
+              closeSearchPreview();
+              searchInput.value = '';
+              activeAdvancedFilters = {
+                keywords: '',
+                teachers: [{ id: t.id, name: t.name }],
+                categories: [],
+                locations: [],
+                series: [],
+                minDuration: '',
+                maxDuration: '',
+                durationLabel: '',
+                year: '',
+                yearLabel: '',
+                enablePhonetics: true
+              };
+              executeLiveSearch('', { ...activeAdvancedFilters, label: 'Shiurim by ' + t.name });
+            }
+          });
+        });
+      }
+
+      // Look up categories
+      if (typeof autocompleteCache !== 'undefined' && autocompleteCache?.categories) {
+        const matchedCats = autocompleteCache.categories
+          .filter(c => c.name.toLowerCase().includes(qLower))
+          .slice(0, 2);
+        matchedCats.forEach(c => {
+          suggestions.push({
+            type: 'category',
+            icon: '🏷️',
+            title: c.name,
+            sub: (c.count ? c.count.toLocaleString() + ' shiurim' : 'Topic'),
+            action: () => {
+              closeSearchPreview();
+              searchInput.value = '';
+              activeAdvancedFilters = {
+                keywords: '',
+                teachers: [],
+                categories: [{ id: c.id, name: c.name }],
+                locations: [],
+                series: [],
+                minDuration: '',
+                maxDuration: '',
+                durationLabel: '',
+                year: '',
+                yearLabel: '',
+                enablePhonetics: true
+              };
+              executeLiveSearch('', { ...activeAdvancedFilters, label: 'Topic: ' + c.name });
+            }
+          });
+        });
+      }
+
+      // 2. Fetch live preview shiur results from /api/search?q=...&start=1
+      const res = await fetch('/api/search?q=' + encodeURIComponent(query) + '&start=1', {
+        signal: previewAbortCtrl.signal
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (thisReqId !== currentPreviewReqId) return;
+      const docs = (data?.response?.docs || []).slice(0, 5);
+      const totalCount = data?.response?.numFound || 0;
+
+      if (!searchPreviewDropdown) return;
+      if (suggestions.length === 0 && docs.length === 0) {
+        closeSearchPreview();
+        return;
+      }
+
+      let html = '';
+
+      // Render entity suggestions (speakers/topics)
+      if (suggestions.length > 0) {
+        html += '<div class="preview-section-title"><span>Suggested Topics &amp; Speakers</span></div>';
+        suggestions.forEach((s, idx) => {
+          html += '<div class="preview-item" data-suggestion-idx="' + idx + '">' +
+            '<span class="preview-item-icon">' + s.icon + '</span>' +
+            '<div class="preview-item-body">' +
+              '<div class="preview-item-title">' + escapeHtml(s.title) + '</div>' +
+              '<div class="preview-item-sub">' + escapeHtml(s.sub) + '</div>' +
+            '</div>' +
+            '<span class="preview-item-badge">Filter</span>' +
+          '</div>';
+        });
+      }
+
+      // Render top matching shiurim
+      if (docs.length > 0) {
+        html += '<div class="preview-section-title"><span>Matching Shiurim</span><span>' + totalCount.toLocaleString() + ' found</span></div>';
+        docs.forEach(d => {
+          const id = d.shiurid || d.shiurID || '';
+          const title = d.shiurtitle || d.shiurTitle || 'Untitled';
+          const speaker = d.teacherfullname || (d.shiurTeachers && d.shiurTeachers[0] ? d.shiurTeachers[0].teacherFullName : 'YUTorah');
+          const duration = d.durationformatted || (d.duration ? d.duration + ' min' : '');
+          html += '<a href="/' + id + '" class="preview-item preview-shiur-item" data-id="' + id + '">' +
+            '<span class="preview-item-icon">🎧</span>' +
+            '<div class="preview-item-body">' +
+              '<div class="preview-item-title">' + escapeHtml(title) + '</div>' +
+              '<div class="preview-item-sub">' + escapeHtml(speaker) + (duration ? ' · ' + duration : '') + '</div>' +
+            '</div>' +
+            '<span class="preview-item-badge">▶ Play</span>' +
+          '</a>';
+        });
+
+        html += '<div class="preview-footer-view-all" id="previewViewAllBtn">' +
+          'View all ' + totalCount.toLocaleString() + ' results for "' + escapeHtml(query) + '" →' +
+        '</div>';
+      }
+
+      searchPreviewDropdown.innerHTML = html;
+      searchPreviewDropdown.style.display = 'block';
+
+      // Attach click events for suggestions
+      searchPreviewDropdown.querySelectorAll('[data-suggestion-idx]').forEach(el => {
+        el.addEventListener('click', () => {
+          const idx = parseInt(el.getAttribute('data-suggestion-idx'), 10);
+          if (suggestions[idx]) suggestions[idx].action();
+        });
+      });
+
+      // Attach click events for shiur results
+      searchPreviewDropdown.querySelectorAll('.preview-shiur-item').forEach(el => {
+        el.addEventListener('click', (e) => {
+          e.preventDefault();
+          const id = el.getAttribute('data-id');
+          closeSearchPreview();
+          playShiurById(null, id);
+        });
+      });
+
+      // Attach click event for "View all" footer
+      const viewAllBtn = document.getElementById('previewViewAllBtn');
+      if (viewAllBtn) {
+        viewAllBtn.addEventListener('click', () => {
+          closeSearchPreview();
+          doSearch();
+        });
+      }
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        console.error('Preview fetch error:', err);
+      }
+    }
+  }
 
   function onSearchInput() {
     const val = searchInput.value;
@@ -5107,6 +5424,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     clearTimeout(searchDebounceTimer);
     const query = val.trim();
     if (!query) {
+      closeSearchPreview();
       clearSearch();
       return;
     }
@@ -5115,6 +5433,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (query.toLowerCase() === 'dev mode') {
       searchInput.value = '';
       clearSearchBtn.style.display = 'none';
+      closeSearchPreview();
       if (!isDevMode) {
         activateDevMode();
         flashToast('🛠️ Dev Mode Unlocked!', false, true);
@@ -5124,17 +5443,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       return;
     }
 
-    if (query.length < 2) return;
+    if (query.length < 2) {
+      closeSearchPreview();
+      return;
+    }
 
+    // Debounced Live Preview Dropdown (250ms)
     searchDebounceTimer = setTimeout(() => {
-      // If advanced filters are active, pass them along so constraints are preserved during live typing
-      if (typeof hasActiveFilters === 'function' && hasActiveFilters()) {
-        activeAdvancedFilters.keywords = query;
-        executeLiveSearch(query, { ...activeAdvancedFilters });
-      } else {
-        executeLiveSearch(query);
-      }
-    }, 300);
+      fetchSearchPreview(query);
+    }, 250);
   }
 
   // Helper: check if any advanced filters are actively set
@@ -5149,6 +5466,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   function doSearch() {
     clearTimeout(searchDebounceTimer);
+    closeSearchPreview();
     const rawBarValue = searchInput.value.trim();
 
     // If advanced filters are active, use keywords from filter state, NOT the search bar display text.
@@ -6227,14 +6545,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
   }
 
-  // Keyboard shortcut: Escape closes modal
+  // Keyboard shortcut: Escape closes modal and search preview
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       closeAdvancedModal();
+      closeSearchPreview();
     }
   });
 
   function clearSearch() {
+    closeSearchPreview();
     searchInput.value = '';
     clearSearchBtn.style.display = 'none';
     document.getElementById('searchResultsSection').style.display = 'none';

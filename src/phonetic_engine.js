@@ -138,6 +138,186 @@ export const SYNSETS = [
     canonical: 'eruv',
     hebrew: ['עירוב', 'עירובין'],
     variants: ['eruv', 'eiruv', 'eruvin', 'eiruvin']
+  },
+  {
+    canonical: 'mikvah',
+    hebrew: ['מקוה', 'מקווה'],
+    variants: ['mikvah', 'mikveh', 'mikva', 'mikve']
+  },
+  {
+    canonical: 'mezuzah',
+    hebrew: ['מזוזה', 'מזוזות'],
+    variants: ['mezuzah', 'mezuza', 'mezuzot', 'mezuzos']
+  },
+  {
+    canonical: 'selichos',
+    hebrew: ['סליחות', 'סליחה'],
+    variants: ['selichos', 'selichot', 'slichos', 'slichot', 'selichot']
+  },
+  {
+    canonical: 'simchas torah',
+    hebrew: ['שמחת תורה'],
+    variants: ['simchas torah', 'simchat torah', 'simchas tora']
+  },
+  {
+    canonical: 'hoshana rabba',
+    hebrew: ['הושענא רבה'],
+    variants: ['hoshana rabba', 'hoshana rabbah', 'hoshana raba']
+  },
+  {
+    canonical: 'tisha bav',
+    hebrew: ['תשעה באב'],
+    variants: ['tisha bav', 'tisha b\'av', 'tishah bav', 'tishah b\'av', '9 av', '9th of av']
+  },
+  {
+    canonical: 'chometz',
+    hebrew: ['חמץ'],
+    variants: ['chometz', 'chametz', 'chameitz', 'hometz', 'hametz']
+  },
+  {
+    canonical: 'matzah',
+    hebrew: ['מצה', 'מצות'],
+    variants: ['matzah', 'matza', 'matzot', 'matzos', 'matzoh']
+  },
+  {
+    canonical: 'seder',
+    hebrew: ['סדר'],
+    variants: ['seder', 'pesach seder', 'passover seder']
+  },
+  {
+    canonical: 'shofar',
+    hebrew: ['שופר'],
+    variants: ['shofar', 'shofros', 'shofrot']
+  },
+  {
+    canonical: 'lulav',
+    hebrew: ['לולב'],
+    variants: ['lulav', 'lulav and etrog', 'arba minim', 'daled minim']
+  },
+  {
+    canonical: 'esrog',
+    hebrew: ['אתרוג'],
+    variants: ['esrog', 'etrog', 'esrogim', 'etrogim']
+  },
+  {
+    canonical: 'mussar',
+    hebrew: ['מוסר'],
+    variants: ['mussar', 'musar']
+  },
+  {
+    canonical: 'chassidus',
+    hebrew: ['חסידות'],
+    variants: ['chassidus', 'chassidut', 'chasidus', 'hasidism', 'chasidut']
+  },
+  {
+    canonical: 'nidah',
+    hebrew: ['נדה', 'נידה'],
+    variants: ['nidah', 'niddah', 'nida', 'taharat hamishpacha', 'taharas hamishpacha']
+  },
+  {
+    canonical: 'berit milah',
+    hebrew: ['ברית מילה', 'ברית'],
+    variants: ['brit milah', 'bris milah', 'bris', 'brit']
+  },
+  {
+    canonical: 'kaddish',
+    hebrew: ['קדיש'],
+    variants: ['kaddish', 'kadish']
+  },
+  {
+    canonical: 'kedushah',
+    hebrew: ['קדושה'],
+    variants: ['kedushah', 'kedusha']
+  },
+  {
+    canonical: 'kiddush',
+    hebrew: ['קידוש'],
+    variants: ['kiddush', 'kidush']
+  },
+  {
+    canonical: 'havdalah',
+    hebrew: ['הבדלה'],
+    variants: ['havdalah', 'havdala', 'havdallah']
+  },
+  {
+    canonical: 'parsha',
+    hebrew: ['פרשה', 'פרשת השבוע'],
+    variants: ['parsha', 'parshah', 'parashah', 'parashat hashavua', 'parshas hashavua']
+  },
+  {
+    canonical: 'haftarah',
+    hebrew: ['הפטרה'],
+    variants: ['haftarah', 'haftara', 'haftorah']
+  },
+  {
+    canonical: 'chullin',
+    hebrew: ['חולין'],
+    variants: ['chullin', 'chulin', 'hullin']
+  },
+  {
+    canonical: 'pesachim',
+    hebrew: ['פסחים'],
+    variants: ['pesachim', 'psachim']
+  },
+  {
+    canonical: 'berachot',
+    hebrew: ['ברכות'],
+    variants: ['berachot', 'brachot', 'berakhot', 'brochos']
+  },
+  {
+    canonical: 'ketubot',
+    hebrew: ['כתובות'],
+    variants: ['ketubot', 'kesuvos', 'ketuvot', 'kesubos']
+  },
+  {
+    canonical: 'yevamot',
+    hebrew: ['יבמות'],
+    variants: ['yevamot', 'yevamos']
+  },
+  {
+    canonical: 'gittin',
+    hebrew: ['גיטין'],
+    variants: ['gittin', 'gitin']
+  },
+  {
+    canonical: 'sotah',
+    hebrew: ['סוטה'],
+    variants: ['sotah', 'sota']
+  },
+  {
+    canonical: 'nazir',
+    hebrew: ['נזיר'],
+    variants: ['nazir']
+  },
+  {
+    canonical: 'nedarim',
+    hebrew: ['נדרים'],
+    variants: ['nedarim']
+  },
+  {
+    canonical: 'menachot',
+    hebrew: ['מנחות'],
+    variants: ['menachot', 'menachos']
+  },
+  {
+    canonical: 'zevachim',
+    hebrew: ['זבחים'],
+    variants: ['zevachim', 'zvachim']
+  },
+  {
+    canonical: 'taharot',
+    hebrew: ['טהרות'],
+    variants: ['taharot', 'taharos', 'tohorot', 'tohoros']
+  },
+  {
+    canonical: 'keilim',
+    hebrew: ['כלים'],
+    variants: ['keilim', 'kelim']
+  },
+  {
+    canonical: 'negaim',
+    hebrew: ['נגעים'],
+    variants: ['negaim', 'negayim']
   }
 ];
 
@@ -187,14 +367,88 @@ export const KNOWN_SPEAKERS = [
 
 export function resolveSpeaker(query) {
   if (!query) return null;
-  const clean = stripSpeakerHonorifics(query).toLowerCase();
+  const clean = stripSpeakerHonorifics(query).toLowerCase().trim();
   for (const s of KNOWN_SPEAKERS) {
-    if (s.name.toLowerCase() === query.toLowerCase()) return s;
-    if (s.aliases.some(a => clean === a || clean.includes(a))) {
+    if (s.name.toLowerCase() === clean) return s;
+    if (s.aliases.some(a => clean === a)) {
       return s;
     }
   }
   return null;
+}
+
+/**
+ * Parses a query to see if part of it is a recognized speaker and the rest is topic keywords.
+ * Example: "Rosensweig Shabbos" -> { speaker: Rabbi Michael Rosensweig (80146), remainingQuery: "Shabbos" }
+ * Example: "shabbos" -> { speaker: null, remainingQuery: "shabbos" }
+ */
+export function parseQueryEntities(rawQuery) {
+  if (!rawQuery) return { speaker: null, remainingQuery: '' };
+  const trimmed = rawQuery.trim();
+
+  // Try exact speaker resolution on full query first
+  const fullSpeaker = resolveSpeaker(trimmed);
+  if (fullSpeaker) {
+    return { speaker: fullSpeaker, remainingQuery: '' };
+  }
+
+  // Check multi-word split
+  const words = trimmed.split(/\s+/);
+  if (words.length <= 1) {
+    return { speaker: null, remainingQuery: trimmed };
+  }
+
+  // 1. Try first 3 words: e.g. "Rabbi Hershel Schachter Yom Kippur", "Rabbi Dr. Michael Rosensweig Shabbos"
+  if (words.length >= 3) {
+    const firstThree = words.slice(0, 3).join(' ');
+    const spk3 = resolveSpeaker(firstThree);
+    if (spk3) {
+      return { speaker: spk3, remainingQuery: words.slice(3).join(' ') };
+    }
+  }
+
+  // 2. Try first 2 words: e.g. "Michael Rosensweig Shabbos", "Rav Schachter Sukkot"
+  if (words.length >= 2) {
+    const firstTwo = words.slice(0, 2).join(' ');
+    const spk2 = resolveSpeaker(firstTwo);
+    if (spk2) {
+      return { speaker: spk2, remainingQuery: words.slice(2).join(' ') };
+    }
+  }
+
+  // 3. Try first word: e.g. "Rosensweig Shabbos"
+  const firstOne = words[0];
+  const spk1 = resolveSpeaker(firstOne);
+  if (spk1) {
+    return { speaker: spk1, remainingQuery: words.slice(1).join(' ') };
+  }
+
+  // 4. Try last 3 words: e.g. "Yom Kippur Rabbi Hershel Schachter"
+  if (words.length >= 3) {
+    const lastThree = words.slice(-3).join(' ');
+    const spkLast3 = resolveSpeaker(lastThree);
+    if (spkLast3) {
+      return { speaker: spkLast3, remainingQuery: words.slice(0, -3).join(' ') };
+    }
+  }
+
+  // 5. Try last 2 words: e.g. "Shabbos Michael Rosensweig"
+  if (words.length >= 2) {
+    const lastTwo = words.slice(-2).join(' ');
+    const spkLast2 = resolveSpeaker(lastTwo);
+    if (spkLast2) {
+      return { speaker: spkLast2, remainingQuery: words.slice(0, -2).join(' ') };
+    }
+  }
+
+  // 6. Try last word: e.g. "Shabbos Rosensweig"
+  const lastOne = words[words.length - 1];
+  const spkLast1 = resolveSpeaker(lastOne);
+  if (spkLast1) {
+    return { speaker: spkLast1, remainingQuery: words.slice(0, -1).join(' ') };
+  }
+
+  return { speaker: null, remainingQuery: trimmed };
 }
 
 // 3. Phonetic Skeleton & Ashkenazic/Sephardic Rules
