@@ -331,3 +331,83 @@ Classic YUTorah search missed these three shiurim given by Rabbi Michael Rosensw
 | `"rosensweig shabos yije"` | **29 results** (misses Hebrew source shiurim) | **32 results** (surfaces 3 additional YIJE shiurim on `תולדות שבת`) |
 | `"michael rosensweig shabbos"` | Requires literal phrase match across text | Strips honorifics, resolves teacher `80146`, and searches Shabbat topics |
 | `"Pesach Schachter"` | Searches text for both words; pollutes with quotes | Resolves Rabbi Schachter (`80153`) + expands Pesach (`pesach`, `passover`, `פסח`) |
+
+---
+
+## Part 11: Solr Default Scoring vs. Title-Boosted Relevance Ranking
+
+### The Problem: Why Did "Halachos of Muktzeh" Rank Dedicated Shiurim Low?
+When querying `"halachos of muktzeh"`, classic YUTorah Solr returned:
+1. `#1156854` (Dec 03, 2025): *A Torah Perspective on Guns in Shul and Guns on Shabbos*
+2. `#1137825` (Jun 11, 2025): *Assorted Halachos- Part 74*
+3. `#1135325` (May 14, 2025): *Assorted Halachos- Part 71*
+4. `#959187` (Apr 26, 2020): *Halachos of Playing Ball on Shabbos*
+
+Meanwhile, authentic multi-part lecture series whose entire titles are literally `"Halachos of Muktzah"` or `"Hilchos Muktzah Part I"` (e.g. `#947128`, `#868061`, `#867451`, `#852840`, `#852194`, `#828124`, `#810269`, `#765657`) were pushed down past slot 5.
+
+### Root Cause Analysis:
+1. **Solr Static Score Assignment**: In YUTorah's Solr configuration, any document that matches any query token across any indexed field (`shiurtitle`, `teacherfullname`, `shiurdescription`, `shiurkeywords`, `location`) receives a flat relevance score of `score: 1.0`.
+2. **Date-Descending Tie-Breaker**: When all matching documents have the identical score `1.0`, Solr breaks ties by sorting strictly by `shiurdate desc` (most recent upload first).
+3. **Incidental Description Mentions**:
+   - Shiur `#1156854` (2025) is about guns in shul, but its description happens to note: `"...carrying a weapon on Shabbos in light of Hilchos Muktzeh..."`.
+   - Shiur `#1137825` (2025) discusses 8 random questions, with point #8 being: `"8) Is raw meat muktzah?"`.
+   - Because 2025 is newer than 2016 or 2012, Solr placed these incidental bullet points ahead of complete, dedicated series on Muktzah.
+
+### The Solution: Title-Weighted Relevance Scoring
+We introduce a smart multi-tiered relevance scorer:
+- **Tier 1 (Score 100 - Exact Concept Pair in Title)**: The title contains both the primary topic (`muktzeh`, `muktzah`, `מוקצה`) and the category/action word (`halachos`, `hilchos`, `הלכות`).
+- **Tier 2 (Score 50 - Core Topic in Title)**: The title explicitly contains the primary topic (`muktzeh`).
+- **Tier 3 (Score 15 - Generic Subtopic in Title)**: The title contains only secondary words (`halachos`).
+- **Tier 4 (Score 1 - Incidental Description / Keyword Match)**: The terms appear only in the hidden description or Solr tags.
+Within each relevance tier, the natural chronological date order is preserved. This ensures dedicated Muktzah series immediately rise to slots #1, #2, #3, while multi-topic shiurim mentioning Muktzah in passing cleanly drop below.
+
+---
+
+## Part 12: Series & Collection Grouping Architecture in Search Results
+
+### How YUTorah Groups Series in Solr:
+In the YUTorah Solr index, series and collections are tracked through two sets of fields:
+1. **`collectionname` & `collectionid`**:
+   - `collectionname`: Array of formatted strings: `["Collection Name | Collection ID | Total Shiurim in Collection"]`
+     (e.g., `["R' Hartman Hilchos Shabbbos|5561|24"]`, `["Rabbi Polakoff Hilchos Shabbos|4480|44"]`).
+   - `collectionid`: Array of integer IDs: `[5561]`, `[4480]`.
+2. **`seriesname` & `seriesid`**:
+   - Used for broader recurring lecture programs (e.g., `"Contemporary Halacha"`, `"Mishna Brurah Yomi"`).
+
+### Master Cover Card & Expandable Series Drawer:
+When 2 or more shiurim in the search results belong to the same series or collection:
+1. **Earliest Shiur as Cover**:
+   - The matching shiurim within the series are sorted chronologically ascending (`shiurdate asc`).
+   - The **earliest lecture** (e.g. `Introduction`, `Part 1`, or earliest recording date) is displayed as the **Cover Card** in the primary results grid.
+2. **Visual Differentiation**:
+   - The cover card features a distinct collection border and a badge: `📚 Series: [Name] (N matching shiurim)`.
+3. **Interactive Drawer (`➕` / `➖`)**:
+   - A toggle button on the card displays `➕ [N-1] more in this series`.
+   - Clicking it drops down an expandable sub-card drawer directly under the cover card, revealing all the sequential lectures in that series.
+   - Clicking `➖ Minimize` collapses the drawer back into the compact cover tile.
+   - Each sub-lecture contains its own direct Play button, duration, and date.
+
+---
+
+## Part 13: Search Match Explainability System
+
+To eliminate confusion about why a shiur appeared in search results (such as when a match occurs in a source sheet or hidden tag), an **"Explain Matches"** toggle switch is provided at the top of the search results section:
+1. **Off by Default**: Cards maintain clean typography without visual clutter.
+2. **On-Demand Illumination**:
+   - Matching query terms in visible metadata (**Title**, **Speaker**, **Category**) are wrapped in `<mark class="match-mark">` and illuminate in rich amber.
+   - For matches occurring in fields not normally visible on the card (**Description**, **Venue / Location**, **Keywords**, **Series**), a dedicated preview callout (`.quick-card-match-reason`) displays the contextual snippet around the matched term with `dir="auto"` bidirectional text support.
+
+---
+
+## Part 14: Comprehensive Changelog of Tonight's Upgrades
+
+1. **Clean Filters UI**: Replaced the previous `🎚️` icon with an SVG sliders icon (`f1ca8a0`).
+2. **181 Synset Buckets**: Expanded from 62 to 181 curated word buckets covering all Shas tractates, 54 weekly Parshiot, Tefillah, and Kashrut (`bd38ee8`).
+3. **Debounced Search Preview with Dates**: Live autocomplete dropdown now renders formatted lecture dates alongside speaker and duration (`bd38ee8`).
+4. **Community Acronym Immunity**: Added `KNOWN_COMMUNITY_ACRONYMS` (`yije`, `bmt`, `bcbm`, `riets`, etc.) and a 2-letter Hebrew candidate filter to stop acronyms from mangling into daf/chapter citations (`4b651f4`).
+5. **Ported Vowel Digraph & Prefix Engine**: Enhanced English-to-Hebrew dynamic transliteration with initial vowels (`א`/`ע`), vowel digraphs (`oo`/`ee`), and combinatorial pruning (`c6cd139`).
+6. **Case Study Verification**: Documented the 32 vs 29 comparison for `rosensweig shabos yije` (`7abe1d3`).
+7. **Explain Matches Toggle**: Added header toggle, query term highlighting, and hidden-field snippet preview callouts (`42f1b56`).
+8. **Page-Number Pagination Fix**: Normalized `start` parameter handling in client and worker to correctly advance by 1-based page number, displaying "All 32 shiurim loaded!" accurately (`1bb8895`).
+9. **Title-Weighted Relevance Sorting & Series Grouping**: Solved the `halachos of muktzeh` ranking issue and grouped multi-lecture series under earliest-first cover cards with expandable sub-drawers.
+

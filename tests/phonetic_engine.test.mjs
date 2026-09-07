@@ -4,7 +4,13 @@ import {
   resolveSpeaker,
   getPhoneticSkeleton,
   expandQueryWithPhonetics,
-  SYNSETS
+  SYNSETS,
+  highlightMatches,
+  extractSnippet,
+  buildMatchReasons,
+  COMMUNITY_ACRONYM_PHRASES,
+  computeRelevanceScore,
+  groupAndRankDocs
 } from '../src/phonetic_engine.js';
 
 console.log('🧪 Running Phonetic & Reverse Transliteration Test Suite...\n');
@@ -182,7 +188,6 @@ console.log('  ✅ Acronym protection and false-positive suppression tests passe
 
 // 9. Test Match Explainability, Highlighting & Snippet Extraction
 console.log('9. Testing Match Explainability, Highlighting & Snippet Extraction:');
-import { highlightMatches, extractSnippet, buildMatchReasons, COMMUNITY_ACRONYM_PHRASES } from '../src/phonetic_engine.js';
 
 // 9a. Test Title/Speaker highlighting
 const searchTerms = ['rosensweig', 'shabos', 'yije', 'shabbat', 'shabbos', 'שבת'];
@@ -221,6 +226,66 @@ assert.equal(venueReasons[0].badge, '📍 Venue Match');
 assert.ok(venueReasons[0].snippet.includes('<mark class="match-mark">Young Israel of Jamaica Estates</mark>'));
 
 console.log('  ✅ All explainability, highlighting, and snippet extraction tests passed.');
+
+// 10. Test Title-Boosted Relevance Ranking and Series Grouping
+console.log('10. Testing Relevance Ranking & Series Grouping:');
+const sampleDocs = [
+  {
+    shiurid: '1156854',
+    shiurtitle: 'A Torah Perspective on Guns in Shul and Guns on Shabbos',
+    teacherfullname: 'Rabbi Daniel Stein',
+    shiurdate: '2025-12-14',
+    shiurdescription: '1) Intro 2) History ... 8) Is raw meat muktzah?',
+    collectionid: [],
+    collectionname: []
+  },
+  {
+    shiurid: '852194',
+    shiurtitle: 'Hilchos Muktzah Part I',
+    teacherfullname: 'Rabbi Zvi Polakoff',
+    shiurdate: '2016-11-01',
+    shiurdescription: 'Overview of muktza',
+    collectionid: [5561],
+    collectionname: ["Rabbi Polakoff Hilchos Shabbos|5561|24"]
+  },
+  {
+    shiurid: '852840',
+    shiurtitle: 'Halachos of Muktzah Part II',
+    teacherfullname: 'Rabbi Zvi Polakoff',
+    shiurdate: '2016-11-08',
+    shiurdescription: 'Continuing muktza discussion',
+    collectionid: [5561],
+    collectionname: ["Rabbi Polakoff Hilchos Shabbos|5561|24"]
+  },
+  {
+    shiurid: '765657',
+    shiurtitle: 'Halachos of Muktzah - Introduction',
+    teacherfullname: 'Rabbi Daniel Orlian',
+    shiurdate: '2011-02-15',
+    shiurdescription: 'Basics of muktzah',
+    seriesid: '4001',
+    seriesname: 'Rabbi Orlian Muktza 2011'
+  }
+];
+
+const muktzaTerms = ['halachos', 'muktzeh', 'muktzah', 'muktza', 'hilchos'];
+const rankedGroups = groupAndRankDocs(sampleDocs, muktzaTerms, 'halachos of muktzeh');
+
+// Rabbi Polakoff's collection should be grouped into a single series item
+const polakoffGroup = rankedGroups.find(g => g.isSeries && g.title === 'Rabbi Polakoff Hilchos Shabbos');
+assert.ok(polakoffGroup, 'Polakoff series should be recognized as a series group');
+assert.equal(polakoffGroup.docs.length, 2, 'Should have 2 docs in Polakoff series');
+assert.equal(polakoffGroup.cover.shiurid, '852194', 'Earliest shiur (Part I) must be the cover card');
+assert.equal(polakoffGroup.subDocs[0].shiurid, '852840', 'SubDocs must contain Part II');
+
+// Guns on Shabbos (only incidental match in description) should be scored far lower than title matches
+const gunsItem = rankedGroups.find(g => g.doc && g.doc.shiurid === '1156854');
+assert.ok(gunsItem, 'Guns shiur should be present');
+assert.ok(polakoffGroup.score > gunsItem.score * 5, 'Dedicated series should have dramatically higher relevance score than incidental description match');
+
+// The highest-ranked item should NOT be Guns on Shabbos, but one of the Halachos of Muktzah items
+assert.notEqual(rankedGroups[0].doc?.shiurid, '1156854', 'First result must not be the incidental 2025 description match');
+console.log('  ✅ Relevance ranking & series grouping passed.');
 
 console.log('\n🎉 ALL PHONETIC & REVERSE TRANSLITERATION TESTS PASSED SUCCESSFULLY!');
 

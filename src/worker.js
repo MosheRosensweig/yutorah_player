@@ -19,7 +19,9 @@ import {
   COMMUNITY_ACRONYM_PHRASES,
   highlightMatches,
   extractSnippet,
-  buildMatchReasons
+  buildMatchReasons,
+  computeRelevanceScore,
+  groupAndRankDocs
 } from './phonetic_engine.js';
 import AUTOCOMPLETE_META from './autocomplete_data.json' with { type: 'json' };
 
@@ -1187,6 +1189,34 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     [data-theme="dark"] .quick-card-avatar {
       background: #141f2f;
+    }
+    [data-theme="dark"] .quick-card-link.is-series-cover {
+      border-color: #60a5fa;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.3);
+    }
+    [data-theme="dark"] .series-cover-badge {
+      background: rgba(96, 165, 250, 0.2);
+      color: #93c5fd;
+    }
+    [data-theme="dark"] .series-expand-btn {
+      background: rgba(96, 165, 250, 0.12);
+      color: #93c5fd;
+      border-color: rgba(96, 165, 250, 0.4);
+    }
+    [data-theme="dark"] .series-expand-btn:hover {
+      background: #2563eb;
+      color: #fff;
+    }
+    [data-theme="dark"] .series-drawer {
+      background: rgba(15, 23, 42, 0.65);
+      border-color: #24344d;
+    }
+    [data-theme="dark"] .series-sub-card {
+      background: #182234;
+      border-color: #2e3e57;
+    }
+    [data-theme="dark"] .series-sub-card:hover {
+      border-color: #60a5fa;
     }
     [data-theme="dark"] .ctrl-btn.skip {
       background: #1c2738;
@@ -3106,6 +3136,120 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         width: 100%;
         justify-content: space-between;
       }
+    }
+
+    /* Series and Collection Grouping Cards */
+    .quick-card-series-group {
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+    .quick-card-link.is-series-cover {
+      border: 2px solid var(--primary);
+      box-shadow: 0 3px 12px rgba(0,0,0,0.06);
+    }
+    .series-cover-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(43, 76, 126, 0.1);
+      color: var(--primary);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 6px;
+      margin-bottom: 8px;
+      width: fit-content;
+      letter-spacing: 0.3px;
+    }
+    .series-expand-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      width: 100%;
+      margin-top: 8px;
+      padding: 8px 12px;
+      background: rgba(43, 76, 126, 0.07);
+      color: var(--primary);
+      border: 1.5px dashed var(--primary);
+      border-radius: 8px;
+      font-size: 12.5px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .series-expand-btn:hover {
+      background: var(--primary);
+      color: #fff;
+      border-style: solid;
+      transform: translateY(-1px);
+    }
+    .series-drawer {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 8px;
+      padding: 10px;
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      animation: slideDownSeries 0.2s ease-out;
+    }
+    @keyframes slideDownSeries {
+      from { opacity: 0; transform: translateY(-6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .series-sub-card {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 10px 12px;
+      background: var(--card);
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      text-decoration: none;
+      color: inherit;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .series-sub-card:hover {
+      border-color: var(--primary);
+      transform: translateX(3px);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    .series-sub-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .series-sub-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      line-height: 1.35;
+      flex: 1;
+    }
+    .series-sub-play {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--primary);
+      background: #eef2f7;
+      padding: 2px 8px;
+      border-radius: 12px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .series-sub-card:hover .series-sub-play {
+      background: var(--primary);
+      color: #fff;
+    }
+    .series-sub-meta {
+      font-size: 11px;
+      color: var(--text-muted);
+      display: flex;
+      gap: 8px;
     }
 
     /* Shiur Cards Grid */
@@ -6010,6 +6154,156 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
   }
 
+  const SEARCH_STOP_WORDS = new Set(['of', 'the', 'in', 'on', 'a', 'an', 'and', 'for', 'to', 'with', 'at', 'by', 'from', 'about']);
+
+  function computeRelevanceScore(d, queryTerms = [], rawQuery = '') {
+    if (!d) return 0;
+    const title = (d.shiurtitle || d.shiurTitle || d.title || '').toLowerCase();
+    const speaker = (d.teacherfullname || d.speaker || '').toLowerCase();
+    const series = (Array.isArray(d.seriesname) ? d.seriesname.join(' ') : (d.seriesname || d.series || '')).toLowerCase();
+    const collection = (Array.isArray(d.collectionname) ? d.collectionname.join(' ') : (d.collectionname || '')).toLowerCase();
+    const category = (Array.isArray(d.categoryname) ? d.categoryname.join(' ') : (d.category || '')).toLowerCase();
+    const desc = (d.shiurdescription || d.description || '').toLowerCase();
+
+    let score = 0;
+
+    const cleanRaw = (rawQuery || '').toLowerCase().trim();
+    if (cleanRaw && title.includes(cleanRaw)) {
+      score += 1000;
+    }
+
+    const terms = (queryTerms || []).map(t => t.toLowerCase()).filter(t => t.length >= 2 && !SEARCH_STOP_WORDS.has(t));
+    if (terms.length === 0) return score;
+
+    const titleWords = title.split(/[^a-z0-9א-ת]+/);
+    let titleMatches = 0;
+    let speakerMatches = 0;
+    let seriesMatches = 0;
+
+    for (const t of terms) {
+      if (title.includes(t)) {
+        score += 120;
+        titleMatches++;
+        if (titleWords.includes(t)) {
+          score += 80;
+        }
+      }
+      if (speaker.includes(t)) {
+        score += 100;
+        speakerMatches++;
+      }
+      if (series.includes(t) || collection.includes(t)) {
+        score += 60;
+        seriesMatches++;
+      }
+      if (category.includes(t)) {
+        score += 40;
+      }
+      if (desc.includes(t)) {
+        score += 5;
+      }
+    }
+
+    if (titleMatches >= 2 && titleMatches === terms.length) {
+      score += 300;
+    } else if ((titleMatches + seriesMatches) >= terms.length) {
+      score += 200;
+    }
+
+    return score;
+  }
+
+  function groupAndRankDocs(docs, queryTerms = [], rawQuery = '') {
+    if (!Array.isArray(docs)) return [];
+    const groups = new Map();
+    const standalone = [];
+
+    for (const doc of docs) {
+      let groupKey = null;
+      let groupTitle = null;
+
+      if (Array.isArray(doc.collectionid) && doc.collectionid.length > 0 && doc.collectionname && doc.collectionname[0]) {
+        const parts = doc.collectionname[0].split('|');
+        groupKey = 'coll_' + doc.collectionid[0];
+        groupTitle = parts[0].trim();
+      } else if (doc.seriesid && doc.seriesname) {
+        groupKey = 'series_' + doc.seriesid;
+        groupTitle = doc.seriesname;
+      }
+
+      if (groupKey) {
+        if (!groups.has(groupKey)) {
+          groups.set(groupKey, { key: groupKey, title: groupTitle, docs: [] });
+        }
+        groups.get(groupKey).docs.push(doc);
+      } else {
+        standalone.push(doc);
+      }
+    }
+
+    const items = [];
+    for (const [k, g] of groups.entries()) {
+      if (g.docs.length >= 2) {
+        g.docs.sort((a, b) => {
+          const da = a.shiurdate || a.shiurdatesubmitted || '';
+          const db = b.shiurdate || b.shiurdatesubmitted || '';
+          return da.localeCompare(db);
+        });
+        const maxScore = Math.max(...g.docs.map(d => computeRelevanceScore(d, queryTerms, rawQuery)));
+        items.push({
+          isSeries: true,
+          key: g.key,
+          title: g.title,
+          docs: g.docs,
+          cover: g.docs[0],
+          subDocs: g.docs.slice(1),
+          score: maxScore
+        });
+      } else {
+        items.push({
+          isSeries: false,
+          doc: g.docs[0],
+          score: computeRelevanceScore(g.docs[0], queryTerms, rawQuery)
+        });
+      }
+    }
+
+    for (const doc of standalone) {
+      items.push({
+        isSeries: false,
+        doc,
+        score: computeRelevanceScore(doc, queryTerms, rawQuery)
+      });
+    }
+
+    items.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      const dateA = a.isSeries ? (a.cover.shiurdate || a.cover.shiurdatesubmitted || '') : (a.doc.shiurdate || a.doc.shiurdatesubmitted || '');
+      const dateB = b.isSeries ? (b.cover.shiurdate || b.cover.shiurdatesubmitted || '') : (b.doc.shiurdate || b.doc.shiurdatesubmitted || '');
+      return dateB.localeCompare(dateA);
+    });
+
+    return items;
+  }
+
+  function toggleSeriesDrawer(e, drawerId) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    const drawer = document.getElementById(drawerId);
+    const btn = document.querySelector('[data-drawer-target="' + drawerId + '"]');
+    if (!drawer) return;
+    const isHidden = drawer.style.display === 'none';
+    drawer.style.display = isHidden ? 'flex' : 'none';
+    if (btn) {
+      const count = btn.dataset.subCount || '';
+      btn.innerHTML = isHidden
+        ? '<span class="series-expand-icon">➖</span> <span class="series-expand-text">Minimize series</span>'
+        : '<span class="series-expand-icon">➕</span> <span class="series-expand-text">View ' + count + ' more in series</span>';
+    }
+  }
+
   function goHome(e) {
     if (e) e.preventDefault();
 
@@ -6912,7 +7206,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       }
 
       currentSearchDocs = docs;
-      grid.innerHTML = docs.map(renderDocToCard).join('');
+      const terms = getActiveSearchTerms();
+      const grouped = groupAndRankDocs(docs, terms, query);
+      grid.innerHTML = grouped.map(renderGroupItem).join('');
       grid.classList.toggle('explain-matches-active', showMatchReasons);
 
       // Setup Load More button
@@ -6992,8 +7288,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         currentSearchPage = nextPage;
         currentLoadedDocsCount += newDocs.length;
         currentSearchDocs = currentSearchDocs.concat(newDocs);
+        const terms = getActiveSearchTerms();
+        const grouped = groupAndRankDocs(currentSearchDocs, terms, currentSearchQuery);
         const grid = document.getElementById('searchResultsGrid');
-        grid.insertAdjacentHTML('beforeend', newDocs.map(renderDocToCard).join(''));
+        grid.innerHTML = grouped.map(renderGroupItem).join('');
+        grid.classList.toggle('explain-matches-active', showMatchReasons);
 
         const resultsTitle = currentFilterParams.label
           ? (currentFilterParams.label + ' (' + currentLoadedDocsCount + (totalSearchResults ? ' of ' + totalSearchResults.toLocaleString() : '') + ')')
@@ -7085,7 +7384,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     history.pushState({}, '', newUrl.toString());
   }
 
-  function renderDocToCard(d) {
+  function renderDocToCard(d, options = {}) {
     const id = d.shiurid || d.shiurID || d.id || '';
     const title = d.shiurtitle || d.shiurTitle || d.title || 'Untitled';
     const speaker = d.teacherfullname || (d.shiurTeachers && d.shiurTeachers[0] ? d.shiurTeachers[0].teacherFullName : (d.speaker || 'YUTorah'));
@@ -7138,8 +7437,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       '</div>';
     }
 
-    return '<a href="/' + id + '" class="quick-card-link" onclick="playShiurById(event, this.dataset.id)" data-id="' + id + '">' +
+    const isCover = options.isCover;
+    const seriesBadge = isCover
+      ? '<div class="series-cover-badge">📚 Series · ' + (options.seriesCount || 'Multi-Part') + ' Shiurim</div>'
+      : '';
+    const coverClass = isCover ? ' is-series-cover' : '';
+
+    return '<a href="/' + id + '" class="quick-card-link' + coverClass + '" onclick="playShiurById(event, this.dataset.id)" data-id="' + id + '">' +
       newBadge +
+      seriesBadge +
       '<div class="quick-card-top">' +
         '<img class="quick-card-avatar" src="' + escapeHtml(photo) + '" alt="' + escapeHtml(speaker) + '" loading="lazy" onerror="handleImgError(this)">' +
         '<div class="quick-card-info">' +
@@ -7154,6 +7460,63 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         '<span class="quick-play-badge">▶ Play</span>' +
       '</div>' +
     '</a>';
+  }
+
+  function renderSeriesSubCard(sub, partNumber) {
+    const id = sub.shiurid || sub.shiurID || sub.id || '';
+    const title = sub.shiurtitle || sub.shiurTitle || sub.title || 'Untitled';
+    const duration = sub.durationformatted || (sub.duration ? sub.duration + ' min' : '');
+    const rawDate = sub.shiurdateformatted || sub.shiurDateFormatted || sub.shiurdate || sub.shiurdatesubmitted || '';
+    const date = formatShiurDate(rawDate);
+    const terms = getActiveSearchTerms();
+    const displayTitle = highlightMatches(title, terms);
+
+    const matchReasons = buildMatchReasons(sub, terms);
+    let matchReasonHtml = '';
+    if (matchReasons.length > 0) {
+      matchReasonHtml = '<div class="quick-card-match-reason">' +
+        matchReasons.map(r => 
+          '<div class="match-reason-item">' +
+            '<div class="match-reason-header"><span class="match-reason-badge">' + escapeHtml(r.badge) + '</span></div>' +
+            '<div class="match-reason-snippet" dir="auto">' + r.snippet + '</div>' +
+          '</div>'
+        ).join('') +
+      '</div>';
+    }
+
+    const metaParts = [];
+    if (duration) metaParts.push('⏱ ' + escapeHtml(duration));
+    if (date) metaParts.push(escapeHtml(date));
+
+    return '<a href="/' + id + '" class="series-sub-card" onclick="playShiurById(event, this.dataset.id)" data-id="' + id + '">' +
+      '<div class="series-sub-header">' +
+        '<div class="series-sub-title"><span style="opacity:0.75; font-weight:700; margin-right:4px;">#' + partNumber + '</span> ' + displayTitle + '</div>' +
+        '<span class="series-sub-play">▶ Play</span>' +
+      '</div>' +
+      matchReasonHtml +
+      (metaParts.length > 0 ? '<div class="series-sub-meta">' + metaParts.join(' · ') + '</div>' : '') +
+    '</a>';
+  }
+
+  function renderGroupItem(item) {
+    if (!item.isSeries) {
+      return renderDocToCard(item.doc);
+    }
+    const cover = item.cover;
+    const subDocs = item.subDocs;
+    const drawerId = 'series_drawer_' + (cover.shiurid || cover.shiurID || cover.id || '') + '_' + Math.random().toString(36).substring(2, 7);
+    const coverHtml = renderDocToCard(cover, { isCover: true, seriesTitle: item.title, seriesCount: item.docs.length });
+    const subCardsHtml = subDocs.map((sub, idx) => renderSeriesSubCard(sub, idx + 2)).join('');
+
+    return '<div class="quick-card-series-group">' +
+      coverHtml +
+      '<button type="button" class="series-expand-btn" data-drawer-target="' + drawerId + '" data-sub-count="' + subDocs.length + '" onclick="toggleSeriesDrawer(event, \'' + drawerId + '\')">' +
+        '<span class="series-expand-icon">➕</span> <span class="series-expand-text">View ' + subDocs.length + ' more in series</span>' +
+      '</button>' +
+      '<div id="' + drawerId + '" class="series-drawer" style="display: none;">' +
+        subCardsHtml +
+      '</div>' +
+    '</div>';
   }
 
   // Instant Play by Shiur ID (in-page without reload)

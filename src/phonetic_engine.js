@@ -1553,4 +1553,142 @@ export function buildMatchReasons(doc, terms) {
   return reasons;
 }
 
+// 6. Title-Boosted Relevance Ranking and Series Grouping
+const SEARCH_STOP_WORDS = new Set(['of', 'the', 'in', 'on', 'a', 'an', 'and', 'for', 'to', 'with', 'at', 'by', 'from', 'about']);
+
+export function computeRelevanceScore(d, queryTerms = [], rawQuery = '') {
+  if (!d) return 0;
+  const title = (d.shiurtitle || d.shiurTitle || d.title || '').toLowerCase();
+  const speaker = (d.teacherfullname || d.speaker || '').toLowerCase();
+  const series = (Array.isArray(d.seriesname) ? d.seriesname.join(' ') : (d.seriesname || d.series || '')).toLowerCase();
+  const collection = (Array.isArray(d.collectionname) ? d.collectionname.join(' ') : (d.collectionname || '')).toLowerCase();
+  const category = (Array.isArray(d.categoryname) ? d.categoryname.join(' ') : (d.category || '')).toLowerCase();
+  const desc = (d.shiurdescription || d.description || '').toLowerCase();
+
+  let score = 0;
+
+  // Exact phrase match in title gets top priority
+  const cleanRaw = (rawQuery || '').toLowerCase().trim();
+  if (cleanRaw && title.includes(cleanRaw)) {
+    score += 1000;
+  }
+
+  // Filter significant query terms
+  const terms = (queryTerms || []).map(t => t.toLowerCase()).filter(t => t.length >= 2 && !SEARCH_STOP_WORDS.has(t));
+  if (terms.length === 0) return score;
+
+  let titleMatches = 0;
+  let speakerMatches = 0;
+  let seriesMatches = 0;
+
+  for (const t of terms) {
+    if (title.includes(t)) {
+      score += 120;
+      titleMatches++;
+      const wordRegex = new RegExp('\\b' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
+      if (wordRegex.test(title)) {
+        score += 80;
+      }
+    }
+    if (speaker.includes(t)) {
+      score += 100;
+      speakerMatches++;
+    }
+    if (series.includes(t) || collection.includes(t)) {
+      score += 60;
+      seriesMatches++;
+    }
+    if (category.includes(t)) {
+      score += 40;
+    }
+    if (desc.includes(t)) {
+      score += 5;
+    }
+  }
+
+  if (titleMatches >= 2 && titleMatches === terms.length) {
+    score += 300;
+  } else if ((titleMatches + seriesMatches) >= terms.length) {
+    score += 200;
+  }
+
+  return score;
+}
+
+export function groupAndRankDocs(docs, queryTerms = [], rawQuery = '') {
+  if (!Array.isArray(docs)) return [];
+  const groups = new Map();
+  const standalone = [];
+
+  for (const doc of docs) {
+    let groupKey = null;
+    let groupTitle = null;
+
+    if (Array.isArray(doc.collectionid) && doc.collectionid.length > 0 && doc.collectionname && doc.collectionname[0]) {
+      const parts = doc.collectionname[0].split('|');
+      groupKey = 'coll_' + doc.collectionid[0];
+      groupTitle = parts[0].trim();
+    } else if (doc.seriesid && doc.seriesname) {
+      groupKey = 'series_' + doc.seriesid;
+      groupTitle = doc.seriesname;
+    }
+
+    if (groupKey) {
+      if (!groups.has(groupKey)) {
+        groups.set(groupKey, { key: groupKey, title: groupTitle, docs: [] });
+      }
+      groups.get(groupKey).docs.push(doc);
+    } else {
+      standalone.push(doc);
+    }
+  }
+
+  const items = [];
+  for (const [k, g] of groups.entries()) {
+    if (g.docs.length >= 2) {
+      // Sort chronologically ascending within series so earliest is cover
+      g.docs.sort((a, b) => {
+        const da = a.shiurdate || a.shiurdatesubmitted || '';
+        const db = b.shiurdate || b.shiurdatesubmitted || '';
+        return da.localeCompare(db);
+      });
+      const maxScore = Math.max(...g.docs.map(d => computeRelevanceScore(d, queryTerms, rawQuery)));
+      items.push({
+        isSeries: true,
+        key: g.key,
+        title: g.title,
+        docs: g.docs,
+        cover: g.docs[0],
+        subDocs: g.docs.slice(1),
+        score: maxScore
+      });
+    } else {
+      items.push({
+        isSeries: false,
+        doc: g.docs[0],
+        score: computeRelevanceScore(g.docs[0], queryTerms, rawQuery)
+      });
+    }
+  }
+
+  for (const doc of standalone) {
+    items.push({
+      isSeries: false,
+      doc,
+      score: computeRelevanceScore(doc, queryTerms, rawQuery)
+    });
+  }
+
+  // Sort items: score descending, then date descending
+  items.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    const dateA = a.isSeries ? (a.cover.shiurdate || a.cover.shiurdatesubmitted || '') : (a.doc.shiurdate || a.doc.shiurdatesubmitted || '');
+    const dateB = b.isSeries ? (b.cover.shiurdate || b.cover.shiurdatesubmitted || '') : (b.doc.shiurdate || b.doc.shiurdatesubmitted || '');
+    return dateB.localeCompare(dateA);
+  });
+
+  return items;
+}
+
+
 
