@@ -725,6 +725,25 @@ function formatDuration(lengthStr) {
   return `${m} min`;
 }
 
+function getNowInNewYork() {
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric'
+    });
+    const parts = formatter.formatToParts(new Date());
+    const year = parseInt(parts.find(p => p.type === 'year')?.value || '2026', 10);
+    const month = parseInt(parts.find(p => p.type === 'month')?.value || '9', 10) - 1;
+    const day = parseInt(parts.find(p => p.type === 'day')?.value || '6', 10);
+    return new Date(year, month, day);
+  } catch (e) {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  }
+}
+
 function parseLocalDate(str) {
   if (!str) return null;
   const s = String(str).trim();
@@ -744,12 +763,11 @@ function parseLocalDate(str) {
 function formatShiurDate(rawDateStr) {
   if (!rawDateStr) return '';
   const d = parseLocalDate(rawDateStr);
-  if (!d || isNaN(d.getTime())) return String(rawDateStr);
+  if (!d || isNaN(d.getTime())) return '';
 
-  const now = new Date();
   const dMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-  const nowMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const diffDays = Math.round((nowMidnight - dMidnight) / 86400000);
+  const nyMidnight = getNowInNewYork().getTime();
+  const diffDays = Math.round((nyMidnight - dMidnight) / 86400000);
 
   if (diffDays === 0) return 'Today';
   if (diffDays === 1) return 'Yesterday';
@@ -765,9 +783,10 @@ function isShiurNew(rawDateStr) {
   if (!rawDateStr) return false;
   const d = parseLocalDate(rawDateStr);
   if (!d || isNaN(d.getTime())) return false;
-  const now = new Date();
-  const diffHours = (now.getTime() - d.getTime()) / (1000 * 60 * 60);
-  return diffHours >= -2 && diffHours <= 36;
+  const dMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const nyMidnight = getNowInNewYork().getTime();
+  const diffDays = Math.round((nyMidnight - dMidnight) / 86400000);
+  return diffDays <= 1 && diffDays >= -1;
 }
 
 function formatDate(dateStr) {
@@ -1286,7 +1305,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: 10px;
-      padding: 8px 14px;
+      padding: 0 14px;
+      height: 38px;
+      box-sizing: border-box;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -1296,6 +1317,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       color: var(--text);
       transition: all 0.15s ease;
       box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+      white-space: nowrap;
+      overflow: hidden;
     }
     .timely-collapsible-trigger:hover {
       border-color: var(--primary);
@@ -1310,17 +1333,21 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       display: flex;
       align-items: center;
       gap: 8px;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       overflow: hidden;
-      text-overflow: ellipsis;
+      min-width: 0;
+      flex: 1;
+      white-space: nowrap;
     }
     .timely-icon {
       font-size: 15px;
+      flex-shrink: 0;
     }
     .timely-title {
       font-weight: 700;
       color: var(--primary);
       letter-spacing: 0.2px;
+      flex-shrink: 0;
     }
     [data-theme="dark"] .timely-title {
       color: var(--primary-light);
@@ -1329,7 +1356,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
+      overflow: hidden;
+      min-width: 0;
     }
     .timely-badge {
       background: rgba(43, 76, 126, 0.07);
@@ -1340,15 +1369,39 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       font-weight: 500;
       border: 1px solid rgba(43, 76, 126, 0.12);
       white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 180px;
+      flex-shrink: 1;
     }
     [data-theme="dark"] .timely-badge {
       background: rgba(92, 142, 204, 0.12);
       border-color: rgba(92, 142, 204, 0.25);
     }
+    @media (max-width: 640px) {
+      .timely-badge:nth-child(n+3) {
+        display: none;
+      }
+      .timely-badge {
+        max-width: 130px;
+      }
+    }
+    @media (max-width: 440px) {
+      .timely-badge:nth-child(n+2) {
+        display: none;
+      }
+      .timely-badge {
+        max-width: 110px;
+      }
+      .timely-title {
+        display: none;
+      }
+    }
     .timely-trigger-right {
       display: flex;
       align-items: center;
       gap: 6px;
+      flex-shrink: 0;
     }
     .timely-dropdown-indicator {
       font-size: 12px;
@@ -4389,6 +4442,25 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       .replace(/'/g, '&#039;');
   }
 
+  function getNowInNewYork() {
+    try {
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York',
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric'
+      });
+      const parts = formatter.formatToParts(new Date());
+      const year = parseInt(parts.find(p => p.type === 'year')?.value || '2026', 10);
+      const month = parseInt(parts.find(p => p.type === 'month')?.value || '9', 10) - 1;
+      const day = parseInt(parts.find(p => p.type === 'day')?.value || '6', 10);
+      return new Date(year, month, day);
+    } catch (e) {
+      const now = new Date();
+      return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    }
+  }
+
   function parseLocalDate(str) {
     if (!str) return null;
     const s = String(str).trim();
@@ -4408,12 +4480,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   function formatShiurDate(rawDateStr) {
     if (!rawDateStr) return '';
     const d = parseLocalDate(rawDateStr);
-    if (!d || isNaN(d.getTime())) return String(rawDateStr);
+    if (!d || isNaN(d.getTime())) return '';
 
-    const now = new Date();
     const dMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-    const nowMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const diffDays = Math.round((nowMidnight - dMidnight) / 86400000);
+    const nyMidnight = getNowInNewYork().getTime();
+    const diffDays = Math.round((nyMidnight - dMidnight) / 86400000);
 
     if (diffDays === 0) return 'Today';
     if (diffDays === 1) return 'Yesterday';
@@ -4429,9 +4500,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (!rawDateStr) return false;
     const d = parseLocalDate(rawDateStr);
     if (!d || isNaN(d.getTime())) return false;
-    const now = new Date();
-    const diffHours = (now.getTime() - d.getTime()) / (1000 * 60 * 60);
-    return diffHours >= -2 && diffHours <= 36;
+    const dMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const nyMidnight = getNowInNewYork().getTime();
+    const diffDays = Math.round((nyMidnight - dMidnight) / 86400000);
+    return diffDays <= 1 && diffDays >= -1;
   }
 
   function toggleTimelyCollapse() {
