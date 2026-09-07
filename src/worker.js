@@ -762,8 +762,11 @@ function parseLocalDate(str) {
 
 function formatShiurDate(rawDateStr) {
   if (!rawDateStr) return '';
-  const d = parseLocalDate(rawDateStr);
-  if (!d || isNaN(d.getTime())) return '';
+  const trimmed = String(rawDateStr).trim();
+  if (trimmed === 'Today' || trimmed === 'Yesterday') return trimmed;
+
+  const d = parseLocalDate(trimmed);
+  if (!d || isNaN(d.getTime())) return trimmed;
 
   const dMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   const nyMidnight = getNowInNewYork().getTime();
@@ -781,7 +784,9 @@ function formatShiurDate(rawDateStr) {
 
 function isShiurNew(rawDateStr) {
   if (!rawDateStr) return false;
-  const d = parseLocalDate(rawDateStr);
+  const trimmed = String(rawDateStr).trim();
+  if (trimmed === 'Today' || trimmed === 'Yesterday') return true;
+  const d = parseLocalDate(trimmed);
   if (!d || isNaN(d.getTime())) return false;
   const dMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   const nyMidnight = getNowInNewYork().getTime();
@@ -4479,8 +4484,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   function formatShiurDate(rawDateStr) {
     if (!rawDateStr) return '';
-    const d = parseLocalDate(rawDateStr);
-    if (!d || isNaN(d.getTime())) return '';
+    const trimmed = String(rawDateStr).trim();
+    if (trimmed === 'Today' || trimmed === 'Yesterday') return trimmed;
+
+    const d = parseLocalDate(trimmed);
+    if (!d || isNaN(d.getTime())) return trimmed;
 
     const dMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
     const nyMidnight = getNowInNewYork().getTime();
@@ -4498,7 +4506,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   function isShiurNew(rawDateStr) {
     if (!rawDateStr) return false;
-    const d = parseLocalDate(rawDateStr);
+    const trimmed = String(rawDateStr).trim();
+    if (trimmed === 'Today' || trimmed === 'Yesterday') return true;
+    const d = parseLocalDate(trimmed);
     if (!d || isNaN(d.getTime())) return false;
     const dMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
     const nyMidnight = getNowInNewYork().getTime();
@@ -6277,9 +6287,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const speaker = d.teacherfullname || (d.shiurTeachers && d.shiurTeachers[0] ? d.shiurTeachers[0].teacherFullName : 'YUTorah');
     const photo = d.PHOTO ? (d.PHOTO.startsWith('http') ? d.PHOTO : 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/' + d.PHOTO) : 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/_default.jpg';
     const duration = d.durationformatted || (d.duration ? d.duration + ' min' : '');
-    const rawDate = d.shiurdatesubmitted || d.shiurdate || d.shiurdateformatted || '';
+    const rawDate = d.shiurdateformatted || d.shiurDateFormatted || d.shiurdate || d.shiurDate || d.shiurdatesubmitted || d.shiurDateSubmitted || '';
     const date = formatShiurDate(rawDate);
-    const isNew = isShiurNew(d.shiurdatesubmitted || rawDate);
+    const isNew = isShiurNew(d.shiurdatesubmitted || d.shiurDateSubmitted || rawDate);
     const newBadge = isNew ? '<span class="quick-card-new-badge">NEW</span>' : '';
     const category = (Array.isArray(d.categoryname) && d.categoryname[0]) || (Array.isArray(d.subcategoryname) && d.subcategoryname[0]) || '';
 
@@ -6465,7 +6475,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     let html = '';
     const teachers = Array.isArray(data.shiurTeachers) ? data.shiurTeachers : [];
     const locations = Array.isArray(data.postedInLocations) ? data.postedInLocations : [];
-    const date = data.shiurDateFormatted || '';
+    const rawDate = data.shiurDateFormatted || data.shiurDate || '';
+    const date = formatShiurDate(rawDate) || rawDate;
     const keywords = Array.isArray(data.shiurKeywords) ? data.shiurKeywords : [];
     const categories = (data.postedInCategories && typeof data.postedInCategories === 'object') ? data.postedInCategories : {};
 
