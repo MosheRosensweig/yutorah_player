@@ -37,7 +37,21 @@ async function testAudioShiur() {
   const html = await res.text();
   assert.ok(html.includes('audioElement'), 'Should contain audio element');
   assert.ok(!html.includes('style="display: none;" id="audioControlsWrap"'), 'Audio controls wrap should not be hidden for audio shiur');
-  console.log('  ✅ Audio shiur page renders with active audio transport.');
+
+  // Verify all embedded scripts compile without syntax errors
+  const scriptRegex = /<script>([\s\S]*?)<\/script>/g;
+  let match;
+  let scriptCount = 0;
+  while ((match = scriptRegex.exec(html)) !== null) {
+    scriptCount++;
+    try {
+      new Function(match[1]);
+    } catch (err) {
+      assert.fail(`SyntaxError in script #${scriptCount}: ${err.message}`);
+    }
+  }
+  assert.ok(scriptCount >= 3, 'Expected at least 3 inline scripts');
+  console.log(`  ✅ Audio shiur page renders with active audio transport & all ${scriptCount} scripts compiled cleanly without syntax errors.`);
 }
 
 async function testArticleShiur() {

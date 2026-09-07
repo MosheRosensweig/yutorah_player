@@ -6057,16 +6057,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       }
     }
 
-    const curTimeEl = document.getElementById('curTime');
-    if (curTimeEl) curTimeEl.textContent = '0:00';
+    const curTimeNode = document.getElementById('curTime');
+    if (curTimeNode) curTimeNode.textContent = '0:00';
     const totalTimeEl = document.getElementById('totalTime');
     if (totalTimeEl) totalTimeEl.textContent = '0:10';
-    const scrubberBar = document.getElementById('scrubberBar');
-    if (scrubberBar) scrubberBar.classList.add('is-sponsor-preroll');
+    const sBar = document.getElementById('scrubberBar');
+    if (sBar) sBar.classList.add('is-sponsor-preroll');
     const miniBar = document.getElementById('miniProgressBar');
     if (miniBar) miniBar.classList.add('is-sponsor-preroll');
-    const scrubberFill = document.getElementById('scrubberFill');
-    if (scrubberFill) scrubberFill.style.width = '0%';
+    const sFill = document.getElementById('scrubberFill');
+    if (sFill) sFill.style.width = '0%';
 
     const miniTitle = document.getElementById('miniTitle');
     const miniSpeaker = document.getElementById('miniSpeaker');
@@ -6124,8 +6124,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const banner = document.getElementById('sponsorPreRollBanner');
     if (banner) banner.style.display = 'none';
 
-    const scrubberBar = document.getElementById('scrubberBar');
-    if (scrubberBar) scrubberBar.classList.remove('is-sponsor-preroll');
+    const sBar = document.getElementById('scrubberBar');
+    if (sBar) sBar.classList.remove('is-sponsor-preroll');
     const miniBar = document.getElementById('miniProgressBar');
     if (miniBar) miniBar.classList.remove('is-sponsor-preroll');
 
@@ -10006,24 +10006,28 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (!rawText) return '';
 
     // 1. Identify and format footnote reference superscripts
-    // Footnote indicators e.g. [1], or a solitary digit / 2-digit number right after punctuation or word
-    let text = rawText.replace(/(\b[a-zA-Z\.\,\:\;\"\'\?\!]+)\s*(\d{1,3})\b(?!\s*[\.\,\d\/\-])/g, (m, word, num) => {
+    const footnoteRegex = new RegExp('(\\b[a-zA-Z\\.\\,\\:\\;\\"\\\'\\?\\!]+)\\s*(\\d{1,3})\\b(?!\\s*[\\.\\,\\d\\/\\-])', 'g');
+    let text = rawText.replace(footnoteRegex, (m, word, num) => {
       return word + '<sup class="liquid-footnote-ref">' + num + '</sup>';
     });
 
     // 2. Identify and format Hebrew text blocks & quotations
-    // Matches Hebrew sequences including intervening spaces, hyphens, and quotes
-    text = text.replace(/((?:[\u0590-\u05FF][\u0590-\u05FF\s\'\"\–\—\:\,\.\-\(\)]*[\u0590-\u05FF]|[\u0590-\u05FF]))/g, (match) => {
+    const hebrewBlockRegex = new RegExp('((?:[\\u0590-\\u05FF][\\u0590-\\u05FF\\s\\\'\\"\\u2013\\u2014\\:\\,\\.\\-\\(\\)]*[\\u0590-\\u05FF]|[\\u0590-\\u05FF]))', 'g');
+    const leadPunctRegex = new RegExp('^([\\s\\,\\.\\:\\;\\u201C\\u201D\\"\\\'\\(\\)]+)');
+    const trailPunctRegex = new RegExp('([\\s\\,\\.\\:\\;\\u201C\\u201D\\"\\\'\\(\\)]+)$');
+    const nikudRegex = new RegExp('[\\u0591-\\u05BD\\u05BF\\u05C1-\\u05C2\\u05C4-\\u05C5\\u05C7]', 'g');
+
+    text = text.replace(hebrewBlockRegex, (match) => {
       let prefix = '';
       let suffix = '';
       let core = match;
 
-      const leadMatch = core.match(/^([\s\,\.\:\;\“\”\"\'\(\)]+)/);
+      const leadMatch = core.match(leadPunctRegex);
       if (leadMatch) {
         prefix = leadMatch[1];
         core = core.slice(prefix.length);
       }
-      const trailMatch = core.match(/([\s\,\.\:\;\“\”\"\'\(\)]+)$/);
+      const trailMatch = core.match(trailPunctRegex);
       if (trailMatch) {
         suffix = trailMatch[1];
         core = core.slice(0, -suffix.length);
@@ -10032,7 +10036,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (!/[\u0590-\u05FF]/.test(core)) return match;
 
       // Strip nikud marks for crisp, clean Liquid typography
-      let clean = core.replace(/[\u0591-\u05BD\u05BF\u05C1-\u05C2\u05C4-\u05C5\u05C7]/g, '');
+      let clean = core.replace(nikudRegex, '');
       const tokens = clean.trim().split(/\s+/).filter(Boolean);
       if (!tokens.length) return match;
 
