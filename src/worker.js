@@ -52,13 +52,13 @@ async function getHomepageData() {
   return homeDataCache;
 }
 
-// In-memory cache for live daily sponsorship (10 minutes)
+// In-memory cache for live daily sponsorship (5 minutes)
 let sponsorshipCache = null;
 let sponsorshipCacheTime = 0;
 
 async function getDailySponsorship() {
   const now = Date.now();
-  if (sponsorshipCache && (now - sponsorshipCacheTime < 600000)) {
+  if (sponsorshipCache && (now - sponsorshipCacheTime < 300000)) {
     return sponsorshipCache;
   }
   let result = {
@@ -67,6 +67,7 @@ async function getDailySponsorship() {
     audioUrl: ''
   };
 
+  // 1. Fetch live daily text banner from YUTorah
   try {
     const res = await fetch('https://www.yutorah.org/', {
       headers: {
@@ -90,68 +91,77 @@ async function getDailySponsorship() {
         }
         result.text = formatted;
       }
-
-      // Check if HTML has a non-placeholder audio URL
-      const audioMatch = html.match(/_sponsorshipAudioURL\s*=\s*['"]([^'"]+)['"]/i);
-      if (audioMatch && audioMatch[1] && audioMatch[1].trim()) {
-        let rawUrl = audioMatch[1].trim();
-        rawUrl = rawUrl.replace('https://www.yutorah.org/_cdn/', 'https://cdn.yutorah.net/');
-        rawUrl = rawUrl.replace('http://www.yutorah.org/_cdn/', 'https://cdn.yutorah.net/');
-        if (!rawUrl.includes('112521.mp3')) {
-          result.audioUrl = rawUrl;
-        }
-      }
     }
   } catch (e) {
-    console.error('Error fetching live sponsorship:', e);
+    console.error('Error fetching live sponsorship HTML:', e);
   }
 
-  // YUTorah uploads daily pre-rolls as MMDDYY.mp3 based on America/New_York calendar date
+  // 2. Query official YUTorah Live Sponsorship Audio API
+  // Exactly as YUTorah's frontend does: GET https://api.yutorah.org/browse/sponsorship/audio
   try {
-    const nyFormatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/New_York',
-      year: '2-digit',
-      month: '2-digit',
-      day: '2-digit'
-    });
-    const parts = nyFormatter.formatToParts(new Date());
-    const mm = parts.find(p => p.type === 'month')?.value;
-    const dd = parts.find(p => p.type === 'day')?.value;
-    const yy = parts.find(p => p.type === 'year')?.value;
-
-    if (mm && dd && yy) {
-      const todayAudio = `https://cdn.yutorah.net/_media/sponsorshipAudio/${mm}${dd}${yy}.mp3`;
-      const headCheck = await fetch(todayAudio, { method: 'HEAD', redirect: 'follow' });
-      if (headCheck.ok) {
-        result.audioUrl = todayAudio;
+    const audioApiRes = await fetch('https://api.yutorah.org/browse/sponsorship/audio', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        'Accept': '*/*'
       }
-    }
-
-    // Fallback to yesterday's audio if today's isn't uploaded yet
-    if (!result.audioUrl) {
-      const yesterday = new Date(Date.now() - 86400000);
-      const yParts = nyFormatter.formatToParts(yesterday);
-      const ymm = yParts.find(p => p.type === 'month')?.value;
-      const ydd = yParts.find(p => p.type === 'day')?.value;
-      const yyy = yParts.find(p => p.type === 'year')?.value;
-      if (ymm && ydd && yyy) {
-        const yAudio = `https://cdn.yutorah.net/_media/sponsorshipAudio/${ymm}${ydd}${yyy}.mp3`;
-        const yHead = await fetch(yAudio, { method: 'HEAD', redirect: 'follow' });
-        if (yHead.ok) {
-          result.audioUrl = yAudio;
+    });
+    if (audioApiRes.ok) {
+      let liveUrl = (await audioApiRes.text()).trim();
+      if (liveUrl && /^https?:\/\//i.test(liveUrl) && !liveUrl.includes('112521.mp3')) {
+        liveUrl = liveUrl.replace('http://cdn.yutorah.net/', 'https://cdn.yutorah.net/');
+        liveUrl = liveUrl.replace('http://www.yutorah.org/_cdn/', 'https://cdn.yutorah.net/');
+        liveUrl = liveUrl.replace('https://www.yutorah.org/_cdn/', 'https://cdn.yutorah.net/');
+        // Verify that the audio URL is active and accessible
+        try {
+          const headCheck = await fetch(liveUrl, { method: 'HEAD', redirect: 'follow' });
+          if (headCheck.ok) {
+            result.audioUrl = liveUrl;
+          }
+        } catch (hErr) {
+          console.warn('Live API audio URL head check failed:', hErr);
         }
       }
     }
-  } catch (err) {
-    console.error('Error determining daily sponsorship audio URL:', err);
+  } catch (apiErr) {
+    console.error('Error fetching from https://api.yutorah.org/browse/sponsorship/audio:', apiErr);
   }
 
-  // Safe fallback if no audio URL could be verified
+  // 3. Fallback: Check today's and recent days' MMDDYY.mp3 files on CDN
   if (!result.audioUrl) {
-    result.audioUrl = 'https://cdn.yutorah.net/_media/sponsorshipAudio/090626.mp3';
+    try {
+      const nyFormatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York',
+        year: '2-digit',
+        month: '2-digit',
+        day: '2-digit'
+      });
+      for (let dayOffset = 0; dayOffset <= 7; dayOffset++) {
+        const targetDate = new Date(Date.now() - dayOffset * 86400000);
+        const parts = nyFormatter.formatToParts(targetDate);
+        const mm = parts.find(p => p.type === 'month')?.value;
+        const dd = parts.find(p => p.type === 'day')?.value;
+        const yy = parts.find(p => p.type === 'year')?.value;
+
+        if (mm && dd && yy) {
+          const checkUrl = `https://cdn.yutorah.net/_media/sponsorshipAudio/${mm}${dd}${yy}.mp3`;
+          const head = await fetch(checkUrl, { method: 'HEAD', redirect: 'follow' });
+          if (head.ok) {
+            result.audioUrl = checkUrl;
+            break;
+          }
+        }
+      }
+    } catch (dateErr) {
+      console.error('Error checking date-based sponsorship audio:', dateErr);
+    }
   }
 
-  // Fallback if live fetch fails or no current sponsor
+  // 4. Safe verified fallback if no audio URL could be reached
+  if (!result.audioUrl) {
+    result.audioUrl = 'https://cdn.yutorah.net/_media/sponsorshipAudio/081726.mp3';
+  }
+
+  // Fallback if live HTML fetch fails or no current sponsor
   if (!result.text) {
     result.text = 'Learning on the Marcos and Adina Katz YUTorah site is sponsored today by <strong>The Ohayon family in Hamilton, ON</strong> to mark the yahrtzeit of Shimon ben Issaschar Ruimy on 24 Elul and for a refuah shleima for Avraham Yitzchak Fishel ben Chaina Shifra';
     result.plainText = 'Learning on the Marcos and Adina Katz YUTorah site is sponsored today by The Ohayon family in Hamilton, ON to mark the yahrtzeit of Shimon ben Issaschar Ruimy on 24 Elul and for a refuah shleima for Avraham Yitzchak Fishel ben Chaina Shifra';
@@ -5463,6 +5473,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       return;
     }
 
+    // If sponsorship data hasn't been checked in >5 minutes, refresh in background
+    if (Date.now() - lastSponsorCheck > 300000) {
+      refreshDailySponsorship();
+    }
+
     isSponsorPlaying = true;
     pendingShiur = shiurObj;
 
@@ -5501,7 +5516,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const curTimeEl = document.getElementById('curTime');
     if (curTimeEl) curTimeEl.textContent = '0:00';
     const totalTimeEl = document.getElementById('totalTime');
-    if (totalTimeEl) totalTimeEl.textContent = '0:12';
+    if (totalTimeEl) totalTimeEl.textContent = '0:10';
     const scrubberBar = document.getElementById('scrubberBar');
     if (scrubberBar) scrubberBar.classList.add('is-sponsor-preroll');
     const miniBar = document.getElementById('miniProgressBar');
@@ -5523,7 +5538,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         miniThumb.style.display = 'none';
       }
     }
-    if (miniTime) miniTime.textContent = '0:00 / 0:12';
+    if (miniTime) miniTime.textContent = '0:00 / 0:10';
 
     if ('mediaSession' in navigator) {
       navigator.mediaSession.metadata = new MediaMetadata({
@@ -8744,6 +8759,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     document.getElementById('totalTime').textContent = formatTime(audio.duration);
     const miniTime = document.getElementById('miniTime');
     if (miniTime) miniTime.textContent = formatTime(audio.currentTime) + ' / ' + formatTime(audio.duration);
+    if (isSponsorPlaying && audio.duration && !isNaN(audio.duration)) {
+      const countdownEl = document.getElementById('sponsorCountdown');
+      if (countdownEl) countdownEl.textContent = Math.ceil(audio.duration);
+    }
     applyInitialTime();
   });
   audio.addEventListener('canplay', () => {
