@@ -5193,7 +5193,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   <!-- Audio Player Card (Active when playing) -->
   <div class="player-card" id="playerCard">
     <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
-      <a onclick="minimizePlayer()" class="player-nav-back" style="margin-bottom: 0; cursor: pointer;">← Browse Library While Listening</a>
+      <a onclick="minimizePlayer()" class="player-nav-back" id="playerNavBackBtn" style="margin-bottom: 0; cursor: pointer;">${articlePdfUrl ? '← Browse Library While Reading' : '← Browse Library While Listening'}</a>
       <button type="button" class="mini-btn-pill" onclick="minimizePlayer()" title="Minimize to mini-player" style="background: #eef2f7; border: 1px solid #dbe2ed; color: var(--primary); font-size: 13px; font-weight: 700; padding: 5px 12px; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="pointer-events:none;"><path d="M7 10l5 5 5-5z"/></svg> Minimize</button>
     </div>
 
@@ -6624,24 +6624,22 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     closeSearchPreview();
     const rawBarValue = searchInput.value.trim();
 
-    // If advanced filters are active, use keywords from filter state, NOT the search bar display text.
-    // The search bar might show "Rabbi Michael Rosensweig" for display when a teacher is selected.
-    // We must use the actual keywords (activeAdvancedFilters.keywords) and pass teacherId etc. separately.
+    // If advanced filters are active:
     if (hasActiveFilters()) {
-      // Determine real keywords: if the bar text matches the teacher display names, it's just display text
       const teacherDisplayNames = (activeAdvancedFilters.teachers || []).map(t => t.name).join(', ');
       let effectiveKeywords;
-      if (rawBarValue === teacherDisplayNames) {
-        // The search bar just shows teacher names for display — use the stored keywords (may be empty)
+      if (rawBarValue === teacherDisplayNames || (!rawBarValue && activeAdvancedFilters.teachers.length > 0)) {
         effectiveKeywords = activeAdvancedFilters.keywords || '';
+        executeLiveSearch(effectiveKeywords, { ...activeAdvancedFilters });
+        return;
       } else {
-        // User typed new text into the bar — treat it as keywords but KEEP filter state
-        effectiveKeywords = rawBarValue;
-        activeAdvancedFilters.keywords = effectiveKeywords;
+        // User typed a new search query into the search bar:
+        // Clear previous teacher filter so it doesn't silently trap or conflict with the new search!
+        activeAdvancedFilters.teachers = [];
+        activeAdvancedFilters.keywords = rawBarValue;
+        executeLiveSearch(rawBarValue, { ...activeAdvancedFilters });
+        return;
       }
-
-      executeLiveSearch(effectiveKeywords, { ...activeAdvancedFilters });
-      return;
     }
 
     if (!rawBarValue) return;
@@ -7177,7 +7175,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   function goHome(e) {
     if (e) e.preventDefault();
 
-    if (hasAudio) {
+    if (hasAudio || isCurrentShiurArticle) {
       minimizePlayer();
     }
 
@@ -7448,16 +7446,35 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   function minimizePlayer() {
-    if (!hasAudio) return;
+    if (!hasAudio && !isCurrentShiurArticle) return;
     isManuallyMinimized = true;
     const playerCard = document.getElementById('playerCard');
     const miniPlayer = document.getElementById('miniPlayer');
     if (playerCard) playerCard.style.display = 'none';
-    if (miniPlayer) miniPlayer.classList.add('visible');
+    if (miniPlayer) {
+      const miniProgressTrack = document.getElementById('miniProgressTrack');
+      const miniPlayBtn = document.getElementById('miniPlayBtn');
+      const miniTime = document.getElementById('miniTime');
+      const skipBtns = miniPlayer.querySelectorAll('.skip-btn');
+      if (isCurrentShiurArticle) {
+        if (miniProgressTrack) miniProgressTrack.style.display = 'none';
+        if (miniPlayBtn) miniPlayBtn.style.display = 'none';
+        skipBtns.forEach(b => b.style.display = 'none');
+        if (miniTime) miniTime.textContent = '📄 Reading';
+      } else {
+        if (miniProgressTrack) miniProgressTrack.style.display = 'block';
+        if (miniPlayBtn) miniPlayBtn.style.display = 'block';
+        skipBtns.forEach(b => b.style.display = 'block');
+      }
+      miniPlayer.classList.add('visible');
+    }
     document.body.classList.add('mini-player-active');
 
     const searchSection = document.getElementById('searchResultsSection');
     const collSection = document.getElementById('collectionsSection');
+    if (collSection) {
+      collSection.style.display = 'block';
+    }
     if (searchSection && collSection && searchSection.style.display === 'none' && collSection.style.display === 'none') {
       collSection.style.display = 'block';
     }
@@ -7477,8 +7494,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   function closeMiniPlayer() {
-    audio.pause();
+    if (audio) audio.pause();
     hasAudio = false;
+    isCurrentShiurArticle = false;
+    currentArticlePdf = '';
     isManuallyMinimized = false;
     currentShiurId = '';
     const miniPlayer = document.getElementById('miniPlayer');
@@ -7562,7 +7581,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     modalTempFilters.locations = [...(activeAdvancedFilters.locations || [])];
     modalTempFilters.series = [...(activeAdvancedFilters.series || [])];
 
-    document.getElementById('advKeywords').value = activeAdvancedFilters.keywords || searchInput.value.trim();
+    document.getElementById('advKeywords').value = activeAdvancedFilters.keywords || '';
     document.getElementById('advYearSelect').value = activeAdvancedFilters.year || '';
     const phonToggle = document.getElementById('advPhoneticsToggle');
     if (phonToggle) {
@@ -7690,9 +7709,20 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   function addComboboxToken(type, id, name) {
+    if (type === 'teacher') {
+      // Selecting a new teacher replaces the previous teacher so old one doesn't get stuck!
+      modalTempFilters.teachers = [{ id: String(id), name: String(name) }];
+      const input = document.getElementById('advTeacherInput');
+      if (input) {
+        input.value = '';
+      }
+      closeAllAutocompleteDropdowns();
+      renderComboboxChips('teacher');
+      return;
+    }
+
     let list = [];
-    if (type === 'teacher') list = modalTempFilters.teachers;
-    else if (type === 'category') list = modalTempFilters.categories;
+    if (type === 'category') list = modalTempFilters.categories;
     else if (type === 'location') list = modalTempFilters.locations;
     else if (type === 'series') list = modalTempFilters.series;
 
@@ -7701,7 +7731,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
 
     // Clear input and close dropdown
-    let inputId = type === 'teacher' ? 'advTeacherInput' : (type === 'category' ? 'advCategoryInput' : (type === 'location' ? 'advLocationInput' : 'advSeriesInput'));
+    let inputId = type === 'category' ? 'advCategoryInput' : (type === 'location' ? 'advLocationInput' : 'advSeriesInput');
     let input = document.getElementById(inputId);
     if (input) {
       input.value = '';
@@ -7884,11 +7914,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
     closeAdvancedModal();
 
-    // Update search bar value with keywords or primary speaker if keywords empty
+    // Keep search bar clean: only populate searchInput if actual keywords were entered
     if (kw) {
       searchInput.value = kw;
-    } else if (activeAdvancedFilters.teachers.length > 0) {
-      searchInput.value = activeAdvancedFilters.teachers.map(t => t.name).join(', ');
+    } else {
+      searchInput.value = '';
     }
 
     // Execute multi-criteria search
@@ -7969,11 +7999,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       activeAdvancedFilters[listKey].splice(index, 1);
     }
     if (!activeAdvancedFilters.keywords) {
-      if (activeAdvancedFilters.teachers && activeAdvancedFilters.teachers.length > 0) {
-        searchInput.value = activeAdvancedFilters.teachers.map(t => t.name).join(', ');
-      } else {
-        searchInput.value = '';
-      }
+      searchInput.value = '';
     }
     executeLiveSearch(activeAdvancedFilters.keywords || '', { ...activeAdvancedFilters });
   }
@@ -8595,6 +8621,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       const audioWrap = document.getElementById('audioControlsWrap');
       const articleWrap = document.getElementById('articleViewerContainer');
 
+      const navBack = document.getElementById('playerNavBackBtn');
+
       if (isArticle) {
         hasAudio = false;
         if (audio && !audio.paused) {
@@ -8602,6 +8630,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         }
         if (audioWrap) audioWrap.style.display = 'none';
         if (articleWrap) articleWrap.style.display = 'block';
+        if (navBack) {
+          navBack.textContent = '← Browse Library While Reading';
+        }
         if (dlBtn) {
           dlBtn.innerHTML = '⬇️ Download PDF';
         }
@@ -8613,6 +8644,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       hasAudio = true;
       if (articleWrap) articleWrap.style.display = 'none';
       if (audioWrap) audioWrap.style.display = 'block';
+      if (navBack) {
+        navBack.textContent = '← Browse Library While Listening';
+      }
       if (dlBtn) {
         dlBtn.innerHTML = '⬇️ Download MP3';
       }

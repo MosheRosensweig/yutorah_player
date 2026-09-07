@@ -70,7 +70,8 @@ async function testArticleShiur() {
   assert.ok(html.includes('btnModeSingle'), 'Single page mode button must be present');
   assert.ok(html.includes('continuousPagesContainer'), 'Continuous pages container must be present');
   assert.ok(html.includes('INITIAL_ARTICLE_PDF'), 'Client script must declare INITIAL_ARTICLE_PDF');
-  console.log('  ✅ Article shiur page renders with Article Reader, Page Modes, and PDF.js integration.');
+  assert.ok(html.includes('Browse Library While Reading'), 'Article page must show "Browse Library While Reading"');
+  console.log('  ✅ Article shiur page renders with Article Reader, Page Modes, and "Browse Library While Reading" link.');
 }
 
 async function testPdfProxy() {
