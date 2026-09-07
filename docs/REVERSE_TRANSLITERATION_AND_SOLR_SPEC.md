@@ -203,9 +203,9 @@ Your algorithm parses `"Rosensweig Shabbos"` into **discrete structured criteria
 
 ## Part 7: Catalog of Word Buckets (Synsets)
 
-The engine contains **62 curated synset buckets** covering all major Halachic topics, Moadim (Holidays), and Talmudic tractates. In addition to these 62 buckets, the engine dynamically uses `EnglishBackToHebrew` to generate valid Hebrew roots on the fly for any unmapped transliterated word.
+The engine contains **181 curated synset buckets** covering all major Halachic topics, Moadim (Holidays), all Talmudic tractates (Shas), all 54 Parshiot HaTorah, and core Tefillah & Kashrut concepts. In addition to these 181 buckets, the engine dynamically uses `EnglishBackToHebrew` to generate valid Hebrew roots on the fly for any unmapped transliterated word.
 
-### Summary of Word Buckets Catalog (62 Total)
+### Summary of Word Buckets Catalog (181 Total)
 
 | Category | Canonical Concept | English Variations | Hebrew Mappings |
 | :--- | :--- | :--- | :--- |
@@ -251,26 +251,10 @@ The engine contains **62 curated synset buckets** covering all major Halachic to
 | | `chassidus` | chassidus, chassidut, chasidus, hasidism, chasidut | חסידות |
 | | `parsha` | parsha, parshah, parashah, parashat hashavua, parshas hashavua | פרשה, פרשת השבוע |
 | | `haftarah` | haftarah, haftara, haftorah | הפטרה |
-| **Masechtot & Seder Moed/Nashim/Nezikin** | `bava kamma` | bava kamma, bava kama, bavam kamma, bk | בבא קמא |
-| | `bava metzia` | bava metzia, bava metziah, bava mezia, bm | בבא מציעא |
-| | `bava basra` | bava basra, bava batra, bb | בבא בתרא |
-| | `sanhedrin` | sanhedrin, sanhedryn | סנהדרין |
-| | `kiddushin` | kiddushin, kidushin, kedushin | קידושין |
-| | `chagigah` | chagigah, chagiga, hagigah, hagiga | חגיגה |
-| | `chullin` | chullin, chulin, hullin | חולין |
-| | `pesachim` | pesachim, psachim | פסחים |
-| | `berachot` | berachot, brachot, berakhot, brochos | ברכות |
-| | `ketubot` | ketubot, kesuvos, ketuvot, kesubos | כתובות |
-| | `yevamot` | yevamot, yevamos | יבמות |
-| | `gittin` | gittin, gitin | גיטין |
-| | `sotah` | sotah, sota | סוטה |
-| | `nazir` | nazir | נזיר |
-| | `nedarim` | nedarim | נדרים |
-| | `menachot` | menachot, menachos | מנחות |
-| | `zevachim` | zevachim, zvachim | זבחים |
-| | `taharot` | taharot, taharos, tohorot, tohoros | טהרות |
-| | `keilim` | keilim, kelim | כלים |
-| | `negaim` | negaim, negayim | נגעים |
+| **Talmudic Tractates (Shas)** | `berachot`, `shabbat`, `eruvin`, `pesachim`, `shekalim`, `yoma`, `sukkah`, `beitzah`, `rosh hashanah`, `taanit`, `megillah`, `moed katan`, `chagigah`, `yevamot`, `ketubot`, `nedarim`, `nazir`, `sotah`, `gittin`, `kiddushin`, `bava kamma`, `bava metzia`, `bava basra`, `sanhedrin`, `makkot`, `shevuot`, `eduyot`, `avodah zarah`, `avot`, `horayot`, `zevachim`, `menachot`, `chullin`, `bekhorot`, `arakhin`, `temurah`, `keritot`, `meilah`, `tamid`, `middot`, `kinnim`, `keilim`, `taharot`, `negaim`, `parah`, `taharot`, `mikvaot`, `yadayim`, `uktzin`, `demai`, `kilayim`, `sheviit`, `terumot`, `maasrot`, `orlah`, `bikkurim` | All spelling variants & acronyms (e.g. bk, bm, bb, az, pirkei avos) | Full Hebrew Masechta names |
+| **Tefillah & Berachot** | `shema`, `amidah`, `birkat hamazon` (bentching), `kriat hatorah`, `shacharit`, `mincha`, `maariv`, `musaf`, `hallel`, `aleinu`, `tachanun`, `birkat kohanim` (duchening), `sefirat haomer`, `pesukei dezimra`, `yotzer or` | Full phonetic variants | קריאת שמע, שמונה עשרה, ברכת המזון, וכו' |
+| **Lifecycle & Kashrut** | `chuppah`, `ketubah`, `sheva brachot`, `yichud`, `aveilus`, `shiva`, `sheloshim`, `yahrzeit`, `bar mitzvah`, `pidyon haben`, `chalav yisrael`, `pas yisrael`, `bishul akum`, `treif`, `basar bchalav`, `shechita`, `hechsher`, `tevilat kelim` | Full phonetic variants | חופה, שבע ברכות, אבלות, חלב ישראל, פת ישראל, וכו' |
+| **All 54 Parshiot HaTorah** | `bereishit`, `noach`, `lech lecha`, `vayeira`, `chayei sarah`, `toldot`, `vayeitzei`, `vayishlach`, `vayeishev`, `mikeitz`, `vayigash`, `vayechi`, `shemot`, `vaeira`, `bo`, `beshalach`, `yitro` (yisro), `mishpatim`, `terumah`, `tetzaveh`, `ki tisa`, `vayakhel`, `pekudei`, `vayikra`, `tzav`, `shemini`, `tazria`, `metzora`, `acharei mot`, `kedoshim`, `emor`, `behar`, `bechukotai`, `bamidbar`, `nasso`, `behaalotecha`, `shelach`, `korach`, `chukat`, `balak`, `pinchas`, `matot`, `masei`, `devarim`, `vaetchanan`, `eikev`, `reeh`, `shoftim`, `ki teitzei`, `ki tavo`, `nitzavim`, `vayeilech`, `haazinu`, `vezot haberachah` | Full English spellings (e.g., yisro, ki sisa, acharei mos, chukas) | All Hebrew Parsha names |
 
 ---
 
@@ -279,14 +263,15 @@ The engine contains **62 curated synset buckets** covering all major Halachic to
 Like the original YUTorah experience (but faster and without page reloads), typing in the search bar triggers an intelligent debounced live preview:
 1. **Debounce (250ms)**: As the user types, keystrokes are debounced to prevent excessive network calls.
 2. **Suggested Topics & Speakers**:
-   - Matches against top teachers and high-frequency topics.
+   - Matches against top teachers and high-frequency topics from `autocomplete_data.json`.
    - Clicking a suggested speaker immediately applies that speaker filter and displays their catalog.
-3. **Top Matching Shiurim Preview**:
-   - Shows the top 5 live results with title, speaker, and duration.
+3. **Top Matching Shiurim Preview with Date & Duration**:
+   - Shows the top 5 live results with title, speaker, **shiur date** (formatted consistently without timezone drift), and duration.
    - Clicking any shiur immediately loads and plays it in the audio player without a full page reload.
 4. **"View All Results" Action**:
    - Clicking the footer or pressing `Enter` executes the full query and renders the entire search results grid.
-5. **Dismissal**:
+5. **Dismissal & Race Condition Protection**:
+   - Monotonically increasing request ID + `AbortController` cancellation prevents delayed in-flight responses from re-opening.
    - Clicking outside the search bar, pressing `Escape`, or clicking "Clear" immediately closes the dropdown.
 
 ---
@@ -295,7 +280,7 @@ Like the original YUTorah experience (but faster and without page reloads), typi
 
 - **Default State**: Reverse Transliteration, Phonetic Equivalence, and Speaker Entity Disambiguation are **enabled by default** for all users across the standard search bar and advanced modal.
 - **Classic Fallback Option**:
-  - In the Advanced Search Modal (`🎚️ Filters`), the Transliteration Engine card contains a checkbox.
+  - In the Advanced Search Modal (Filters button), the Transliteration Engine card contains a toggle checkbox.
   - The card clearly informs users:
     > *"Unchecking this box uses the classic old YUTorah website search (strict literal match only)."*
   - Unchecking it passes `exact=1` to the API, disabling phonetic expansion and speaker extraction, returning Solr's raw unexpanded results.

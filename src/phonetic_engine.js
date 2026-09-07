@@ -318,6 +318,601 @@ export const SYNSETS = [
     canonical: 'negaim',
     hebrew: ['נגעים'],
     variants: ['negaim', 'negayim']
+  },
+  {
+    canonical: "eruvin",
+    hebrew: ["עירובין"],
+    variants: ["eruvin","eiruvin"]
+  },
+  {
+    canonical: "shekalim",
+    hebrew: ["שקלים"],
+    variants: ["shekalim","shkalim"]
+  },
+  {
+    canonical: "yoma",
+    hebrew: ["יומא"],
+    variants: ["yoma","yomah"]
+  },
+  {
+    canonical: "beitzah",
+    hebrew: ["ביצה"],
+    variants: ["beitzah","beitza","beitzo","betza","betzah"]
+  },
+  {
+    canonical: "taanit",
+    hebrew: ["תענית"],
+    variants: ["taanit","taanis","taanith","ta'anit","ta'anis"]
+  },
+  {
+    canonical: "moed katan",
+    hebrew: ["מועד קטן"],
+    variants: ["moed katan","moed kotan","mo'ed katan","mk"]
+  },
+  {
+    canonical: "horayot",
+    hebrew: ["הוריות"],
+    variants: ["horayot","horayos","horaiot"]
+  },
+  {
+    canonical: "eduyot",
+    hebrew: ["עדויות"],
+    variants: ["eduyot","eduyos","eiduyot","eiduyos"]
+  },
+  {
+    canonical: "avot",
+    hebrew: ["אבות","פרקי אבות"],
+    variants: ["avot","avos","pirkei avot","pirkei avos","pirkay avot"]
+  },
+  {
+    canonical: "shevuot",
+    hebrew: ["שבועות"],
+    variants: ["shevuot","shevuos","shvuot","shvuos"]
+  },
+  {
+    canonical: "makkot",
+    hebrew: ["מכות"],
+    variants: ["makkot","makkos","makot","makos"]
+  },
+  {
+    canonical: "avodah zarah",
+    hebrew: ["עבודה זרה"],
+    variants: ["avodah zarah","avoda zara","avodah zara","az"]
+  },
+  {
+    canonical: "bekhorot",
+    hebrew: ["בכורות"],
+    variants: ["bechorot","bechoros","bekhorot","bchorot","bchoros"]
+  },
+  {
+    canonical: "arakhin",
+    hebrew: ["ערכין"],
+    variants: ["arachim","arachin","erchin","erkhin"]
+  },
+  {
+    canonical: "temurah",
+    hebrew: ["תמורה"],
+    variants: ["temurah","temura","tmurah","tmura"]
+  },
+  {
+    canonical: "keritot",
+    hebrew: ["כריתות"],
+    variants: ["keritot","kerisos","krisot","krisos","krito"]
+  },
+  {
+    canonical: "meilah",
+    hebrew: ["מעילה"],
+    variants: ["meilah","meila","me'ilah"]
+  },
+  {
+    canonical: "tamid",
+    hebrew: ["תמיד"],
+    variants: ["tamid","tameed"]
+  },
+  {
+    canonical: "middot",
+    hebrew: ["מידות"],
+    variants: ["middot","middos","midot","midos"]
+  },
+  {
+    canonical: "kinnim",
+    hebrew: ["קנים"],
+    variants: ["kinnim","kinim"]
+  },
+  {
+    canonical: "mikvaot",
+    hebrew: ["מקואות","מקוואות"],
+    variants: ["mikvaot","mikvaos","mikva'ot"]
+  },
+  {
+    canonical: "yadim",
+    hebrew: ["ידיים"],
+    variants: ["yadayim","yadaim","yadim"]
+  },
+  {
+    canonical: "uktzin",
+    hebrew: ["עוקצין"],
+    variants: ["uktzin","uktsin","oktzin"]
+  },
+  {
+    canonical: "parah",
+    hebrew: ["פרה","פרה אדומה"],
+    variants: ["parah","para","parah adumah","para aduma"]
+  },
+  {
+    canonical: "demai",
+    hebrew: ["דמאי"],
+    variants: ["demai","dmai"]
+  },
+  {
+    canonical: "kilayim",
+    hebrew: ["כלאים"],
+    variants: ["kilayim","kilaim","shatnez","shaatnez"]
+  },
+  {
+    canonical: "sheviit",
+    hebrew: ["שביעית"],
+    variants: ["sheviit","shevi'is","sheviis","shviit","shviis"]
+  },
+  {
+    canonical: "terumot",
+    hebrew: ["תרומות"],
+    variants: ["terumot","terumos","trumot","trumos"]
+  },
+  {
+    canonical: "maasrot",
+    hebrew: ["מעשרות"],
+    variants: ["maasrot","maasros","ma'asrot","ma'asros","maaser","ma'aser"]
+  },
+  {
+    canonical: "challah masechet",
+    hebrew: ["חלה"],
+    variants: ["masachet challah","masechet challah","hilchot challah"]
+  },
+  {
+    canonical: "orlah",
+    hebrew: ["ערלה"],
+    variants: ["orlah","orla"]
+  },
+  {
+    canonical: "bikkurim",
+    hebrew: ["ביכורים"],
+    variants: ["bikkurim","bikurim","bichurim"]
+  },
+  {
+    canonical: "shema",
+    hebrew: ["קריאת שמע","שמע"],
+    variants: ["shema","kriat shema","krias shema","shma"]
+  },
+  {
+    canonical: "amidah",
+    hebrew: ["עמידה","שמונה עשרה"],
+    variants: ["amidah","amida","shmoneh esreh","shmone esre","shemoneh esreh"]
+  },
+  {
+    canonical: "birkat hamazon",
+    hebrew: ["ברכת המזון"],
+    variants: ["birkat hamazon","birkas hamazon","bentching","benching","bentshing"]
+  },
+  {
+    canonical: "kriat hatorah",
+    hebrew: ["קריאת התורה"],
+    variants: ["kriat hatorah","krias hatorah","kriat hatora"]
+  },
+  {
+    canonical: "shacharit",
+    hebrew: ["שחרית"],
+    variants: ["shacharit","shacharis","shachrit","shachris"]
+  },
+  {
+    canonical: "mincha",
+    hebrew: ["מנחה"],
+    variants: ["mincha","minchah"]
+  },
+  {
+    canonical: "maariv",
+    hebrew: ["מעריב","ערבית"],
+    variants: ["maariv","ma'ariv","arvit","arvis"]
+  },
+  {
+    canonical: "musaf",
+    hebrew: ["מוסף"],
+    variants: ["musaf","mussaf"]
+  },
+  {
+    canonical: "hallel",
+    hebrew: ["הלל"],
+    variants: ["hallel","halel"]
+  },
+  {
+    canonical: "aleinu",
+    hebrew: ["עלינו"],
+    variants: ["aleinu","aleynu"]
+  },
+  {
+    canonical: "tachanun",
+    hebrew: ["תחנון"],
+    variants: ["tachanun","tahanun"]
+  },
+  {
+    canonical: "birkat kohanim",
+    hebrew: ["ברכת כהנים","דוכנים"],
+    variants: ["birkat kohanim","birkas kohanim","duchening","duchaning","nesiat kapayim"]
+  },
+  {
+    canonical: "sefirat haomer",
+    hebrew: ["ספירת העומר"],
+    variants: ["sefirat haomer","sfirat haomer","sefiras haomer","sfiras haomer","the omer"]
+  },
+  {
+    canonical: "pesukei dezimra",
+    hebrew: ["פסוקי דזמרה"],
+    variants: ["pesukei dezimra","psukei dzimra","pesukei d'zimra"]
+  },
+  {
+    canonical: "yotzer or",
+    hebrew: ["יוצר אור"],
+    variants: ["yotzer or","birkot krias shema","birkot kriat shema"]
+  },
+  {
+    canonical: "chuppah",
+    hebrew: ["חופה"],
+    variants: ["chuppah","chuppa","chupa","chupah","huppah","hupa"]
+  },
+  {
+    canonical: "ketubah",
+    hebrew: ["כתובה"],
+    variants: ["ketubah","ketuba","kesubah","kesuba"]
+  },
+  {
+    canonical: "sheva brachot",
+    hebrew: ["שבע ברכות"],
+    variants: ["sheva brachot","sheva brachos","sheva berachot","sheva berachos"]
+  },
+  {
+    canonical: "yichud",
+    hebrew: ["ייחוד","איסור ייחוד"],
+    variants: ["yichud","yihud","hilchot yichud"]
+  },
+  {
+    canonical: "aveilus",
+    hebrew: ["אבלות","הלכות אבלות"],
+    variants: ["aveilus","aveilut","avelus","avelut","mourning"]
+  },
+  {
+    canonical: "shiva",
+    hebrew: ["שבעה"],
+    variants: ["shiva","shivah"]
+  },
+  {
+    canonical: "sheloshim",
+    hebrew: ["שלושים"],
+    variants: ["sheloshim","shloshim"]
+  },
+  {
+    canonical: "yahrzeit",
+    hebrew: ["יארצייט"],
+    variants: ["yahrzeit","yahrtzeit","yartzeit","yarzeit"]
+  },
+  {
+    canonical: "bar mitzvah",
+    hebrew: ["בר מצווה","בר מצוה"],
+    variants: ["bar mitzvah","bar mitzva","bat mitzvah","bas mitzvah","bat mitzva"]
+  },
+  {
+    canonical: "pidyon haben",
+    hebrew: ["פדיון הבן"],
+    variants: ["pidyon haben","pidyon haban"]
+  },
+  {
+    canonical: "chalav yisrael",
+    hebrew: ["חלב ישראל"],
+    variants: ["chalav yisrael","cholov yisroel","chalav yisroel","cholov yisrael","chalav stam"]
+  },
+  {
+    canonical: "pas yisrael",
+    hebrew: ["פת ישראל"],
+    variants: ["pas yisrael","pas yisroel","pat yisrael","pat yisroel","pas palter"]
+  },
+  {
+    canonical: "bishul akum",
+    hebrew: ["בישול עכו\"ם","בישול נכרי"],
+    variants: ["bishul akum","bishul nochri","bishul goy"]
+  },
+  {
+    canonical: "treif",
+    hebrew: ["טרף","טרפה"],
+    variants: ["treif","treifah","tereifah","traif","treifa"]
+  },
+  {
+    canonical: "basar bchalav",
+    hebrew: ["בשר בחלב"],
+    variants: ["basar b'chalav","basar bchalav","basar bechalav","meat and milk"]
+  },
+  {
+    canonical: "shechita",
+    hebrew: ["שחיטה"],
+    variants: ["shechita","shechitah","shchita"]
+  },
+  {
+    canonical: "hechsher",
+    hebrew: ["הכשר","כשרות"],
+    variants: ["hechsher","hechshere","kashrut supervision"]
+  },
+  {
+    canonical: "tevilat kelim",
+    hebrew: ["טבילת כלים"],
+    variants: ["tevilat kelim","tevilas keilim","tevilat keilim","tvilat kelim"]
+  },
+  {
+    canonical: "bereishit",
+    hebrew: ["בראשית","פרשת בראשית"],
+    variants: ["bereishit","bereishis","bereshit","bereshis"]
+  },
+  {
+    canonical: "noach",
+    hebrew: ["נח","פרשת נח"],
+    variants: ["noach","noah"]
+  },
+  {
+    canonical: "lech lecha",
+    hebrew: ["לך לך","פרשת לך לך"],
+    variants: ["lech lecha","lech l'cha","lech-lecha"]
+  },
+  {
+    canonical: "vayeira",
+    hebrew: ["וירא","פרשת וירא"],
+    variants: ["vayeira","vayera"]
+  },
+  {
+    canonical: "chayei sarah",
+    hebrew: ["חיי שרה","פרשת חיי שרה"],
+    variants: ["chayei sarah","chayei sara","chaye sarah"]
+  },
+  {
+    canonical: "toldot",
+    hebrew: ["תולדות","פרשת תולדות"],
+    variants: ["toldot","toldos"]
+  },
+  {
+    canonical: "vayeitzei",
+    hebrew: ["ויצא","פרשת ויצא"],
+    variants: ["vayeitzei","vayetzei","vayetze"]
+  },
+  {
+    canonical: "vayishlach",
+    hebrew: ["וישלח","פרשת וישלח"],
+    variants: ["vayishlach","vayishlah"]
+  },
+  {
+    canonical: "vayeishev",
+    hebrew: ["וישב","פרשת וישב"],
+    variants: ["vayeishev","vayeshev"]
+  },
+  {
+    canonical: "mikeitz",
+    hebrew: ["מקץ","פרשת מקץ"],
+    variants: ["mikeitz","miketz"]
+  },
+  {
+    canonical: "vayigash",
+    hebrew: ["ויגש","פרשת ויגש"],
+    variants: ["vayigash"]
+  },
+  {
+    canonical: "vayechi",
+    hebrew: ["ויחי","פרשת ויחי"],
+    variants: ["vayechi","vayehi"]
+  },
+  {
+    canonical: "shemot",
+    hebrew: ["שמות","פרשת שמות"],
+    variants: ["shemot","shemos","shmot","shmos"]
+  },
+  {
+    canonical: "vaeira",
+    hebrew: ["וארא","פרשת וארא"],
+    variants: ["vaeira","vaera","va'eira"]
+  },
+  {
+    canonical: "bo",
+    hebrew: ["בא","פרשת בא"],
+    variants: ["bo","parshat bo","parshas bo"]
+  },
+  {
+    canonical: "beshalach",
+    hebrew: ["בשלח","פרשת בשלח"],
+    variants: ["beshalach","bshalach","shabbat shira","shabbos shirah"]
+  },
+  {
+    canonical: "yitro",
+    hebrew: ["יתרו","פרשת יתרו"],
+    variants: ["yitro","yisro"]
+  },
+  {
+    canonical: "mishpatim",
+    hebrew: ["משפטים","פרשת משפטים"],
+    variants: ["mishpatim"]
+  },
+  {
+    canonical: "terumah",
+    hebrew: ["תרומה","פרשת תרומה"],
+    variants: ["terumah","teruma","trumah","truma"]
+  },
+  {
+    canonical: "tetzaveh",
+    hebrew: ["תצוה","פרשת תצוה"],
+    variants: ["tetzaveh","tetzave","tetzaveh"]
+  },
+  {
+    canonical: "ki tisa",
+    hebrew: ["כי תשא","פרשת כי תשא"],
+    variants: ["ki tisa","ki sisa","ki tissa","ki sissa"]
+  },
+  {
+    canonical: "vayakhel",
+    hebrew: ["ויקהל","פרשת ויקהל"],
+    variants: ["vayakhel","vayakkhel"]
+  },
+  {
+    canonical: "pekudei",
+    hebrew: ["פקודי","פרשת פקודי"],
+    variants: ["pekudei","pekudey","pkudei"]
+  },
+  {
+    canonical: "vayikra",
+    hebrew: ["ויקרא","פרשת ויקרא"],
+    variants: ["vayikra"]
+  },
+  {
+    canonical: "tzav",
+    hebrew: ["צו","פרשת צו"],
+    variants: ["tzav","parshat tzav","parshas tzav"]
+  },
+  {
+    canonical: "shemini",
+    hebrew: ["שמיני","פרשת שמיני"],
+    variants: ["shemini","shmini"]
+  },
+  {
+    canonical: "tazria",
+    hebrew: ["תזריע","פרשת תזריע"],
+    variants: ["tazria","tazriah"]
+  },
+  {
+    canonical: "metzora",
+    hebrew: ["מצורע","פרשת מצורע"],
+    variants: ["metzora","m'tzora"]
+  },
+  {
+    canonical: "acharei mot",
+    hebrew: ["אחרי מות","פרשת אחרי מות"],
+    variants: ["acharei mot","acharei mos","acharei","achrei mot"]
+  },
+  {
+    canonical: "kedoshim",
+    hebrew: ["קדושים","פרשת קדושים"],
+    variants: ["kedoshim","kdoshim"]
+  },
+  {
+    canonical: "emor",
+    hebrew: ["אמור","פרשת אמור"],
+    variants: ["emor"]
+  },
+  {
+    canonical: "behar",
+    hebrew: ["בהר","פרשת בהר"],
+    variants: ["behar"]
+  },
+  {
+    canonical: "bechukotai",
+    hebrew: ["בחוקותי","פרשת בחוקתי"],
+    variants: ["bechukotai","bechukosai","bchukotai","bchukosai"]
+  },
+  {
+    canonical: "bamidbar",
+    hebrew: ["במדבר","פרשת במדבר"],
+    variants: ["bamidbar","bmidbar"]
+  },
+  {
+    canonical: "nasso",
+    hebrew: ["נשא","פרשת נשא"],
+    variants: ["nasso","naso"]
+  },
+  {
+    canonical: "behaalotecha",
+    hebrew: ["בהעלותך","פרשת בהעלותך"],
+    variants: ["behaalotecha","beha'alotcha","behaaloscha","beha'aloscha"]
+  },
+  {
+    canonical: "shelach",
+    hebrew: ["שלח","פרשת שלח"],
+    variants: ["shelach","shlach","shelach lecha"]
+  },
+  {
+    canonical: "korach",
+    hebrew: ["קורח","קרח","פרשת קרח"],
+    variants: ["korach","korah"]
+  },
+  {
+    canonical: "chukat",
+    hebrew: ["חוקת","פרשת חקת"],
+    variants: ["chukat","chukas","chukkas","chukkat"]
+  },
+  {
+    canonical: "balak",
+    hebrew: ["בלק","פרשת בלק"],
+    variants: ["balak"]
+  },
+  {
+    canonical: "pinchas",
+    hebrew: ["פינחס","פנחס","פרשת פנחס"],
+    variants: ["pinchas","pinchus","pinhas"]
+  },
+  {
+    canonical: "matot",
+    hebrew: ["מטות","פרשת מטות"],
+    variants: ["matot","matos","mattot","mattos"]
+  },
+  {
+    canonical: "masei",
+    hebrew: ["מסעי","פרשת מסעי"],
+    variants: ["masei","masey","mas'ei"]
+  },
+  {
+    canonical: "devarim",
+    hebrew: ["דברים","פרשת דברים"],
+    variants: ["devarim","dvarim"]
+  },
+  {
+    canonical: "vaetchanan",
+    hebrew: ["ואתחנן","פרשת ואתחנן"],
+    variants: ["vaetchanan","va'etchanan","veetchanan"]
+  },
+  {
+    canonical: "eikev",
+    hebrew: ["עקב","פרשת עקב"],
+    variants: ["eikev","ekev"]
+  },
+  {
+    canonical: "reeh",
+    hebrew: ["ראה","פרשת ראה"],
+    variants: ["reeh","re'eh","re-eh"]
+  },
+  {
+    canonical: "shoftim",
+    hebrew: ["שופטים","פרשת שופטים"],
+    variants: ["shoftim"]
+  },
+  {
+    canonical: "ki teitzei",
+    hebrew: ["כי תצא","פרשת כי תצא"],
+    variants: ["ki teitzei","ki tetzei","ki seitzei","ki setzei"]
+  },
+  {
+    canonical: "ki tavo",
+    hebrew: ["כי תבוא","פרשת כי תבא"],
+    variants: ["ki tavo","ki savo","ki tabo"]
+  },
+  {
+    canonical: "nitzavim",
+    hebrew: ["נצבים","ניצבים","פרשת נצבים"],
+    variants: ["nitzavim","netzavim"]
+  },
+  {
+    canonical: "vayeilech",
+    hebrew: ["וילך","פרשת וילך"],
+    variants: ["vayeilech","vayelech"]
+  },
+  {
+    canonical: "haazinu",
+    hebrew: ["האזינו","פרשת האזינו"],
+    variants: ["haazinu","ha'azinu"]
+  },
+  {
+    canonical: "vezot haberachah",
+    hebrew: ["וזאת הברכה","פרשת וזאת הברכה"],
+    variants: ["vezot haberachah","vezos haberacha","v'zot haberachah","vezos habracha"]
   }
 ];
 

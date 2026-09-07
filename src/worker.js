@@ -5367,11 +5367,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           const title = d.shiurtitle || d.shiurTitle || 'Untitled';
           const speaker = d.teacherfullname || (d.shiurTeachers && d.shiurTeachers[0] ? d.shiurTeachers[0].teacherFullName : 'YUTorah');
           const duration = d.durationformatted || (d.duration ? d.duration + ' min' : '');
+          const rawDate = d.shiurdateformatted || d.shiurDateFormatted || d.shiurdate || d.shiurDate || d.shiurdatesubmitted || d.shiurDateSubmitted || '';
+          const date = typeof formatShiurDate === 'function' ? formatShiurDate(rawDate) : '';
+
+          const subParts = [speaker];
+          if (date) subParts.push(date);
+          if (duration) subParts.push(duration);
+
           html += '<a href="/' + id + '" class="preview-item preview-shiur-item" data-id="' + id + '">' +
             '<span class="preview-item-icon">🎧</span>' +
             '<div class="preview-item-body">' +
               '<div class="preview-item-title">' + escapeHtml(title) + '</div>' +
-              '<div class="preview-item-sub">' + escapeHtml(speaker) + (duration ? ' · ' + duration : '') + '</div>' +
+              '<div class="preview-item-sub">' + escapeHtml(subParts.join(' · ')) + '</div>' +
             '</div>' +
             '<span class="preview-item-badge">▶ Play</span>' +
           '</a>';

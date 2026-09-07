@@ -136,9 +136,9 @@ assert.equal(pe7.speaker, null);
 assert.equal(pe7.remainingQuery, '');
 console.log('  ✅ Query entity parsing tests passed.');
 
-// 7. Verify 62 Synset Buckets Integrity
-console.log('7. Testing 62 Synset Buckets Integrity:');
-assert.equal(SYNSETS.length, 62, 'Should have exactly 62 synsets');
+// 7. Verify 181 Synset Buckets Integrity
+console.log('7. Testing 181 Synset Buckets Integrity:');
+assert.equal(SYNSETS.length, 181, 'Should have exactly 181 synsets');
 const seenCanonical = new Set();
 for (const s of SYNSETS) {
   assert.ok(s.canonical, 'Synset must have canonical name');
@@ -147,7 +147,18 @@ for (const s of SYNSETS) {
   assert.ok(Array.isArray(s.hebrew) && s.hebrew.length > 0, `Synset ${s.canonical} missing Hebrew`);
   assert.ok(Array.isArray(s.variants) && s.variants.length > 0, `Synset ${s.canonical} missing variants`);
 }
-console.log('  ✅ All 62 synset buckets passed integrity checks.');
+
+// Test new domains: Masechtot, Parshiot, Tefillah, Kashrut
+const beitzahExp = expandQueryWithPhonetics('beitzah');
+assert.ok(beitzahExp.solrQuery.includes('ביצה'));
+const yisroExp = expandQueryWithPhonetics('yisro');
+assert.ok(yisroExp.solrQuery.includes('יתרו'));
+const benchingExp = expandQueryWithPhonetics('bentching');
+assert.ok(benchingExp.solrQuery.includes('ברכת המזון'));
+const cholovExp = expandQueryWithPhonetics('cholov yisroel');
+assert.ok(cholovExp.solrQuery.includes('חלב ישראל'));
+
+console.log('  ✅ All 181 synset buckets passed integrity and domain expansion checks.');
 
 console.log('\n🎉 ALL PHONETIC & REVERSE TRANSLITERATION TESTS PASSED SUCCESSFULLY!');
 
