@@ -1381,3 +1381,176 @@ export function expandQueryWithPhonetics(rawQuery, enableDynamicHebrew = true) {
   };
 }
 
+// 4. Community Acronym Phrases for Venue & Title Explainability
+export const COMMUNITY_ACRONYM_PHRASES = {
+  yije: ['Young Israel of Jamaica Estates', 'Jamaica Estates', 'YIJE'],
+  yih: ['Young Israel of Hollywood', 'YIH'],
+  yihl: ['Young Israel of Hewlett', 'YIHL'],
+  yish: ['Young Israel of Scarsdale', 'YISH'],
+  yifh: ['Young Israel of Forest Hills', 'YIFH'],
+  yist: ['Young Israel of Staten Island', 'YIST'],
+  yiw: ['Young Israel of Woodmere', 'YIW'],
+  yipc: ['Young Israel of Plainview', 'YIPC'],
+  yioz: ['Young Israel of Oceanside', 'YIOZ'],
+  bmt: ['Beit Midrash of Teaneck', 'BMT'],
+  bcbm: ['Bergen County Beit Midrash', 'BCBM'],
+  riets: ['Rabbi Isaac Elchanan Theological Seminary', 'RIETS'],
+  yu: ['Yeshiva University', 'YU'],
+  ou: ['Orthodox Union', 'OU'],
+  ncsy: ['NCSY']
+};
+
+export function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+export function highlightMatches(text, terms) {
+  if (!text || !terms || terms.length === 0) return escapeHtml(text);
+  const lower = text.toLowerCase();
+  const ranges = [];
+
+  for (const term of terms) {
+    if (!term || term.length < 2) continue;
+    const termLower = term.toLowerCase();
+    let pos = 0;
+    while ((pos = lower.indexOf(termLower, pos)) !== -1) {
+      ranges.push([pos, pos + termLower.length]);
+      pos += termLower.length;
+    }
+  }
+
+  if (ranges.length === 0) return escapeHtml(text);
+
+  // Sort by start ascending, then length descending
+  ranges.sort((a, b) => a[0] - b[0] || b[1] - a[1]);
+
+  // Merge overlapping or adjacent ranges
+  const merged = [ranges[0]];
+  for (let i = 1; i < ranges.length; i++) {
+    const prev = merged[merged.length - 1];
+    const curr = ranges[i];
+    if (curr[0] <= prev[1]) {
+      prev[1] = Math.max(prev[1], curr[1]);
+    } else {
+      merged.push(curr);
+    }
+  }
+
+  let result = '';
+  let lastIdx = 0;
+  for (const [start, end] of merged) {
+    result += escapeHtml(text.slice(lastIdx, start));
+    result += '<mark class="match-mark">' + escapeHtml(text.slice(start, end)) + '</mark>';
+    lastIdx = end;
+  }
+  result += escapeHtml(text.slice(lastIdx));
+  return result;
+}
+
+export function extractSnippet(text, terms, windowBefore = 45, windowAfter = 65) {
+  if (!text || !terms || terms.length === 0) return null;
+  const lower = text.toLowerCase();
+  let firstPos = -1;
+  let matchedTerm = '';
+
+  for (const term of terms) {
+    if (!term || term.length < 2) continue;
+    const termLower = term.toLowerCase();
+    const pos = lower.indexOf(termLower);
+    if (pos !== -1) {
+      if (firstPos === -1 || pos < firstPos) {
+        firstPos = pos;
+        matchedTerm = termLower;
+      }
+    }
+  }
+
+  if (firstPos === -1) return null;
+
+  let start = Math.max(0, firstPos - windowBefore);
+  let end = Math.min(text.length, firstPos + matchedTerm.length + windowAfter);
+
+  let prefix = '...';
+  let suffix = '...';
+
+  if (start === 0) prefix = '';
+  else {
+    const spaceIdx = text.indexOf(' ', start);
+    if (spaceIdx !== -1 && spaceIdx < firstPos) {
+      start = spaceIdx + 1;
+    }
+  }
+
+  if (end === text.length) suffix = '';
+  else {
+    const spaceIdx = text.lastIndexOf(' ', end);
+    if (spaceIdx !== -1 && spaceIdx > firstPos + matchedTerm.length) {
+      end = spaceIdx;
+    }
+  }
+
+  const rawSnippet = prefix + text.slice(start, end).trim() + suffix;
+  return highlightMatches(rawSnippet, terms);
+}
+
+export function buildMatchReasons(doc, terms) {
+  const reasons = [];
+
+  // 1. Description match (Hidden field)
+  const desc = doc.shiurdescription || doc.description || '';
+  if (desc) {
+    const descSnippet = extractSnippet(desc, terms, 45, 65);
+    if (descSnippet && descSnippet.includes('<mark class="match-mark">')) {
+      reasons.push({
+        badge: '📄 Description Match',
+        snippet: descSnippet
+      });
+    }
+  }
+
+  // 2. Location / Venue match (Hidden field)
+  const loc = Array.isArray(doc.location) ? doc.location.join(', ') : (doc.location || '');
+  if (loc) {
+    const locSnippet = extractSnippet(loc, terms, 60, 60);
+    if (locSnippet && locSnippet.includes('<mark class="match-mark">')) {
+      reasons.push({
+        badge: '📍 Venue Match',
+        snippet: locSnippet
+      });
+    }
+  }
+
+  // 3. Keywords / Tags match (Hidden field)
+  const kw = Array.isArray(doc.shiurkeywords) ? doc.shiurkeywords.join(', ') : (doc.shiurkeywords || doc.keywords || '');
+  if (kw) {
+    const kwSnippet = extractSnippet(kw, terms, 50, 50);
+    if (kwSnippet && kwSnippet.includes('<mark class="match-mark">')) {
+      reasons.push({
+        badge: '🏷️ Keywords Match',
+        snippet: kwSnippet
+      });
+    }
+  }
+
+  // 4. Series match (Hidden field)
+  const series = Array.isArray(doc.seriesname) ? doc.seriesname.join(', ') : (doc.seriesname || doc.series || '');
+  if (series) {
+    const seriesSnippet = extractSnippet(series, terms, 50, 50);
+    if (seriesSnippet && seriesSnippet.includes('<mark class="match-mark">')) {
+      reasons.push({
+        badge: '📚 Series Match',
+        snippet: seriesSnippet
+      });
+    }
+  }
+
+  return reasons;
+}
+
+

@@ -9,7 +9,18 @@
 import { getHebrewDateInfo, getActiveHolidayTheme } from './hebrew_calendar.js';
 import { THEMES } from './theme_definitions.js';
 import { THEME_ASSETS } from './theme_assets.js';
-import { expandQueryWithPhonetics, resolveSpeaker, parseQueryEntities, stripSpeakerHonorifics, KNOWN_SPEAKERS, SYNSETS } from './phonetic_engine.js';
+import { 
+  expandQueryWithPhonetics, 
+  resolveSpeaker, 
+  parseQueryEntities, 
+  stripSpeakerHonorifics, 
+  KNOWN_SPEAKERS, 
+  SYNSETS,
+  COMMUNITY_ACRONYM_PHRASES,
+  highlightMatches,
+  extractSnippet,
+  buildMatchReasons
+} from './phonetic_engine.js';
 import AUTOCOMPLETE_META from './autocomplete_data.json' with { type: 'json' };
 
 const TARGET_API_ORIGIN = 'https://www.yutorah.org';
@@ -851,11 +862,29 @@ function normalizeShiur(s) {
     category = s.shiurGroupedSubcategoriesObj[0].categoryShortName || '';
   }
 
-  return { id, title, speaker, photo, duration, date, category, isNew };
+  const description = s.shiurdescription || s.description || '';
+  const keywords = Array.isArray(s.shiurkeywords) ? s.shiurkeywords.join(', ') : (s.shiurkeywords || s.keywords || '');
+  const series = Array.isArray(s.seriesname) ? s.seriesname.join(', ') : (s.seriesname || s.series || '');
+  const location = Array.isArray(s.location) ? s.location.join(', ') : (s.location || '');
+
+  return { id, title, speaker, photo, duration, date, category, isNew, description, keywords, series, location };
 }
 
 function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpeed = '', themeMode = '', homepageData, sponsorshipText = '', sponsorshipPlainText = '', sponsorshipAudioUrl = '', searchQuery, initialSearchResults, initialNumFound = 0 }) {
   const isPlaying = Boolean(shiurData || directAudio);
+
+  const initialSearchTerms = [];
+  if (searchQuery) {
+    const rawWords = searchQuery.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(w => w.length >= 2);
+    for (const w of rawWords) {
+      initialSearchTerms.push(w);
+      if (COMMUNITY_ACRONYM_PHRASES[w]) {
+        for (const exp of COMMUNITY_ACRONYM_PHRASES[w]) {
+          initialSearchTerms.push(exp.toLowerCase());
+        }
+      }
+    }
+  }
 
   let title = 'YUTorah Enhanced Player';
   let speaker = '';
@@ -1118,6 +1147,38 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       background: #141f2f;
       border: 1px solid #233147;
       color: #e7edf7;
+    }
+    [data-theme="dark"] .search-results-text {
+      color: #93c5fd;
+    }
+    [data-theme="dark"] .match-explain-toggle {
+      color: #94a3b8;
+    }
+    [data-theme="dark"] .match-explain-toggle:hover {
+      color: #f1f5f9;
+      background: rgba(255, 255, 255, 0.05);
+    }
+    [data-theme="dark"] .match-toggle-track {
+      background-color: #475569;
+    }
+    [data-theme="dark"] .match-explain-toggle input:checked + .match-toggle-track {
+      background-color: #3b82f6;
+    }
+    [data-theme="dark"] .explain-matches-active mark.match-mark {
+      background-color: rgba(234, 179, 8, 0.35);
+      color: #fef08a;
+    }
+    [data-theme="dark"] .explain-matches-active .quick-card-match-reason {
+      background: rgba(20, 31, 47, 0.85);
+      border-left-color: #60a5fa;
+      color: #94a3b8;
+    }
+    [data-theme="dark"] .match-reason-badge {
+      color: #93c5fd;
+      background: rgba(59, 130, 246, 0.2);
+    }
+    [data-theme="dark"] .match-reason-snippet {
+      color: #e2e8f0;
     }
     [data-theme="dark"] .quick-card-avatar {
       background: #141f2f;
@@ -2869,11 +2930,19 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       display: flex;
       align-items: center;
       justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
       margin-bottom: 16px;
       padding: 12px 16px;
       background: #eef4fc;
       border-radius: 10px;
       border: 1px solid #d0e1f7;
+    }
+    .search-results-actions {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
     }
     .search-results-text {
       font-size: 14px;
@@ -2890,6 +2959,148 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     .close-results-btn:hover {
       text-decoration: underline;
+    }
+
+    /* Match Explainability Toggle */
+    .match-explain-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      user-select: none;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--text-muted);
+      padding: 3px 6px;
+      border-radius: 6px;
+      transition: all 0.2s ease;
+    }
+    .match-explain-toggle:hover {
+      color: var(--text);
+      background: rgba(0, 0, 0, 0.04);
+    }
+    .match-explain-toggle input {
+      position: absolute;
+      opacity: 0;
+      width: 0;
+      height: 0;
+      pointer-events: none;
+    }
+    .match-toggle-track {
+      width: 32px;
+      height: 18px;
+      background-color: var(--border, #cbd5e1);
+      border-radius: 20px;
+      position: relative;
+      transition: background-color 0.2s ease;
+      flex-shrink: 0;
+    }
+    .match-toggle-thumb {
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 14px;
+      height: 14px;
+      background-color: #fff;
+      border-radius: 50%;
+      transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+    }
+    .match-explain-toggle input:checked + .match-toggle-track {
+      background-color: #2563eb;
+    }
+    .match-explain-toggle input:checked + .match-toggle-track .match-toggle-thumb {
+      transform: translateX(14px);
+    }
+    .match-explain-toggle input:focus-visible + .match-toggle-track {
+      outline: 2px solid #2563eb;
+      outline-offset: 2px;
+    }
+    .match-toggle-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      white-space: nowrap;
+    }
+
+    /* Term Highlighting and Explainability Cards */
+    mark.match-mark {
+      background: transparent;
+      color: inherit;
+      font-weight: inherit;
+      padding: 0;
+      border-radius: 3px;
+      transition: background-color 0.2s ease, color 0.2s ease;
+    }
+    .explain-matches-active mark.match-mark {
+      background-color: #fef08a;
+      color: #854d0e;
+      font-weight: 700;
+      padding: 1px 4px;
+    }
+    .quick-card-match-reason {
+      display: none !important;
+    }
+    .explain-matches-active .quick-card-match-reason {
+      display: flex !important;
+      flex-direction: column;
+      gap: 6px;
+      margin: 10px 0 6px 0;
+      padding: 8px 10px;
+      background: #f8fafc;
+      border-left: 3px solid #3b82f6;
+      border-radius: 0 8px 8px 0;
+      font-size: 11.5px;
+      line-height: 1.45;
+      color: var(--text-muted);
+      animation: fadeInReason 0.2s ease;
+    }
+    @keyframes fadeInReason {
+      from { opacity: 0; transform: translateY(-3px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .match-reason-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .match-reason-header {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .match-reason-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      color: #1d4ed8;
+      background: #eff6ff;
+      padding: 1.5px 6px;
+      border-radius: 4px;
+      white-space: nowrap;
+      width: fit-content;
+    }
+    .match-reason-snippet {
+      font-size: 11.5px;
+      line-height: 1.4;
+      color: var(--text);
+      word-break: break-word;
+      padding-left: 2px;
+    }
+    @media (max-width: 600px) {
+      .search-results-info {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+      }
+      .search-results-actions {
+        width: 100%;
+        justify-content: space-between;
+      }
     }
 
     /* Shiur Cards Grid */
@@ -4109,7 +4320,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       <span class="search-results-text" id="searchResultsLabel">
         ${initialSearchResults ? `Showing ${initialSearchResults.length} results for "${escapeHtml(searchQuery)}"` : 'Search Results'}
       </span>
-      <button class="close-results-btn" onclick="clearSearch()">Clear Search ×</button>
+      <div class="search-results-actions">
+        <label class="match-explain-toggle" id="matchExplainToggleContainer" title="Highlight matched search terms &amp; preview snippets from descriptions, tags, and venues">
+          <input type="checkbox" id="toggleMatchExplain" onchange="onToggleMatchExplain(this.checked)">
+          <span class="match-toggle-track">
+            <span class="match-toggle-thumb"></span>
+          </span>
+          <span class="match-toggle-label">🎯 Explain Matches</span>
+        </label>
+        <button class="close-results-btn" onclick="clearSearch()">Clear Search ×</button>
+      </div>
     </div>
 
     <div class="spinner-box" id="searchSpinner">
@@ -4118,7 +4338,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     </div>
 
     <div class="shiur-cards-grid" id="searchResultsGrid">
-      ${initialSearchResults ? initialSearchResults.map(renderShiurCardHtml).join('') : ''}
+      ${initialSearchResults ? initialSearchResults.map(s => renderShiurCardHtml(s, initialSearchTerms)).join('') : ''}
     </div>
 
     <div id="loadMoreContainer" style="text-align: center; margin-top: 26px; ${initialSearchResults && initialSearchResults.length < initialNumFound ? '' : 'display: none;'}">
@@ -5564,6 +5784,225 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   let totalSearchResults = ${JSON.stringify(initialNumFound || 0)};
   let isLoadingMore = false;
   let currentSearchAbort = null;
+  let currentPhoneticTokens = [];
+  let currentSearchDocs = ${JSON.stringify(initialSearchResults || [])};
+  let showMatchReasons = false;
+
+  const COMMUNITY_ACRONYM_PHRASES = {
+    yije: ['Young Israel of Jamaica Estates', 'Jamaica Estates', 'YIJE'],
+    yih: ['Young Israel of Hollywood', 'YIH'],
+    yihl: ['Young Israel of Hewlett', 'YIHL'],
+    yish: ['Young Israel of Scarsdale', 'YISH'],
+    yifh: ['Young Israel of Forest Hills', 'YIFH'],
+    yist: ['Young Israel of Staten Island', 'YIST'],
+    yiw: ['Young Israel of Woodmere', 'YIW'],
+    yipc: ['Young Israel of Plainview', 'YIPC'],
+    yioz: ['Young Israel of Oceanside', 'YIOZ'],
+    bmt: ['Beit Midrash of Teaneck', 'BMT'],
+    bcbm: ['Bergen County Beit Midrash', 'BCBM'],
+    riets: ['Rabbi Isaac Elchanan Theological Seminary', 'RIETS'],
+    yu: ['Yeshiva University', 'YU'],
+    ou: ['Orthodox Union', 'OU'],
+    ncsy: ['NCSY']
+  };
+
+  function getActiveSearchTerms() {
+    const terms = new Set();
+
+    if (currentSearchQuery) {
+      const rawWords = currentSearchQuery.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(w => w.length >= 2);
+      for (const w of rawWords) {
+        terms.add(w);
+        if (COMMUNITY_ACRONYM_PHRASES[w]) {
+          for (const exp of COMMUNITY_ACRONYM_PHRASES[w]) {
+            terms.add(exp.toLowerCase());
+            exp.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(x => x.length >= 3).forEach(x => terms.add(x));
+          }
+        }
+      }
+    }
+
+    if (Array.isArray(currentPhoneticTokens)) {
+      for (const t of currentPhoneticTokens) {
+        if (t && t.length >= 2) {
+          terms.add(t.toLowerCase());
+        }
+      }
+    }
+
+    if (currentFilterParams) {
+      if (Array.isArray(currentFilterParams.teachers)) {
+        currentFilterParams.teachers.forEach(t => {
+          if (t.name) {
+            terms.add(t.name.toLowerCase());
+            t.name.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(w => w.length >= 3 && !['rabbi', 'rav', 'doctor', 'dr'].includes(w)).forEach(w => terms.add(w));
+          }
+        });
+      }
+      if (Array.isArray(currentFilterParams.locations)) {
+        currentFilterParams.locations.forEach(l => {
+          if (l.name) {
+            terms.add(l.name.toLowerCase());
+            l.name.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(w => w.length >= 3).forEach(w => terms.add(w));
+          }
+        });
+      }
+      if (Array.isArray(currentFilterParams.categories)) {
+        currentFilterParams.categories.forEach(c => {
+          if (c.name) {
+            terms.add(c.name.toLowerCase());
+          }
+        });
+      }
+    }
+
+    return Array.from(terms).sort((a, b) => b.length - a.length);
+  }
+
+  function highlightMatches(text, terms) {
+    if (!text || !terms || terms.length === 0) return escapeHtml(text);
+    const lower = text.toLowerCase();
+    const ranges = [];
+
+    for (const term of terms) {
+      if (!term || term.length < 2) continue;
+      const termLower = term.toLowerCase();
+      let pos = 0;
+      while ((pos = lower.indexOf(termLower, pos)) !== -1) {
+        ranges.push([pos, pos + termLower.length]);
+        pos += termLower.length;
+      }
+    }
+
+    if (ranges.length === 0) return escapeHtml(text);
+
+    ranges.sort((a, b) => a[0] - b[0] || b[1] - a[1]);
+
+    const merged = [ranges[0]];
+    for (let i = 1; i < ranges.length; i++) {
+      const prev = merged[merged.length - 1];
+      const curr = ranges[i];
+      if (curr[0] <= prev[1]) {
+        prev[1] = Math.max(prev[1], curr[1]);
+      } else {
+        merged.push(curr);
+      }
+    }
+
+    let result = '';
+    let lastIdx = 0;
+    for (const [start, end] of merged) {
+      result += escapeHtml(text.slice(lastIdx, start));
+      result += '<mark class="match-mark">' + escapeHtml(text.slice(start, end)) + '</mark>';
+      lastIdx = end;
+    }
+    result += escapeHtml(text.slice(lastIdx));
+    return result;
+  }
+
+  function extractSnippet(text, terms, windowBefore = 45, windowAfter = 65) {
+    if (!text || !terms || terms.length === 0) return null;
+    const lower = text.toLowerCase();
+    let firstPos = -1;
+    let matchedTerm = '';
+
+    for (const term of terms) {
+      if (!term || term.length < 2) continue;
+      const termLower = term.toLowerCase();
+      const pos = lower.indexOf(termLower);
+      if (pos !== -1) {
+        if (firstPos === -1 || pos < firstPos) {
+          firstPos = pos;
+          matchedTerm = termLower;
+        }
+      }
+    }
+
+    if (firstPos === -1) return null;
+
+    let start = Math.max(0, firstPos - windowBefore);
+    let end = Math.min(text.length, firstPos + matchedTerm.length + windowAfter);
+
+    let prefix = '...';
+    let suffix = '...';
+
+    if (start === 0) prefix = '';
+    else {
+      const spaceIdx = text.indexOf(' ', start);
+      if (spaceIdx !== -1 && spaceIdx < firstPos) {
+        start = spaceIdx + 1;
+      }
+    }
+
+    if (end === text.length) suffix = '';
+    else {
+      const spaceIdx = text.lastIndexOf(' ', end);
+      if (spaceIdx !== -1 && spaceIdx > firstPos + matchedTerm.length) {
+        end = spaceIdx;
+      }
+    }
+
+    const rawSnippet = prefix + text.slice(start, end).trim() + suffix;
+    return highlightMatches(rawSnippet, terms);
+  }
+
+  function buildMatchReasons(doc, terms) {
+    const reasons = [];
+
+    const desc = doc.shiurdescription || doc.description || '';
+    if (desc) {
+      const descSnippet = extractSnippet(desc, terms, 45, 65);
+      if (descSnippet && descSnippet.includes('<mark class="match-mark">')) {
+        reasons.push({
+          badge: '📄 Description Match',
+          snippet: descSnippet
+        });
+      }
+    }
+
+    const loc = Array.isArray(doc.location) ? doc.location.join(', ') : (doc.location || '');
+    if (loc) {
+      const locSnippet = extractSnippet(loc, terms, 60, 60);
+      if (locSnippet && locSnippet.includes('<mark class="match-mark">')) {
+        reasons.push({
+          badge: '📍 Venue Match',
+          snippet: locSnippet
+        });
+      }
+    }
+
+    const kw = Array.isArray(doc.shiurkeywords) ? doc.shiurkeywords.join(', ') : (doc.shiurkeywords || doc.keywords || '');
+    if (kw) {
+      const kwSnippet = extractSnippet(kw, terms, 50, 50);
+      if (kwSnippet && kwSnippet.includes('<mark class="match-mark">')) {
+        reasons.push({
+          badge: '🏷️ Keywords Match',
+          snippet: kwSnippet
+        });
+      }
+    }
+
+    const series = Array.isArray(doc.seriesname) ? doc.seriesname.join(', ') : (doc.seriesname || doc.series || '');
+    if (series) {
+      const seriesSnippet = extractSnippet(series, terms, 50, 50);
+      if (seriesSnippet && seriesSnippet.includes('<mark class="match-mark">')) {
+        reasons.push({
+          badge: '📚 Series Match',
+          snippet: seriesSnippet
+        });
+      }
+    }
+
+    return reasons;
+  }
+
+  function onToggleMatchExplain(checked) {
+    showMatchReasons = !!checked;
+    const grid = document.getElementById('searchResultsGrid');
+    if (grid) {
+      grid.classList.toggle('explain-matches-active', showMatchReasons);
+    }
+  }
 
   function goHome(e) {
     if (e) e.preventDefault();
@@ -6440,15 +6879,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       currentLoadedDocsCount = docs.length;
 
       // Handle Phonetic Expansion Notice
-      if (data?.phoneticExpansion && phoneticBanner) {
-        const pTokens = data.phoneticExpansion.tokens || [];
+      if (data?.phoneticExpansion) {
+        currentPhoneticTokens = data.phoneticExpansion.tokens || [];
         const original = data.phoneticExpansion.original;
-        if (pTokens.length > 1) {
-          const tagsHtml = pTokens.slice(0, 8).map(t => '<span class="phonetic-tag">' + escapeHtml(t) + '</span>').join('');
+        if (phoneticBanner && currentPhoneticTokens.length > 1) {
+          const tagsHtml = currentPhoneticTokens.slice(0, 8).map(t => '<span class="phonetic-tag">' + escapeHtml(t) + '</span>').join('');
           phoneticBanner.innerHTML = '<div><span>✨ Phonetic Equivalence included synonyms:</span> <div class="phonetic-notice-tags">' + tagsHtml + '</div></div>' +
             '<span style="font-size:11px; opacity:0.8;">Ashkenazic &amp; Sephardic variations searched</span>';
           phoneticBanner.style.display = 'flex';
         }
+      } else {
+        currentPhoneticTokens = [];
       }
 
       const resultsTitle = extraParams.label
@@ -6457,12 +6898,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       label.textContent = resultsTitle;
 
       if (docs.length === 0) {
+        currentSearchDocs = [];
         grid.innerHTML = '<div style="padding: 30px; text-align: center; color: var(--text-muted); grid-column: 1/-1;">No shiurim found matching these criteria. Try adjusting your filters or search keywords.</div>';
         loadMoreBox.style.display = 'none';
         return;
       }
 
+      currentSearchDocs = docs;
       grid.innerHTML = docs.map(renderDocToCard).join('');
+      grid.classList.toggle('explain-matches-active', showMatchReasons);
 
       // Setup Load More button
       const totalInfo = document.getElementById('searchTotalInfo');
@@ -6539,6 +6983,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
       if (newDocs.length > 0) {
         currentLoadedDocsCount += newDocs.length;
+        currentSearchDocs = currentSearchDocs.concat(newDocs);
         const grid = document.getElementById('searchResultsGrid');
         grid.insertAdjacentHTML('beforeend', newDocs.map(renderDocToCard).join(''));
 
@@ -6588,6 +7033,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const pNotice = document.getElementById('phoneticNoticeBanner');
     if (pNotice) pNotice.style.display = 'none';
 
+    currentSearchDocs = [];
+    currentPhoneticTokens = [];
+    showMatchReasons = false;
+    const matchToggle = document.getElementById('toggleMatchExplain');
+    if (matchToggle) matchToggle.checked = false;
+    const resGrid = document.getElementById('searchResultsGrid');
+    if (resGrid) resGrid.classList.remove('explain-matches-active');
+
     // Reset all advanced filters so they don't silently persist
     activeAdvancedFilters = {
       keywords: '',
@@ -6624,32 +7077,69 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   function renderDocToCard(d) {
-    const id = d.shiurid || d.shiurID || '';
-    const title = d.shiurtitle || d.shiurTitle || 'Untitled';
-    const speaker = d.teacherfullname || (d.shiurTeachers && d.shiurTeachers[0] ? d.shiurTeachers[0].teacherFullName : 'YUTorah');
-    const photo = d.PHOTO ? (d.PHOTO.startsWith('http') ? d.PHOTO : 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/' + d.PHOTO) : 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/_default.jpg';
+    const id = d.shiurid || d.shiurID || d.id || '';
+    const title = d.shiurtitle || d.shiurTitle || d.title || 'Untitled';
+    const speaker = d.teacherfullname || (d.shiurTeachers && d.shiurTeachers[0] ? d.shiurTeachers[0].teacherFullName : (d.speaker || 'YUTorah'));
+    const photo = d.PHOTO ? (d.PHOTO.startsWith('http') ? d.PHOTO : 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/' + d.PHOTO) : (d.photo || 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/_default.jpg');
     const duration = d.durationformatted || (d.duration ? d.duration + ' min' : '');
-    const rawDate = d.shiurdateformatted || d.shiurDateFormatted || d.shiurdate || d.shiurDate || d.shiurdatesubmitted || d.shiurDateSubmitted || '';
+    const rawDate = d.shiurdateformatted || d.shiurDateFormatted || d.shiurdate || d.shiurDate || d.shiurdatesubmitted || d.shiurDateSubmitted || d.date || '';
     const date = formatShiurDate(rawDate);
     const isNew = isShiurNew(d.shiurdatesubmitted || d.shiurDateSubmitted || rawDate);
     const newBadge = isNew ? '<span class="quick-card-new-badge">NEW</span>' : '';
-    const category = (Array.isArray(d.categoryname) && d.categoryname[0]) || (Array.isArray(d.subcategoryname) && d.subcategoryname[0]) || '';
+    const category = (Array.isArray(d.categoryname) && d.categoryname[0]) || (Array.isArray(d.subcategoryname) && d.subcategoryname[0]) || d.category || '';
 
     const metaParts = [];
     if (duration) metaParts.push('⏱ ' + escapeHtml(duration));
     if (date) metaParts.push(escapeHtml(date));
     const bottomMeta = metaParts.join(' · ');
 
+    const terms = getActiveSearchTerms();
+    const displayTitle = highlightMatches(title, terms);
+    const displaySpeaker = highlightMatches(speaker, terms);
+    const displayCategory = category ? highlightMatches(category, terms) : '';
+
+    const matchReasons = buildMatchReasons(d, terms);
+    let matchReasonHtml = '';
+
+    if (matchReasons.length > 0) {
+      matchReasonHtml = '<div class="quick-card-match-reason">' +
+        matchReasons.map(r => 
+          '<div class="match-reason-item">' +
+            '<div class="match-reason-header"><span class="match-reason-badge">' + escapeHtml(r.badge) + '</span></div>' +
+            '<div class="match-reason-snippet" dir="auto">' + r.snippet + '</div>' +
+          '</div>'
+        ).join('') +
+      '</div>';
+    } else {
+      let matchedVisible = [];
+      if (displayTitle.includes('mark class="match-mark"')) matchedVisible.push('Title');
+      if (displaySpeaker.includes('mark class="match-mark"')) matchedVisible.push('Speaker');
+      if (displayCategory && displayCategory.includes('mark class="match-mark"')) matchedVisible.push('Category');
+
+      const visibleNote = matchedVisible.length > 0
+        ? 'Matched search term in ' + matchedVisible.join(' & ')
+        : 'Matched via YUTorah index relevance';
+      const visibleBadge = matchedVisible.length > 0 ? '✨ Direct Match' : '🎯 Solr Index';
+
+      matchReasonHtml = '<div class="quick-card-match-reason">' +
+        '<div class="match-reason-item">' +
+          '<div class="match-reason-header"><span class="match-reason-badge">' + escapeHtml(visibleBadge) + '</span></div>' +
+          '<div class="match-reason-snippet">' + escapeHtml(visibleNote) + '</div>' +
+        '</div>' +
+      '</div>';
+    }
+
     return '<a href="/' + id + '" class="quick-card-link" onclick="playShiurById(event, this.dataset.id)" data-id="' + id + '">' +
       newBadge +
       '<div class="quick-card-top">' +
         '<img class="quick-card-avatar" src="' + escapeHtml(photo) + '" alt="' + escapeHtml(speaker) + '" loading="lazy" onerror="handleImgError(this)">' +
         '<div class="quick-card-info">' +
-          '<div class="quick-card-title">' + escapeHtml(title) + '</div>' +
-          '<div class="quick-card-speaker">' + escapeHtml(speaker) + '</div>' +
-          (category ? '<div class="quick-card-category">' + escapeHtml(category) + '</div>' : '') +
+          '<div class="quick-card-title">' + displayTitle + '</div>' +
+          '<div class="quick-card-speaker">' + displaySpeaker + '</div>' +
+          (displayCategory ? '<div class="quick-card-category">' + displayCategory + '</div>' : '') +
         '</div>' +
       '</div>' +
+      matchReasonHtml +
       '<div class="quick-card-bottom">' +
         '<span>' + bottomMeta + '</span>' +
         '<span class="quick-play-badge">▶ Play</span>' +
@@ -7876,7 +8366,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 `;
 }
 
-function renderShiurCardHtml(s) {
+function renderShiurCardHtml(s, searchTerms = []) {
   const metaParts = [];
   if (s.duration) metaParts.push('⏱ ' + escapeHtml(s.duration));
   const dateStr = formatShiurDate(s.date || '');
@@ -7884,17 +8374,54 @@ function renderShiurCardHtml(s) {
   const bottomMeta = metaParts.join(' · ');
   const newBadge = s.isNew ? '<span class="quick-card-new-badge">NEW</span>' : '';
 
+  let displayTitle = escapeHtml(s.title);
+  let displaySpeaker = escapeHtml(s.speaker);
+  let displayCategory = s.category ? escapeHtml(s.category) : '';
+  let matchReasonHtml = '';
+
+  if (searchTerms && searchTerms.length > 0) {
+    displayTitle = highlightMatches(s.title, searchTerms);
+    displaySpeaker = highlightMatches(s.speaker, searchTerms);
+    if (s.category) displayCategory = highlightMatches(s.category, searchTerms);
+
+    const reasons = buildMatchReasons(s, searchTerms);
+    if (reasons.length > 0) {
+      matchReasonHtml = '<div class="quick-card-match-reason">' +
+        reasons.map(r => 
+          '<div class="match-reason-item">' +
+            '<div class="match-reason-header"><span class="match-reason-badge">' + escapeHtml(r.badge) + '</span></div>' +
+            '<div class="match-reason-snippet" dir="auto">' + r.snippet + '</div>' +
+          '</div>'
+        ).join('') +
+      '</div>';
+    } else {
+      let matchedVisible = [];
+      if (displayTitle.includes('mark class="match-mark"')) matchedVisible.push('Title');
+      if (displaySpeaker.includes('mark class="match-mark"')) matchedVisible.push('Speaker');
+      if (displayCategory && displayCategory.includes('mark class="match-mark"')) matchedVisible.push('Category');
+      const visibleNote = matchedVisible.length > 0 ? 'Matched search term in ' + matchedVisible.join(' & ') : 'Matched via YUTorah index relevance';
+      const visibleBadge = matchedVisible.length > 0 ? '✨ Direct Match' : '🎯 Solr Index';
+      matchReasonHtml = '<div class="quick-card-match-reason">' +
+        '<div class="match-reason-item">' +
+          '<div class="match-reason-header"><span class="match-reason-badge">' + escapeHtml(visibleBadge) + '</span></div>' +
+          '<div class="match-reason-snippet">' + escapeHtml(visibleNote) + '</div>' +
+        '</div>' +
+      '</div>';
+    }
+  }
+
   return `
     <a href="/${s.id}" class="quick-card-link" onclick="playShiurById(event, this.dataset.id)" data-id="${s.id}">
       ${newBadge}
       <div class="quick-card-top">
         <img class="quick-card-avatar" src="${escapeHtml(s.photo)}" alt="${escapeHtml(s.speaker)}" loading="lazy" onerror="handleImgError(this)">
         <div class="quick-card-info">
-          <div class="quick-card-title">${escapeHtml(s.title)}</div>
-          <div class="quick-card-speaker">${escapeHtml(s.speaker)}</div>
-          ${s.category ? `<div class="quick-card-category">${escapeHtml(s.category)}</div>` : ''}
+          <div class="quick-card-title">${displayTitle}</div>
+          <div class="quick-card-speaker">${displaySpeaker}</div>
+          ${displayCategory ? `<div class="quick-card-category">${displayCategory}</div>` : ''}
         </div>
       </div>
+      ${matchReasonHtml}
       <div class="quick-card-bottom">
         <span>${bottomMeta}</span>
         <span class="quick-play-badge">▶ Play</span>

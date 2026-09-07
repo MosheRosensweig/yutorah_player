@@ -180,5 +180,48 @@ assert.ok(!yijeExp.solrQuery.includes('יג'), 'Acronym yije must never generate
 assert.ok(yijeExp.solrQuery.includes('yije'), 'Acronym yije must remain literal English');
 console.log('  ✅ Acronym protection and false-positive suppression tests passed.');
 
+// 9. Test Match Explainability, Highlighting & Snippet Extraction
+console.log('9. Testing Match Explainability, Highlighting & Snippet Extraction:');
+import { highlightMatches, extractSnippet, buildMatchReasons, COMMUNITY_ACRONYM_PHRASES } from '../src/phonetic_engine.js';
+
+// 9a. Test Title/Speaker highlighting
+const searchTerms = ['rosensweig', 'shabos', 'yije', 'shabbat', 'shabbos', 'שבת'];
+const highSpeaker = highlightMatches('Rabbi Michael Rosensweig', searchTerms);
+assert.ok(highSpeaker.includes('<mark class="match-mark">Rosensweig</mark>'), 'Speaker should have highlighted Rosensweig');
+const highTitle = highlightMatches('YIJE Rosh Hashana 5784', searchTerms);
+assert.ok(highTitle.includes('<mark class="match-mark">YIJE</mark>'), 'Title should have highlighted YIJE');
+
+// 9b. Test Shiur #979218 real-world case: description contains שבת
+const sampleDoc979218 = {
+  shiurid: '979218',
+  shiurtitle: 'Pesachim Shiur - שוכר ומשכיר 2',
+  teacherfullname: 'Rabbi Michael Rosensweig',
+  categoryname: ['Halacha'],
+  shiurdescription: 'פסחים ד., רש"י שם, רש"ש שם, מהרש"ל שם, בבא מציעא קא:, רמב"ם הלכות שכירות ו:א, תוספות שם, רמב"ם הל\' שבת כ:ג, תרומות ט:ז, מכירה יג:יז',
+  location: null,
+  shiurkeywords: 'bedika, socheir, maschir, schrius, mechira, rashi'
+};
+const reasons979218 = buildMatchReasons(sampleDoc979218, searchTerms);
+assert.equal(reasons979218.length, 1, 'Should find 1 hidden field match (in description)');
+assert.equal(reasons979218[0].badge, '📄 Description Match');
+assert.ok(reasons979218[0].snippet.includes('<mark class="match-mark">שבת</mark>'), 'Snippet must highlight שבת in description');
+
+// 9c. Test Venue match with acronym expansion
+const venueDoc = {
+  shiurid: '12345',
+  shiurtitle: 'Hilchos Tefillah',
+  teacherfullname: 'Rabbi Mayer Twersky',
+  categoryname: ['Halacha'],
+  location: 'Young Israel of Jamaica Estates'
+};
+const venueTerms = ['yije', ...COMMUNITY_ACRONYM_PHRASES.yije.map(t => t.toLowerCase())];
+const venueReasons = buildMatchReasons(venueDoc, venueTerms);
+assert.equal(venueReasons.length, 1, 'Should find 1 hidden field match (in venue/location)');
+assert.equal(venueReasons[0].badge, '📍 Venue Match');
+assert.ok(venueReasons[0].snippet.includes('<mark class="match-mark">Young Israel of Jamaica Estates</mark>'));
+
+console.log('  ✅ All explainability, highlighting, and snippet extraction tests passed.');
+
 console.log('\n🎉 ALL PHONETIC & REVERSE TRANSLITERATION TESTS PASSED SUCCESSFULLY!');
+
 
