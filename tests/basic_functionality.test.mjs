@@ -122,6 +122,50 @@ async function testSponsorshipApi() {
   console.log('  ✅ Sponsorship endpoint returns valid live dedication and audio link.');
 }
 
+async function testMediaTypeFilter() {
+  console.log('7. Testing Media Type Filter (Audio vs Articles vs Both)...');
+  // 1. Check SSR controls in Homepage HTML
+  const hpReq = new Request('https://yutorah-player.mrosensweig.workers.dev/');
+  const hpRes = await worker.fetch(hpReq, mockEnv, mockCtx);
+  const hpHtml = await hpRes.text();
+  assert.ok(hpHtml.includes('id="mediaTypePresetsRow"'), 'Must contain #mediaTypePresetsRow');
+  assert.ok(hpHtml.includes('id="btnMediaAll"'), 'Must contain #btnMediaAll');
+  assert.ok(hpHtml.includes('id="btnMediaAudio"'), 'Must contain #btnMediaAudio');
+  assert.ok(hpHtml.includes('id="btnMediaArticle"'), 'Must contain #btnMediaArticle');
+
+  // Helper for article detection
+  function isDocArticle(doc) {
+    if (!doc) return false;
+    const mediaCat = (doc.mediatypecategory || doc.mediaTypeCategory || '').toLowerCase();
+    const urlCheck = doc.shiururl || doc.shiurURL || doc.playerDownloadURL || doc.downloadURL || '';
+    return mediaCat === 'text' || mediaCat === 'article' || /\.pdf($|\?)/i.test(urlCheck);
+  }
+
+  // 2. Test Audio Only (/api/search?searchTerm=Tzibur&mediaType=audio)
+  const audioReq = new Request('https://yutorah-player.mrosensweig.workers.dev/api/search?searchTerm=Tzibur&mediaType=audio');
+  const audioRes = await worker.fetch(audioReq, mockEnv, mockCtx);
+  assert.equal(audioRes.status, 200, 'Audio search should return 200');
+  const audioData = await audioRes.json();
+  const audioDocs = audioData?.response?.docs || [];
+  assert.ok(audioDocs.length > 0, 'Audio search for Tzibur should return results');
+  for (const doc of audioDocs) {
+    assert.equal(isDocArticle(doc), false, `Audio-only search returned an article: ${doc.shiurtitle}`);
+  }
+
+  // 3. Test Articles Only (/api/search?searchTerm=Tzibur&mediaType=article)
+  const articleReq = new Request('https://yutorah-player.mrosensweig.workers.dev/api/search?searchTerm=Tzibur&mediaType=article');
+  const articleRes = await worker.fetch(articleReq, mockEnv, mockCtx);
+  assert.equal(articleRes.status, 200, 'Article search should return 200');
+  const articleData = await articleRes.json();
+  const articleDocs = articleData?.response?.docs || [];
+  assert.ok(articleDocs.length > 0, 'Article search for Tzibur should find article results');
+  for (const doc of articleDocs) {
+    assert.equal(isDocArticle(doc), true, `Article-only search returned non-article: ${doc.shiurtitle}`);
+  }
+
+  console.log(`  ✅ Media Type Filter verified: Audio only returned ${audioDocs.length} audio docs (0 articles), Articles only returned ${articleDocs.length} article docs (100% articles).`);
+}
+
 async function runAll() {
   try {
     await testHomepage();
@@ -130,7 +174,8 @@ async function runAll() {
     await testPdfProxy();
     await testSearchEndpoints();
     await testSponsorshipApi();
-    console.log('\n🎉 ALL BASIC FUNCTIONALITY & ARTICLE READER TESTS PASSED SUCCESSFULLY!');
+    await testMediaTypeFilter();
+    console.log('\n🎉 ALL BASIC FUNCTIONALITY, ARTICLE READER & MEDIA FILTER TESTS PASSED SUCCESSFULLY!');
   } catch (err) {
     console.error('\n❌ Test failed:', err);
     process.exit(1);

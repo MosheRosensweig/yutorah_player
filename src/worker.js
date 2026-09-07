@@ -259,6 +259,14 @@ async function executeSearchInternal(searchParams) {
   const year = searchParams.get('year') || '';
   const fromDate = searchParams.get('fromDate') || '';
   const toDate = searchParams.get('toDate') || '';
+  const mediaType = (searchParams.get('mediaType') || searchParams.get('media') || '').toLowerCase(); // 'all' | 'audio' | 'article' | 'text'
+
+  function isDocArticle(doc) {
+    if (!doc) return false;
+    const mediaCat = (doc.mediatypecategory || doc.mediaTypeCategory || '').toLowerCase();
+    const urlCheck = doc.shiururl || doc.shiurURL || doc.playerDownloadURL || doc.downloadURL || '';
+    return mediaCat === 'text' || mediaCat === 'article' || /[.]pdf($|[?])/i.test(urlCheck);
+  }
 
   // Phonetic & Speaker Auto-Resolution
   let effectiveQuery = rawQ;
@@ -287,10 +295,14 @@ async function executeSearchInternal(searchParams) {
     effectiveQuery = expandedInfo.solrQuery;
   }
 
-  const hasPostFilter = (minDuration !== null) || (maxDuration !== null) || year || fromDate || toDate;
+  const filterMedia = (mediaType === 'audio' || mediaType === 'article' || mediaType === 'text');
+  const hasPostFilter = (minDuration !== null) || (maxDuration !== null) || year || fromDate || toDate || filterMedia;
 
   function matchesPostFilters(doc) {
     if (!doc) return false;
+    if (mediaType === 'audio' && isDocArticle(doc)) return false;
+    if ((mediaType === 'article' || mediaType === 'text') && !isDocArticle(doc)) return false;
+
     const dur = typeof doc.duration === 'number' ? doc.duration : 0;
     if (minDuration !== null && minDuration > 0 && dur < minDuration) return false;
     if (maxDuration !== null && maxDuration > 0 && dur > maxDuration) return false;
@@ -423,8 +435,9 @@ async function executeSearchInternal(searchParams) {
     const sId = seriesIds[0] || '';
     let curFetchStart = start;
     let iterations = 0;
+    const maxIterations = (mediaType === 'article' || mediaType === 'text') ? 10 : 5;
 
-    while (accumulatedDocs.length < targetPageSize && iterations < 5) {
+    while (accumulatedDocs.length < targetPageSize && iterations < maxIterations) {
       iterations++;
       const { docs, numFound } = await fetchSolrSingle(effectiveQuery, curFetchStart, tId, catId, locId, sId);
       totalEstimatedFound = numFound;
@@ -4713,6 +4726,35 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       color: #fff;
       border-color: var(--primary);
     }
+    .media-presets-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .media-preset-btn {
+      flex: 1;
+      min-width: 90px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s;
+    }
+    .media-preset-btn:hover {
+      border-color: var(--primary);
+      background: rgba(43, 76, 126, 0.05);
+    }
+    .media-preset-btn.selected {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+    }
     .modal-footer {
       padding: 16px 24px;
       border-top: 1px solid var(--border);
@@ -5477,11 +5519,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
             Automatically equates Ashkenazic &amp; Sephardic phonetics (<em>Shabbos ↔ Shabbat</em>, <em>Succah ↔ Sukkah</em>), expands English to Hebrew (<em>שבת, סוכה, פסח, מוצאי</em>), and auto-detects speakers. <strong>Unchecking this box uses the classic old YUTorah website search</strong> (strict literal match only).
           </div>
           <div class="filter-dimensions-hint">
-            <span style="font-size:11px; font-weight:700; color:var(--text-muted); margin-right:2px;">Filter across 6 catalog dimensions:</span>
+            <span style="font-size:11px; font-weight:700; color:var(--text-muted); margin-right:2px;">Filter across 7 catalog dimensions:</span>
             <span class="dim-tag">👤 Speakers</span>
             <span class="dim-tag">🏷️ Topics</span>
             <span class="dim-tag">📍 Venues</span>
             <span class="dim-tag">📚 Series</span>
+            <span class="dim-tag">🎧/📄 Format</span>
             <span class="dim-tag">⏱️ Durations</span>
             <span class="dim-tag">📅 Years</span>
           </div>
@@ -5554,6 +5597,19 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
             <input type="text" id="advSeriesInput" class="combobox-input" placeholder="Type series name (e.g. Daf Yomi, Daily Shiur)..." autocomplete="off">
           </div>
           <div class="autocomplete-dropdown" id="seriesDropdown"></div>
+        </div>
+      </div>
+
+      <!-- Media Format Filter: Both / Audio Only / Articles Only -->
+      <div class="filter-group">
+        <label class="filter-label">
+          <span>Media Format</span>
+          <span class="filter-label-hint" id="mediaTypeHint">Audio &amp; Articles</span>
+        </label>
+        <div class="media-presets-row" id="mediaTypePresetsRow">
+          <button type="button" class="media-preset-btn selected" id="btnMediaAll" data-media="all" onclick="setMediaTypePreset(this, 'all')">🎧 &amp; 📄 Both</button>
+          <button type="button" class="media-preset-btn" id="btnMediaAudio" data-media="audio" onclick="setMediaTypePreset(this, 'audio')">🎙️ Audio Only</button>
+          <button type="button" class="media-preset-btn" id="btnMediaArticle" data-media="article" onclick="setMediaTypePreset(this, 'article')">📄 Articles Only</button>
         </div>
       </div>
 
@@ -6363,6 +6419,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
                 durationLabel: '',
                 year: '',
                 yearLabel: '',
+                mediaType: 'all',
+                mediaTypeLabel: '',
                 enablePhonetics: true
               };
               executeLiveSearch('', { ...activeAdvancedFilters, label: 'Shiurim by ' + t.name });
@@ -6396,6 +6454,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
                 durationLabel: '',
                 year: '',
                 yearLabel: '',
+                mediaType: 'all',
+                mediaTypeLabel: '',
                 enablePhonetics: true
               };
               executeLiveSearch('', { ...activeAdvancedFilters, label: 'Topic: ' + c.name });
@@ -6406,7 +6466,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
       // 2. Fetch live preview shiur results from /api/search?q=...&start=1
       const phoneticsParam = (typeof activeAdvancedFilters !== 'undefined' && activeAdvancedFilters?.enablePhonetics === false) ? '&exact=1' : '';
-      const res = await fetch('/api/search?q=' + encodeURIComponent(query) + '&start=1' + phoneticsParam, {
+      const mediaParam = (typeof activeAdvancedFilters !== 'undefined' && activeAdvancedFilters?.mediaType && activeAdvancedFilters.mediaType !== 'all') ? ('&mediaType=' + encodeURIComponent(activeAdvancedFilters.mediaType)) : '';
+      const res = await fetch('/api/search?q=' + encodeURIComponent(query) + '&start=1' + phoneticsParam + mediaParam, {
         signal: previewAbortCtrl.signal
       });
       if (!res.ok) return;
@@ -6453,13 +6514,19 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           if (date) subParts.push(date);
           if (duration) subParts.push(duration);
 
+          const dMediaCat = (d.mediatypecategory || d.mediaTypeCategory || '').toLowerCase();
+          const dUrlCheck = d.shiururl || d.shiurURL || d.playerDownloadURL || d.downloadURL || '';
+          const dIsArticle = dMediaCat === 'text' || dMediaCat === 'article' || /[.]pdf($|[?])/i.test(dUrlCheck);
+          const previewIcon = dIsArticle ? '📄' : '🎧';
+          const previewBadge = dIsArticle ? '📄 Read' : '▶ Play';
+
           html += '<a href="/' + id + '" class="preview-item preview-shiur-item" data-id="' + id + '">' +
-            '<span class="preview-item-icon">🎧</span>' +
+            '<span class="preview-item-icon">' + previewIcon + '</span>' +
             '<div class="preview-item-body">' +
               '<div class="preview-item-title">' + escapeHtml(title) + '</div>' +
               '<div class="preview-item-sub">' + escapeHtml(subParts.join(' · ')) + '</div>' +
             '</div>' +
-            '<span class="preview-item-badge">▶ Play</span>' +
+            '<span class="preview-item-badge">' + previewBadge + '</span>' +
           '</a>';
         });
 
@@ -6548,7 +6615,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       (activeAdvancedFilters.locations && activeAdvancedFilters.locations.length > 0) ||
       (activeAdvancedFilters.series && activeAdvancedFilters.series.length > 0) ||
       activeAdvancedFilters.minDuration || activeAdvancedFilters.maxDuration ||
-      activeAdvancedFilters.year;
+      activeAdvancedFilters.year ||
+      (activeAdvancedFilters.mediaType && activeAdvancedFilters.mediaType !== 'all');
   }
 
   function doSearch() {
@@ -7471,6 +7539,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     durationLabel: '',
     year: '',
     yearLabel: '',
+    mediaType: 'all',
+    mediaTypeLabel: '',
     enablePhonetics: true
   };
 
@@ -7523,6 +7593,24 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         b.classList.remove('selected');
       }
     });
+
+    // Set media format buttons
+    const curMedia = activeAdvancedFilters.mediaType || 'all';
+    const mediaBtns = document.querySelectorAll('.media-preset-btn');
+    mediaBtns.forEach(b => {
+      const bMedia = b.getAttribute('data-media') || 'all';
+      if (bMedia === curMedia) {
+        b.classList.add('selected');
+      } else {
+        b.classList.remove('selected');
+      }
+    });
+    const mediaHint = document.getElementById('mediaTypeHint');
+    if (mediaHint) {
+      if (curMedia === 'audio') mediaHint.textContent = 'Audio Only';
+      else if (curMedia === 'article') mediaHint.textContent = 'Articles Only';
+      else mediaHint.textContent = 'Audio & Articles';
+    }
 
     modal.classList.add('open');
     loadAutocompleteMeta(); // Preload data in background
@@ -7722,6 +7810,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
   }
 
+  function setMediaTypePreset(btn, type) {
+    document.querySelectorAll('.media-preset-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    const hint = document.getElementById('mediaTypeHint');
+    if (hint) {
+      if (type === 'audio') hint.textContent = 'Audio Only';
+      else if (type === 'article') hint.textContent = 'Articles Only';
+      else hint.textContent = 'Audio & Articles';
+    }
+  }
+
   function resetAdvancedFilters() {
     document.getElementById('advKeywords').value = '';
     document.getElementById('advYearSelect').value = '';
@@ -7744,6 +7843,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     renderComboboxChips('series');
     const defBtn = document.querySelector('.duration-preset-btn[data-min=""][data-max=""]');
     if (defBtn) setDurationPreset(defBtn, '', '');
+    const defMediaBtn = document.querySelector('.media-preset-btn[data-media="all"]');
+    if (defMediaBtn) setMediaTypePreset(defMediaBtn, 'all');
   }
 
   function applyAdvancedFilters() {
@@ -7752,6 +7853,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const minDuration = selDurationBtn ? selDurationBtn.getAttribute('data-min') : '';
     const maxDuration = selDurationBtn ? selDurationBtn.getAttribute('data-max') : '';
     const durationLabel = selDurationBtn && selDurationBtn.getAttribute('data-min') !== '' ? selDurationBtn.textContent : '';
+
+    const selMediaBtn = document.querySelector('.media-preset-btn.selected');
+    const mediaType = selMediaBtn ? (selMediaBtn.getAttribute('data-media') || 'all') : 'all';
+    let mediaTypeLabel = '';
+    if (mediaType === 'audio') mediaTypeLabel = 'Audio Only';
+    else if (mediaType === 'article') mediaTypeLabel = 'Articles Only';
 
     const yearSelect = document.getElementById('advYearSelect');
     const year = yearSelect.value;
@@ -7770,6 +7877,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       durationLabel,
       year,
       yearLabel,
+      mediaType,
+      mediaTypeLabel,
       enablePhonetics
     };
 
@@ -7825,6 +7934,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       pills.push('<span class="active-filter-pill">📅 ' + escapeHtml(activeAdvancedFilters.yearLabel || activeAdvancedFilters.year) + ' <button type="button" onclick="removeSingleFilter(&quot;year&quot;)" title="Remove">✕</button></span>');
     }
 
+    // Media Format pill
+    if (activeAdvancedFilters.mediaType && activeAdvancedFilters.mediaType !== 'all') {
+      const icon = activeAdvancedFilters.mediaType === 'audio' ? '🎙️' : '📄';
+      const label = activeAdvancedFilters.mediaType === 'audio' ? 'Audio Only' : 'Articles Only';
+      pills.push('<span class="active-filter-pill">' + icon + ' ' + escapeHtml(label) + ' <button type="button" onclick="removeSingleFilter(&quot;mediaType&quot;)" title="Remove">✕</button></span>');
+    }
+
     // Transliteration indicator badge in pills bar
     if (activeAdvancedFilters.enablePhonetics === false) {
       pills.push('<span class="active-filter-pill" style="background:rgba(239, 68, 68, 0.1); border-color:rgba(239, 68, 68, 0.3); color:#dc2626;">🔤 Exact Match (Phonetics Off) <button type="button" onclick="toggleFilterPhonetics(true)" title="Turn Phonetics Back On">✕</button></span>');
@@ -7870,6 +7986,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     } else if (type === 'year') {
       activeAdvancedFilters.year = '';
       activeAdvancedFilters.yearLabel = '';
+    } else if (type === 'mediaType') {
+      activeAdvancedFilters.mediaType = 'all';
+      activeAdvancedFilters.mediaTypeLabel = '';
     }
     executeLiveSearch(activeAdvancedFilters.keywords || '', { ...activeAdvancedFilters });
   }
@@ -7886,6 +8005,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       durationLabel: '',
       year: '',
       yearLabel: '',
+      mediaType: 'all',
+      mediaTypeLabel: '',
       enablePhonetics: true
     };
     executeLiveSearch(searchInput.value.trim(), {});
@@ -7968,6 +8089,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (extraParams.minDuration) apiUrl += '&minDuration=' + encodeURIComponent(extraParams.minDuration);
     if (extraParams.maxDuration) apiUrl += '&maxDuration=' + encodeURIComponent(extraParams.maxDuration);
     if (extraParams.year) apiUrl += '&year=' + encodeURIComponent(extraParams.year);
+    if (extraParams.mediaType && extraParams.mediaType !== 'all') {
+      apiUrl += '&mediaType=' + encodeURIComponent(extraParams.mediaType);
+    }
     if (extraParams.enablePhonetics === false || (extraParams.enablePhonetics === undefined && useClassicSearch)) {
       apiUrl += '&exact=1';
     }
@@ -8079,6 +8203,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (currentFilterParams.minDuration) apiUrl += '&minDuration=' + encodeURIComponent(currentFilterParams.minDuration);
     if (currentFilterParams.maxDuration) apiUrl += '&maxDuration=' + encodeURIComponent(currentFilterParams.maxDuration);
     if (currentFilterParams.year) apiUrl += '&year=' + encodeURIComponent(currentFilterParams.year);
+    if (currentFilterParams.mediaType && currentFilterParams.mediaType !== 'all') {
+      apiUrl += '&mediaType=' + encodeURIComponent(currentFilterParams.mediaType);
+    }
     if (currentFilterParams.enablePhonetics === false || (currentFilterParams.enablePhonetics === undefined && useClassicSearch)) {
       apiUrl += '&exact=1';
     }
@@ -8167,6 +8294,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       durationLabel: '',
       year: '',
       yearLabel: '',
+      mediaType: 'all',
+      mediaTypeLabel: '',
       enablePhonetics: true
     };
     const advBtn = document.getElementById('advancedSearchBtn');
