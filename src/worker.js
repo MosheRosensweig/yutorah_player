@@ -343,10 +343,19 @@ export default {
           const sId = seriesIds[0] || '';
 
           const { docs, numFound } = await fetchSolrSingle(effectiveQuery, start, tId, catId, locId, sId);
+
+          // Post-filter to guarantee strict teacher intersection:
+          // Solr sometimes returns docs where the queried teacherId is a secondary/co-teacher
+          // but the primary teacherid field shows a different teacher.
+          const filteredDocs = tId ? docs.filter(doc => {
+            const docTeacherId = String(doc.teacherid || doc.teacherId || '');
+            return docTeacherId === String(tId);
+          }) : docs;
+
           const responsePayload = {
             response: {
-              docs,
-              numFound,
+              docs: filteredDocs,
+              numFound: tId ? Math.min(numFound, filteredDocs.length + (numFound - docs.length)) : numFound,
               start
             },
             phoneticExpansion: (expandedInfo && expandedInfo.expandedTokens && expandedInfo.expandedTokens.length > 1) ? {
@@ -365,24 +374,29 @@ export default {
         }
 
         // Multi-Target or Post-Filtering Path
-        // If multiple teachers or locations are specified, execute parallel queries across targets and merge
+        // If multiple targets are specified (e.g. multiple teachers, multiple categories, multiple locations),
+        // execute queries and strictly enforce dimensional intersection (AND between dimensions, OR across multiple selections within same dimension).
         const targetPageSize = 30;
         let accumulatedDocs = [];
         let totalEstimatedFound = 0;
 
         if (isMultiTarget) {
-          // Determine the primary multi-entity list (teachers > locations > categories)
-          const primaryMulti = isMultiTeacher ? teacherIds.map(id => ({ tId: id })) :
-                               (isMultiLocation ? locationIds.map(id => ({ locId: id })) :
-                               subCategoryIds.map(id => ({ catId: id })));
+          // If multiple teachers are selected, each teacher represents a union branch, but each branch MUST intersect with all other selected dimensions (category, location, series)
+          // If multiple locations or categories are selected without multiple teachers, similarly branch on that dimension while preserving all others.
+          let branchingEntities = [];
+          if (isMultiTeacher) {
+            branchingEntities = teacherIds.map(id => ({ tId: id, catId: subCategoryIds[0] || '', locId: locationIds[0] || '', sId: seriesIds[0] || '' }));
+          } else if (isMultiCategory) {
+            branchingEntities = subCategoryIds.map(id => ({ tId: teacherIds[0] || '', catId: id, locId: locationIds[0] || '', sId: seriesIds[0] || '' }));
+          } else if (isMultiLocation) {
+            branchingEntities = locationIds.map(id => ({ tId: teacherIds[0] || '', catId: subCategoryIds[0] || '', locId: id, sId: seriesIds[0] || '' }));
+          } else {
+            branchingEntities = seriesIds.map(id => ({ tId: teacherIds[0] || '', catId: subCategoryIds[0] || '', locId: locationIds[0] || '', sId: id }));
+          }
 
-          // Fetch from all targets in parallel
-          const fetchPromises = primaryMulti.map(entity => {
-            const tId = entity.tId || teacherIds[0] || '';
-            const catId = entity.catId || subCategoryIds[0] || '';
-            const locId = entity.locId || locationIds[0] || '';
-            const sId = seriesIds[0] || '';
-            return fetchSolrSingle(effectiveQuery, start, tId, catId, locId, sId);
+          // Fetch from all branches with full dimensional constraints
+          const fetchPromises = branchingEntities.map(entity => {
+            return fetchSolrSingle(effectiveQuery, start, entity.tId, entity.catId, entity.locId, entity.sId);
           });
 
           const results = await Promise.all(fetchPromises);
@@ -394,7 +408,10 @@ export default {
               const docId = doc.shiurID || doc.shiurid || doc.id;
               if (docId && !seenShiurIds.has(docId)) {
                 seenShiurIds.add(docId);
-                if (matchesPostFilters(doc)) {
+                // Verify strict dimensional intersection
+                const docTeacherId = String(doc.teacherid || doc.teacherId || '');
+                const teacherMatches = teacherIds.length === 0 || teacherIds.includes(docTeacherId);
+                if (teacherMatches && matchesPostFilters(doc)) {
                   accumulatedDocs.push(doc);
                 }
               }
@@ -410,7 +427,7 @@ export default {
 
           accumulatedDocs = accumulatedDocs.slice(0, targetPageSize);
         } else {
-          // Single target with post-filtering window accumulation
+          // Single target across dimensions with post-filtering window accumulation
           const tId = teacherIds[0] || '';
           const catId = subCategoryIds[0] || '';
           const locId = locationIds[0] || '';
@@ -425,7 +442,9 @@ export default {
             if (docs.length === 0) break;
 
             for (const doc of docs) {
-              if (matchesPostFilters(doc)) {
+              const docTeacherId = String(doc.teacherid || doc.teacherId || '');
+              const teacherMatches = teacherIds.length === 0 || teacherIds.includes(docTeacherId);
+              if (teacherMatches && matchesPostFilters(doc)) {
                 accumulatedDocs.push(doc);
                 if (accumulatedDocs.length >= targetPageSize) break;
               }
@@ -4642,23 +4661,60 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (query.length < 2) return;
 
     searchDebounceTimer = setTimeout(() => {
-      executeLiveSearch(query);
+      // If advanced filters are active, pass them along so constraints are preserved during live typing
+      if (typeof hasActiveFilters === 'function' && hasActiveFilters()) {
+        activeAdvancedFilters.keywords = query;
+        executeLiveSearch(query, { ...activeAdvancedFilters });
+      } else {
+        executeLiveSearch(query);
+      }
     }, 300);
+  }
+
+  // Helper: check if any advanced filters are actively set
+  function hasActiveFilters() {
+    return (activeAdvancedFilters.teachers && activeAdvancedFilters.teachers.length > 0) ||
+      (activeAdvancedFilters.categories && activeAdvancedFilters.categories.length > 0) ||
+      (activeAdvancedFilters.locations && activeAdvancedFilters.locations.length > 0) ||
+      (activeAdvancedFilters.series && activeAdvancedFilters.series.length > 0) ||
+      activeAdvancedFilters.minDuration || activeAdvancedFilters.maxDuration ||
+      activeAdvancedFilters.year;
   }
 
   function doSearch() {
     clearTimeout(searchDebounceTimer);
-    const query = searchInput.value.trim();
-    if (!query) return;
+    const rawBarValue = searchInput.value.trim();
+
+    // If advanced filters are active, use keywords from filter state, NOT the search bar display text.
+    // The search bar might show "Rabbi Michael Rosensweig" for display when a teacher is selected.
+    // We must use the actual keywords (activeAdvancedFilters.keywords) and pass teacherId etc. separately.
+    if (hasActiveFilters()) {
+      // Determine real keywords: if the bar text matches the teacher display names, it's just display text
+      const teacherDisplayNames = (activeAdvancedFilters.teachers || []).map(t => t.name).join(', ');
+      let effectiveKeywords;
+      if (rawBarValue === teacherDisplayNames) {
+        // The search bar just shows teacher names for display — use the stored keywords (may be empty)
+        effectiveKeywords = activeAdvancedFilters.keywords || '';
+      } else {
+        // User typed new text into the bar — treat it as keywords but KEEP filter state
+        effectiveKeywords = rawBarValue;
+        activeAdvancedFilters.keywords = effectiveKeywords;
+      }
+
+      executeLiveSearch(effectiveKeywords, { ...activeAdvancedFilters });
+      return;
+    }
+
+    if (!rawBarValue) return;
 
     // Smart detect: is it a Shiur ID or YUTorah URL?
-    const id = extractShiurId(query);
+    const id = extractShiurId(rawBarValue);
     if (id) {
       playShiurById(null, id);
       return;
     }
 
-    executeLiveSearch(query);
+    executeLiveSearch(rawBarValue);
   }
 
   function handleSearchSubmit(e) {
@@ -5708,9 +5764,26 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const bioBanner = document.getElementById('bioBanner');
     if (bioBanner) bioBanner.style.display = 'none';
     const bar = document.getElementById('activeFiltersBar');
-    if (bar) bar.style.display = 'none';
+    if (bar) { bar.innerHTML = ''; bar.style.display = 'none'; }
     const pNotice = document.getElementById('phoneticNoticeBanner');
     if (pNotice) pNotice.style.display = 'none';
+
+    // Reset all advanced filters so they don't silently persist
+    activeAdvancedFilters = {
+      keywords: '',
+      teachers: [],
+      categories: [],
+      locations: [],
+      series: [],
+      minDuration: '',
+      maxDuration: '',
+      durationLabel: '',
+      year: '',
+      yearLabel: '',
+      enablePhonetics: true
+    };
+    const advBtn = document.getElementById('advancedSearchBtn');
+    if (advBtn) advBtn.classList.remove('active');
 
     // If has audio and was on a shiur page, re-expand player and show recommendations
     const playerCard = document.getElementById('playerCard');
