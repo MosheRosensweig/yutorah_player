@@ -4416,7 +4416,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           </div>
         </div>
         <label style="display:flex; flex-direction:column; align-items:center; gap:4px; cursor:pointer; flex-shrink:0;">
-          <input type="checkbox" id="advPhoneticsToggle" checked style="width:18px; height:18px; accent-color:var(--primary); cursor:pointer;">
+          <input type="checkbox" id="advPhoneticsToggle" checked style="width:18px; height:18px; accent-color:var(--primary); cursor:pointer;" onchange="const l=document.getElementById('advPhoneticsToggleLabel'); if(l){ l.textContent=this.checked?'Enhanced':'Classic'; l.style.color=this.checked?'var(--text)':'var(--text-muted)'; }">
           <span style="font-size:10.5px; font-weight:700; color:var(--text);" id="advPhoneticsToggleLabel">Enhanced</span>
         </label>
       </div>
@@ -5326,7 +5326,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       }
 
       // 2. Fetch live preview shiur results from /api/search?q=...&start=1
-      const res = await fetch('/api/search?q=' + encodeURIComponent(query) + '&start=1', {
+      const phoneticsParam = (typeof activeAdvancedFilters !== 'undefined' && activeAdvancedFilters?.enablePhonetics === false) ? '&exact=1' : '';
+      const res = await fetch('/api/search?q=' + encodeURIComponent(query) + '&start=1' + phoneticsParam, {
         signal: previewAbortCtrl.signal
       });
       if (!res.ok) return;
@@ -5362,7 +5363,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (docs.length > 0) {
         html += '<div class="preview-section-title"><span>Matching Shiurim</span><span>' + totalCount.toLocaleString() + ' found</span></div>';
         docs.forEach(d => {
-          const id = d.shiurid || d.shiurID || '';
+          const id = escapeHtml(String(d.shiurid || d.shiurID || ''));
           const title = d.shiurtitle || d.shiurTitle || 'Untitled';
           const speaker = d.teacherfullname || (d.shiurTeachers && d.shiurTeachers[0] ? d.shiurTeachers[0].teacherFullName : 'YUTorah');
           const duration = d.durationformatted || (d.duration ? d.duration + ' min' : '');
@@ -5946,7 +5947,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     document.getElementById('advKeywords').value = activeAdvancedFilters.keywords || searchInput.value.trim();
     document.getElementById('advYearSelect').value = activeAdvancedFilters.year || '';
     const phonToggle = document.getElementById('advPhoneticsToggle');
-    if (phonToggle) phonToggle.checked = activeAdvancedFilters.enablePhonetics !== false;
+    if (phonToggle) {
+      phonToggle.checked = activeAdvancedFilters.enablePhonetics !== false;
+      const phonLabel = document.getElementById('advPhoneticsToggleLabel');
+      if (phonLabel) {
+        phonLabel.textContent = phonToggle.checked ? 'Enhanced' : 'Classic';
+        phonLabel.style.color = phonToggle.checked ? 'var(--text)' : 'var(--text-muted)';
+      }
+    }
 
     // Render chips in modal comboboxes
     renderComboboxChips('teacher');
@@ -6170,7 +6178,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     document.getElementById('advKeywords').value = '';
     document.getElementById('advYearSelect').value = '';
     const phonToggle = document.getElementById('advPhoneticsToggle');
-    if (phonToggle) phonToggle.checked = true;
+    if (phonToggle) {
+      phonToggle.checked = true;
+      const phonLabel = document.getElementById('advPhoneticsToggleLabel');
+      if (phonLabel) {
+        phonLabel.textContent = 'Enhanced';
+        phonLabel.style.color = 'var(--text)';
+      }
+    }
     modalTempFilters.teachers = [];
     modalTempFilters.categories = [];
     modalTempFilters.locations = [];

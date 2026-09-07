@@ -96,5 +96,58 @@ assert.ok(motsaiCands.includes('מצי'));
 
 console.log('  ✅ EnglishBackToHebrew algorithmic tests passed.');
 
+// 6. Test parseQueryEntities (Speaker vs Topic Separation)
+console.log('6. Testing Query Entity Parsing:');
+import { parseQueryEntities } from '../src/phonetic_engine.js';
+
+// Single-word speaker + topic
+const pe1 = parseQueryEntities('Rosensweig Shabbos');
+assert.equal(pe1.speaker?.id, '80146');
+assert.equal(pe1.remainingQuery, 'Shabbos');
+
+// Topic + trailing speaker
+const pe2 = parseQueryEntities('Shabbos Rosensweig');
+assert.equal(pe2.speaker?.id, '80146');
+assert.equal(pe2.remainingQuery, 'Shabbos');
+
+// Multi-title speaker prefix + topic
+const pe3 = parseQueryEntities('Rabbi Dr. Michael Rosensweig Shabbos');
+assert.equal(pe3.speaker?.id, '80146');
+assert.equal(pe3.remainingQuery, 'Shabbos');
+
+// Topic + multi-word trailing speaker
+const pe4 = parseQueryEntities('Yom Kippur Rabbi Hershel Schachter');
+assert.equal(pe4.speaker?.id, '80153');
+assert.equal(pe4.remainingQuery, 'Yom Kippur');
+
+// Only speaker
+const pe5 = parseQueryEntities('Rabbi Hershel Schachter');
+assert.equal(pe5.speaker?.id, '80153');
+assert.equal(pe5.remainingQuery, '');
+
+// Non-speaker query
+const pe6 = parseQueryEntities('hilchot shabbos');
+assert.equal(pe6.speaker, null);
+assert.equal(pe6.remainingQuery, 'hilchot shabbos');
+
+// Empty query
+const pe7 = parseQueryEntities('');
+assert.equal(pe7.speaker, null);
+assert.equal(pe7.remainingQuery, '');
+console.log('  ✅ Query entity parsing tests passed.');
+
+// 7. Verify 62 Synset Buckets Integrity
+console.log('7. Testing 62 Synset Buckets Integrity:');
+assert.equal(SYNSETS.length, 62, 'Should have exactly 62 synsets');
+const seenCanonical = new Set();
+for (const s of SYNSETS) {
+  assert.ok(s.canonical, 'Synset must have canonical name');
+  assert.ok(!seenCanonical.has(s.canonical), `Duplicate canonical: ${s.canonical}`);
+  seenCanonical.add(s.canonical);
+  assert.ok(Array.isArray(s.hebrew) && s.hebrew.length > 0, `Synset ${s.canonical} missing Hebrew`);
+  assert.ok(Array.isArray(s.variants) && s.variants.length > 0, `Synset ${s.canonical} missing variants`);
+}
+console.log('  ✅ All 62 synset buckets passed integrity checks.');
+
 console.log('\n🎉 ALL PHONETIC & REVERSE TRANSLITERATION TESTS PASSED SUCCESSFULLY!');
 

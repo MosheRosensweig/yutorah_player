@@ -152,7 +152,7 @@ export const SYNSETS = [
   {
     canonical: 'selichos',
     hebrew: ['סליחות', 'סליחה'],
-    variants: ['selichos', 'selichot', 'slichos', 'slichot', 'selichot']
+    variants: ['selichos', 'selichot', 'slichos', 'slichot']
   },
   {
     canonical: 'simchas torah',
@@ -398,54 +398,22 @@ export function parseQueryEntities(rawQuery) {
     return { speaker: null, remainingQuery: trimmed };
   }
 
-  // 1. Try first 3 words: e.g. "Rabbi Hershel Schachter Yom Kippur", "Rabbi Dr. Michael Rosensweig Shabbos"
-  if (words.length >= 3) {
-    const firstThree = words.slice(0, 3).join(' ');
-    const spk3 = resolveSpeaker(firstThree);
-    if (spk3) {
-      return { speaker: spk3, remainingQuery: words.slice(3).join(' ') };
+  // 1. Try prefix of length 5 down to 1: e.g. "Rabbi Dr. Michael Rosensweig Shabbos", "Rabbi Hershel Schachter Yom Kippur", "Rosensweig Shabbos"
+  for (let len = Math.min(words.length - 1, 5); len >= 1; len--) {
+    const candidate = words.slice(0, len).join(' ');
+    const spk = resolveSpeaker(candidate);
+    if (spk) {
+      return { speaker: spk, remainingQuery: words.slice(len).join(' ') };
     }
   }
 
-  // 2. Try first 2 words: e.g. "Michael Rosensweig Shabbos", "Rav Schachter Sukkot"
-  if (words.length >= 2) {
-    const firstTwo = words.slice(0, 2).join(' ');
-    const spk2 = resolveSpeaker(firstTwo);
-    if (spk2) {
-      return { speaker: spk2, remainingQuery: words.slice(2).join(' ') };
+  // 2. Try suffix of length 5 down to 1: e.g. "Shabbos Rabbi Dr. Michael Rosensweig", "Yom Kippur Rabbi Hershel Schachter", "Shabbos Rosensweig"
+  for (let len = Math.min(words.length - 1, 5); len >= 1; len--) {
+    const candidate = words.slice(-len).join(' ');
+    const spk = resolveSpeaker(candidate);
+    if (spk) {
+      return { speaker: spk, remainingQuery: words.slice(0, -len).join(' ') };
     }
-  }
-
-  // 3. Try first word: e.g. "Rosensweig Shabbos"
-  const firstOne = words[0];
-  const spk1 = resolveSpeaker(firstOne);
-  if (spk1) {
-    return { speaker: spk1, remainingQuery: words.slice(1).join(' ') };
-  }
-
-  // 4. Try last 3 words: e.g. "Yom Kippur Rabbi Hershel Schachter"
-  if (words.length >= 3) {
-    const lastThree = words.slice(-3).join(' ');
-    const spkLast3 = resolveSpeaker(lastThree);
-    if (spkLast3) {
-      return { speaker: spkLast3, remainingQuery: words.slice(0, -3).join(' ') };
-    }
-  }
-
-  // 5. Try last 2 words: e.g. "Shabbos Michael Rosensweig"
-  if (words.length >= 2) {
-    const lastTwo = words.slice(-2).join(' ');
-    const spkLast2 = resolveSpeaker(lastTwo);
-    if (spkLast2) {
-      return { speaker: spkLast2, remainingQuery: words.slice(0, -2).join(' ') };
-    }
-  }
-
-  // 6. Try last word: e.g. "Shabbos Rosensweig"
-  const lastOne = words[words.length - 1];
-  const spkLast1 = resolveSpeaker(lastOne);
-  if (spkLast1) {
-    return { speaker: spkLast1, remainingQuery: words.slice(0, -1).join(' ') };
   }
 
   return { speaker: null, remainingQuery: trimmed };
