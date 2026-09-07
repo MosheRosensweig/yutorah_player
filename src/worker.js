@@ -4240,7 +4240,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     return true;
   }
 
-  // Secret 7-Tap on Calendar Icon or Holiday Motif (like Android dev mode easter egg)
+  // Secret taps on Calendar Icon / Holiday Motif:
+  //   3 taps = toggle pre-roll enable/disable (always works)
+  //   7 taps = unlock Dev Mode for this session (resets on page reload)
   let calendarClickCount = 0;
   let calendarClickTimer = null;
   let toastTimer = null;
@@ -4253,24 +4255,30 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     clearTimeout(calendarClickTimer);
 
     if (calendarClickCount >= 7) {
+      // 7 taps: unlock dev mode (preroll was already toggled at tap 3)
       calendarClickCount = 0;
-      handleSecretTripleClick();
+      if (!isDevMode) {
+        activateDevMode();
+        flashToast('🛠️ Dev Mode Unlocked!', false, true);
+      } else {
+        flashToast('🛠️ Dev Mode already active', false, true);
+      }
+    } else if (calendarClickCount === 3) {
+      // 3 taps: toggle pre-roll enable/disable
+      togglePreRoll();
+      // Don't reset counter — user might keep tapping to 7 for dev mode
+      calendarClickTimer = setTimeout(() => {
+        calendarClickCount = 0;
+      }, 2000);
     } else {
-      // Clicks below 7 have zero visual effect; reset counter after 2s
+      // Not yet at a threshold; reset counter after 2s of inactivity
       calendarClickTimer = setTimeout(() => {
         calendarClickCount = 0;
       }, 2000);
     }
   }
 
-  function handleSecretTripleClick() {
-    // 1. Check if entering Dev Mode for the first time this session
-    const justUnlockedDev = !isDevMode;
-    if (justUnlockedDev) {
-      activateDevMode();
-    }
-
-    // 2. Toggle Pre-roll setting
+  function togglePreRoll() {
     const currentlyDisabled = isPreRollDisabled();
     const newDisabled = !currentlyDisabled;
 
@@ -4282,19 +4290,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       }
     } catch(e) {}
 
-    // If currently playing sponsor audio and user disabled it, immediately skip to shiur!
+    // If currently playing sponsor audio and user disabled it, immediately skip to shiur
     if (newDisabled && isSponsorPlaying && pendingShiur) {
       skipSponsorAudio();
     }
 
-    // 3. Flash informative HUD toast
     const preRollStatus = newDisabled ? '🚫 Pre-roll Disabled' : '✅ Pre-roll Enabled';
-    if (justUnlockedDev) {
-      flashToast('🛠️ Dev Mode Unlocked! · ' + preRollStatus, newDisabled, true);
-    } else {
-      flashToast(preRollStatus, newDisabled, false);
-    }
+    flashToast(preRollStatus, newDisabled, false);
   }
+
 
   function flashToast(msg, isDisabled, isDevUnlock = false) {
     const toast = document.getElementById('secretToast');
@@ -4658,6 +4662,20 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       clearSearch();
       return;
     }
+
+    // Easter egg: typing "dev mode" in the search bar activates Dev Mode
+    if (query.toLowerCase() === 'dev mode') {
+      searchInput.value = '';
+      clearSearchBtn.style.display = 'none';
+      if (!isDevMode) {
+        activateDevMode();
+        flashToast('🛠️ Dev Mode Unlocked!', false, true);
+      } else {
+        flashToast('🛠️ Dev Mode already active', false, true);
+      }
+      return;
+    }
+
     if (query.length < 2) return;
 
     searchDebounceTimer = setTimeout(() => {
