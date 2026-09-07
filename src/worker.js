@@ -4599,10 +4599,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       });
     }
 
-    const advBtn = document.getElementById('advancedSearchBtn');
-    if (advBtn) {
-      advBtn.style.setProperty('display', 'inline-flex', 'important');
-    }
     return true;
   }
 
