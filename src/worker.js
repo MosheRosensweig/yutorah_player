@@ -3517,7 +3517,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       🎧 YUTorah Enhanced <span>PLAYER</span>
     </a>
     <div class="header-right">
-      <div id="holidayMotifWrap" class="holiday-motif-wrap" onclick="handleCalendarSecretClick(event)" style="display: none;" title="Triple-click to toggle pre-roll">
+      <div id="holidayMotifWrap" class="holiday-motif-wrap" onclick="handleCalendarSecretClick(event)" style="display: none;" title="Tap 7 times to toggle pre-roll">
         <span id="holidayMotifIcon" class="holiday-motif-icon"></span>
         <span id="holidayMotifTitle" class="holiday-motif-title"></span>
       </div>
@@ -4210,7 +4210,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
   }
 
-  // Developer Mode (Active for current session until reload upon secret triple-click)
+  // Developer Mode (Active for current session until reload upon secret 7-tap)
   let isDevMode = false;
 
   function activateDevMode() {
@@ -4240,7 +4240,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     return true;
   }
 
-  // Secret Triple-Click on Calendar Icon or Holiday Motif
+  // Secret 7-Tap on Calendar Icon or Holiday Motif (like Android dev mode easter egg)
   let calendarClickCount = 0;
   let calendarClickTimer = null;
   let toastTimer = null;
@@ -4252,14 +4252,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     calendarClickCount++;
     clearTimeout(calendarClickTimer);
 
-    if (calendarClickCount >= 3) {
+    if (calendarClickCount >= 7) {
       calendarClickCount = 0;
       handleSecretTripleClick();
     } else {
-      // 1 or 2 clicks have zero visual effect; reset counter after 1.5s
+      // Clicks below 7 have zero visual effect; reset counter after 2s
       calendarClickTimer = setTimeout(() => {
         calendarClickCount = 0;
-      }, 1500);
+      }, 2000);
     }
   }
 
@@ -6450,7 +6450,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       motifWrap.style.display = 'inline-flex';
       motifIcon.innerHTML = '<img src="/assets/themes/' + variantData.icon + '" alt="icon" style="width:100%; height:100%; display:block;" onerror="this.style.display=&quot;none&quot;">';
       motifTitle.textContent = themeDef.badge || themeDef.name;
-      motifWrap.title = variantData.title + ' (Triple-click to toggle pre-roll)';
+      motifWrap.title = variantData.title + ' (Tap 7 times to toggle pre-roll)';
     }
 
     // Toggle Purim Inverted Header Mode
