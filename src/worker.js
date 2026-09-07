@@ -725,14 +725,53 @@ function formatDuration(lengthStr) {
   return `${m} min`;
 }
 
-function formatDate(dateStr) {
-  if (!dateStr) return '';
-  try {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  } catch (e) {
-    return dateStr;
+function parseLocalDate(str) {
+  if (!str) return null;
+  const s = String(str).trim();
+  const ymd = s.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+  if (ymd) {
+    return new Date(parseInt(ymd[1], 10), parseInt(ymd[2], 10) - 1, parseInt(ymd[3], 10));
   }
+  const mdy = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+  if (mdy) {
+    return new Date(parseInt(mdy[3], 10), parseInt(mdy[1], 10) - 1, parseInt(mdy[2], 10));
+  }
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) return d;
+  return null;
+}
+
+function formatShiurDate(rawDateStr) {
+  if (!rawDateStr) return '';
+  const d = parseLocalDate(rawDateStr);
+  if (!d || isNaN(d.getTime())) return String(rawDateStr);
+
+  const now = new Date();
+  const dMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const nowMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const diffDays = Math.round((nowMidnight - dMidnight) / 86400000);
+
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Yesterday';
+
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+  return `${monthNames[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+}
+
+function isShiurNew(rawDateStr) {
+  if (!rawDateStr) return false;
+  const d = parseLocalDate(rawDateStr);
+  if (!d || isNaN(d.getTime())) return false;
+  const now = new Date();
+  const diffHours = (now.getTime() - d.getTime()) / (1000 * 60 * 60);
+  return diffHours >= -2 && diffHours <= 36;
+}
+
+function formatDate(dateStr) {
+  return formatShiurDate(dateStr);
 }
 
 function normalizeShiur(s) {
@@ -765,10 +804,9 @@ function normalizeShiur(s) {
     duration = `${s.duration} min`;
   }
 
-  let date = s.shiurdateformatted || s.shiurDateFormatted || s.shiurDateSubmittedFormatted || '';
-  if (!date && s.shiurDate) {
-    date = formatDate(s.shiurDate);
-  }
+  const rawDate = s.shiurdateformatted || s.shiurDateFormatted || s.shiurDateSubmittedFormatted || s.shiurDate || s.shiurdate || '';
+  const date = formatShiurDate(rawDate);
+  const isNew = isShiurNew(s.shiurdatesubmitted || s.shiurDateSubmitted || rawDate);
 
   let category = '';
   if (Array.isArray(s.categoryname) && s.categoryname.length > 0) {
@@ -781,7 +819,7 @@ function normalizeShiur(s) {
     category = s.shiurGroupedSubcategoriesObj[0].categoryShortName || '';
   }
 
-  return { id, title, speaker, photo, duration, date, category };
+  return { id, title, speaker, photo, duration, date, category, isNew };
 }
 
 function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpeed = '', themeMode = '', homepageData, sponsorshipText = '', sponsorshipPlainText = '', sponsorshipAudioUrl = '', searchQuery, initialSearchResults, initialNumFound = 0 }) {
@@ -808,7 +846,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     speaker = shiurData.shiurTeacherFullName || (shiurData.shiurTeachers && shiurData.shiurTeachers[0] ? shiurData.shiurTeachers[0].teacherFullName : 'YUTorah');
     photo = shiurData.teacherPhotoURL_lp || shiurData.teacherPhotoURL || (shiurData.shiurTeachers && shiurData.shiurTeachers[0] ? shiurData.shiurTeachers[0].teacherPhotoURL : '');
     duration = shiurData.shiurDuration || '';
-    shiurDate = shiurData.shiurDateFormatted || '';
+    const rawDate = shiurData.shiurDateFormatted || shiurData.shiurDate || '';
+    shiurDate = formatShiurDate(rawDate);
     meta = duration + (shiurDate ? ' · ' + shiurDate : '');
     description = shiurData.shiurDescription || '';
     downloadUrl = shiurData.downloadURL || shiurData.playerDownloadURL || '';
@@ -896,8 +935,20 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   const timely = homepageData?.timelyData || null;
-  const parshaCatMatch = timely?.parshaURL ? timely.parshaURL.match(/category=([0-9]+)/) : null;
-  const parshaCatId = parshaCatMatch ? parshaCatMatch[1] : '233995';
+  let parshaDisplayTitle = timely?.parshaStr || '';
+  let parshaHolidayNote = '';
+  let parshaCatId = '233995';
+
+  if (!parshaDisplayTitle || parshaDisplayTitle.toLowerCase() === 'none') {
+    // Current week has no regular weekly reading because Shabbat is a Yom Tov (e.g. Rosh Hashanah)
+    // Display next parsha on the docket and mention the holiday in parentheses
+    parshaDisplayTitle = "Ha'azinu";
+    parshaHolidayNote = "This Shabbat is Rosh Hashanah";
+    parshaCatId = '234515'; // Ha'azinu subcategory
+  } else {
+    const parshaCatMatch = timely?.parshaURL ? timely.parshaURL.match(/category=([0-9]+)/) : null;
+    parshaCatId = parshaCatMatch ? parshaCatMatch[1] : '233995';
+  }
 
   const baseSpeeds = [
     { val: '0.5', label: '0.5x' },
@@ -1224,69 +1275,206 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       padding: 20px 16px 60px;
     }
 
-    /* Timely Banner (Parsha / Daf Yomi / Theme Switcher) */
-    .timely-banner {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 12px;
+    /* Collapsible Timely Widget */
+    .timely-collapsible-wrap {
+      position: relative;
+      margin-bottom: 16px;
+      z-index: 10;
+    }
+    .timely-collapsible-trigger {
+      width: 100%;
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: 10px;
-      padding: 10px 16px;
-      margin-bottom: 18px;
-      font-size: 13px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.03);
-    }
-    .timely-study-group {
+      padding: 8px 14px;
       display: flex;
       align-items: center;
-      flex-wrap: wrap;
-      gap: 12px;
-      row-gap: 6px;
+      justify-content: space-between;
+      gap: 10px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--text);
+      transition: all 0.15s ease;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
     }
-    .timely-item {
+    .timely-collapsible-trigger:hover {
+      border-color: var(--primary);
+      background: rgba(43, 76, 126, 0.03);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    [data-theme="dark"] .timely-collapsible-trigger:hover {
+      background: rgba(92, 142, 204, 0.08);
+      border-color: var(--primary-light);
+    }
+    .timely-trigger-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .timely-icon {
+      font-size: 15px;
+    }
+    .timely-title {
+      font-weight: 700;
+      color: var(--primary);
+      letter-spacing: 0.2px;
+    }
+    [data-theme="dark"] .timely-title {
+      color: var(--primary-light);
+    }
+    .timely-summary-badges {
       display: inline-flex;
       align-items: center;
       gap: 6px;
+      flex-wrap: wrap;
     }
-    .timely-label {
-      font-weight: 700;
-      color: var(--primary);
-    }
-    .timely-val {
+    .timely-badge {
+      background: rgba(43, 76, 126, 0.07);
       color: var(--text);
+      padding: 2px 7px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      border: 1px solid rgba(43, 76, 126, 0.12);
+      white-space: nowrap;
     }
-    .timely-link {
-      text-decoration: none;
-      cursor: pointer;
+    [data-theme="dark"] .timely-badge {
+      background: rgba(92, 142, 204, 0.12);
+      border-color: rgba(92, 142, 204, 0.25);
+    }
+    .timely-trigger-right {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .timely-dropdown-indicator {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      background: rgba(0,0,0,0.04);
       padding: 3px 8px;
       border-radius: 6px;
+    }
+    [data-theme="dark"] .timely-dropdown-indicator {
+      background: rgba(255,255,255,0.06);
+    }
+    .timely-dropdown-menu {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      right: 0;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.12);
+      z-index: 100;
+      animation: timelyFadeIn 0.18s ease-out;
+    }
+    @keyframes timelyFadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .timely-menu-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 10px;
+    }
+    .timely-menu-card {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: rgba(43, 76, 126, 0.03);
+      text-decoration: none;
+      color: var(--text);
       transition: all 0.15s ease;
-      background: rgba(43, 76, 126, 0.05);
-      border: 1px solid rgba(43, 76, 126, 0.12);
+      cursor: pointer;
     }
-    .timely-link:hover {
-      background: rgba(43, 76, 126, 0.12);
-      border-color: rgba(43, 76, 126, 0.28);
+    .timely-menu-card:hover {
+      background: rgba(43, 76, 126, 0.08);
+      border-color: var(--primary);
       transform: translateY(-1px);
+      box-shadow: 0 3px 8px rgba(0,0,0,0.05);
     }
-    .timely-link .timely-val {
-      text-decoration: underline;
-      text-decoration-color: rgba(43, 76, 126, 0.4);
-      text-underline-offset: 3px;
+    [data-theme="dark"] .timely-menu-card {
+      background: rgba(92, 142, 204, 0.06);
     }
-    [data-theme="dark"] .timely-link {
-      background: rgba(92, 142, 204, 0.1);
-      border-color: rgba(92, 142, 204, 0.2);
+    [data-theme="dark"] .timely-menu-card:hover {
+      background: rgba(92, 142, 204, 0.15);
+      border-color: var(--primary-light);
     }
-    [data-theme="dark"] .timely-link:hover {
-      background: rgba(92, 142, 204, 0.2);
-      border-color: rgba(92, 142, 204, 0.35);
+    .timely-card-icon {
+      font-size: 24px;
+      flex-shrink: 0;
     }
-    [data-theme="dark"] .timely-link .timely-val {
-      text-decoration-color: rgba(92, 142, 204, 0.5);
+    .timely-card-body {
+      flex: 1;
+      min-width: 0;
+    }
+    .timely-card-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--primary);
+      margin-bottom: 2px;
+    }
+    [data-theme="dark"] .timely-card-label {
+      color: var(--primary-light);
+    }
+    .timely-card-val {
+      font-size: 14px;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .timely-card-note {
+      font-size: 11px;
+      color: #d97706;
+      font-weight: 600;
+      margin-top: 1px;
+    }
+    [data-theme="dark"] .timely-card-note {
+      color: #f59e0b;
+    }
+    .timely-card-action {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--primary);
+      flex-shrink: 0;
+      opacity: 0.8;
+      transition: opacity 0.15s;
+    }
+    .timely-menu-card:hover .timely-card-action {
+      opacity: 1;
+      transform: translateX(2px);
+    }
+    [data-theme="dark"] .timely-card-action {
+      color: var(--primary-light);
+    }
+
+    /* Shiur Card NEW Badge */
+    .quick-card-new-badge {
+      position: absolute;
+      top: 9px;
+      right: 10px;
+      background: linear-gradient(135deg, #e67e22 0%, #d35400 100%);
+      color: #ffffff;
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.6px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      box-shadow: 0 1px 4px rgba(230, 126, 34, 0.35);
+      z-index: 2;
     }
 
     /* Sponsorship Banner */
@@ -2138,6 +2326,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     .scrubber-bar.is-sponsor-preroll .scrubber-fill {
       background: linear-gradient(90deg, #b8860b 0%, #d4a373 100%);
+      transition: none !important;
     }
     .scrubber-bar.is-sponsor-preroll .scrubber-handle {
       width: 26px;
@@ -2527,6 +2716,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       gap: 16px;
     }
     .quick-card-link {
+      position: relative;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
@@ -2572,6 +2762,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       line-height: 1.35;
       color: var(--text);
       margin-bottom: 4px;
+      padding-right: 42px;
       display: -webkit-box;
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
@@ -2786,6 +2977,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       border-radius: 50%;
       box-shadow: 0 1px 4px rgba(0,0,0,0.4);
       pointer-events: none;
+    }
+    .mini-progress-bar.is-sponsor-preroll .mini-progress-fill {
+      transition: none !important;
     }
     .mini-progress-bar.is-sponsor-preroll .mini-progress-circle {
       width: 15px;
@@ -3517,7 +3711,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       🎧 YUTorah Enhanced <span>PLAYER</span>
     </a>
     <div class="header-right">
-      <div id="holidayMotifWrap" class="holiday-motif-wrap" onclick="handleCalendarSecretClick(event)" style="display: none;" title="Tap 7 times to toggle pre-roll">
+      <div id="holidayMotifWrap" class="holiday-motif-wrap" onclick="handleCalendarSecretClick(event)" style="display: none;" title="">
         <span id="holidayMotifIcon" class="holiday-motif-icon"></span>
         <span id="holidayMotifTitle" class="holiday-motif-title"></span>
       </div>
@@ -3605,13 +3799,65 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
 <main>
 
-  <div class="timely-banner">
-    <div class="timely-study-group">
-      ${timely?.parshaStr ? `<a href="/?category=${parshaCatId}" class="timely-item timely-link" onclick="filterByCategory('${parshaCatId}', 'Parsha: ${escapeHtml(timely.parshaStr).replace(/'/g, "\\'")}'); return false;" title="Browse ${escapeHtml(timely.parshaStr)} shiurim"><span class="timely-label">📖 Parsha:</span> <span class="timely-val">${escapeHtml(timely.parshaStr)}</span></a>` : ''}
-      ${timely?.dafStr ? `<a href="/?search=${encodeURIComponent(timely.dafStr)}" class="timely-item timely-link" onclick="searchFor('${escapeHtml(timely.dafStr).replace(/'/g, "\\'")}'); return false;" title="Browse ${escapeHtml(timely.dafStr)} shiurim"><span class="timely-label">📜 Daf Yomi:</span> <span class="timely-val">${escapeHtml(timely.dafStr)}</span></a>` : ''}
-      ${timely?.mishnaYomiStr ? `<a href="/?category=${timely?.mishnaYomiSubcategoryID || '234949'}" class="timely-item timely-link" onclick="filterByCategory('${timely?.mishnaYomiSubcategoryID || '234949'}', 'Mishna Yomi: ${escapeHtml(timely.mishnaYomiStr).replace(/'/g, "\\'")}'); return false;" title="Browse ${escapeHtml(timely.mishnaYomiStr)} shiurim"><span class="timely-label">📗 Mishna:</span> <span class="timely-val">${escapeHtml(timely.mishnaYomiStr)}</span></a>` : ''}
-      ${timely?.nachYomiStr ? `<a href="/?category=${timely?.nachYomiSubcategoryID || '234877'}" class="timely-item timely-link" onclick="filterByCategory('${timely?.nachYomiSubcategoryID || '234877'}', 'Nach Yomi: ${escapeHtml(timely.nachYomiStr).replace(/'/g, "\\'")}'); return false;" title="Browse ${escapeHtml(timely.nachYomiStr)} shiurim"><span class="timely-label">📘 Nach:</span> <span class="timely-val">${escapeHtml(timely.nachYomiStr)}</span></a>` : ''}
-      ${!timely?.parshaStr && !timely?.dafStr && homepageData?.hebrewDateString ? `<div class="timely-item"><span class="timely-label">📅 Date:</span> <span class="timely-val">${escapeHtml(homepageData.hebrewDateString)}</span></div>` : ''}
+  <div class="timely-collapsible-wrap">
+    <button type="button" class="timely-collapsible-trigger" id="timelyTriggerBtn" onclick="toggleTimelyCollapse()" aria-expanded="false" title="Click to view daily learning schedule">
+      <span class="timely-trigger-left">
+        <span class="timely-icon">⏰</span>
+        <span class="timely-title">Timely Study:</span>
+        <span class="timely-summary-badges">
+          <span class="timely-badge">📖 ${escapeHtml(parshaDisplayTitle)}</span>
+          ${timely?.dafStr ? `<span class="timely-badge">📜 ${escapeHtml(timely.dafStr)}</span>` : ''}
+          ${timely?.mishnaYomiStr ? `<span class="timely-badge">📗 ${escapeHtml(timely.mishnaYomiStr)}</span>` : ''}
+        </span>
+      </span>
+      <span class="timely-trigger-right">
+        <span class="timely-dropdown-indicator" id="timelyIndicator">Explore ▾</span>
+      </span>
+    </button>
+    
+    <div class="timely-dropdown-menu" id="timelyDropdownMenu" style="display: none;">
+      <div class="timely-menu-grid">
+        <!-- 1. Weekly Parsha -->
+        <a href="/?category=${parshaCatId}" class="timely-menu-card" data-cat="${escapeHtml(parshaCatId)}" data-label="Parsha: ${escapeHtml(parshaDisplayTitle)}" onclick="filterByCategory(this.dataset.cat, this.dataset.label); closeTimelyDropdown(); return false;" title="Browse ${escapeHtml(parshaDisplayTitle)} shiurim">
+          <div class="timely-card-icon">📖</div>
+          <div class="timely-card-body">
+            <div class="timely-card-label">Weekly Parsha</div>
+            <div class="timely-card-val">${escapeHtml(parshaDisplayTitle)}</div>
+            ${parshaHolidayNote ? `<div class="timely-card-note">(${escapeHtml(parshaHolidayNote)})</div>` : ''}
+          </div>
+          <div class="timely-card-action">Browse →</div>
+        </a>
+
+        <!-- 2. Daf Yomi (Gemara) -->
+        <a href="/?search=${encodeURIComponent(timely?.dafStr || 'Daf Yomi')}" class="timely-menu-card" data-query="${escapeHtml(timely?.dafStr || '')}" onclick="searchFor(this.dataset.query); closeTimelyDropdown(); return false;" title="Browse ${escapeHtml(timely?.dafStr || 'Daf Yomi')} shiurim">
+          <div class="timely-card-icon">📜</div>
+          <div class="timely-card-body">
+            <div class="timely-card-label">Daf Yomi (Gemara)</div>
+            <div class="timely-card-val">${escapeHtml(timely?.dafStr || 'Today\'s Daf')}</div>
+          </div>
+          <div class="timely-card-action">Browse →</div>
+        </a>
+
+        <!-- 3. Mishna Yomi -->
+        <a href="/?category=${timely?.mishnaYomiSubcategoryID || '234949'}" class="timely-menu-card" data-cat="${escapeHtml(timely?.mishnaYomiSubcategoryID || '234949')}" data-label="Mishna Yomi: ${escapeHtml(timely?.mishnaYomiStr || '')}" onclick="filterByCategory(this.dataset.cat, this.dataset.label); closeTimelyDropdown(); return false;" title="Browse ${escapeHtml(timely?.mishnaYomiStr || 'Mishna Yomi')} shiurim">
+          <div class="timely-card-icon">📗</div>
+          <div class="timely-card-body">
+            <div class="timely-card-label">Mishna Yomi</div>
+            <div class="timely-card-val">${escapeHtml(timely?.mishnaYomiStr || 'Today\'s Mishna')}</div>
+          </div>
+          <div class="timely-card-action">Browse →</div>
+        </a>
+
+        <!-- 4. Nach Yomi -->
+        <a href="/?category=${timely?.nachYomiSubcategoryID || '234877'}" class="timely-menu-card" data-cat="${escapeHtml(timely?.nachYomiSubcategoryID || '234877')}" data-label="Nach Yomi: ${escapeHtml(timely?.nachYomiStr || '')}" onclick="filterByCategory(this.dataset.cat, this.dataset.label); closeTimelyDropdown(); return false;" title="Browse ${escapeHtml(timely?.nachYomiStr || 'Nach Yomi')} shiurim">
+          <div class="timely-card-icon">📘</div>
+          <div class="timely-card-body">
+            <div class="timely-card-label">Nach Yomi</div>
+            <div class="timely-card-val">${escapeHtml(timely?.nachYomiStr || 'Today\'s Perek')}</div>
+          </div>
+          <div class="timely-card-action">Browse →</div>
+        </a>
+      </div>
     </div>
   </div>
 
@@ -3634,7 +3880,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       </div>
       <div class="search-actions-row">
         <button type="button" class="search-submit-btn" onclick="doSearch()">Search</button>
-        <button type="button" class="advanced-search-btn" id="advancedSearchBtn" onclick="openAdvancedModal()" title="Open Advanced Search & Multi-Criteria Filters" style="display: none !important;">🎚️ Filters</button>
+        <button type="button" class="advanced-search-btn" id="advancedSearchBtn" onclick="openAdvancedModal()" title="Open Advanced Search & Multi-Criteria Filters">🎚️ Filters</button>
       </div>
     </form>
 
@@ -4143,6 +4389,126 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       .replace(/'/g, '&#039;');
   }
 
+  function parseLocalDate(str) {
+    if (!str) return null;
+    const s = String(str).trim();
+    const ymd = s.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+    if (ymd) {
+      return new Date(parseInt(ymd[1], 10), parseInt(ymd[2], 10) - 1, parseInt(ymd[3], 10));
+    }
+    const mdy = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+    if (mdy) {
+      return new Date(parseInt(mdy[3], 10), parseInt(mdy[1], 10) - 1, parseInt(mdy[2], 10));
+    }
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) return d;
+    return null;
+  }
+
+  function formatShiurDate(rawDateStr) {
+    if (!rawDateStr) return '';
+    const d = parseLocalDate(rawDateStr);
+    if (!d || isNaN(d.getTime())) return String(rawDateStr);
+
+    const now = new Date();
+    const dMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const nowMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const diffDays = Math.round((nowMidnight - dMidnight) / 86400000);
+
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Yesterday';
+
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    return monthNames[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
+  }
+
+  function isShiurNew(rawDateStr) {
+    if (!rawDateStr) return false;
+    const d = parseLocalDate(rawDateStr);
+    if (!d || isNaN(d.getTime())) return false;
+    const now = new Date();
+    const diffHours = (now.getTime() - d.getTime()) / (1000 * 60 * 60);
+    return diffHours >= -2 && diffHours <= 36;
+  }
+
+  function toggleTimelyCollapse() {
+    const menu = document.getElementById('timelyDropdownMenu');
+    const trigger = document.getElementById('timelyTriggerBtn');
+    const ind = document.getElementById('timelyIndicator');
+    if (!menu) return;
+    const isExpanded = menu.style.display !== 'none';
+    if (isExpanded) {
+      menu.style.display = 'none';
+      if (trigger) trigger.setAttribute('aria-expanded', 'false');
+      if (ind) ind.textContent = 'Explore ▾';
+    } else {
+      menu.style.display = 'block';
+      if (trigger) trigger.setAttribute('aria-expanded', 'true');
+      if (ind) ind.textContent = 'Close ▴';
+    }
+  }
+
+  function closeTimelyDropdown() {
+    const menu = document.getElementById('timelyDropdownMenu');
+    const trigger = document.getElementById('timelyTriggerBtn');
+    const ind = document.getElementById('timelyIndicator');
+    if (menu) menu.style.display = 'none';
+    if (trigger) trigger.setAttribute('aria-expanded', 'false');
+    if (ind) ind.textContent = 'Explore ▾';
+  }
+
+  document.addEventListener('click', (e) => {
+    const wrap = document.querySelector('.timely-collapsible-wrap');
+    if (wrap && !wrap.contains(e.target)) {
+      closeTimelyDropdown();
+    }
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeTimelyDropdown();
+    }
+  });
+
+  // Smooth 60fps Preroll Progress Animation
+  let sponsorRafId = null;
+
+  function updateSponsorSmoothProgress() {
+    if (!isSponsorPlaying || audio.paused || !audio.duration || isNaN(audio.duration)) {
+      sponsorRafId = null;
+      return;
+    }
+    const curTime = audio.currentTime;
+    const dur = audio.duration;
+    const pct = Math.min(100, Math.max(0, (curTime / dur) * 100));
+
+    const scrubberFill = document.getElementById('scrubberFill');
+    if (scrubberFill) {
+      scrubberFill.style.width = pct + '%';
+    }
+    const miniFill = document.getElementById('miniProgressFill');
+    if (miniFill) {
+      miniFill.style.width = pct + '%';
+    }
+
+    sponsorRafId = requestAnimationFrame(updateSponsorSmoothProgress);
+  }
+
+  function startSponsorRaf() {
+    if (sponsorRafId) cancelAnimationFrame(sponsorRafId);
+    sponsorRafId = requestAnimationFrame(updateSponsorSmoothProgress);
+  }
+
+  function stopSponsorRaf() {
+    if (sponsorRafId) {
+      cancelAnimationFrame(sponsorRafId);
+      sponsorRafId = null;
+    }
+  }
+
   const audio = document.getElementById('audioElement');
   let initialTimestamp = ${JSON.stringify(timestamp)};
   let initialPlaybackSpeed = ${JSON.stringify(playbackSpeed || '')};
@@ -4451,18 +4817,22 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
     const p = audio.play();
     if (p !== undefined) {
-      p.catch(err => {
+      p.then(() => {
+        startSponsorRaf();
+      }).catch(err => {
         console.log('Autoplay sponsor prevented or error:', err);
       });
     }
   }
 
   function skipSponsorAudio() {
+    stopSponsorRaf();
     if (!isSponsorPlaying || !pendingShiur) return;
     startShiurPlayback(pendingShiur);
   }
 
   function startShiurPlayback(shiurObj) {
+    stopSponsorRaf();
     clearSponsorTimers();
     isSponsorPlaying = false;
     sponsorPlayedForThisShiur = true;
@@ -4724,6 +5094,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
 
     if (!rawBarValue) return;
+
+    if (rawBarValue.toLowerCase() === 'dev mode') {
+      searchInput.value = '';
+      if (clearSearchBtn) clearSearchBtn.style.display = 'none';
+      if (!isDevMode) {
+        activateDevMode();
+        flashToast('🛠️ Dev Mode Unlocked!', false, true);
+      } else {
+        flashToast('🛠️ Dev Mode already active', false, true);
+      }
+      return;
+    }
 
     // Smart detect: is it a Shiur ID or YUTorah URL?
     const id = extractShiurId(rawBarValue);
@@ -5827,7 +6209,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const speaker = d.teacherfullname || (d.shiurTeachers && d.shiurTeachers[0] ? d.shiurTeachers[0].teacherFullName : 'YUTorah');
     const photo = d.PHOTO ? (d.PHOTO.startsWith('http') ? d.PHOTO : 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/' + d.PHOTO) : 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/_default.jpg';
     const duration = d.durationformatted || (d.duration ? d.duration + ' min' : '');
-    const date = d.shiurdateformatted || '';
+    const rawDate = d.shiurdatesubmitted || d.shiurdate || d.shiurdateformatted || '';
+    const date = formatShiurDate(rawDate);
+    const isNew = isShiurNew(d.shiurdatesubmitted || rawDate);
+    const newBadge = isNew ? '<span class="quick-card-new-badge">NEW</span>' : '';
     const category = (Array.isArray(d.categoryname) && d.categoryname[0]) || (Array.isArray(d.subcategoryname) && d.subcategoryname[0]) || '';
 
     const metaParts = [];
@@ -5836,6 +6221,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const bottomMeta = metaParts.join(' · ');
 
     return '<a href="/' + id + '" class="quick-card-link" onclick="playShiurById(event, this.dataset.id)" data-id="' + id + '">' +
+      newBadge +
       '<div class="quick-card-top">' +
         '<img class="quick-card-avatar" src="' + escapeHtml(photo) + '" alt="' + escapeHtml(speaker) + '" loading="lazy" onerror="handleImgError(this)">' +
         '<div class="quick-card-info">' +
@@ -5857,15 +6243,19 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
     isManuallyMinimized = false;
     isExpandingUntil = Date.now() + 800;
+    expandPlayer();
+
+    // Scroll player into view
     const playerCard = document.getElementById('playerCard');
     if (playerCard) {
-      playerCard.style.display = 'block';
       playerCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-    const miniPlayer = document.getElementById('miniPlayer');
-    if (miniPlayer) miniPlayer.classList.remove('visible');
-    document.body.classList.remove('mini-player-active');
 
+    currentShiurId = id;
+    hasAudio = true;
+    initialTimeApplied = false;
+
+    // Reset UI while loading
     document.getElementById('shiurTitle').textContent = 'Loading shiur #' + id + '...';
     document.getElementById('shiurSpeaker').textContent = 'Fetching audio stream...';
     document.getElementById('shiurMeta').textContent = '';
@@ -5892,7 +6282,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       const speaker = data.shiurTeacherFullName || (data.shiurTeachers && data.shiurTeachers[0] ? data.shiurTeachers[0].teacherFullName : 'YUTorah');
       const photo = data.teacherPhotoURL_lp || data.teacherPhotoURL || (data.shiurTeachers && data.shiurTeachers[0] ? data.shiurTeachers[0].teacherPhotoURL : '');
       const duration = data.shiurDuration || '';
-      const date = data.shiurDateFormatted || '';
+      const rawDate = data.shiurDateFormatted || data.shiurDate || '';
+      const date = formatShiurDate(rawDate);
       const meta = duration + (date ? ' · ' + date : '');
       const desc = data.shiurDescription || '';
       const audioSrc = data.playerDownloadURL || (data.shiurURL ? 'https://shiurim.yutorah.net' + data.shiurURL : '') || data.downloadURL || '';
@@ -6123,11 +6514,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     grid.innerHTML = history.map(item => {
       const photo = item.photo || 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/_default.jpg';
+      const rawDate = item.date || item.shiurDate || '';
+      const dateStr = formatShiurDate(rawDate);
+      const isNew = isShiurNew(rawDate);
+      const newBadge = isNew ? '<span class="quick-card-new-badge">NEW</span>' : '';
       const metaParts = [];
       if (item.duration) metaParts.push('⏱ ' + escapeHtml(item.duration));
-      if (item.date) metaParts.push(escapeHtml(item.date));
+      if (dateStr) metaParts.push(escapeHtml(dateStr));
       const bottomMeta = metaParts.join(' · ');
       return '<a href="/' + item.id + '" class="quick-card-link" onclick="playShiurById(event, this.dataset.id)" data-id="' + item.id + '">' +
+        newBadge +
         '<div class="quick-card-top">' +
           '<img class="quick-card-avatar" src="' + escapeHtml(photo) + '" alt="' + escapeHtml(item.speaker) + '" loading="lazy" onerror="handleImgError(this)">' +
           '<div class="quick-card-info">' +
@@ -6751,6 +7147,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     updatePlayPauseIcons(true);
     if (isSponsorPlaying) {
       resetSponsorWatchdog();
+      startSponsorRaf();
     }
   });
   audio.addEventListener('pause', () => {
@@ -6758,6 +7155,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     updateUrlTimestamp(true);
     if (isSponsorPlaying) {
       clearSponsorTimers();
+      stopSponsorRaf();
     }
   });
   audio.addEventListener('waiting', () => {
@@ -7060,11 +7458,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 function renderShiurCardHtml(s) {
   const metaParts = [];
   if (s.duration) metaParts.push('⏱ ' + escapeHtml(s.duration));
-  if (s.date) metaParts.push(escapeHtml(s.date));
+  const dateStr = formatShiurDate(s.date || '');
+  if (dateStr) metaParts.push(escapeHtml(dateStr));
   const bottomMeta = metaParts.join(' · ');
+  const newBadge = s.isNew ? '<span class="quick-card-new-badge">NEW</span>' : '';
 
   return `
     <a href="/${s.id}" class="quick-card-link" onclick="playShiurById(event, this.dataset.id)" data-id="${s.id}">
+      ${newBadge}
       <div class="quick-card-top">
         <img class="quick-card-avatar" src="${escapeHtml(s.photo)}" alt="${escapeHtml(s.speaker)}" loading="lazy" onerror="handleImgError(this)">
         <div class="quick-card-info">
@@ -7089,7 +7490,7 @@ function renderSeriesCardHtml(s) {
   const seriesId = s.seriesID || '';
 
   return `
-    <div class="series-card" onclick="filterBySeries('${seriesId}', '${escapeHtml(name).replace(/'/g, "\\'")}')" title="Explore ${escapeHtml(name)}">
+    <div class="series-card" data-id="${escapeHtml(seriesId)}" data-name="${escapeHtml(name)}" onclick="filterBySeries(this.dataset.id, this.dataset.name)" title="Explore ${escapeHtml(name)}">
       <div class="series-card-img" style="background-image: url('${escapeHtml(imgUrl)}');"></div>
       <div class="series-card-body">
         <div class="series-card-title">${escapeHtml(name)}</div>
