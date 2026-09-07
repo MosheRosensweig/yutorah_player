@@ -1170,6 +1170,41 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       color: #93c5fd;
       background: rgba(59, 130, 246, 0.2);
     }
+    [data-theme="dark"] .classic-info-btn {
+      background: rgba(59, 130, 246, 0.2);
+      color: #93c5fd;
+    }
+    [data-theme="dark"] .classic-info-btn:hover {
+      background: #3b82f6;
+      color: #ffffff;
+    }
+    [data-theme="dark"] .classic-search-tooltip {
+      background: #1e293b;
+      border-color: #334155;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
+    }
+    [data-theme="dark"] .classic-search-tooltip-header {
+      border-bottom-color: #334155;
+    }
+    [data-theme="dark"] .classic-search-tooltip-title {
+      color: #f1f5f9;
+    }
+    [data-theme="dark"] .classic-search-tooltip-close {
+      color: #94a3b8;
+    }
+    [data-theme="dark"] .classic-search-tooltip-close:hover {
+      color: #f8fafc;
+      background: rgba(255, 255, 255, 0.1);
+    }
+    [data-theme="dark"] .classic-search-tooltip-body {
+      color: #cbd5e1;
+    }
+    [data-theme="dark"] .classic-search-tooltip-body strong {
+      color: #f1f5f9;
+    }
+    [data-theme="dark"] .classic-search-tooltip-body em {
+      color: #60a5fa;
+    }
     [data-theme="dark"] .match-reason-snippet {
       color: #e2e8f0;
     }
@@ -3048,8 +3083,96 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     .match-toggle-label {
       display: inline-flex;
       align-items: center;
-      gap: 4px;
+      gap: 5px;
       white-space: nowrap;
+    }
+    .classic-info-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 17px;
+      height: 17px;
+      border-radius: 50%;
+      background: rgba(37, 99, 235, 0.1);
+      color: #2563eb;
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1;
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.15s ease;
+      margin-left: 2px;
+    }
+    .classic-info-btn:hover {
+      background: #2563eb;
+      color: #fff;
+      transform: scale(1.1);
+    }
+    .classic-search-tooltip {
+      position: absolute;
+      top: calc(100% + 8px);
+      left: 0;
+      z-index: 100;
+      width: 320px;
+      max-width: 90vw;
+      background: #ffffff;
+      border: 1px solid var(--border, #cbd5e1);
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+      border-radius: 12px;
+      padding: 12px 14px;
+      text-align: left;
+      cursor: default;
+      animation: tooltipPopIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes tooltipPopIn {
+      from { opacity: 0; transform: translateY(-6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .classic-search-tooltip-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border, #e2e8f0);
+      padding-bottom: 6px;
+      margin-bottom: 8px;
+    }
+    .classic-search-tooltip-title {
+      font-size: 12.5px;
+      font-weight: 700;
+      color: var(--text, #1e293b);
+    }
+    .classic-search-tooltip-close {
+      background: none;
+      border: none;
+      font-size: 16px;
+      line-height: 1;
+      cursor: pointer;
+      color: var(--text-muted, #64748b);
+      padding: 0 4px;
+      border-radius: 4px;
+    }
+    .classic-search-tooltip-close:hover {
+      color: var(--text, #0f172a);
+      background: rgba(0, 0, 0, 0.06);
+    }
+    .classic-search-tooltip-body {
+      font-size: 11.5px;
+      line-height: 1.45;
+      color: var(--text-muted, #475569);
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+    .classic-search-tooltip-body p {
+      margin: 0;
+    }
+    .classic-search-tooltip-body strong {
+      color: var(--text, #0f172a);
+    }
+    .classic-search-tooltip-body em {
+      font-style: normal;
+      color: #2563eb;
+      font-weight: 600;
     }
 
     /* Term Highlighting and Explainability Cards */
@@ -4477,13 +4600,26 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
             </span>
             <span class="match-toggle-label">🎯 Explain Matches</span>
           </label>
-          <label class="match-explain-toggle" id="classicSearchToggleContainer" title="Use classic old YUTorah Solr search (disables transliteration expansion &amp; entity recognition)">
+          <label class="match-explain-toggle" id="classicSearchToggleContainer" title="Toggle Classic vs Enhanced Search">
             <input type="checkbox" id="toggleClassicSearch" ${isClassicSearch ? 'checked' : ''} onchange="onToggleClassicSearch(this.checked)">
             <span class="match-toggle-track">
               <span class="match-toggle-thumb"></span>
             </span>
-            <span class="match-toggle-label">🏛️ Use Classic Search</span>
+            <span class="match-toggle-label">
+              <span>🏛️ Use Classic Search</span>
+              <span class="classic-info-btn" onclick="toggleClassicInfoTooltip(event)" role="button" aria-label="About Classic Search" title="Learn about Classic Search">ⓘ</span>
+            </span>
           </label>
+          <div id="classicSearchTooltip" class="classic-search-tooltip" style="display: none;" onclick="event.stopPropagation()">
+            <div class="classic-search-tooltip-header">
+              <span class="classic-search-tooltip-title">🔍 Search Modes Explained</span>
+              <button type="button" class="classic-search-tooltip-close" onclick="hideClassicInfoTooltip(event)">×</button>
+            </div>
+            <div class="classic-search-tooltip-body">
+              <p><strong>🏛️ Classic Search:</strong> Queries YUTorah directly for exact literal matches only, with no phonetic variations, spelling tolerance, or speaker entity recognition.</p>
+              <p><strong>✨ Enhanced Search (Default):</strong> Automatically bridges Ashkenazic/Sephardic phonetic drift (<em>Shabbos ↔ Shabbat</em>, <em>Succah ↔ Sukkah</em>), converts English transliterations into Hebrew concepts (<em>שבת, סוכה, מוקצה</em>), isolates roshei yeshiva/speakers, and explains why results matched.</p>
+            </div>
+          </div>
           <label class="match-explain-toggle" id="stackSeriesToggleContainer" title="Stack shiurim belonging to the same series under an interactive cover card">
             <input type="checkbox" id="toggleStackSeries" checked onchange="onToggleStackSeries(this.checked)">
             <span class="match-toggle-track">
@@ -6308,6 +6444,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       e.preventDefault();
       e.stopPropagation();
     }
+    if (!drawerId && e && e.currentTarget) {
+      drawerId = e.currentTarget.dataset.drawerTarget;
+    }
+    if (!drawerId) return;
     const drawer = document.getElementById(drawerId);
     const btn = document.querySelector('[data-drawer-target="' + drawerId + '"]');
     if (!drawer) return;
@@ -6347,6 +6487,36 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       });
     }
   }
+
+  function toggleClassicInfoTooltip(e) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    const tip = document.getElementById('classicSearchTooltip');
+    if (!tip) return;
+    const isShown = tip.style.display !== 'none';
+    tip.style.display = isShown ? 'none' : 'block';
+  }
+
+  function hideClassicInfoTooltip(e) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    const tip = document.getElementById('classicSearchTooltip');
+    if (tip) tip.style.display = 'none';
+  }
+
+  document.addEventListener('click', function(e) {
+    const tip = document.getElementById('classicSearchTooltip');
+    if (tip && tip.style.display !== 'none') {
+      const btn = document.querySelector('.classic-info-btn');
+      if (!tip.contains(e.target) && (!btn || !btn.contains(e.target))) {
+        tip.style.display = 'none';
+      }
+    }
+  });
 
   function onToggleStackSeries(checked) {
     stackSeriesEnabled = !!checked;
@@ -7589,7 +7759,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
     return '<div class="quick-card-series-group">' +
       coverHtml +
-      '<button type="button" class="series-expand-btn" data-drawer-target="' + drawerId + '" data-sub-count="' + subDocs.length + '" onclick="toggleSeriesDrawer(event, \'' + drawerId + '\')">' +
+      '<button type="button" class="series-expand-btn" data-drawer-target="' + drawerId + '" data-sub-count="' + subDocs.length + '" onclick="toggleSeriesDrawer(event, this.dataset.drawerTarget)">' +
         '<span class="series-expand-icon">➕</span> <span class="series-expand-text">View ' + subDocs.length + ' more in series</span>' +
       '</button>' +
       '<div id="' + drawerId + '" class="series-drawer" style="display: none;">' +
@@ -8964,7 +9134,7 @@ function renderGroupItemHtml(item, searchTerms = []) {
   return `
     <div class="quick-card-series-group">
       ${coverHtml}
-      <button type="button" class="series-expand-btn" data-drawer-target="${drawerId}" data-sub-count="${subDocs.length}" onclick="toggleSeriesDrawer(event, '${drawerId}')">
+      <button type="button" class="series-expand-btn" data-drawer-target="${drawerId}" data-sub-count="${subDocs.length}" onclick="toggleSeriesDrawer(event, this.dataset.drawerTarget)">
         <span class="series-expand-icon">➕</span> <span class="series-expand-text">View ${subDocs.length} more in series</span>
       </button>
       <div id="${drawerId}" class="series-drawer" style="display: none;">
