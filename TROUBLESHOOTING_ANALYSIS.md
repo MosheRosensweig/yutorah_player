@@ -111,3 +111,54 @@ When evaluated in the browser:
    Whenever injecting HTML snippets with event handlers (`onclick="..."`) inside JavaScript template strings, prefer HTML entity quotes (`&quot;`) or event delegation / `addEventListener` rather than nested escaped quotes (`\'` or `\\\'`).
 2. **Automated Pre-Deploy Script Linting**:
    Before deploying any worker build that contains inline client scripts, extract the `<script>` payload and run `node -c` (or ESLint) against the generated output.
+
+---
+
+## 7. Incident #2: Audio Playback & Client-Side Search Inactivity (Post-Article Reader)
+
+### Incident Overview
+- **Symptoms Observed**:
+  1. Shiur audio playback failed completely — tapping play on a card or transport button did not play audio.
+  2. Searching from the search bar ceased to execute searches or show dropdown previews.
+- **Affected Commit**: `ce501b5` (*"feat(article-reader): add continuous scroll mode, Daf-style touch zoom, Hebrew bidi reflow, and footnote superscripts"*)
+- **Resolution Commit**: `3bcba01` (*"fix(player): resolve client-side script syntax error in Hebrew regex and element shadowing to restore shiur playback"*)
+
+### Root Cause Analysis
+During the implementation of Liquid Mode text reflow for article shiurim in `fixHebrewAndFootnoteFormatting()`, raw regular expression literals with Unicode ranges and punctuation characters were written inside the backtick template string in `src/worker.js`:
+```javascript
+text = text.replace(/((?:[\u0590-\u05FF][\u0590-\u05FF\s\'\"\–\—\:\,\.\-\(\)]*[\u0590-\u05FF]|[\u0590-\u05FF]))/g, ...);
+```
+
+Because this regex was placed inside an ES6 template literal (`...` in `renderAppHtml`), the template interpolation engine consumed the backslashes (`\s`, `\'`, `\–`, `\-`) at runtime before writing the response body. This caused the rendered HTML sent to the browser to contain:
+```javascript
+text = text.replace(/((?:[֐-׿][֐-׿s'"–—:,.-()]*[֐-׿]|[֐-׿]))/g, ...);
+```
+In JavaScript regular expression character classes `[...]`, an unescaped `-` between `:` and `.` or `.` and `(` represents a range. Since `:` ($0x3A$) has a higher code point than `.` ($0x2E$), the browser's JavaScript parser threw an immediate fatal syntax error:
+```
+SyntaxError: Invalid regular expression: Range out of order in character class
+```
+
+Additionally, `curTimeEl` and `scrubberBar` were declared with `const` in `playSponsorPreRoll()` before their lower-level scope declaration in the scrubber section, creating variable shadowing conflicts.
+
+### Why Did Playback AND Searching Break?
+Because the syntax error occurred during the initial parsing of the main client-side `<script>` tag:
+- **`playShiurById()`** and **`togglePlay()`** were never evaluated or attached to the global scope.
+- **`searchInput.addEventListener('input', onSearchInput)`** and **`handleSearchSubmit()`** never executed.
+- Submitting the search bar or clicking any shiur card failed silently because the entire script had crashed on initial load.
+
+### How It Was Fixed
+1. **Explicit `new RegExp()` with Unicode Code Points**:
+   Replaced inline regex literals with explicit string constructor instantiation using safe unicode escapes (`\u2013`, `\u2014`, `\u201C`, `\u201D`):
+   ```javascript
+   const hebrewBlockRegex = new RegExp('((?:[\\u0590-\\u05FF][\\u0590-\\u05FF\\s\\\'\\"\\u2013\\u2014\\:\\,\\.\\-\\(\\)]*[\\u0590-\\u05FF]|[\\u0590-\\u05FF]))', 'g');
+   ```
+2. **Clean Scope Isolation for Player Elements**:
+   Renamed shadowed variables in `playSponsorPreRoll()` to local references (`curTimeNode`, `sBar`, `sFill`), avoiding collisions with global elements.
+3. **Automated End-to-End Regression Test in CI/Test Runner**:
+   Added an automated check in `tests/basic_functionality.test.mjs` that renders the HTML page and compiles every `<script>` block with `new Function(match[1])`. If any script has an unescaped token or syntax error, the build test immediately fails before deployment.
+4. **Verification**:
+   - Both `node tests/phonetic_engine.test.mjs` and `node tests/basic_functionality.test.mjs` passed cleanly.
+   - Verified live on `https://yutorah-player.mrosensweig.workers.dev`:
+     - Audio playback works (shiur #1053000, pre-roll dedication).
+     - Search input, debounced live preview dropdown, and full search grid results work for all queries.
+
