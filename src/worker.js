@@ -3109,6 +3109,31 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       font-size: 1.1em;
       line-height: 1.9;
     }
+    .liquid-hebrew {
+      direction: rtl;
+      unicode-bidi: isolate;
+      font-family: "SBL Hebrew", "David", "Taamey Frank CLM", "Times New Roman", serif;
+      font-size: 1.12em;
+      line-height: 1.8;
+      display: inline-block;
+      margin: 0 3px;
+      color: #1a365d;
+    }
+    [data-theme="dark"] .liquid-hebrew {
+      color: #93c5fd;
+    }
+    .liquid-footnote-ref {
+      font-size: 0.72em;
+      line-height: 0;
+      vertical-align: super;
+      font-weight: 700;
+      color: var(--primary);
+      padding: 0 2px;
+      cursor: default;
+    }
+    [data-theme="dark"] .liquid-footnote-ref {
+      color: var(--primary-light);
+    }
     .liquid-heading {
       font-weight: 800;
       color: var(--primary);
@@ -3116,6 +3141,39 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       line-height: 1.35;
     }
     [data-theme="dark"] .liquid-heading {
+      color: var(--primary-light);
+    }
+
+    /* Page View Mode Switcher (Continuous Scroll vs Page by Page) */
+    .page-mode-pill {
+      display: inline-flex;
+      background: var(--border-light);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 2px;
+      gap: 2px;
+    }
+    .page-mode-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 11.5px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 16px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .page-mode-btn.active {
+      background: var(--card);
+      color: var(--primary);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+    }
+    [data-theme="dark"] .page-mode-btn.active {
+      background: #253347;
       color: var(--primary-light);
     }
 
@@ -3128,11 +3186,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       border-radius: 12px;
       padding: 20px;
       min-height: 540px;
-      max-height: 80vh;
+      max-height: 85vh;
       overflow-y: auto;
       overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
       gap: 20px;
       box-shadow: inset 0 2px 8px rgba(0,0,0,0.3);
+      position: relative;
+      touch-action: pan-x pan-y;
+      user-select: none;
+      -webkit-user-select: none;
     }
     [data-theme="dark"] .article-canvas-viewport {
       background: #181d24;
@@ -3142,16 +3205,36 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       background: #fff;
       box-shadow: 0 4px 16px rgba(0,0,0,0.35);
       border-radius: 4px;
-      overflow: hidden;
+      overflow: visible;
       display: block;
       width: fit-content;
       max-width: none;
       margin: 0 auto;
-      transition: transform 0.15s ease;
+      transform-origin: 0 0;
+      transition: transform 0.08s ease-out;
+      position: relative;
     }
     .pdf-canvas-card canvas {
       display: block;
-      height: auto !important;
+      max-width: 100%;
+      height: auto;
+    }
+    .canvas-page-separator {
+      margin-top: 18px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+    }
+    .canvas-page-tag {
+      font-size: 11px;
+      font-weight: 700;
+      color: #e2e8f0;
+      background: rgba(0,0,0,0.55);
+      padding: 3px 10px;
+      border-radius: 10px;
+      margin-bottom: 8px;
+      letter-spacing: 0.5px;
     }
     .article-viewer-wrap:fullscreen {
       background: var(--bg);
@@ -5160,9 +5243,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           </div>
         </div>
         <div class="article-toolbar-center" id="articlePageNav" style="display: none;">
-          <button type="button" class="article-btn" id="prevPageBtn" onclick="changeArticlePage(-1)" aria-label="Previous page">‹ Prev</button>
-          <span class="article-page-info" id="articlePageNum" aria-live="polite">Page 1 of 1</span>
-          <button type="button" class="article-btn" id="nextPageBtn" onclick="changeArticlePage(1)" aria-label="Next page">Next ›</button>
+          <div class="page-mode-pill" id="pageModePill">
+            <button type="button" class="page-mode-btn active" id="btnModeContinuous" onclick="setPageScrollMode('continuous')">📜 Scroll All</button>
+            <button type="button" class="page-mode-btn" id="btnModeSingle" onclick="setPageScrollMode('single')">📄 Page by Page</button>
+          </div>
+          <div id="singlePageNavButtons" style="display: none; align-items: center; gap: 6px;">
+            <button type="button" class="article-btn" id="prevPageBtn" onclick="changeArticlePage(-1)" aria-label="Previous page">‹ Prev</button>
+            <span class="article-page-info" id="articlePageNum" aria-live="polite">Page 1 of 1</span>
+            <button type="button" class="article-btn" id="nextPageBtn" onclick="changeArticlePage(1)" aria-label="Next page">Next ›</button>
+          </div>
+          <span class="article-page-info" id="continuousPageNum" aria-live="polite" style="display: inline-block;">Page 1 of 1</span>
         </div>
         <div class="article-toolbar-right">
           <button type="button" class="article-btn" id="zoomOutBtn" onclick="adjustArticleZoom(-0.2)" title="Zoom out" aria-label="Zoom out" style="display: none;">🔍 -</button>
@@ -5182,11 +5272,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         </div>
       </div>
 
-      <!-- Original Page Viewport (High-resolution rendering) -->
-      <div id="articleCanvasViewport" class="article-canvas-viewport" style="display: none;">
+      <!-- Original Page Viewport (Interactive Touch Zoom & Pan Tracking) -->
+      <div id="articleCanvasViewport" class="article-canvas-viewport" style="display: none;" title="Pinch or double-tap to zoom anywhere">
         <div class="pdf-canvas-card" id="pdfCanvasCard">
           <canvas id="pdfCanvas"></canvas>
         </div>
+        <div id="continuousPagesContainer" style="display: none; width: 100%; flex-direction: column; align-items: center; gap: 20px;"></div>
       </div>
     </div>
 
@@ -9514,11 +9605,28 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   let pdfTotalPages = 0;
   let pdfCurrentPage = 1;
   let articleViewerMode = 'liquid'; // 'liquid' or 'original'
+  let pageScrollMode = 'continuous'; // 'continuous' or 'single'
   let liquidFontSizeRem = 1.05;
   let originalCanvasScale = 1.35;
   let isRenderingCanvas = false;
   let pendingCanvasPage = null;
   let activeExtractionId = 0;
+  let renderedContinuousPages = new Set();
+  let continuousPageObserver = null;
+
+  // Touch Zoom & Pan Tracking State for Original Page View
+  let touchZoomState = {
+    scale: 1.0,
+    panX: 0,
+    panY: 0,
+    lastTouchX: 0,
+    lastTouchY: 0,
+    startDist: 0,
+    startScale: 1.0,
+    isPinching: false,
+    isPanning: false,
+    lastTapTime: 0
+  };
 
   function getPdfProxyUrl(rawUrl) {
     if (!rawUrl) return '';
@@ -9558,7 +9666,50 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (zoomInBtn) zoomInBtn.style.display = 'inline-flex';
       if (zoomOutBtn) zoomOutBtn.style.display = 'inline-flex';
       if (pageNav) pageNav.style.display = 'flex';
+      
+      applyPageScrollModeUI();
+      if (pageScrollMode === 'continuous') {
+        renderContinuousPages();
+      } else {
+        renderArticlePage(pdfCurrentPage);
+      }
+      initTouchZoomTracking();
+    }
+  }
+
+  function setPageScrollMode(mode) {
+    pageScrollMode = mode;
+    applyPageScrollModeUI();
+    if (mode === 'continuous') {
+      renderContinuousPages();
+    } else {
       renderArticlePage(pdfCurrentPage);
+    }
+  }
+
+  function applyPageScrollModeUI() {
+    const btnCont = document.getElementById('btnModeContinuous');
+    const btnSing = document.getElementById('btnModeSingle');
+    const singleNav = document.getElementById('singlePageNavButtons');
+    const contInfo = document.getElementById('continuousPageNum');
+    const singleCard = document.getElementById('pdfCanvasCard');
+    const contContainer = document.getElementById('continuousPagesContainer');
+
+    if (pageScrollMode === 'continuous') {
+      if (btnCont) btnCont.classList.add('active');
+      if (btnSing) btnSing.classList.remove('active');
+      if (singleNav) singleNav.style.display = 'none';
+      if (contInfo) contInfo.style.display = 'inline-block';
+      if (singleCard) singleCard.style.display = 'none';
+      if (contContainer) contContainer.style.display = 'flex';
+    } else {
+      if (btnCont) btnCont.classList.remove('active');
+      if (btnSing) btnSing.classList.add('active');
+      if (singleNav) singleNav.style.display = 'inline-flex';
+      if (contInfo) contInfo.style.display = 'none';
+      if (singleCard) singleCard.style.display = 'block';
+      if (contContainer) contContainer.style.display = 'none';
+      updatePageNavUI();
     }
   }
 
@@ -9572,7 +9723,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   function adjustArticleZoom(delta) {
     originalCanvasScale = Math.max(0.75, Math.min(3.0, originalCanvasScale + delta));
-    renderArticlePage(pdfCurrentPage);
+    touchZoomState.scale = 1.0;
+    touchZoomState.panX = 0;
+    touchZoomState.panY = 0;
+    applyTouchTransform();
+    if (pageScrollMode === 'continuous') {
+      renderedContinuousPages.clear();
+      renderContinuousPages();
+    } else {
+      renderArticlePage(pdfCurrentPage);
+    }
   }
 
   function changeArticlePage(delta) {
@@ -9588,6 +9748,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const pageNumEl = document.getElementById('articlePageNum');
     if (pageNumEl) {
       pageNumEl.textContent = 'Page ' + pdfCurrentPage + ' of ' + pdfTotalPages;
+    }
+    const contNumEl = document.getElementById('continuousPageNum');
+    if (contNumEl) {
+      contNumEl.textContent = 'Page ' + pdfCurrentPage + ' of ' + pdfTotalPages;
     }
     const prevBtn = document.getElementById('prevPageBtn');
     const nextBtn = document.getElementById('nextPageBtn');
@@ -9638,6 +9802,259 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
   }
 
+  async function renderContinuousPages() {
+    if (!pdfDoc) return;
+    const container = document.getElementById('continuousPagesContainer');
+    if (!container) return;
+
+    // Create page shells if not already created
+    if (container.children.length !== pdfTotalPages) {
+      container.innerHTML = '';
+      renderedContinuousPages.clear();
+      for (let i = 1; i <= pdfTotalPages; i++) {
+        const wrap = document.createElement('div');
+        wrap.className = 'canvas-page-separator';
+        wrap.id = 'contPageWrap_' + i;
+        wrap.innerHTML = '<span class="canvas-page-tag">Page ' + i + ' of ' + pdfTotalPages + '</span>' +
+          '<div class="pdf-canvas-card" id="contCanvasCard_' + i + '">' +
+            '<canvas id="contCanvas_' + i + '"></canvas>' +
+          '</div>';
+        container.appendChild(wrap);
+      }
+
+      // Intersection observer to track current page as user scrolls
+      if (continuousPageObserver) continuousPageObserver.disconnect();
+      continuousPageObserver = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            const idMatch = entry.target.id.match(/\d+$/);
+            if (idMatch) {
+              pdfCurrentPage = parseInt(idMatch[0], 10);
+              updatePageNavUI();
+              // Lazily render adjacent pages
+              renderPageToContinuousCard(pdfCurrentPage);
+              if (pdfCurrentPage + 1 <= pdfTotalPages) renderPageToContinuousCard(pdfCurrentPage + 1);
+              if (pdfCurrentPage - 1 >= 1) renderPageToContinuousCard(pdfCurrentPage - 1);
+            }
+          }
+        }
+      }, { threshold: [0.1, 0.5] });
+
+      for (let i = 1; i <= pdfTotalPages; i++) {
+        const wrap = document.getElementById('contPageWrap_' + i);
+        if (wrap) continuousPageObserver.observe(wrap);
+      }
+    }
+
+    // Render initial page and neighbor
+    await renderPageToContinuousCard(1);
+    if (pdfTotalPages > 1) renderPageToContinuousCard(2);
+  }
+
+  async function renderPageToContinuousCard(pageNum) {
+    if (!pdfDoc || pageNum < 1 || pageNum > pdfTotalPages) return;
+    if (renderedContinuousPages.has(pageNum)) return;
+    renderedContinuousPages.add(pageNum);
+
+    try {
+      const page = await pdfDoc.getPage(pageNum);
+      const canvas = document.getElementById('contCanvas_' + pageNum);
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      const viewport = page.getViewport({ scale: originalCanvasScale });
+
+      canvas.width = Math.floor(viewport.width * dpr);
+      canvas.height = Math.floor(viewport.height * dpr);
+      canvas.style.width = Math.floor(viewport.width) + 'px';
+      canvas.style.height = Math.floor(viewport.height) + 'px';
+
+      const renderContext = {
+        canvasContext: ctx,
+        transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : null,
+        viewport: viewport
+      };
+      await page.render(renderContext).promise;
+    } catch (e) {
+      renderedContinuousPages.delete(pageNum);
+      console.warn('Error rendering continuous page ' + pageNum, e);
+    }
+  }
+
+  // ==========================================================================
+  // Interactive Touch Zoom & Pan Tracking (Mobile Daf-Style Viewer)
+  // ==========================================================================
+  let isTouchZoomInit = false;
+
+  function initTouchZoomTracking() {
+    if (isTouchZoomInit) return;
+    const viewport = document.getElementById('articleCanvasViewport');
+    if (!viewport) return;
+    isTouchZoomInit = true;
+
+    function getDistance(t1, t2) {
+      const dx = t1.clientX - t2.clientX;
+      const dy = t1.clientY - t2.clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    function getCenter(t1, t2) {
+      return {
+        x: (t1.clientX + t2.clientX) / 2,
+        y: (t1.clientY + t2.clientY) / 2
+      };
+    }
+
+    viewport.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 2) {
+        // Pinch-to-zoom start
+        touchZoomState.isPinching = true;
+        touchZoomState.isPanning = false;
+        touchZoomState.startDist = getDistance(e.touches[0], e.touches[1]);
+        touchZoomState.startScale = touchZoomState.scale;
+      } else if (e.touches.length === 1) {
+        // Double-tap zoom check
+        const now = Date.now();
+        const touch = e.touches[0];
+        if (now - touchZoomState.lastTapTime < 300) {
+          // Double tapped!
+          e.preventDefault();
+          if (touchZoomState.scale > 1.2) {
+            // Reset zoom
+            touchZoomState.scale = 1.0;
+            touchZoomState.panX = 0;
+            touchZoomState.panY = 0;
+          } else {
+            // Zoom to 2.2x centered at touch point
+            touchZoomState.scale = 2.2;
+            const rect = viewport.getBoundingClientRect();
+            const relX = touch.clientX - rect.left;
+            const relY = touch.clientY - rect.top;
+            touchZoomState.panX = -relX * 0.8;
+            touchZoomState.panY = -relY * 0.8;
+          }
+          applyTouchTransform();
+          touchZoomState.lastTapTime = 0;
+          return;
+        }
+        touchZoomState.lastTapTime = now;
+
+        // 1-finger tracking pan if zoomed in
+        if (touchZoomState.scale > 1.05) {
+          touchZoomState.isPanning = true;
+          touchZoomState.lastTouchX = touch.clientX;
+          touchZoomState.lastTouchY = touch.clientY;
+        }
+      }
+    }, { passive: false });
+
+    viewport.addEventListener('touchmove', (e) => {
+      if (touchZoomState.isPinching && e.touches.length === 2) {
+        e.preventDefault();
+        const dist = getDistance(e.touches[0], e.touches[1]);
+        const scaleFactor = dist / (touchZoomState.startDist || 1);
+        touchZoomState.scale = Math.max(1.0, Math.min(3.5, touchZoomState.startScale * scaleFactor));
+        applyTouchTransform();
+      } else if (touchZoomState.isPanning && e.touches.length === 1) {
+        e.preventDefault();
+        const touch = e.touches[0];
+        const dx = touch.clientX - touchZoomState.lastTouchX;
+        const dy = touch.clientY - touchZoomState.lastTouchY;
+        touchZoomState.panX += dx;
+        touchZoomState.panY += dy;
+        touchZoomState.lastTouchX = touch.clientX;
+        touchZoomState.lastTouchY = touch.clientY;
+        applyTouchTransform();
+      }
+    }, { passive: false });
+
+    viewport.addEventListener('touchend', (e) => {
+      if (e.touches.length < 2) {
+        touchZoomState.isPinching = false;
+      }
+      if (e.touches.length === 0) {
+        touchZoomState.isPanning = false;
+        if (touchZoomState.scale <= 1.02) {
+          touchZoomState.scale = 1.0;
+          touchZoomState.panX = 0;
+          touchZoomState.panY = 0;
+          applyTouchTransform();
+        }
+      }
+    }, { passive: true });
+  }
+
+  function applyTouchTransform() {
+    const singleCard = document.getElementById('pdfCanvasCard');
+    const contContainer = document.getElementById('continuousPagesContainer');
+    const transformStr = touchZoomState.scale === 1.0 && touchZoomState.panX === 0 && touchZoomState.panY === 0
+      ? ''
+      : 'translate(' + Math.round(touchZoomState.panX) + 'px, ' + Math.round(touchZoomState.panY) + 'px) scale(' + touchZoomState.scale.toFixed(2) + ')';
+
+    if (singleCard && pageScrollMode === 'single') {
+      singleCard.style.transform = transformStr;
+    }
+    if (contContainer && pageScrollMode === 'continuous') {
+      contContainer.style.transform = transformStr;
+    }
+  }
+
+  // ==========================================================================
+  // Liquid Mode Extraction & Hebrew / Footnote Reflow
+  // ==========================================================================
+  function fixHebrewAndFootnoteFormatting(rawText) {
+    if (!rawText) return '';
+
+    // 1. Identify and format footnote reference superscripts
+    // Footnote indicators e.g. [1], or a solitary digit / 2-digit number right after punctuation or word
+    let text = rawText.replace(/(\b[a-zA-Z\.\,\:\;\"\'\?\!]+)\s*(\d{1,3})\b(?!\s*[\.\,\d\/\-])/g, (m, word, num) => {
+      return word + '<sup class="liquid-footnote-ref">' + num + '</sup>';
+    });
+
+    // 2. Identify and format Hebrew text blocks & quotations
+    // Matches Hebrew sequences including intervening spaces, hyphens, and quotes
+    text = text.replace(/((?:[\u0590-\u05FF][\u0590-\u05FF\s\'\"\–\—\:\,\.\-\(\)]*[\u0590-\u05FF]|[\u0590-\u05FF]))/g, (match) => {
+      let prefix = '';
+      let suffix = '';
+      let core = match;
+
+      const leadMatch = core.match(/^([\s\,\.\:\;\“\”\"\'\(\)]+)/);
+      if (leadMatch) {
+        prefix = leadMatch[1];
+        core = core.slice(prefix.length);
+      }
+      const trailMatch = core.match(/([\s\,\.\:\;\“\”\"\'\(\)]+)$/);
+      if (trailMatch) {
+        suffix = trailMatch[1];
+        core = core.slice(0, -suffix.length);
+      }
+
+      if (!/[\u0590-\u05FF]/.test(core)) return match;
+
+      // Strip nikud marks for crisp, clean Liquid typography
+      let clean = core.replace(/[\u0591-\u05BD\u05BF\u05C1-\u05C2\u05C4-\u05C5\u05C7]/g, '');
+      const tokens = clean.trim().split(/\s+/).filter(Boolean);
+      if (!tokens.length) return match;
+
+      const totalChars = tokens.reduce((acc, t) => acc + t.length, 0);
+      const avgLen = totalChars / tokens.length;
+
+      let resolved = '';
+      if (avgLen < 2.2 && tokens.length >= 3) {
+        // Letter-spaced character-by-character visual placement reversed
+        const allChars = Array.from(clean.replace(/\s+/g, ''));
+        resolved = allChars.reverse().join('');
+      } else {
+        // InDesign visual LTR word sequence reversed to natural Hebrew reading order
+        resolved = tokens.reverse().join(' ');
+      }
+
+      return prefix + '<span dir="rtl" class="liquid-hebrew">' + resolved + '</span>' + suffix;
+    });
+
+    return text;
+  }
+
   async function extractAndRenderLiquidText() {
     const container = document.getElementById('liquidContent');
     if (!container || !pdfDoc) return;
@@ -9659,28 +10076,52 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         const items = textContent.items;
         if (!items || items.length === 0) continue;
 
+        // Filter out running header/footer items (e.g. y < 45 or publication title)
+        const contentItems = items.filter(it => {
+          const y = it.transform[5];
+          if (y < 46 || y > 755) return false;
+          if (it.str.includes('Torah To-Go Series') || it.str.includes('Benjamin and Rose Berger')) return false;
+          return true;
+        });
+
+        // Column detection and sorting:
+        // Col 0: x < 205, Col 1: 205 <= x < 385, Col 2: x >= 385
+        function getColIdx(x) {
+          if (x < 205) return 0;
+          if (x < 385) return 1;
+          return 2;
+        }
+
+        const sorted = [...contentItems].sort((a, b) => {
+          const cA = getColIdx(a.transform[4]);
+          const cB = getColIdx(b.transform[4]);
+          if (cA !== cB) return cA - cB;
+          return b.transform[5] - a.transform[5]; // Top to bottom within column
+        });
+
         let pageLines = [];
-        let currentY = null;
-        let currentLine = '';
+        let curLine = [];
+        let curY = null;
+        let curCol = null;
 
-        for (const item of items) {
-          const str = item.str;
-          if (!str && str !== ' ') continue;
-
-          const y = Math.round(item.transform[5]);
-          if (currentY === null || Math.abs(currentY - y) < 4) {
-            currentLine += (currentLine.endsWith(' ') || str.startsWith(' ') ? '' : ' ') + str;
-            currentY = y;
-          } else {
-            if (currentLine.trim()) {
-              pageLines.push(currentLine.trim());
+        for (const it of sorted) {
+          const col = getColIdx(it.transform[4]);
+          const y = Math.round(it.transform[5]);
+          if (curCol === null || curCol !== col || Math.abs(curY - y) > 3.5) {
+            if (curLine.length) {
+              const lineStr = curLine.map(item => item.str).join(' ');
+              if (lineStr.trim()) pageLines.push(lineStr.trim());
             }
-            currentLine = str;
-            currentY = y;
+            curLine = [it];
+            curY = y;
+            curCol = col;
+          } else {
+            curLine.push(it);
           }
         }
-        if (currentLine.trim()) {
-          pageLines.push(currentLine.trim());
+        if (curLine.length) {
+          const lineStr = curLine.map(item => item.str).join(' ');
+          if (lineStr.trim()) pageLines.push(lineStr.trim());
         }
 
         // Group lines into semantic paragraphs
@@ -9688,8 +10129,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         let curParagraph = '';
 
         for (const line of pageLines) {
-          // Check if line looks like a header or footnote
-          if (line.length < 60 && /^[A-Z0-9\s—–:-]{3,}$/.test(line.trim())) {
+          // Check if line looks like a header (e.g. Endnotes, title, capital section)
+          if (line.length < 50 && (/^[A-Z0-9\s—–:-]{3,}$/.test(line.trim()) || /^Endnotes/i.test(line.trim()))) {
             if (curParagraph) {
               paragraphs.push(curParagraph.trim());
               curParagraph = '';
@@ -9718,8 +10159,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           if (p.startsWith('### ')) {
             pageHtml += '<h3 class="liquid-heading">' + escapeHtml(p.substring(4)) + '</h3>';
           } else {
-            const isHebrew = hebrewRegex.test(p);
-            pageHtml += '<p class="liquid-paragraph"' + (isHebrew ? ' dir="rtl"' : '') + '>' + escapeHtml(p) + '</p>';
+            const formatted = fixHebrewAndFootnoteFormatting(escapeHtml(p));
+            const isHebrewBlock = hebrewRegex.test(p) && p.length < 80;
+            pageHtml += '<p class="liquid-paragraph"' + (isHebrewBlock ? ' dir="rtl"' : '') + '>' + formatted + '</p>';
           }
         }
         pageHtml += '</div>';
@@ -9802,8 +10244,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       const dlPdfBtn = document.getElementById('dlPdfBtn');
       if (dlPdfBtn) dlPdfBtn.href = rawUrl;
 
-      // Render views
-      renderArticlePage(1);
+      // Render views based on current mode
+      if (articleViewerMode === 'original') {
+        if (pageScrollMode === 'continuous') {
+          renderContinuousPages();
+        } else {
+          renderArticlePage(1);
+        }
+      }
       extractAndRenderLiquidText();
     } catch (err) {
       console.error('Failed to load PDF in reader:', err);

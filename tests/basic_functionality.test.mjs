@@ -52,8 +52,11 @@ async function testArticleShiur() {
   assert.ok(html.includes('pdfjsLib'), 'PDF.js library must be loaded in head');
   assert.ok(html.includes('Liquid Mode'), 'Liquid Mode toggle must be present');
   assert.ok(html.includes('Original Page'), 'Original Page toggle must be present');
+  assert.ok(html.includes('btnModeContinuous'), 'Continuous scroll button must be present');
+  assert.ok(html.includes('btnModeSingle'), 'Single page mode button must be present');
+  assert.ok(html.includes('continuousPagesContainer'), 'Continuous pages container must be present');
   assert.ok(html.includes('INITIAL_ARTICLE_PDF'), 'Client script must declare INITIAL_ARTICLE_PDF');
-  console.log('  ✅ Article shiur page renders with Article Reader and PDF.js integration.');
+  console.log('  ✅ Article shiur page renders with Article Reader, Page Modes, and PDF.js integration.');
 }
 
 async function testPdfProxy() {
