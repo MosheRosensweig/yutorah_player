@@ -4228,6 +4228,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       color: #fff;
       width: 36px;
       height: 36px;
+      padding: 0;
+      box-sizing: border-box;
       border-radius: 50%;
       font-size: 17px;
       cursor: pointer;
@@ -4241,6 +4243,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       -webkit-tap-highlight-color: transparent !important;
       -webkit-user-select: none;
       user-select: none;
+    }
+    .mini-play-btn svg {
+      display: block;
+      margin: 0 auto;
     }
     .mini-play-btn:focus,
     .mini-play-btn:active {
@@ -5485,7 +5491,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           <text x="26" y="18" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="11" font-weight="800" text-anchor="middle">-10</text>
         </svg>
       </button>
-      <button type="button" class="mini-play-btn" id="miniPlayBtn" onclick="togglePlay(); event.stopPropagation();" title="Play/Pause"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style="display:block; margin-left:2px;"><path d="M8 5v14l11-7z"/></svg></button>
+      <button type="button" class="mini-play-btn" id="miniPlayBtn" onclick="togglePlay(); event.stopPropagation();" title="Play/Pause"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style="display:block;"><path d="M8 5v14l11-7z"/></svg></button>
       <button type="button" class="mini-btn skip-btn" onclick="skip(10); event.stopPropagation();" title="Forward 10s">
         <svg width="44" height="28" viewBox="0 0 44 28" style="display:block;">
           <polygon points="40,14 4,2 4,26" fill="rgba(255,255,255,0.18)" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" stroke-linejoin="round"/>
@@ -9446,7 +9452,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   // Play / Pause SVG Icons (Clean white lines without emoji background)
   const PLAY_ICON_MAIN = '<svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" style="display:block; margin-left:3px;"><path d="M8 5v14l11-7z"/></svg>';
   const PAUSE_ICON_MAIN = '<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" style="display:block;"><rect x="5" y="4" width="4" height="16" rx="1.5"/><rect x="15" y="4" width="4" height="16" rx="1.5"/></svg>';
-  const PLAY_ICON_MINI = '<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style="display:block; margin-left:2px;"><path d="M8 5v14l11-7z"/></svg>';
+  const PLAY_ICON_MINI = '<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style="display:block;"><path d="M8 5v14l11-7z"/></svg>';
   const PAUSE_ICON_MINI = '<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style="display:block;"><rect x="5" y="4" width="4" height="16" rx="1.5"/><rect x="15" y="4" width="4" height="16" rx="1.5"/></svg>';
 
   function updatePlayPauseIcons(isPlaying) {
