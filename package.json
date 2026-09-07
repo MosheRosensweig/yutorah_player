@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "test": "node tests/phonetic_engine.test.mjs && node tests/basic_functionality.test.mjs"
   },
   "keywords": [
     "yutorah",

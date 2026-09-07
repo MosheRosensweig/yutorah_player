@@ -636,6 +636,84 @@ export default {
       return new Response('Theme asset not found', { status: 404 });
     }
 
+    // 3c. Streaming PDF Proxy for in-browser PDF.js & Liquid Mode reflow: /api/pdf-proxy?url=...
+    if (url.pathname === '/api/pdf-proxy') {
+      if (request.method === 'OPTIONS') {
+        return new Response(null, {
+          status: 204,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+            'Access-Control-Allow-Headers': 'Range, Content-Type',
+            'Access-Control-Max-Age': '86400'
+          }
+        });
+      }
+      const pdfTargetUrl = url.searchParams.get('url');
+      if (!pdfTargetUrl) {
+        return new Response('Missing url parameter', { status: 400 });
+      }
+      try {
+        let cleanTarget = pdfTargetUrl.trim();
+        if (cleanTarget.startsWith('/')) {
+          cleanTarget = 'https://shiurim.yutorah.net' + cleanTarget;
+        }
+        let parsedTarget;
+        try {
+          parsedTarget = new URL(cleanTarget);
+        } catch(e) {
+          return new Response('Invalid URL', { status: 400 });
+        }
+        const allowedHosts = [
+          'shiurim.yutorah.net',
+          'www.yutorah.org',
+          'yutorah.org',
+          'api.yutorah.org',
+          'cdnyutorah.cachefly.net'
+        ];
+        const isAllowed = allowedHosts.includes(parsedTarget.hostname.toLowerCase()) ||
+          parsedTarget.hostname.toLowerCase().endsWith('.r2.dev') ||
+          parsedTarget.hostname.toLowerCase().endsWith('.yutorah.org');
+        if (!isAllowed) {
+          return new Response('Target host not allowed', { status: 403 });
+        }
+        const upstreamHeaders = {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+          'Accept': 'application/pdf, */*'
+        };
+        const rangeHeader = request.headers.get('Range');
+        if (rangeHeader) {
+          upstreamHeaders['Range'] = rangeHeader;
+        }
+        const pdfResp = await fetch(cleanTarget, {
+          headers: upstreamHeaders,
+          redirect: 'follow'
+        });
+        const respHeaders = new Headers();
+        respHeaders.set('Content-Type', pdfResp.headers.get('Content-Type') || 'application/pdf');
+        respHeaders.set('Access-Control-Allow-Origin', '*');
+        respHeaders.set('Access-Control-Allow-Headers', 'Range, Content-Type');
+        respHeaders.set('Access-Control-Expose-Headers', 'Content-Range, Content-Length, Accept-Ranges');
+        respHeaders.set('Accept-Ranges', 'bytes');
+        respHeaders.set('Cache-Control', 'public, max-age=86400');
+        if (pdfResp.headers.has('Content-Length')) {
+          respHeaders.set('Content-Length', pdfResp.headers.get('Content-Length'));
+        }
+        if (pdfResp.headers.has('Content-Range')) {
+          respHeaders.set('Content-Range', pdfResp.headers.get('Content-Range'));
+        }
+        return new Response(pdfResp.body, {
+          status: pdfResp.status,
+          headers: respHeaders
+        });
+      } catch (pdfErr) {
+        return new Response('Error proxying PDF: ' + pdfErr.message, {
+          status: 502,
+          headers: { 'Access-Control-Allow-Origin': '*' }
+        });
+      }
+    }
+
     // 4. Extract Shiur ID or Search Query from URL
     let shiurId = url.searchParams.get('shiurId') || url.searchParams.get('shiurID') || url.searchParams.get('id');
     const pathMatch = url.pathname.match(/^\/(?:lectures\/)?([0-9]+)/);
@@ -897,6 +975,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   let description = '';
   let audioUrl = '';
   let downloadUrl = '';
+  let articlePdfUrl = '';
   let moreFromSpeakers = [];
   let moreFromCategories = [];
   let shiurTeachers = [];
@@ -912,10 +991,21 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     duration = shiurData.shiurDuration || '';
     const rawDate = shiurData.shiurDateFormatted || shiurData.shiurDate || '';
     shiurDate = formatShiurDate(rawDate);
-    meta = duration + (shiurDate ? ' · ' + shiurDate : '');
     description = shiurData.shiurDescription || '';
     downloadUrl = shiurData.downloadURL || shiurData.playerDownloadURL || '';
-    audioUrl = shiurData.playerDownloadURL || (shiurData.shiurURL ? 'https://shiurim.yutorah.net' + shiurData.shiurURL : '') || downloadUrl;
+    const rawShiurUrl = shiurData.playerDownloadURL || (shiurData.shiurURL ? 'https://shiurim.yutorah.net' + shiurData.shiurURL : '') || downloadUrl;
+    
+    // Detect if this shiur is an Article / Text document
+    const mediaCategory = (shiurData.mediaTypeCategory || '').toLowerCase();
+    const isDoc = mediaCategory === 'text' || mediaCategory === 'article' || /\.pdf($|\?)/i.test(rawShiurUrl) || /\.pdf($|\?)/i.test(downloadUrl);
+    if (isDoc) {
+      articlePdfUrl = rawShiurUrl;
+      audioUrl = ''; // Do not treat as audio stream
+      meta = '📄 Article' + (shiurDate ? ' · ' + shiurDate : '');
+    } else {
+      audioUrl = rawShiurUrl;
+      meta = duration + (shiurDate ? ' · ' + shiurDate : '');
+    }
 
     if (shiurData.moreFromSpeakers && Array.isArray(shiurData.moreFromSpeakers)) {
       moreFromSpeakers = shiurData.moreFromSpeakers.map(normalizeShiur);
@@ -1073,6 +1163,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         // if (savedMode === 'simple') document.documentElement.setAttribute('data-view', 'simple');
       } catch(e) {}
     })();
+  </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    if (typeof pdfjsLib !== 'undefined') {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
   </script>
   <style>
     :root {
@@ -2818,6 +2914,302 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       .shortcuts-hint {
         display: none !important;
       }
+    }
+
+    /* ==========================================================================
+       Article & PDF Reader (Liquid Mode & High-Resolution Original View)
+       ========================================================================== */
+    .article-viewer-wrap {
+      margin-top: 20px;
+      padding-top: 18px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      background: var(--card);
+      border-radius: 12px;
+    }
+    .article-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding: 10px 14px;
+      background: rgba(43, 76, 126, 0.05);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    [data-theme="dark"] .article-toolbar {
+      background: rgba(92, 142, 204, 0.08);
+      border-color: #2a3b52;
+    }
+    .article-toolbar-left,
+    .article-toolbar-center,
+    .article-toolbar-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .article-mode-pill {
+      display: inline-flex;
+      background: var(--border-light);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 2px;
+      gap: 2px;
+    }
+    .article-mode-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 12px;
+      font-weight: 700;
+      padding: 5px 12px;
+      border-radius: 16px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .article-mode-btn.active {
+      background: var(--primary);
+      color: #fff;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+    }
+    [data-theme="dark"] .article-mode-btn.active {
+      background: var(--primary);
+      color: #fff;
+    }
+    .article-btn {
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 700;
+      padding: 6px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.15s ease;
+    }
+    .article-btn:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+      background: var(--border-light);
+    }
+    .article-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      border-color: var(--border);
+    }
+    .article-page-info {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      min-width: 80px;
+      text-align: center;
+    }
+    .font-size-controls {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--border-light);
+      padding: 2px 6px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+    .font-size-btn {
+      background: transparent;
+      border: none;
+      color: var(--text);
+      font-weight: 800;
+      font-size: 12px;
+      cursor: pointer;
+      padding: 3px 6px;
+      border-radius: 4px;
+    }
+    .font-size-btn:hover {
+      background: rgba(0,0,0,0.06);
+      color: var(--primary);
+    }
+    [data-theme="dark"] .font-size-btn:hover {
+      background: rgba(255,255,255,0.1);
+    }
+
+    /* Liquid Mode Typography View */
+    .article-liquid-viewport {
+      padding: 26px 32px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      min-height: 480px;
+      line-height: 1.8;
+      color: var(--text);
+      box-shadow: inset 0 1px 3px rgba(0,0,0,0.02);
+      max-height: 75vh;
+      overflow-y: auto;
+      scroll-behavior: smooth;
+    }
+    .article-liquid-viewport::-webkit-scrollbar {
+      width: 8px;
+    }
+    .article-liquid-viewport::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 4px;
+    }
+    .liquid-content {
+      max-width: 840px;
+      margin: 0 auto;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+    .liquid-page-block {
+      margin-bottom: 36px;
+      padding-bottom: 28px;
+      border-bottom: 1px dashed var(--border);
+      position: relative;
+    }
+    .liquid-page-block:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
+      padding-bottom: 0;
+    }
+    .liquid-page-marker {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--primary);
+      background: rgba(43, 76, 126, 0.08);
+      padding: 3px 8px;
+      border-radius: 6px;
+      margin-bottom: 14px;
+    }
+    [data-theme="dark"] .liquid-page-marker {
+      background: rgba(92, 142, 204, 0.15);
+      color: var(--primary-light);
+    }
+    .liquid-paragraph {
+      margin-bottom: 18px;
+      text-align: justify;
+      hyphens: auto;
+    }
+    .liquid-paragraph[dir="rtl"] {
+      text-align: right;
+      font-family: "SBL Hebrew", "David", "Times New Roman", serif;
+      font-size: 1.1em;
+      line-height: 1.9;
+    }
+    .liquid-heading {
+      font-weight: 800;
+      color: var(--primary);
+      margin: 22px 0 12px 0;
+      line-height: 1.35;
+    }
+    [data-theme="dark"] .liquid-heading {
+      color: var(--primary-light);
+    }
+
+    /* Original Page Canvas Viewport (Desktop & High-Resolution) */
+    .article-canvas-viewport {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: #525659;
+      border-radius: 12px;
+      padding: 20px;
+      min-height: 540px;
+      max-height: 80vh;
+      overflow-y: auto;
+      overflow-x: auto;
+      gap: 20px;
+      box-shadow: inset 0 2px 8px rgba(0,0,0,0.3);
+    }
+    [data-theme="dark"] .article-canvas-viewport {
+      background: #181d24;
+      border: 1px solid #283344;
+    }
+    .pdf-canvas-card {
+      background: #fff;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+      border-radius: 4px;
+      overflow: hidden;
+      display: block;
+      transition: transform 0.15s ease;
+    }
+    .pdf-canvas-card canvas {
+      display: block;
+      max-width: 100%;
+      height: auto !important;
+    }
+
+    /* Reader Loading State */
+    .article-loading-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 60px 20px;
+      color: var(--text-muted);
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    /* Orientation & Responsive Adaptations */
+    @media (max-width: 768px) {
+      .article-liquid-viewport {
+        padding: 16px 14px;
+        line-height: 1.7;
+      }
+      .article-toolbar {
+        padding: 8px 10px;
+      }
+      .article-toolbar-center {
+        order: 3;
+        width: 100%;
+        justify-content: center;
+      }
+      .article-canvas-viewport {
+        padding: 10px;
+      }
+    }
+
+    /* Landscape Mode optimization on mobile devices */
+    @media (max-width: 900px) and (orientation: landscape) {
+      .article-canvas-viewport {
+        padding: 12px;
+        max-height: 85vh;
+      }
+      .pdf-canvas-card {
+        max-width: 96vw;
+      }
+    }
+
+    /* Quick Card Article Indicator */
+    .quick-article-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: #10b981;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 12px;
+      box-shadow: 0 1px 4px rgba(16, 185, 129, 0.3);
+    }
+    [data-theme="dark"] .quick-article-badge {
+      background: #059669;
     }
 
     /* Collections & Tabs Section */
@@ -4679,65 +5071,112 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       </div>
     </div>
 
-    <!-- Pre-roll Sponsor Overlayment Banner (under title, visible when sponsor audio is playing) -->
-    <div id="sponsorPreRollBanner" class="sponsor-preroll-banner" style="display: none;">
-      <div class="sponsor-preroll-header">
-        <span class="sponsor-preroll-badge"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" style="display:inline-block; vertical-align:middle; margin-right:4px;"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg> TODAY'S SPONSOR DEDICATION</span>
-        <span class="sponsor-preroll-status">🎙️ Audio Dedication Playing</span>
-      </div>
-      <div class="sponsor-preroll-body" id="sponsorPreRollText">${sponsorshipText || ''}</div>
-      <div class="sponsor-preroll-footer">
-        <div class="sponsor-preroll-countdown">🎙️ Shiur begins in <span id="sponsorCountdown">10</span>s...</div>
-        <span style="font-size:11.5px; opacity:0.85;">Plays automatically before shiur</span>
-      </div>
-    </div>
-
-    <!-- Scrubber -->
-    <div class="scrubber-container">
-      <div class="scrubber-bar" id="scrubberBar">
-        <div class="scrubber-fill" id="scrubberFill">
-          <div class="scrubber-handle"></div>
+    <!-- Audio Player Controls (Visible when listening to audio) -->
+    <div id="audioControlsWrap" style="${articlePdfUrl ? 'display: none;' : ''}">
+      <!-- Pre-roll Sponsor Overlayment Banner (under title, visible when sponsor audio is playing) -->
+      <div id="sponsorPreRollBanner" class="sponsor-preroll-banner" style="display: none;">
+        <div class="sponsor-preroll-header">
+          <span class="sponsor-preroll-badge"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" style="display:inline-block; vertical-align:middle; margin-right:4px;"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg> TODAY'S SPONSOR DEDICATION</span>
+          <span class="sponsor-preroll-status">🎙️ Audio Dedication Playing</span>
+        </div>
+        <div class="sponsor-preroll-body" id="sponsorPreRollText">${sponsorshipText || ''}</div>
+        <div class="sponsor-preroll-footer">
+          <div class="sponsor-preroll-countdown">🎙️ Shiur begins in <span id="sponsorCountdown">10</span>s...</div>
+          <span style="font-size:11.5px; opacity:0.85;">Plays automatically before shiur</span>
         </div>
       </div>
-      <div class="time-display">
-        <span id="curTime">0:00</span>
-        <span id="totalTime">${escapeHtml(duration || '0:00')}</span>
+
+      <!-- Scrubber -->
+      <div class="scrubber-container">
+        <div class="scrubber-bar" id="scrubberBar">
+          <div class="scrubber-fill" id="scrubberFill">
+            <div class="scrubber-handle"></div>
+          </div>
+        </div>
+        <div class="time-display">
+          <span id="curTime">0:00</span>
+          <span id="totalTime">${escapeHtml(duration || '0:00')}</span>
+        </div>
+      </div>
+
+      <!-- Transport Buttons -->
+      <div class="transport-row">
+        <button class="ctrl-btn skip" onclick="skip(-30)" title="Back 30s (Shift+←)">-30</button>
+        <button class="ctrl-btn skip" onclick="skip(-10)" title="Back 10s (←)">-10</button>
+        <button class="ctrl-btn play" id="playBtn" onclick="togglePlay()" title="Play / Pause (Space)"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" style="display:block; margin-left:3px;"><path d="M8 5v14l11-7z"/></svg></button>
+        <button class="ctrl-btn skip" onclick="skip(10)" title="Forward 10s (→)">+10</button>
+        <button class="ctrl-btn skip" onclick="skip(30)" title="Forward 30s (Shift+→)">+30</button>
+      </div>
+
+      <!-- Audio Engine (Headless element for high performance playback) -->
+      <audio id="audioElement" src="${escapeHtml(audioUrl)}" preload="auto" style="display:none;"></audio>
+
+      <!-- Secondary Controls -->
+      <div class="controls-grid">
+        <div class="ctrl-group">
+          <span class="ctrl-label">Speed</span>
+          <select id="speedSelect" class="speed-select" onchange="setSpeed(this.value)">
+            ${speedOptionsHtml}
+          </select>
+        </div>
+
+        <div class="ctrl-group">
+          <button class="action-btn" id="copyLinkBtn" onclick="copyShareLink()">
+            📋 Copy Link @ Time
+          </button>
+          <a class="action-btn" id="dlBtn" href="${escapeHtml(downloadUrl || audioUrl)}" target="_blank" ${downloadUrl || audioUrl ? '' : 'style="display:none;"'}>
+            ⬇️ Download MP3
+          </a>
+        </div>
+      </div>
+
+      <div class="shortcuts-hint">
+        Shortcuts: <kbd>Space</kbd> play/pause · <kbd>←</kbd>/<kbd>→</kbd> ±10s · <kbd>Shift+←/→</kbd> ±30s · <kbd>[</kbd>/<kbd>]</kbd> speed
       </div>
     </div>
 
-    <!-- Transport Buttons -->
-    <div class="transport-row">
-      <button class="ctrl-btn skip" onclick="skip(-30)" title="Back 30s (Shift+←)">-30</button>
-      <button class="ctrl-btn skip" onclick="skip(-10)" title="Back 10s (←)">-10</button>
-      <button class="ctrl-btn play" id="playBtn" onclick="togglePlay()" title="Play / Pause (Space)"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" style="display:block; margin-left:3px;"><path d="M8 5v14l11-7z"/></svg></button>
-      <button class="ctrl-btn skip" onclick="skip(10)" title="Forward 10s (→)">+10</button>
-      <button class="ctrl-btn skip" onclick="skip(30)" title="Forward 30s (Shift+→)">+30</button>
-    </div>
-
-    <!-- Audio Engine (Headless element for high performance playback) -->
-    <audio id="audioElement" src="${escapeHtml(audioUrl)}" preload="auto" style="display:none;"></audio>
-
-    <!-- Secondary Controls -->
-    <div class="controls-grid">
-      <div class="ctrl-group">
-        <span class="ctrl-label">Speed</span>
-        <select id="speedSelect" class="speed-select" onchange="setSpeed(this.value)">
-          ${speedOptionsHtml}
-        </select>
+    <!-- Article & Document Viewer (Active when viewing articles/PDFs) -->
+    <div id="articleViewerContainer" class="article-viewer-wrap" style="${articlePdfUrl ? '' : 'display: none;'}">
+      <div class="article-toolbar">
+        <div class="article-toolbar-left">
+          <div class="article-mode-pill">
+            <button type="button" class="article-mode-btn active" id="modeBtnLiquid" onclick="setArticleMode('liquid')">💧 Liquid Mode</button>
+            <button type="button" class="article-mode-btn" id="modeBtnOriginal" onclick="setArticleMode('original')">📄 Original Page</button>
+          </div>
+          <div class="font-size-controls" id="fontSizeControls">
+            <button type="button" class="font-size-btn" onclick="adjustArticleFontSize(-1)" title="Decrease text size">A-</button>
+            <button type="button" class="font-size-btn" onclick="adjustArticleFontSize(1)" title="Increase text size">A+</button>
+          </div>
+        </div>
+        <div class="article-toolbar-center" id="articlePageNav">
+          <button type="button" class="article-btn" id="prevPageBtn" onclick="changeArticlePage(-1)">‹ Prev</button>
+          <span class="article-page-info" id="articlePageNum">Page 1 of 1</span>
+          <button type="button" class="article-btn" id="nextPageBtn" onclick="changeArticlePage(1)">Next ›</button>
+        </div>
+        <div class="article-toolbar-right">
+          <button type="button" class="article-btn" id="zoomOutBtn" onclick="adjustArticleZoom(-0.2)" title="Zoom out">🔍 -</button>
+          <button type="button" class="article-btn" id="zoomInBtn" onclick="adjustArticleZoom(0.2)" title="Zoom in">🔍 +</button>
+          <a class="article-btn" id="dlPdfBtn" href="${escapeHtml(downloadUrl || articlePdfUrl)}" target="_blank" download title="Download PDF document">⬇️ PDF</a>
+          <button type="button" class="article-btn" onclick="toggleArticleFullscreen()" title="Toggle Fullscreen">⛶</button>
+        </div>
       </div>
 
-      <div class="ctrl-group">
-        <button class="action-btn" id="copyLinkBtn" onclick="copyShareLink()">
-          📋 Copy Link @ Time
-        </button>
-        <a class="action-btn" id="dlBtn" href="${escapeHtml(downloadUrl || audioUrl)}" target="_blank" ${downloadUrl || audioUrl ? '' : 'style="display:none;"'}>
-          ⬇️ Download MP3
-        </a>
+      <!-- Liquid Mode Viewport (Reflowed clean typography) -->
+      <div id="articleLiquidViewport" class="article-liquid-viewport">
+        <div class="liquid-content" id="liquidContent">
+          <div class="article-loading-state">
+            <div class="spinner"></div>
+            <span>Formatting article text for reading...</span>
+          </div>
+        </div>
       </div>
-    </div>
 
-    <div class="shortcuts-hint">
-      Shortcuts: <kbd>Space</kbd> play/pause · <kbd>←</kbd>/<kbd>→</kbd> ±10s · <kbd>Shift+←/→</kbd> ±30s · <kbd>[</kbd>/<kbd>]</kbd> speed
+      <!-- Original Page Viewport (High-resolution rendering) -->
+      <div id="articleCanvasViewport" class="article-canvas-viewport" style="display: none;">
+        <div class="pdf-canvas-card" id="pdfCanvasCard">
+          <canvas id="pdfCanvas"></canvas>
+        </div>
+      </div>
     </div>
 
     <div class="shiur-desc" id="shiurDesc">${escapeHtml(description)}</div>
@@ -5253,6 +5692,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   let initialPlaybackSpeed = ${JSON.stringify(playbackSpeed || '')};
   let hasAudio = ${JSON.stringify(Boolean(audioUrl))};
   let currentShiurId = ${JSON.stringify(shiurId || '')};
+  const INITIAL_ARTICLE_PDF = ${JSON.stringify(articlePdfUrl || '')};
+  let currentArticlePdf = INITIAL_ARTICLE_PDF;
+  let isCurrentShiurArticle = Boolean(INITIAL_ARTICLE_PDF);
   let initialTimeApplied = false;
   let lastUrlUpdateSec = -1;
   let lastUrlUpdateTime = 0;
@@ -7660,8 +8102,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const newBadge = isNew ? '<span class="quick-card-new-badge">NEW</span>' : '';
     const category = (Array.isArray(d.categoryname) && d.categoryname[0]) || (Array.isArray(d.subcategoryname) && d.subcategoryname[0]) || d.category || '';
 
+    const mediaCat = (d.mediatypecategory || d.mediaTypeCategory || '').toLowerCase();
+    const urlCheck = d.shiururl || d.shiurURL || d.playerDownloadURL || d.downloadURL || '';
+    const isArticle = mediaCat === 'text' || mediaCat === 'article' || /\\.pdf(\$|\\?)/i.test(urlCheck);
+
     const metaParts = [];
-    if (duration) metaParts.push('⏱ ' + escapeHtml(duration));
+    if (isArticle) {
+      metaParts.push('📄 Article');
+    } else if (duration) {
+      metaParts.push('⏱ ' + escapeHtml(duration));
+    }
     if (date) metaParts.push(escapeHtml(date));
     const bottomMeta = metaParts.join(' · ');
 
@@ -7706,6 +8156,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       ? '<div class="series-cover-badge">📚 Series · ' + (options.seriesCount || 'Multi-Part') + ' Shiurim</div>'
       : '';
     const coverClass = isCover ? ' is-series-cover' : '';
+    const actionBadge = isArticle
+      ? '<span class="quick-play-badge" style="background:#10b981; color:#fff;">📄 Read</span>'
+      : '<span class="quick-play-badge">▶ Play</span>';
 
     return '<a href="/' + id + '" class="quick-card-link' + coverClass + '" onclick="playShiurById(event, this.dataset.id)" data-id="' + id + '">' +
       newBadge +
@@ -7721,7 +8174,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       matchReasonHtml +
       '<div class="quick-card-bottom">' +
         '<span>' + bottomMeta + '</span>' +
-        '<span class="quick-play-badge">▶ Play</span>' +
+        actionBadge +
       '</div>' +
     '</a>';
   }
@@ -7734,6 +8187,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const date = formatShiurDate(rawDate);
     const terms = getActiveSearchTerms();
     const displayTitle = highlightMatches(title, terms);
+
+    const mediaCat = (sub.mediatypecategory || sub.mediaTypeCategory || '').toLowerCase();
+    const urlCheck = sub.shiururl || sub.shiurURL || sub.playerDownloadURL || sub.downloadURL || '';
+    const isArticle = mediaCat === 'text' || mediaCat === 'article' || /\\.pdf(\$|\\?)/i.test(urlCheck);
 
     const matchReasons = buildMatchReasons(sub, terms);
     let matchReasonHtml = '';
@@ -7749,13 +8206,21 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
 
     const metaParts = [];
-    if (duration) metaParts.push('⏱ ' + escapeHtml(duration));
+    if (isArticle) {
+      metaParts.push('📄 Article');
+    } else if (duration) {
+      metaParts.push('⏱ ' + escapeHtml(duration));
+    }
     if (date) metaParts.push(escapeHtml(date));
+
+    const subAction = isArticle
+      ? '<span class="series-sub-play" style="background:#10b981; color:#fff;">📄 Read</span>'
+      : '<span class="series-sub-play">▶ Play</span>';
 
     return '<a href="/' + id + '" class="series-sub-card" onclick="playShiurById(event, this.dataset.id)" data-id="' + id + '">' +
       '<div class="series-sub-header">' +
         '<div class="series-sub-title"><span style="opacity:0.75; font-weight:700; margin-right:4px;">#' + partNumber + '</span> ' + displayTitle + '</div>' +
-        '<span class="series-sub-play">▶ Play</span>' +
+        subAction +
       '</div>' +
       matchReasonHtml +
       (metaParts.length > 0 ? '<div class="series-sub-meta">' + metaParts.join(' · ') + '</div>' : '') +
@@ -7873,10 +8338,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       }
 
       currentShiurId = id;
-      hasAudio = true;
       initialTimeApplied = false;
       lastUrlUpdateSec = -1;
       lastUrlUpdateTime = 0;
+
+      // Check if this shiur is an article / text document
+      const mediaCategory = (data.mediaTypeCategory || '').toLowerCase();
+      const isArticle = mediaCategory === 'text' || mediaCategory === 'article' || /\\.pdf(\$|\\?)/i.test(audioSrc) || /\\.pdf(\$|\\?)/i.test(dlSrc);
+      isCurrentShiurArticle = isArticle;
+      currentArticlePdf = isArticle ? (audioSrc || dlSrc) : '';
 
       addRecentHistory({
         id: id,
@@ -7886,6 +8356,34 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         duration: duration,
         date: date
       });
+
+      // Render rich metadata immediately
+      renderMetadataBox(data);
+
+      const audioWrap = document.getElementById('audioControlsWrap');
+      const articleWrap = document.getElementById('articleViewerContainer');
+
+      if (isArticle) {
+        hasAudio = false;
+        if (audio && !audio.paused) {
+          audio.pause();
+        }
+        if (audioWrap) audioWrap.style.display = 'none';
+        if (articleWrap) articleWrap.style.display = 'block';
+        if (dlBtn) {
+          dlBtn.innerHTML = '⬇️ Download PDF';
+        }
+        loadArticlePdf(currentArticlePdf);
+        return;
+      }
+
+      // Switching back to audio shiur: restore audio controls, hide article viewer
+      hasAudio = true;
+      if (articleWrap) articleWrap.style.display = 'none';
+      if (audioWrap) audioWrap.style.display = 'block';
+      if (dlBtn) {
+        dlBtn.innerHTML = '⬇️ Download MP3';
+      }
 
       // Check if URL or localStorage has a timestamp for this shiur
       let resumeSec = 0;
@@ -7920,9 +8418,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
       currentShiurId = id;
       pendingShiur = shiurObj;
-
-      // Render rich metadata immediately
-      renderMetadataBox(data);
 
       if (currentSponsorAudio && !isPreRollDisabled()) {
         playSponsorPreRoll(shiurObj);
@@ -8508,6 +9003,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   // Audio Controls
   function togglePlay() {
+    if (isCurrentShiurArticle) return;
     if (!audio.src) {
       if (pendingShiur) {
         if (!sponsorPlayedForThisShiur && currentSponsorAudio && !isPreRollDisabled()) {
@@ -8535,7 +9031,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   function skip(sec) {
-    if (isSponsorPlaying) return;
+    if (isCurrentShiurArticle || isSponsorPlaying) return;
     if (!audio.src) return;
     audio.currentTime = Math.max(0, Math.min(audio.duration || Infinity, audio.currentTime + sec));
     updateUrlTimestamp(true);
@@ -8989,6 +9485,340 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
   scheduleScrollAutoMiniPlayer();
 
+  // ==========================================================================
+  // Article & PDF Reader Controller (Liquid Mode Reflow & High-Res View)
+  // ==========================================================================
+  let pdfDoc = null;
+  let pdfTotalPages = 0;
+  let pdfCurrentPage = 1;
+  let articleViewerMode = 'liquid'; // 'liquid' or 'original'
+  let liquidFontSizeRem = 1.05;
+  let originalCanvasScale = 1.35;
+  let isRenderingCanvas = false;
+  let pendingCanvasPage = null;
+  let activeExtractionId = 0;
+
+  function getPdfProxyUrl(rawUrl) {
+    if (!rawUrl) return '';
+    let target = String(rawUrl).trim();
+    if (target.startsWith('/')) {
+      target = 'https://shiurim.yutorah.net' + target;
+    }
+    return '/api/pdf-proxy?url=' + encodeURIComponent(target);
+  }
+
+  function setArticleMode(mode) {
+    articleViewerMode = mode;
+    const btnLiquid = document.getElementById('modeBtnLiquid');
+    const btnOriginal = document.getElementById('modeBtnOriginal');
+    const viewLiquid = document.getElementById('articleLiquidViewport');
+    const viewCanvas = document.getElementById('articleCanvasViewport');
+    const fontControls = document.getElementById('fontSizeControls');
+    const zoomInBtn = document.getElementById('zoomInBtn');
+    const zoomOutBtn = document.getElementById('zoomOutBtn');
+    const pageNav = document.getElementById('articlePageNav');
+
+    if (mode === 'liquid') {
+      if (btnLiquid) btnLiquid.classList.add('active');
+      if (btnOriginal) btnOriginal.classList.remove('active');
+      if (viewLiquid) viewLiquid.style.display = 'block';
+      if (viewCanvas) viewCanvas.style.display = 'none';
+      if (fontControls) fontControls.style.display = 'inline-flex';
+      if (zoomInBtn) zoomInBtn.style.display = 'none';
+      if (zoomOutBtn) zoomOutBtn.style.display = 'none';
+      if (pageNav) pageNav.style.display = 'none';
+    } else {
+      if (btnLiquid) btnLiquid.classList.remove('active');
+      if (btnOriginal) btnOriginal.classList.add('active');
+      if (viewLiquid) viewLiquid.style.display = 'none';
+      if (viewCanvas) viewCanvas.style.display = 'flex';
+      if (fontControls) fontControls.style.display = 'none';
+      if (zoomInBtn) zoomInBtn.style.display = 'inline-flex';
+      if (zoomOutBtn) zoomOutBtn.style.display = 'inline-flex';
+      if (pageNav) pageNav.style.display = 'flex';
+      renderArticlePage(pdfCurrentPage);
+    }
+  }
+
+  function adjustArticleFontSize(delta) {
+    liquidFontSizeRem = Math.max(0.8, Math.min(1.8, liquidFontSizeRem + (delta * 0.1)));
+    const content = document.getElementById('liquidContent');
+    if (content) {
+      content.style.fontSize = liquidFontSizeRem + 'rem';
+    }
+  }
+
+  function adjustArticleZoom(delta) {
+    originalCanvasScale = Math.max(0.75, Math.min(3.0, originalCanvasScale + delta));
+    renderArticlePage(pdfCurrentPage);
+  }
+
+  function changeArticlePage(delta) {
+    if (!pdfDoc) return;
+    const target = pdfCurrentPage + delta;
+    if (target >= 1 && target <= pdfTotalPages) {
+      pdfCurrentPage = target;
+      renderArticlePage(pdfCurrentPage);
+    }
+  }
+
+  function updatePageNavUI() {
+    const pageNumEl = document.getElementById('articlePageNum');
+    if (pageNumEl) {
+      pageNumEl.textContent = 'Page ' + pdfCurrentPage + ' of ' + pdfTotalPages;
+    }
+    const prevBtn = document.getElementById('prevPageBtn');
+    const nextBtn = document.getElementById('nextPageBtn');
+    if (prevBtn) prevBtn.disabled = pdfCurrentPage <= 1;
+    if (nextBtn) nextBtn.disabled = pdfCurrentPage >= pdfTotalPages;
+  }
+
+  async function renderArticlePage(num) {
+    if (!pdfDoc) return;
+    if (isRenderingCanvas) {
+      pendingCanvasPage = num;
+      return;
+    }
+    isRenderingCanvas = true;
+    updatePageNavUI();
+
+    try {
+      const page = await pdfDoc.getPage(num);
+      const canvas = document.getElementById('pdfCanvas');
+      if (!canvas) {
+        isRenderingCanvas = false;
+        return;
+      }
+      const ctx = canvas.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      const viewport = page.getViewport({ scale: originalCanvasScale });
+
+      canvas.width = Math.floor(viewport.width * dpr);
+      canvas.height = Math.floor(viewport.height * dpr);
+      canvas.style.width = Math.floor(viewport.width) + 'px';
+      canvas.style.height = Math.floor(viewport.height) + 'px';
+
+      const renderContext = {
+        canvasContext: ctx,
+        transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : null,
+        viewport: viewport
+      };
+      await page.render(renderContext).promise;
+    } catch (err) {
+      console.warn('PDF Page render issue:', err);
+    } finally {
+      isRenderingCanvas = false;
+      if (pendingCanvasPage !== null) {
+        const next = pendingCanvasPage;
+        pendingCanvasPage = null;
+        renderArticlePage(next);
+      }
+    }
+  }
+
+  async function extractAndRenderLiquidText() {
+    const container = document.getElementById('liquidContent');
+    if (!container || !pdfDoc) return;
+
+    activeExtractionId++;
+    const currentExtractionId = activeExtractionId;
+
+    container.innerHTML = '<div class="article-loading-state"><div class="spinner"></div><span>Reflowing text for reading...</span></div>';
+
+    let allPagesHtml = '';
+    const hebrewRegex = /[\u0590-\u05FF]/;
+
+    for (let i = 1; i <= pdfTotalPages; i++) {
+      if (currentExtractionId !== activeExtractionId) return;
+      try {
+        const page = await pdfDoc.getPage(i);
+        if (currentExtractionId !== activeExtractionId) return;
+        const textContent = await page.getTextContent();
+        const items = textContent.items;
+        if (!items || items.length === 0) continue;
+
+        let pageLines = [];
+        let currentY = null;
+        let currentLine = '';
+
+        for (const item of items) {
+          const str = item.str;
+          if (!str && str !== ' ') continue;
+
+          const y = Math.round(item.transform[5]);
+          if (currentY === null || Math.abs(currentY - y) < 4) {
+            currentLine += (currentLine.endsWith(' ') || str.startsWith(' ') ? '' : ' ') + str;
+            currentY = y;
+          } else {
+            if (currentLine.trim()) {
+              pageLines.push(currentLine.trim());
+            }
+            currentLine = str;
+            currentY = y;
+          }
+        }
+        if (currentLine.trim()) {
+          pageLines.push(currentLine.trim());
+        }
+
+        // Group lines into semantic paragraphs
+        let paragraphs = [];
+        let curParagraph = '';
+
+        for (const line of pageLines) {
+          // Check if line looks like a header or footnote
+          if (line.length < 60 && /^[A-Z0-9\s—–:-]{3,}$/.test(line.trim())) {
+            if (curParagraph) {
+              paragraphs.push(curParagraph.trim());
+              curParagraph = '';
+            }
+            paragraphs.push('### ' + line.trim());
+            continue;
+          }
+
+          if (!curParagraph) {
+            curParagraph = line;
+          } else if (curParagraph.endsWith('.') || curParagraph.endsWith(':') || curParagraph.endsWith('?') || curParagraph.endsWith('!')) {
+            paragraphs.push(curParagraph.trim());
+            curParagraph = line;
+          } else {
+            curParagraph += ' ' + line;
+          }
+        }
+        if (curParagraph.trim()) {
+          paragraphs.push(curParagraph.trim());
+        }
+
+        let pageHtml = '<div class="liquid-page-block">';
+        pageHtml += '<div class="liquid-page-marker">📄 Page ' + i + ' of ' + pdfTotalPages + '</div>';
+
+        for (const p of paragraphs) {
+          if (p.startsWith('### ')) {
+            pageHtml += '<h3 class="liquid-heading">' + escapeHtml(p.substring(4)) + '</h3>';
+          } else {
+            const isHebrew = hebrewRegex.test(p);
+            pageHtml += '<p class="liquid-paragraph"' + (isHebrew ? ' dir="rtl"' : '') + '>' + escapeHtml(p) + '</p>';
+          }
+        }
+        pageHtml += '</div>';
+        allPagesHtml += pageHtml;
+      } catch (e) {
+        console.warn('Error parsing text for page ' + i, e);
+      }
+    }
+
+    if (currentExtractionId !== activeExtractionId) return;
+
+    if (allPagesHtml) {
+      container.innerHTML = allPagesHtml;
+      container.style.fontSize = liquidFontSizeRem + 'rem';
+    } else {
+      container.innerHTML = '<div style="text-align:center; padding: 40px 20px; color: var(--text-muted);">' +
+        '<p>This document contains scanned imagery or complex vector layout.</p>' +
+        '<button type="button" class="article-btn" onclick="setArticleMode(&apos;original&apos;)" style="margin-top: 12px;">Switch to Original Page View</button>' +
+        '</div>';
+    }
+  }
+
+  async function loadArticlePdf(rawUrl) {
+    if (!rawUrl) return;
+    const container = document.getElementById('articleViewerContainer');
+    if (container) container.style.display = 'block';
+
+    const audioWrap = document.getElementById('audioControlsWrap');
+    if (audioWrap) audioWrap.style.display = 'none';
+
+    // Pause audio if playing
+    if (audio && !audio.paused) {
+      audio.pause();
+    }
+    hasAudio = false;
+
+    // Determine initial mode based on screen width & orientation:
+    // Mobile portrait (<768px and height > width) defaults to Liquid Mode
+    const isMobilePortrait = window.innerWidth <= 768 && window.innerHeight >= window.innerWidth;
+    const initialMode = isMobilePortrait ? 'liquid' : 'original';
+    setArticleMode(initialMode);
+
+    const proxyUrl = getPdfProxyUrl(rawUrl);
+
+    try {
+      if (typeof pdfjsLib === 'undefined') {
+        console.warn('pdfjsLib is not loaded yet');
+        const content = document.getElementById('liquidContent');
+        if (content) {
+          content.innerHTML = '<div style="text-align:center; padding: 40px 20px; color: var(--text-muted);">' +
+            '<p>PDF Reader library could not be loaded.</p>' +
+            '<a href="' + escapeHtml(rawUrl) + '" target="_blank" class="article-btn" style="margin-top:12px; display:inline-flex;">Open / Download PDF Document</a>' +
+            '</div>';
+        }
+        return;
+      }
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+      const loadingTask = pdfjsLib.getDocument({
+        url: proxyUrl,
+        cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
+        cMapPacked: true
+      });
+
+      pdfDoc = await loadingTask.promise;
+      pdfTotalPages = pdfDoc.numPages;
+      pdfCurrentPage = 1;
+      updatePageNavUI();
+
+      // Download button
+      const dlPdfBtn = document.getElementById('dlPdfBtn');
+      if (dlPdfBtn) dlPdfBtn.href = rawUrl;
+
+      // Render views
+      renderArticlePage(1);
+      extractAndRenderLiquidText();
+    } catch (err) {
+      console.error('Failed to load PDF in reader:', err);
+      const content = document.getElementById('liquidContent');
+      if (content) {
+        content.innerHTML = '<div style="text-align:center; padding: 40px 20px; color: var(--text-muted);">' +
+          '<p>Unable to display document directly in browser preview.</p>' +
+          '<a href="' + escapeHtml(rawUrl) + '" target="_blank" class="article-btn" style="margin-top:12px; display:inline-flex;">Open / Download PDF Document</a>' +
+          '</div>';
+      }
+    }
+  }
+
+  function toggleArticleFullscreen() {
+    const container = document.getElementById('articleViewerContainer');
+    if (!container) return;
+    if (!document.fullscreenElement) {
+      container.requestFullscreen().catch(err => {
+        console.warn('Fullscreen error:', err);
+      });
+    } else {
+      document.exitFullscreen();
+    }
+  }
+
+  // Responsive device orientation adaptation
+  window.addEventListener('orientationchange', () => {
+    setTimeout(() => {
+      if (!isCurrentShiurArticle || !pdfDoc) return;
+      const isMobile = window.innerWidth <= 768;
+      const isLandscape = window.innerWidth > window.innerHeight;
+      if (isMobile) {
+        if (isLandscape) {
+          setArticleMode('original');
+        } else {
+          setArticleMode('liquid');
+        }
+      }
+    }, 250);
+  });
+
+  // Auto-load article if initial page load was an article
+  if (INITIAL_ARTICLE_PDF) {
+    loadArticlePdf(INITIAL_ARTICLE_PDF);
+  }
+
   // If page loaded with audio, try to autoplay or wait for user touch
   if (hasAudio) {
     audio.play().catch(() => {
@@ -9033,8 +9863,16 @@ function renderShiurCardHtml(s, searchTerms = [], options = {}) {
   const newBadge = isNew ? '<span class="quick-card-new-badge">NEW</span>' : '';
   const category = (Array.isArray(s.categoryname) && s.categoryname[0]) || (Array.isArray(s.subcategoryname) && s.subcategoryname[0]) || s.category || '';
 
+  const mediaCat = (s.mediatypecategory || s.mediaTypeCategory || '').toLowerCase();
+  const urlCheck = s.shiururl || s.shiurURL || s.playerDownloadURL || s.downloadURL || '';
+  const isArticle = mediaCat === 'text' || mediaCat === 'article' || /\.pdf($|\?)/i.test(urlCheck);
+
   const metaParts = [];
-  if (duration) metaParts.push('⏱ ' + escapeHtml(duration));
+  if (isArticle) {
+    metaParts.push('📄 Article');
+  } else if (duration) {
+    metaParts.push('⏱ ' + escapeHtml(duration));
+  }
   if (dateStr) metaParts.push(escapeHtml(dateStr));
   const bottomMeta = metaParts.join(' · ');
 
@@ -9079,6 +9917,9 @@ function renderShiurCardHtml(s, searchTerms = [], options = {}) {
     ? `<div class="series-cover-badge">📚 Series · ${options.seriesCount || 'Multi-Part'} Shiurim</div>`
     : '';
   const coverClass = isCover ? ' is-series-cover' : '';
+  const actionBadge = isArticle
+    ? '<span class="quick-play-badge" style="background:#10b981; color:#fff;">📄 Read</span>'
+    : '<span class="quick-play-badge">▶ Play</span>';
 
   return `
     <a href="/${id}" class="quick-card-link${coverClass}" onclick="playShiurById(event, this.dataset.id)" data-id="${id}">
@@ -9095,7 +9936,7 @@ function renderShiurCardHtml(s, searchTerms = [], options = {}) {
       ${matchReasonHtml}
       <div class="quick-card-bottom">
         <span>${bottomMeta}</span>
-        <span class="quick-play-badge">▶ Play</span>
+        ${actionBadge}
       </div>
     </a>
   `;
@@ -9108,6 +9949,10 @@ function renderSeriesSubCardHtml(sub, partNumber, searchTerms = []) {
   const rawDate = sub.shiurdateformatted || sub.shiurDateFormatted || sub.shiurdate || sub.shiurdatesubmitted || '';
   const dateStr = formatShiurDate(rawDate);
   const displayTitle = searchTerms.length > 0 ? highlightMatches(title, searchTerms) : escapeHtml(title);
+
+  const mediaCat = (sub.mediatypecategory || sub.mediaTypeCategory || '').toLowerCase();
+  const urlCheck = sub.shiururl || sub.shiurURL || sub.playerDownloadURL || sub.downloadURL || '';
+  const isArticle = mediaCat === 'text' || mediaCat === 'article' || /\.pdf($|\?)/i.test(urlCheck);
 
   let matchReasonHtml = '';
   if (searchTerms.length > 0) {
@@ -9125,14 +9970,22 @@ function renderSeriesSubCardHtml(sub, partNumber, searchTerms = []) {
   }
 
   const metaParts = [];
-  if (duration) metaParts.push('⏱ ' + escapeHtml(duration));
+  if (isArticle) {
+    metaParts.push('📄 Article');
+  } else if (duration) {
+    metaParts.push('⏱ ' + escapeHtml(duration));
+  }
   if (dateStr) metaParts.push(escapeHtml(dateStr));
+
+  const subAction = isArticle
+    ? '<span class="series-sub-play" style="background:#10b981; color:#fff;">📄 Read</span>'
+    : '<span class="series-sub-play">▶ Play</span>';
 
   return `
     <a href="/${id}" class="series-sub-card" onclick="playShiurById(event, this.dataset.id)" data-id="${id}">
       <div class="series-sub-header">
         <div class="series-sub-title"><span style="opacity:0.75; font-weight:700; margin-right:4px;">#${partNumber}</span> ${displayTitle}</div>
-        <span class="series-sub-play">▶ Play</span>
+        ${subAction}
       </div>
       ${matchReasonHtml}
       ${metaParts.length > 0 ? `<div class="series-sub-meta">${metaParts.join(' · ')}</div>` : ''}
