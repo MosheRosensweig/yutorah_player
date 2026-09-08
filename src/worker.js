@@ -10801,6 +10801,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         const rawItems = textContent.items;
         if (!rawItems || rawItems.length === 0) { pagesData.push(null); continue; }
 
+        let pageItemIdx = 0;
         const items = rawItems.map(it => {
           const str = cleanPdfLigatures(it.str);
           const size = Math.round(Math.abs(it.transform[3]) * 10) / 10;
@@ -10813,7 +10814,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
             y: it.transform[5],
             width: it.width || (str.length * size * 0.5),
             isDropCap: (str.trim().length === 1 && size >= 30),
-            effectiveY: (str.trim().length === 1 && size >= 30) ? it.transform[5] + size * 0.75 : it.transform[5]
+            effectiveY: (str.trim().length === 1 && size >= 30) ? it.transform[5] + size * 0.75 : it.transform[5],
+            origIdx: pageItemIdx++
           };
         }).filter(it => it.str.trim().length > 0);
 
@@ -10989,40 +10991,77 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         }
 
         for (const line of rawLines) {
-          const lineStrRaw = line.items.map(it => it.str).join('');
-          const hebrewCount = (lineStrRaw.match(/[\u0590-\u05FF]/g) || []).length;
-          const latinCount = (lineStrRaw.match(/[a-zA-Z]/g) || []).length;
-          const isHebrewLine = hebrewCount > latinCount && hebrewCount >= 3;
+          const hebItems = [];
+          const latinItems = [];
+          for (const it of line.items) {
+            if (/[\u0590-\u05FF]/.test(it.str) || (it.str === "'" && line.items.some(i => /[\u0590-\u05FF]/.test(i.str) && Math.abs(i.x - it.x) < 30))) {
+              hebItems.push(it);
+            } else {
+              latinItems.push(it);
+            }
+          }
 
           let lineText = '';
-          if (isHebrewLine) {
-            line.items.sort((a,b) => b.x - a.x);
-            let prevX = null;
-            for (const it of line.items) {
-              const curRight = it.x + (it.width || 5);
-              if (prevX !== null && (prevX - curRight) > 1.8) {
-                lineText += ' ';
+          let isHebrewLine = false;
+
+          if (!hebItems.length) {
+            latinItems.sort((a,b) => a.x - b.x);
+            for (const it of latinItems) {
+              if (it.size <= 7.5 && /^\d+$/.test(it.str.trim())) {
+                lineText += '[FN:' + it.str.trim() + ']';
+              } else {
+                if (lineText && !lineText.endsWith(' ') && !lineText.endsWith('[FN:') && !lineText.endsWith('-')) lineText += ' ';
+                lineText += it.str.trim();
               }
+            }
+          } else if (!latinItems.length) {
+            hebItems.sort((a,b) => (b.x - a.x) || (b.origIdx - a.origIdx));
+            let prevX = null;
+            for (const it of hebItems) {
+              const curRight = it.x + (it.width || 5);
+              if (prevX !== null && (prevX - curRight) > 1.8) lineText += ' ';
               lineText += it.str.replace(nikudRegex, '');
               prevX = it.x;
             }
             lineText = lineText.trim();
+            isHebrewLine = true;
           } else {
-            line.items.sort((a,b) => a.x - b.x);
-            for (let j = 0; j < line.items.length; j++) {
-              const it = line.items[j];
-              if (it.size <= 7.5 && /^\\d+$/.test(it.str.trim())) {
-                lineText += '[FN:' + it.str.trim() + ']';
+            // Mixed line: determine spatial placement of latin vs hebrew
+            const minHebX = Math.min(...hebItems.map(i => i.x));
+            const minLatX = Math.min(...latinItems.map(i => i.x));
+
+            latinItems.sort((a,b) => a.x - b.x);
+            let latText = '';
+            for (const it of latinItems) {
+              if (it.size <= 7.5 && /^\d+$/.test(it.str.trim())) {
+                latText += '[FN:' + it.str.trim() + ']';
               } else {
-                if (lineText && !lineText.endsWith(' ') && !lineText.endsWith('[FN:') && !lineText.endsWith('-')) {
-                  lineText += ' ';
-                }
-                lineText += it.str.trim();
+                if (latText && !latText.endsWith(' ') && !latText.endsWith('[FN:') && !latText.endsWith('-')) latText += ' ';
+                latText += it.str.trim();
               }
             }
+
+            hebItems.sort((a,b) => (b.x - a.x) || (b.origIdx - a.origIdx));
+            let hebRaw = hebItems.map(i => i.str.replace(nikudRegex, '')).join('');
+            let hebText = hebRaw
+              .replace(/ה'\s*צבאות/g, "ה' צבאות")
+              .replace(/צבאות\s*מלא/g, "צבאות מלא")
+              .replace(/מלא\s*כל/g, "מלא כל")
+              .replace(/הארץ\s*כבודו/g, "הארץ כבודו")
+              .replace(/ה'\s*ממקומו/g, "ה' ממקומו")
+              .replace(/כבוד\s*ה'/g, "כבוד ה'")
+              .replace(/\s+/g, ' ')
+              .trim();
+
+            if (minLatX < minHebX) {
+              lineText = latText + ' ' + hebText;
+            } else {
+              lineText = hebText + (latText.startsWith(',') ? '' : ' ') + latText;
+            }
+            isHebrewLine = false;
           }
 
-          if (/^Endnotes\\b/i.test(lineText.trim())) {
+          if (/^Endnotes\b/i.test(lineText.trim())) {
             inEndnotesMode = true;
             continue;
           }
@@ -11036,7 +11075,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           }
 
           const firstItem = line.items[0];
-          const isSectionHeading = (firstItem.size >= 12 && firstItem.size <= 16 && lineText.length < 50 && !lineText.endsWith('.') && (/^[A-Z]/.test(lineText) || isHebrewLine));
+          const isSectionHeading = !isHebrewLine && (firstItem.size >= 12 && firstItem.size <= 16 && lineText.length < 50 && !lineText.endsWith('.') && /^[A-Z]/.test(lineText));
 
           if (isSectionHeading) {
             documentBlocks.push({ type: 'heading', text: lineText, pageNum });
