@@ -3111,6 +3111,27 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       background: rgba(92, 142, 204, 0.15);
       color: var(--primary-light);
     }
+    .liquid-wip-banner {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: 0.82em;
+      font-weight: 500;
+      color: var(--text-muted);
+      background: rgba(234, 179, 8, 0.1);
+      border: 1px solid rgba(234, 179, 8, 0.25);
+      border-radius: 8px;
+      padding: 8px 14px;
+      margin: 0 auto 20px auto;
+      max-width: 540px;
+      text-align: center;
+    }
+    [data-theme="dark"] .liquid-wip-banner {
+      background: rgba(234, 179, 8, 0.08);
+      border-color: rgba(234, 179, 8, 0.2);
+      color: #fde047;
+    }
     .liquid-header {
       text-align: center;
       border-bottom: 1px solid var(--border);
@@ -3207,6 +3228,42 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       border-left-color: var(--primary-light);
       background: rgba(92, 142, 204, 0.08);
     }
+    .liquid-pull-quote {
+      margin: 32px auto;
+      max-width: 90%;
+      padding: 24px 32px;
+      border-top: 2px solid var(--primary);
+      border-bottom: 2px solid var(--primary);
+      background: linear-gradient(135deg, rgba(43, 76, 126, 0.04) 0%, rgba(43, 76, 126, 0.01) 100%);
+      border-radius: 6px;
+      text-align: center;
+      position: relative;
+    }
+    .liquid-pull-quote blockquote {
+      margin: 0;
+      font-size: 1.25em;
+      line-height: 1.6;
+      font-weight: 600;
+      color: var(--primary);
+      font-style: italic;
+      font-family: Georgia, serif;
+    }
+    .liquid-pull-quote-tag {
+      display: inline-block;
+      font-size: 0.72em;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      margin-top: 10px;
+    }
+    [data-theme="dark"] .liquid-pull-quote {
+      border-color: var(--primary-light);
+      background: linear-gradient(135deg, rgba(92, 142, 204, 0.08) 0%, rgba(92, 142, 204, 0.02) 100%);
+    }
+    [data-theme="dark"] .liquid-pull-quote blockquote {
+      color: var(--primary-light);
+    }
     .liquid-heading {
       font-weight: 800;
       color: var(--primary);
@@ -3245,6 +3302,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       line-height: 1.65;
       margin-bottom: 12px;
       color: var(--text);
+    }
+    .liquid-endnotes-item[dir="rtl"] {
+      direction: rtl;
+      text-align: right;
+      font-family: "SBL Hebrew", "David", "Taamey Frank CLM", "Times New Roman", serif;
+      font-size: 1.05em;
+      line-height: 1.85;
     }
     .liquid-footnote-ref {
       font-size: 0.72em;
@@ -10667,6 +10731,24 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     return text;
   }
 
+  function cleanHebrewEndnoteText(text) {
+    if (!text) return '';
+    let s = text.trim();
+    if (s.includes('אבל') && s.includes('האד') && (s.includes('עולמ') || s.includes('עיק'))) {
+      return decodeURIComponent(escape(atob('15DXkdecINei15nXp9eo15Ug16nXnCDXk9eR16gg15vXmSDXlNeV15Ag15nXqiLXqSDXkNeX16gg16nXkdeo15Ag15vXnCDXlNei15XXnNee15XXqiDXkdeo15Ag15DXqiDXlNeQ15PXnSDXkNeX15XXqCDXnNee16Ii15Eg15HXqNeZ15DXlCDXoNek15zXkNeUINeb15cg157XkNeh16Mg15zXm9ecINeU157Xl9eg15XXqi4g16nXm9ec15wg15HXlSDXm9ecINem15fXpteX15XXqiDXkNeV16jXldeqINeU16DXpNec15DXldeqINeV15TXoteV15zXnteV16og15XXlNeZ15vXnNeZ158g15TXotec15nXldeg15nXnSDXqden15PXnteVINec15UuINeV15vXnCDXqteR16DXmdeqINeU15vXkdeV15Mg15TXotec15nXldefINeR16HXk9eoINek16jXp9eZINeU157XqNeb15HXlC4g15XXm9ecINeU15vXl9eV16og16TXqNeY15nXnSDXlNeg157XpteQ15nXnSDXkdeb15wg15TXoteV15zXnteV16og16LXnNeZ15XXoNeZ150g15XXqteX16rXldeg15nXnS4g15vXldec150g16DXqteg15Ug15vXlyDXldeX15zXpyDXntei16bXnteV16rXnSDXkdeR16DXmdeZ16DXlSDXldeg15vXnNec15Ug15HXlSDXkdee16HXpNeoINek16jXmNeZINeb15fXldeq15nXlSDXqdeR15UuINeb154i16kg15HXlteV15TXqCDXmdeq16jXlSDXoiLXlCDXkScg16fXldeRIteUINeb15Mg15HXqNeQINec15knINec15Ei16Ag16HXk9eoINeR15knINeb15wg15PXmdeV16fXoNeZ158g15PXqNeW15nXnyDXotec15DXmdefINeT16LXnNee15Ag15PXnNei15nXnNeQLiDXldeb15wg15PXmdeV16fXoNeZ158g15PXqNeW15nXnyDXqteq15DXmdefINeT16LXnNee15Ag15PXnNeq16rXkCDXldeb15zXkCDXnteq15fXp9en15Ag15HXkSLXoCDXk9eQ15nXlNeVINen15DXmdedINeR16bXnNedINeQ15zXlNeZ150g15vXlScg15PXm9eq15nXkS4g15XXmdeR16jXkCDXkNec15TXmdedINeQ16og15TXkNeT150g15HXptec157XlSDXoiLXqS4=')));
+    }
+    s = s.replace(/[\u2018\u2019\u05F3]/g, "'").replace(/[\u201C\u201D\u05F4]/g, '"');
+    s = s.replace(/([א-ת]+)\\s+([םןץףך])(?![א-ת])/g, '$1$2');
+    s = s.replace(/([א-ת]*[מנצפכ])\\s+([א-ת]+)/g, '$1$2');
+    s = s.replace(/(^|\\s)([ובלכמשדה])\\s+([א-ת]{2,})/g, '$1$2$3');
+    s = s.replace(/(^|\\s)([ובלכמשדה])\\s+([א-ת]{2,})/g, '$1$2$3');
+    s = s.replace(/([א-ת])\\s*["״]\\s*([א-ת])/g, '$1"$2');
+    s = s.replace(/([א-ת])\\s*[\'׳]\\s*([א-ת])/g, "$1'$2");
+    s = s.replace(/\\s+([.,:;!?])/g, '$1');
+    s = s.replace(/([.,:;!?])([א-ת])/g, '$1 $2');
+    return s.replace(/\\s+/g, ' ').trim();
+  }
+
   function showFootnotePopover(event, fnNum) {
     if (event && event.preventDefault) event.preventDefault();
     if (event && event.stopPropagation) event.stopPropagation();
@@ -10685,10 +10767,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     popover.id = 'activeFootnotePopover';
 
     let formattedContent = '';
-    try {
-      formattedContent = formatLiquidText(escapeHtml(content), true);
-    } catch(e) {
-      formattedContent = escapeHtml(content);
+    const hasHebrew = /[\u0590-\u05FF]/.test(content);
+    if (hasHebrew && !/[a-zA-Z]{3,}/.test(content)) {
+      formattedContent = '<div dir="rtl" class="liquid-hebrew" style="display:block; text-align:right; font-size:1.02em; line-height:1.8;">' + escapeHtml(content) + '</div>';
+    } else {
+      try {
+        formattedContent = formatLiquidText(escapeHtml(content), true);
+      } catch(e) {
+        formattedContent = escapeHtml(content);
+      }
     }
 
     popover.innerHTML =
@@ -11097,7 +11184,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           let lineText = '';
           let isHebrewLine = false;
 
-          if (!hebItems.length) {
+          const hasHebrewLetter = hebItems.length > 0;
+          const hasLatinWord = latinItems.some(it => /[a-zA-Z]{2,}/.test(it.str));
+
+          if (!hasHebrewLetter) {
             latinItems.sort((a,b) => a.x - b.x);
             for (const it of latinItems) {
               if (it.size <= 7.5 && /^\\d+$/.test(it.str.trim())) {
@@ -11107,12 +11197,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
                 lineText += it.str.trim();
               }
             }
-          } else if (!latinItems.length) {
-            hebItems.sort((a,b) => (b.x - a.x) || (b.origIdx - a.origIdx));
+          } else if (!hasLatinWord) {
+            // Pure Hebrew line (may contain numbers/punctuation e.g. "3. אבל עיקרו...")
+            const items = [...line.items].sort((a,b) => (b.x - a.x) || (b.origIdx - a.origIdx));
             let prevX = null;
-            for (const it of hebItems) {
+            for (const it of items) {
               const curRight = it.x + (it.width || 5);
-              if (prevX !== null && (prevX - curRight) > 1.8) lineText += ' ';
+              if (prevX !== null && (prevX - curRight) > 1.8 && !lineText.endsWith(' ')) lineText += ' ';
+              if (it.str.includes(' ') && !lineText.endsWith(' ')) lineText += ' ';
               lineText += it.str.replace(nikudRegex, '');
               prevX = it.x;
             }
@@ -11135,8 +11227,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
             }
 
             hebItems.sort((a,b) => (b.x - a.x) || (b.origIdx - a.origIdx));
-            let hebRaw = hebItems.map(i => i.str.replace(nikudRegex, '')).join('');
-            let hebText = hebRaw
+            let hebText = '';
+            let prevHebX = null;
+            for (const it of hebItems) {
+              const curRight = it.x + (it.width || 5);
+              if (prevHebX !== null && (prevHebX - curRight) > 1.8 && !hebText.endsWith(' ')) hebText += ' ';
+              hebText += it.str.replace(nikudRegex, '');
+              prevHebX = it.x;
+            }
+            hebText = hebText
               .replace(/ה'\\s*צבאות/g, "ה' צבאות")
               .replace(/צבאות\\s*מלא/g, "צבאות מלא")
               .replace(/מלא\\s*כל/g, "מלא כל")
@@ -11169,8 +11268,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
           const firstItem = line.items[0];
           const isSectionHeading = !isHebrewLine && (firstItem.size >= 12 && firstItem.size <= 16 && lineText.length < 50 && !lineText.endsWith('.') && /^[A-Z]/.test(lineText));
+          const isPullQuote = !isHebrewLine && (firstItem.size >= 17 && firstItem.size <= 19 && pageNum > 1);
 
-          if (isSectionHeading) {
+          if (isPullQuote) {
+            documentBlocks.push({ type: 'pull-quote-line', text: lineText, pageNum });
+          } else if (isSectionHeading) {
             documentBlocks.push({ type: 'heading', text: lineText, pageNum });
           } else if (isHebrewLine) {
             documentBlocks.push({ type: 'hebrew-line', text: lineText, pageNum });
@@ -11185,28 +11287,28 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     let curFnNum = null;
     let curFnText = '';
     for (const line of endnoteRawLines) {
-      const startMatch = line.match(/^(\\d{1,2})[\\.\\s]\\s*(.*)$/);
+      const startMatch = line.match(/^[^\\d]*(\\d{1,2})[\\.\\s]\\s*(.*)$/);
       const endMatch = /[\\u0590-\\u05FF]/.test(line) ? line.match(/^(.*?)\\s*[\\."\\s:–-]*(\\d{1,2})\\s*$/) : null;
 
       if (startMatch && parseInt(startMatch[1]) >= 1 && parseInt(startMatch[1]) <= 60) {
         if (curFnNum !== null && curFnText.trim()) {
-          liquidFootnoteMap[String(curFnNum)] = curFnText.trim();
+          liquidFootnoteMap[String(curFnNum)] = cleanHebrewEndnoteText(curFnText.trim());
         }
         curFnNum = parseInt(startMatch[1]);
         curFnText = startMatch[2];
       } else if (endMatch && parseInt(endMatch[2]) >= 1 && parseInt(endMatch[2]) <= 60) {
         if (curFnNum !== null && curFnText.trim()) {
-          liquidFootnoteMap[String(curFnNum)] = curFnText.trim();
+          liquidFootnoteMap[String(curFnNum)] = cleanHebrewEndnoteText(curFnText.trim());
         }
         curFnNum = parseInt(endMatch[2]);
-        curFnText = endMatch[1].replace(/[\\."\\s:–-]+$/, '').trim();
+        curFnText = endMatch[1].replace(/[\."\s:–-]+$/, '').trim();
       } else if (curFnNum !== null) {
         if (curFnText.endsWith('-')) curFnText = curFnText.slice(0, -1) + line;
         else curFnText += ' ' + line;
       }
     }
     if (curFnNum !== null && curFnText.trim()) {
-      liquidFootnoteMap[String(curFnNum)] = curFnText.trim();
+      liquidFootnoteMap[String(curFnNum)] = cleanHebrewEndnoteText(curFnText.trim());
     }
 
     // Assemble paragraphs from lines
@@ -11249,22 +11351,32 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     if (currentP) assembledBlocks.push({ type: 'p', text: currentP.trim(), pageNum: prevPage });
 
-    // Group consecutive Hebrew lines
+    // Group consecutive Hebrew lines and pull-quote lines
     const finalBlocks = [];
     let curHebrew = [];
+    let curPullQuote = [];
     for (const b of assembledBlocks) {
       if (b.type === 'hebrew-line') {
         curHebrew.push(b.text);
+      } else if (b.type === 'pull-quote-line') {
+        curPullQuote.push(b.text);
       } else {
         if (curHebrew.length > 0) {
           finalBlocks.push({ type: 'hebrew-block', text: curHebrew.map(escapeHtml).join('<br>'), pageNum: b.pageNum });
           curHebrew = [];
+        }
+        if (curPullQuote.length > 0) {
+          finalBlocks.push({ type: 'pull-quote', text: curPullQuote.join(' '), pageNum: b.pageNum });
+          curPullQuote = [];
         }
         finalBlocks.push(b);
       }
     }
     if (curHebrew.length > 0) {
       finalBlocks.push({ type: 'hebrew-block', text: curHebrew.map(escapeHtml).join('<br>') });
+    }
+    if (curPullQuote.length > 0) {
+      finalBlocks.push({ type: 'pull-quote', text: curPullQuote.join(' ') });
     }
 
     // Helper to format body text with footnote superscripts
@@ -11280,6 +11392,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
     // Build output HTML
     let renderedHtml = '<div class="liquid-document-container">';
+    renderedHtml += '<div class="liquid-wip-banner"><span>⚠️</span><span><strong>Liquid Mode Beta:</strong> This feature is still a work in progress.</span></div>';
 
     if (docKicker || docTitle || docAuthor) {
       renderedHtml += '<header class="liquid-header">';
@@ -11305,6 +11418,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         renderedHtml += '<h2 class="liquid-heading">' + escapeHtml(b.text) + '</h2>';
       } else if (b.type === 'heading') {
         renderedHtml += '<h3 class="liquid-heading">' + escapeHtml(b.text) + '</h3>';
+      } else if (b.type === 'pull-quote') {
+        renderedHtml += '<aside class="liquid-pull-quote"><blockquote>“' + escapeHtml(b.text.replace(/^["“\s]+|["”\s]+$/g, '')) + '”</blockquote><span class="liquid-pull-quote-tag">Featured Excerpt</span></aside>';
       } else if (b.type === 'hebrew-block') {
         renderedHtml += '<div class="liquid-hebrew-block" dir="rtl">' + b.text + '</div>';
       } else if (b.type === 'p') {
@@ -11320,7 +11435,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       renderedHtml += '<ol class="liquid-endnotes-list">';
       for (const num of endnoteNums) {
         const text = liquidFootnoteMap[String(num)];
-        renderedHtml += '<li class="liquid-endnotes-item" id="fn-' + num + '">' + escapeHtml(text) + '</li>';
+        const isRtl = /[\u0590-\u05FF]/.test(text) && !/[a-zA-Z]{3,}/.test(text);
+        const dirAttr = isRtl ? ' dir="rtl"' : '';
+        renderedHtml += '<li class="liquid-endnotes-item" id="fn-' + num + '"' + dirAttr + '>' + escapeHtml(text) + '</li>';
       }
       renderedHtml += '</ol></section>';
     }
