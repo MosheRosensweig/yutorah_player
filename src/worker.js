@@ -3452,7 +3452,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       gap: 20px;
       box-shadow: inset 0 2px 8px rgba(0,0,0,0.3);
       position: relative;
-      touch-action: pan-x pan-y;
+      touch-action: pan-y;
       user-select: none;
       -webkit-user-select: none;
     }
@@ -3496,8 +3496,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       max-width: none;
       margin: 0 auto;
       transform-origin: 0 0;
-      transition: transform 0.08s ease-out;
+      transition: transform 0.05s ease-out;
       position: relative;
+    }
+    #continuousPagesContainer {
+      transform-origin: 0 0;
+      transition: transform 0.05s ease-out;
+    }
+    .liquid-content {
+      transform-origin: 0 0;
+      transition: transform 0.05s ease-out;
     }
     .pdf-canvas-card canvas {
       display: block;
@@ -10092,6 +10100,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const zoomOutBtn = document.getElementById('zoomOutBtn');
     const pageNav = document.getElementById('articlePageNav');
 
+    touchZoomState.scale = 1.0;
+    touchZoomState.panX = 0;
+    touchZoomState.panY = 0;
+    applyTouchTransform();
+    initTouchZoomTracking();
+
     if (mode === 'liquid') {
       if (btnLiquid) btnLiquid.classList.add('active');
       if (btnOriginal) btnOriginal.classList.remove('active');
@@ -10117,7 +10131,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       } else {
         renderArticlePage(pdfCurrentPage);
       }
-      initTouchZoomTracking();
       updateOrientationTip();
     }
   }
@@ -10137,6 +10150,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   function setPageScrollMode(mode) {
     pageScrollMode = mode;
+    touchZoomState.scale = 1.0;
+    touchZoomState.panX = 0;
+    touchZoomState.panY = 0;
+    applyTouchTransform();
     applyPageScrollModeUI();
     if (mode === 'continuous') {
       renderContinuousPages();
@@ -10180,17 +10197,31 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   function adjustArticleZoom(delta) {
-    originalCanvasScale = Math.max(0.75, Math.min(3.0, originalCanvasScale + delta));
-    touchZoomState.scale = 1.0;
-    touchZoomState.panX = 0;
-    touchZoomState.panY = 0;
-    applyTouchTransform();
-    if (pageScrollMode === 'continuous') {
-      renderedContinuousPages.clear();
-      renderContinuousPages();
+    const newScale = Math.max(1.0, Math.min(4.0, touchZoomState.scale + delta * 0.35));
+    if (newScale <= 1.05) {
+      touchZoomState.scale = 1.0;
+      touchZoomState.panX = 0;
+      touchZoomState.panY = 0;
     } else {
-      renderArticlePage(pdfCurrentPage);
+      const targetCard = pageScrollMode === 'single'
+        ? document.getElementById('pdfCanvasCard')
+        : document.getElementById('continuousPagesContainer');
+      const viewport = document.getElementById('articleCanvasViewport');
+      const viewRect = viewport ? viewport.getBoundingClientRect() : { width: window.innerWidth, height: 600, left: 0, top: 0 };
+      const centerX = viewRect.left + viewRect.width / 2;
+      const centerY = viewRect.top + Math.min(viewRect.height / 2, 350);
+
+      const cardRect = targetCard ? targetCard.getBoundingClientRect() : viewRect;
+      const baseLeft = cardRect.left - touchZoomState.panX;
+      const baseTop = cardRect.top - touchZoomState.panY;
+      const px = (centerX - baseLeft - touchZoomState.panX) / (touchZoomState.scale || 1);
+      const py = (centerY - baseTop - touchZoomState.panY) / (touchZoomState.scale || 1);
+
+      touchZoomState.scale = newScale;
+      touchZoomState.panX = (centerX - baseLeft) - px * newScale;
+      touchZoomState.panY = (centerY - baseTop) - py * newScale;
     }
+    applyTouchTransform();
   }
 
   function changeArticlePage(delta) {
@@ -10198,6 +10229,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const target = pdfCurrentPage + delta;
     if (target >= 1 && target <= pdfTotalPages) {
       pdfCurrentPage = target;
+      touchZoomState.scale = 1.0;
+      touchZoomState.panX = 0;
+      touchZoomState.panY = 0;
+      applyTouchTransform();
       renderArticlePage(pdfCurrentPage);
     }
   }
@@ -10346,9 +10381,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   function initTouchZoomTracking() {
     if (isTouchZoomInit) return;
-    const viewport = document.getElementById('articleCanvasViewport');
-    if (!viewport) return;
+    const canvasViewport = document.getElementById('articleCanvasViewport');
+    const liquidViewport = document.getElementById('articleLiquidViewport');
+    const viewerContainer = document.getElementById('articleViewerContainer');
+    if (!canvasViewport && !liquidViewport) return;
     isTouchZoomInit = true;
+
+    // Prevent Safari default webpage pinch-zoom on the entire viewer container
+    if (viewerContainer) {
+      viewerContainer.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
+      viewerContainer.addEventListener('gesturechange', (e) => e.preventDefault(), { passive: false });
+      viewerContainer.addEventListener('gestureend', (e) => e.preventDefault(), { passive: false });
+    }
 
     function getDistance(t1, t2) {
       const dx = t1.clientX - t2.clientX;
@@ -10363,97 +10407,139 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       };
     }
 
-    viewport.addEventListener('touchstart', (e) => {
-      if (e.touches.length === 2) {
-        // Pinch-to-zoom start
-        touchZoomState.isPinching = true;
-        touchZoomState.isPanning = false;
-        touchZoomState.startDist = getDistance(e.touches[0], e.touches[1]);
-        touchZoomState.startScale = touchZoomState.scale;
-      } else if (e.touches.length === 1) {
-        // Double-tap zoom check
-        const now = Date.now();
-        const touch = e.touches[0];
-        if (now - touchZoomState.lastTapTime < 300) {
-          // Double tapped!
+    function getTargetElement() {
+      if (articleViewerMode === 'liquid') {
+        return document.getElementById('liquidContent');
+      }
+      return pageScrollMode === 'single'
+        ? document.getElementById('pdfCanvasCard')
+        : document.getElementById('continuousPagesContainer');
+    }
+
+    function attachViewportListeners(vp) {
+      if (!vp) return;
+
+      vp.addEventListener('touchstart', (e) => {
+        if (e.touches.length >= 2) {
+          // CRITICAL: Prevent default browser page zoom/resize
           e.preventDefault();
-          if (touchZoomState.scale > 1.2) {
-            // Reset zoom
+          touchZoomState.isPinching = true;
+          touchZoomState.isPanning = false;
+          touchZoomState.startDist = getDistance(e.touches[0], e.touches[1]);
+          touchZoomState.startScale = touchZoomState.scale;
+
+          const center = getCenter(e.touches[0], e.touches[1]);
+          const targetEl = getTargetElement();
+          const cardRect = targetEl ? targetEl.getBoundingClientRect() : vp.getBoundingClientRect();
+          const baseLeft = cardRect.left - touchZoomState.panX;
+          const baseTop = cardRect.top - touchZoomState.panY;
+          touchZoomState.baseLeft = baseLeft;
+          touchZoomState.baseTop = baseTop;
+          touchZoomState.startPx = (center.x - baseLeft - touchZoomState.panX) / (touchZoomState.scale || 1);
+          touchZoomState.startPy = (center.y - baseTop - touchZoomState.panY) / (touchZoomState.scale || 1);
+        } else if (e.touches.length === 1) {
+          const now = Date.now();
+          const touch = e.touches[0];
+          if (now - touchZoomState.lastTapTime < 300) {
+            // Double-tap zoom toggle
+            e.preventDefault();
+            if (touchZoomState.scale > 1.2) {
+              touchZoomState.scale = 1.0;
+              touchZoomState.panX = 0;
+              touchZoomState.panY = 0;
+            } else {
+              const targetEl = getTargetElement();
+              const cardRect = targetEl ? targetEl.getBoundingClientRect() : vp.getBoundingClientRect();
+              const baseLeft = cardRect.left - touchZoomState.panX;
+              const baseTop = cardRect.top - touchZoomState.panY;
+              const px = (touch.clientX - baseLeft - touchZoomState.panX) / (touchZoomState.scale || 1);
+              const py = (touch.clientY - baseTop - touchZoomState.panY) / (touchZoomState.scale || 1);
+              touchZoomState.scale = 2.2;
+              touchZoomState.panX = (touch.clientX - baseLeft) - px * 2.2;
+              touchZoomState.panY = (touch.clientY - baseTop) - py * 2.2;
+            }
+            applyTouchTransform();
+            touchZoomState.lastTapTime = 0;
+            return;
+          }
+          touchZoomState.lastTapTime = now;
+
+          if (touchZoomState.scale > 1.05) {
+            touchZoomState.isPanning = true;
+            touchZoomState.lastTouchX = touch.clientX;
+            touchZoomState.lastTouchY = touch.clientY;
+          }
+        }
+      }, { passive: false });
+
+      vp.addEventListener('touchmove', (e) => {
+        if (touchZoomState.isPinching && e.touches.length >= 2) {
+          e.preventDefault();
+          const dist = getDistance(e.touches[0], e.touches[1]);
+          const scaleFactor = dist / (touchZoomState.startDist || 1);
+          const newScale = Math.max(1.0, Math.min(4.0, touchZoomState.startScale * scaleFactor));
+          const center = getCenter(e.touches[0], e.touches[1]);
+
+          if (newScale <= 1.02) {
             touchZoomState.scale = 1.0;
             touchZoomState.panX = 0;
             touchZoomState.panY = 0;
           } else {
-            // Zoom to 2.2x centered at touch point
-            touchZoomState.scale = 2.2;
-            const rect = viewport.getBoundingClientRect();
-            const relX = touch.clientX - rect.left;
-            const relY = touch.clientY - rect.top;
-            touchZoomState.panX = -relX * 0.8;
-            touchZoomState.panY = -relY * 0.8;
+            touchZoomState.scale = newScale;
+            touchZoomState.panX = (center.x - touchZoomState.baseLeft) - touchZoomState.startPx * newScale;
+            touchZoomState.panY = (center.y - touchZoomState.baseTop) - touchZoomState.startPy * newScale;
           }
           applyTouchTransform();
-          touchZoomState.lastTapTime = 0;
-          return;
-        }
-        touchZoomState.lastTapTime = now;
-
-        // 1-finger tracking pan if zoomed in
-        if (touchZoomState.scale > 1.05) {
-          touchZoomState.isPanning = true;
+        } else if (touchZoomState.isPanning && e.touches.length === 1) {
+          e.preventDefault();
+          const touch = e.touches[0];
+          const dx = touch.clientX - touchZoomState.lastTouchX;
+          const dy = touch.clientY - touchZoomState.lastTouchY;
+          touchZoomState.panX += dx;
+          touchZoomState.panY += dy;
           touchZoomState.lastTouchX = touch.clientX;
           touchZoomState.lastTouchY = touch.clientY;
-        }
-      }
-    }, { passive: false });
-
-    viewport.addEventListener('touchmove', (e) => {
-      if (touchZoomState.isPinching && e.touches.length === 2) {
-        e.preventDefault();
-        const dist = getDistance(e.touches[0], e.touches[1]);
-        const scaleFactor = dist / (touchZoomState.startDist || 1);
-        touchZoomState.scale = Math.max(1.0, Math.min(3.5, touchZoomState.startScale * scaleFactor));
-        applyTouchTransform();
-      } else if (touchZoomState.isPanning && e.touches.length === 1) {
-        e.preventDefault();
-        const touch = e.touches[0];
-        const dx = touch.clientX - touchZoomState.lastTouchX;
-        const dy = touch.clientY - touchZoomState.lastTouchY;
-        touchZoomState.panX += dx;
-        touchZoomState.panY += dy;
-        touchZoomState.lastTouchX = touch.clientX;
-        touchZoomState.lastTouchY = touch.clientY;
-        applyTouchTransform();
-      }
-    }, { passive: false });
-
-    viewport.addEventListener('touchend', (e) => {
-      if (e.touches.length < 2) {
-        touchZoomState.isPinching = false;
-      }
-      if (e.touches.length === 0) {
-        touchZoomState.isPanning = false;
-        if (touchZoomState.scale <= 1.02) {
-          touchZoomState.scale = 1.0;
-          touchZoomState.panX = 0;
-          touchZoomState.panY = 0;
           applyTouchTransform();
         }
-      }
-    }, { passive: true });
+      }, { passive: false });
+
+      vp.addEventListener('touchend', (e) => {
+        if (e.touches.length < 2) {
+          touchZoomState.isPinching = false;
+        }
+        if (e.touches.length === 0) {
+          touchZoomState.isPanning = false;
+          if (touchZoomState.scale <= 1.05) {
+            touchZoomState.scale = 1.0;
+            touchZoomState.panX = 0;
+            touchZoomState.panY = 0;
+            applyTouchTransform();
+          }
+        }
+      }, { passive: true });
+    }
+
+    attachViewportListeners(canvasViewport);
+    if (liquidViewport) attachViewportListeners(liquidViewport);
   }
 
   function applyTouchTransform() {
     const singleCard = document.getElementById('pdfCanvasCard');
     const contContainer = document.getElementById('continuousPagesContainer');
-    const transformStr = touchZoomState.scale === 1.0 && touchZoomState.panX === 0 && touchZoomState.panY === 0
+    const liquidContent = document.getElementById('liquidContent');
+    const transformStr = (touchZoomState.scale === 1.0 && touchZoomState.panX === 0 && touchZoomState.panY === 0)
       ? ''
-      : 'translate(' + Math.round(touchZoomState.panX) + 'px, ' + Math.round(touchZoomState.panY) + 'px) scale(' + touchZoomState.scale.toFixed(2) + ')';
+      : 'translate3d(' + Math.round(touchZoomState.panX) + 'px, ' + Math.round(touchZoomState.panY) + 'px, 0) scale(' + touchZoomState.scale.toFixed(3) + ')';
 
-    if (singleCard && pageScrollMode === 'single') {
-      singleCard.style.transform = transformStr;
-    }
-    if (contContainer && pageScrollMode === 'continuous') {
-      contContainer.style.transform = transformStr;
+    if (articleViewerMode === 'liquid') {
+      if (liquidContent) liquidContent.style.transform = transformStr;
+    } else {
+      if (singleCard && pageScrollMode === 'single') {
+        singleCard.style.transform = transformStr;
+      }
+      if (contContainer && pageScrollMode === 'continuous') {
+        contContainer.style.transform = transformStr;
+      }
     }
   }
 
