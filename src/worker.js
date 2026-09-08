@@ -10478,7 +10478,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   const NIKUD_REGEX = /[\u0591-\u05BD\u05BF\u05C1-\u05C2\u05C4-\u05C5\u05C7]/g;
   const HEBREW_CHAR_REGEX = /[\u0590-\u05FF]/;
-  const HEBREW_BLOCK_REGEX = /((?:[\u0590-\u05FF][\u0590-\u05FF\s'"\u2013\u2014:,.()-]*[\u0590-\u05FF]|[\u0590-\u05FF]))/g;
+  const HEBREW_BLOCK_REGEX = /((?:[\u0590-\u05FF][\u0590-\u05FF\\s'"\u2013\u2014:,.()-]*[\u0590-\u05FF]|[\u0590-\u05FF]))/g;
 
   let liquidFootnoteMap = {};
 
@@ -10518,7 +10518,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (!hebrewText || !HEBREW_CHAR_REGEX.test(hebrewText)) return hebrewText;
 
     let clean = hebrewText.replace(NIKUD_REGEX, '');
-    const tokens = clean.trim().split(/\s+/).filter(Boolean);
+    const tokens = clean.trim().split(/\\s+/).filter(Boolean);
     if (!tokens.length) return hebrewText;
 
     let resolved;
@@ -10528,7 +10528,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const orderType = isVisualLTR(tokens);
 
     if (avgLen < 2.2 && tokens.length >= 3) {
-      const allChars = Array.from(clean.replace(/\s+/g, ''));
+      const allChars = Array.from(clean.replace(/\\s+/g, ''));
       resolved = allChars.reverse().join('');
     } else if (orderType === 'chars') {
       resolved = tokens.map(t => Array.from(t).reverse().join('')).reverse().join(' ');
@@ -10547,8 +10547,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     let text = rawText;
 
     text = text.replace(HEBREW_BLOCK_REGEX, (match) => {
-      const leadPunctRegex = /^([\s,.:;\u201C\u201D"'()]+)/;
-      const trailPunctRegex = /([\s,.:;\u201C\u201D"'()]+)$/;
+      const leadPunctRegex = /^([\\s,.:;\u201C\u201D"'()]+)/;
+      const trailPunctRegex = /([\\s,.:;\u201C\u201D"'()]+)$/;
       let prefix = '';
       let suffix = '';
       let core = match;
@@ -10569,7 +10569,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     });
 
     if (!isFootnoteSection) {
-      const footnoteRefRegex = /([a-zA-Z.,;:'"?!)\u05D0-\u05EA]+)\s*(\d{1,3})\b(?!\s*[.,\d\/\-:])/g;
+      const footnoteRefRegex = /([a-zA-Z.,;:'"?!)\u05D0-\u05EA]+)\\s*(\\d{1,3})\\b(?!\\s*[.,\\d\\/\-:])/g;
       text = text.replace(footnoteRefRegex, (m, word, num) => {
         const fnNum = parseInt(num);
         if (fnNum < 1 || fnNum > 200) return m;
@@ -10582,8 +10582,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   function showFootnotePopover(event, fnNum) {
-    event.preventDefault();
-    event.stopPropagation();
+    if (event && event.preventDefault) event.preventDefault();
+    if (event && event.stopPropagation) event.stopPropagation();
 
     closeFootnotePopover();
 
@@ -10598,7 +10598,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     popover.className = 'liquid-footnote-popover';
     popover.id = 'activeFootnotePopover';
 
-    const formattedContent = formatLiquidText(escapeHtml(content), true);
+    let formattedContent = '';
+    try {
+      formattedContent = formatLiquidText(escapeHtml(content), true);
+    } catch(e) {
+      formattedContent = escapeHtml(content);
+    }
 
     popover.innerHTML =
       '<div class="fn-popover-header">' +
@@ -10609,7 +10614,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
     document.body.appendChild(popover);
 
-    const rect = event.target.getBoundingClientRect();
+    const targetEl = (event && (event.currentTarget || event.target)) || document.querySelector('[data-fn="' + fnNum + '"]');
+    const rect = (targetEl && targetEl.getBoundingClientRect) ? targetEl.getBoundingClientRect() : { left: window.innerWidth / 2, bottom: 100, top: 100, width: 0 };
     const popW = Math.min(window.innerWidth * 0.9, 420);
     let left = rect.left + rect.width / 2 - popW / 2;
     let top = rect.bottom + 8;
@@ -10617,7 +10623,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (left < 8) left = 8;
     if (left + popW > window.innerWidth - 8) left = window.innerWidth - popW - 8;
     if (top + 200 > window.innerHeight) {
-      top = rect.top - 8;
+      top = Math.max(8, rect.top - 8);
       popover.classList.add('inverted');
     }
 
@@ -11045,13 +11051,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
             hebItems.sort((a,b) => (b.x - a.x) || (b.origIdx - a.origIdx));
             let hebRaw = hebItems.map(i => i.str.replace(nikudRegex, '')).join('');
             let hebText = hebRaw
-              .replace(/ה'\s*צבאות/g, "ה' צבאות")
-              .replace(/צבאות\s*מלא/g, "צבאות מלא")
-              .replace(/מלא\s*כל/g, "מלא כל")
-              .replace(/הארץ\s*כבודו/g, "הארץ כבודו")
-              .replace(/ה'\s*ממקומו/g, "ה' ממקומו")
-              .replace(/כבוד\s*ה'/g, "כבוד ה'")
-              .replace(/\s+/g, ' ')
+              .replace(/ה'\\s*צבאות/g, "ה' צבאות")
+              .replace(/צבאות\\s*מלא/g, "צבאות מלא")
+              .replace(/מלא\\s*כל/g, "מלא כל")
+              .replace(/הארץ\\s*כבודו/g, "הארץ כבודו")
+              .replace(/ה'\\s*ממקומו/g, "ה' ממקומו")
+              .replace(/כבוד\\s*ה'/g, "כבוד ה'")
+              .replace(/\\s+/g, ' ')
               .trim();
 
             if (minLatX < minHebX) {
@@ -11062,7 +11068,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
             isHebrewLine = false;
           }
 
-          if (/^Endnotes\b/i.test(lineText.trim())) {
+          if (/^Endnotes/i.test(lineText.trim())) {
             inEndnotesMode = true;
             continue;
           }
