@@ -10573,10 +10573,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       text = text.replace(footnoteRefRegex, (m, word, num) => {
         const fnNum = parseInt(num);
         if (fnNum < 1 || fnNum > 200) return m;
-        const hasContent = liquidFootnoteMap[num];
-        const clickAttr = hasContent
-          ? ' onclick="showFootnotePopover(event, ' + num + ')" tabindex="0" role="button" aria-label="Footnote ' + num + '"'
-          : '';
+        const clickAttr = ' onclick="showFootnotePopover(event, ' + num + ')" tabindex="0" role="button" aria-label="Footnote ' + num + '"';
         return word + '<sup class="liquid-footnote-ref"' + clickAttr + ' data-fn="' + num + '">' + num + '</sup>';
       });
     }
@@ -10590,7 +10587,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
     closeFootnotePopover();
 
-    const content = liquidFootnoteMap[String(fnNum)];
+    let content = liquidFootnoteMap[String(fnNum)];
+    if (!content) {
+      const el = document.getElementById('fn-' + fnNum);
+      if (el && el.textContent.trim()) content = el.textContent.trim();
+    }
     if (!content) return;
 
     const popover = document.createElement('div');
@@ -11007,7 +11008,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           if (!hebItems.length) {
             latinItems.sort((a,b) => a.x - b.x);
             for (const it of latinItems) {
-              if (it.size <= 7.5 && /^\d+$/.test(it.str.trim())) {
+              if (it.size <= 7.5 && /^\\d+$/.test(it.str.trim())) {
                 lineText += '[FN:' + it.str.trim() + ']';
               } else {
                 if (lineText && !lineText.endsWith(' ') && !lineText.endsWith('[FN:') && !lineText.endsWith('-')) lineText += ' ';
@@ -11033,7 +11034,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
             latinItems.sort((a,b) => a.x - b.x);
             let latText = '';
             for (const it of latinItems) {
-              if (it.size <= 7.5 && /^\d+$/.test(it.str.trim())) {
+              if (it.size <= 7.5 && /^\\d+$/.test(it.str.trim())) {
                 latText += '[FN:' + it.str.trim() + ']';
               } else {
                 if (latText && !latText.endsWith(' ') && !latText.endsWith('[FN:') && !latText.endsWith('-')) latText += ' ';
@@ -11092,13 +11093,21 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     let curFnNum = null;
     let curFnText = '';
     for (const line of endnoteRawLines) {
-      const match = line.match(/^(\\d{1,2})[\\.\\s]\\s*(.*)$/);
-      if (match) {
+      const startMatch = line.match(/^(\\d{1,2})[\\.\\s]\\s*(.*)$/);
+      const endMatch = /[\\u0590-\\u05FF]/.test(line) ? line.match(/^(.*?)\\s*[\\."\\s:–-]*(\\d{1,2})\\s*$/) : null;
+
+      if (startMatch && parseInt(startMatch[1]) >= 1 && parseInt(startMatch[1]) <= 60) {
         if (curFnNum !== null && curFnText.trim()) {
           liquidFootnoteMap[String(curFnNum)] = curFnText.trim();
         }
-        curFnNum = parseInt(match[1]);
-        curFnText = match[2];
+        curFnNum = parseInt(startMatch[1]);
+        curFnText = startMatch[2];
+      } else if (endMatch && parseInt(endMatch[2]) >= 1 && parseInt(endMatch[2]) <= 60) {
+        if (curFnNum !== null && curFnText.trim()) {
+          liquidFootnoteMap[String(curFnNum)] = curFnText.trim();
+        }
+        curFnNum = parseInt(endMatch[2]);
+        curFnText = endMatch[1].replace(/[\\."\\s:–-]+$/, '').trim();
       } else if (curFnNum !== null) {
         if (curFnText.endsWith('-')) curFnText = curFnText.slice(0, -1) + line;
         else curFnText += ' ' + line;
@@ -11171,10 +11180,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (!text) return '';
       let escaped = escapeHtml(text);
       escaped = escaped.replace(/\\[FN:(\\d+)\\]/g, (m, num) => {
-        const hasContent = liquidFootnoteMap[num];
-        const clickAttr = hasContent
-          ? ' onclick="showFootnotePopover(event, ' + num + ')" tabindex="0" role="button" aria-label="Footnote ' + num + '"'
-          : '';
+        const clickAttr = ' onclick="showFootnotePopover(event, ' + num + ')" tabindex="0" role="button" aria-label="Footnote ' + num + '"';
         return '<sup class="liquid-footnote-ref"' + clickAttr + ' data-fn="' + num + '">' + num + '</sup>';
       });
       return escaped;
