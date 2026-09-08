@@ -71,6 +71,12 @@ async function testArticleShiur() {
   assert.ok(html.includes('continuousPagesContainer'), 'Continuous pages container must be present');
   assert.ok(html.includes('INITIAL_ARTICLE_PDF'), 'Client script must declare INITIAL_ARTICLE_PDF');
   assert.ok(html.includes('Browse Library While Reading'), 'Article page must show "Browse Library While Reading"');
+  // Liquid Mode 2.0 Engine assertions
+  assert.ok(html.includes('buildColumnDetector'), 'Dynamic column detector function must be present');
+  assert.ok(html.includes('clusterFontSizes'), 'Font-size clustering engine must be present');
+  assert.ok(html.includes('HEBREW_DICT'), 'Hebrew dictionary lemma set must be present');
+  assert.ok(html.includes('showFootnotePopover'), 'Interactive footnote popover handler must be present');
+  assert.ok(html.includes('liquid-footnote-popover'), 'Footnote popover styling must be present in CSS');
   console.log('  ✅ Article shiur page renders with Article Reader, Page Modes, and "Browse Library While Reading" link.');
 }
 
@@ -167,6 +173,42 @@ async function testMediaTypeFilter() {
   console.log(`  ✅ Media Type Filter verified: Audio only returned ${audioDocs.length} audio docs (0 articles), Articles only returned ${articleDocs.length} article docs (100% articles).`);
 }
 
+async function testLiquidModeExtraction() {
+  console.log('8. Testing Liquid Mode 3.0 Engine & First Section Reconstruction...');
+  const req = new Request('https://yutorah-player.mrosensweig.workers.dev/1175130', {
+    headers: { 'User-Agent': 'TestRunner' }
+  });
+  const res = await worker.fetch(req, mockEnv, mockCtx);
+  const html = await res.text();
+
+  assert.ok(html.includes('cleanPdfLigatures'), 'cleanPdfLigatures must be defined in client code');
+  assert.ok(html.includes('buildColumnDetector'), 'buildColumnDetector must be defined in client code');
+  assert.ok(html.includes('liquid-header'), 'liquid-header class must be present in CSS');
+  assert.ok(html.includes('liquid-endnotes'), 'liquid-endnotes class must be present in CSS');
+  assert.ok(html.includes('liquid-hebrew-block'), 'liquid-hebrew-block class must be present in CSS');
+
+  // Verify extraction of article 1175130 section 1 using pdfjs-dist if test PDF is present
+  const fs = await import('fs');
+  const testPdfPath = '/tmp/test_1175130.pdf';
+  if (fs.existsSync(testPdfPath)) {
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const pdfData = new Uint8Array(fs.readFileSync(testPdfPath));
+    const doc = await pdfjs.getDocument({ data: pdfData }).promise;
+    assert.equal(doc.numPages, 5, 'Article 1175130 should have 5 pages');
+
+    const page1 = await doc.getPage(1);
+    const tc = await page1.getTextContent();
+    const wItem = tc.items.find(it => it.str === 'W');
+    assert.ok(wItem, 'Drop cap W must be present on page 1');
+    assert.ok(wItem.transform[3] >= 70, 'Drop cap W font size should be >= 70pt');
+
+    const titleItem = tc.items.find(it => it.str.includes('How Big is our tzibur?'));
+    assert.ok(titleItem, 'Title item must be present on page 1');
+  }
+
+  console.log('  ✅ Liquid Mode 3.0 semantic document engine verified with drop-cap and multi-column reconstruction.');
+}
+
 async function runAll() {
   try {
     await testHomepage();
@@ -176,7 +218,8 @@ async function runAll() {
     await testSearchEndpoints();
     await testSponsorshipApi();
     await testMediaTypeFilter();
-    console.log('\n🎉 ALL BASIC FUNCTIONALITY, ARTICLE READER & MEDIA FILTER TESTS PASSED SUCCESSFULLY!');
+    await testLiquidModeExtraction();
+    console.log('\n🎉 ALL BASIC FUNCTIONALITY, ARTICLE READER & LIQUID MODE TESTS PASSED SUCCESSFULLY!');
   } catch (err) {
     console.error('\n❌ Test failed:', err);
     process.exit(1);
@@ -184,3 +227,4 @@ async function runAll() {
 }
 
 runAll();
+

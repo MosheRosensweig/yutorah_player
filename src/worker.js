@@ -3111,9 +3111,44 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       background: rgba(92, 142, 204, 0.15);
       color: var(--primary-light);
     }
+    .liquid-header {
+      text-align: center;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 24px;
+      margin-bottom: 28px;
+    }
+    .liquid-kicker {
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+    .liquid-title {
+      font-size: 1.85em;
+      font-weight: 800;
+      line-height: 1.25;
+      margin: 10px 0;
+      color: var(--primary);
+    }
+    [data-theme="dark"] .liquid-title {
+      color: var(--primary-light);
+    }
+    .liquid-byline {
+      font-size: 1.05em;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .liquid-role {
+      font-size: 0.9em;
+      color: var(--text-muted);
+      margin-top: 3px;
+    }
     .liquid-paragraph {
       margin-bottom: 18px;
-      text-align: justify;
+      text-align: left;
+      line-height: 1.75;
       hyphens: auto;
     }
     .liquid-paragraph[dir="rtl"] {
@@ -3135,25 +3170,236 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     [data-theme="dark"] .liquid-hebrew {
       color: #93c5fd;
     }
+    .liquid-hebrew-block {
+      font-family: "Taamey Frank CLM", "David", "SBL Hebrew", "Times New Roman", serif;
+      font-size: 1.18em;
+      line-height: 1.9;
+      background: rgba(43, 76, 126, 0.03);
+      border-radius: 8px;
+      padding: 18px 22px;
+      margin: 1.4em 0;
+      text-align: right;
+      direction: rtl;
+      unicode-bidi: isolate;
+    }
+    [data-theme="dark"] .liquid-hebrew-block {
+      background: rgba(92, 142, 204, 0.08);
+    }
+    .liquid-translation {
+      padding: 16px 20px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin: 1.2em 0;
+      font-size: 0.98em;
+      line-height: 1.7;
+      background: rgba(0,0,0,0.01);
+    }
+    .liquid-blockquote {
+      margin: 1.3em 0;
+      padding: 1em 1.25em;
+      border-left: 4px solid var(--primary);
+      background: rgba(43, 76, 126, 0.04);
+      border-radius: 4px;
+      font-size: 0.98em;
+      font-style: italic;
+    }
+    [data-theme="dark"] .liquid-blockquote {
+      border-left-color: var(--primary-light);
+      background: rgba(92, 142, 204, 0.08);
+    }
+    .liquid-heading {
+      font-weight: 800;
+      color: var(--primary);
+      margin: 28px 0 14px 0;
+      line-height: 1.35;
+      font-size: 1.4em;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 6px;
+    }
+    [data-theme="dark"] .liquid-heading {
+      color: var(--primary-light);
+    }
+    .liquid-endnotes {
+      border-top: 2px solid var(--primary);
+      margin-top: 44px;
+      padding-top: 20px;
+    }
+    [data-theme="dark"] .liquid-endnotes {
+      border-top-color: var(--primary-light);
+    }
+    .liquid-endnotes-title {
+      font-size: 1.3em;
+      font-weight: 800;
+      margin-bottom: 16px;
+      color: var(--primary);
+    }
+    [data-theme="dark"] .liquid-endnotes-title {
+      color: var(--primary-light);
+    }
+    .liquid-endnotes-list {
+      padding-left: 24px;
+      margin: 0;
+    }
+    .liquid-endnotes-item {
+      font-size: 0.92em;
+      line-height: 1.65;
+      margin-bottom: 12px;
+      color: var(--text);
+    }
     .liquid-footnote-ref {
       font-size: 0.72em;
       line-height: 0;
       vertical-align: super;
       font-weight: 700;
       color: var(--primary);
-      padding: 0 2px;
-      cursor: default;
+      padding: 1px 3px;
+      cursor: pointer;
+      background: rgba(43, 76, 126, 0.08);
+      border-radius: 4px;
+      transition: background 0.15s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .liquid-footnote-ref:hover, .liquid-footnote-ref:active {
+      background: rgba(43, 76, 126, 0.18);
     }
     [data-theme="dark"] .liquid-footnote-ref {
       color: var(--primary-light);
+      background: rgba(92, 142, 204, 0.12);
     }
-    .liquid-heading {
+    [data-theme="dark"] .liquid-footnote-ref:hover, [data-theme="dark"] .liquid-footnote-ref:active {
+      background: rgba(92, 142, 204, 0.25);
+    }
+    .liquid-footnote-popover {
+      position: fixed;
+      z-index: 9999;
+      max-width: min(90vw, 420px);
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 18px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.08);
+      font-size: 0.92rem;
+      line-height: 1.7;
+      color: var(--text);
+      animation: popoverFadeIn 0.18s ease;
+      pointer-events: auto;
+    }
+    .liquid-footnote-popover.inverted {
+      transform: translateY(-100%);
+      animation: popoverFadeInInverted 0.18s ease;
+    }
+    @keyframes popoverFadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes popoverFadeInInverted {
+      from { opacity: 0; transform: translateY(calc(-100% - 6px)); }
+      to { opacity: 1; transform: translateY(-100%); }
+    }
+    .liquid-footnote-popover .fn-popover-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border-light);
+    }
+    .liquid-footnote-popover .fn-popover-num {
+      font-weight: 800;
+      font-size: 0.82em;
+      color: var(--primary);
+      background: rgba(43, 76, 126, 0.08);
+      padding: 2px 8px;
+      border-radius: 6px;
+    }
+    [data-theme="dark"] .liquid-footnote-popover .fn-popover-num {
+      background: rgba(92, 142, 204, 0.15);
+      color: var(--primary-light);
+    }
+    .liquid-footnote-popover .fn-popover-close {
+      background: none;
+      border: none;
+      font-size: 18px;
+      cursor: pointer;
+      color: var(--text-muted);
+      padding: 0 4px;
+      line-height: 1;
+    }
+    .liquid-footnote-popover .fn-popover-body {
+      font-size: 0.88rem;
+      line-height: 1.65;
+    }
+    .liquid-footnote-popover .fn-popover-body .liquid-hebrew {
+      font-size: 1.05em;
+    }
+    [data-theme="dark"] .liquid-footnote-popover {
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 2px 8px rgba(0,0,0,0.25);
+    }
+    .liquid-footnote-section {
+      margin-top: 28px;
+      padding-top: 16px;
+      border-top: 2px solid var(--border);
+    }
+    .liquid-footnote-section-header {
+      font-size: 0.82em;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+    .liquid-subheading {
+      font-weight: 700;
+      color: var(--text);
+      font-size: 1.15em;
+      margin: 18px 0 8px 0;
+      line-height: 1.4;
+    }
+    .liquid-byline {
+      font-style: italic;
+      color: var(--text-muted);
+      font-size: 0.95em;
+      margin-bottom: 16px;
+    }
+    .liquid-blockquote {
+      border-left: 3px solid var(--primary);
+      margin: 14px 0 18px 16px;
+      padding: 6px 14px;
+      background: rgba(43, 76, 126, 0.04);
+      border-radius: 0 8px 8px 0;
+      font-size: 0.96em;
+      line-height: 1.7;
+    }
+    .liquid-blockquote[dir="rtl"] {
+      border-left: none;
+      border-right: 3px solid var(--primary);
+      margin: 14px 16px 18px 0;
+      padding: 6px 14px;
+      border-radius: 8px 0 0 8px;
+      text-align: right;
+    }
+    [data-theme="dark"] .liquid-blockquote {
+      border-color: var(--primary-light);
+      background: rgba(92, 142, 204, 0.08);
+    }
+    .liquid-footnote-item {
+      font-size: 0.88em;
+      line-height: 1.6;
+      margin-bottom: 8px;
+      padding-left: 28px;
+      position: relative;
+      color: var(--text);
+    }
+    .liquid-footnote-item .fn-num {
+      position: absolute;
+      left: 0;
+      top: 0;
       font-weight: 800;
       color: var(--primary);
-      margin: 22px 0 12px 0;
-      line-height: 1.35;
+      font-size: 0.85em;
+      min-width: 22px;
     }
-    [data-theme="dark"] .liquid-heading {
+    [data-theme="dark"] .liquid-footnote-item .fn-num {
       color: var(--primary-light);
     }
 
@@ -3213,6 +3459,32 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     [data-theme="dark"] .article-canvas-viewport {
       background: #181d24;
       border: 1px solid #283344;
+    }
+    .original-page-orientation-tip {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      width: 100%;
+      max-width: 600px;
+      padding: 7px 14px;
+      margin-bottom: 6px;
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #f1f5f9;
+      text-align: center;
+      line-height: 1.4;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+    }
+    [data-theme="dark"] .original-page-orientation-tip {
+      background: rgba(30, 41, 59, 0.7);
+      border-color: rgba(255, 255, 255, 0.1);
+      color: #cbd5e1;
     }
     .pdf-canvas-card {
       background: #fff;
@@ -5322,6 +5594,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
       <!-- Original Page Viewport (Interactive Touch Zoom & Pan Tracking) -->
       <div id="articleCanvasViewport" class="article-canvas-viewport" style="display: none;" title="Pinch or double-tap to zoom anywhere">
+        <div id="originalPageOrientationTip" class="original-page-orientation-tip">
+          <span>🔄 <strong>Tip:</strong> Original Page view is best experienced in landscape / horizontal orientation.</span>
+        </div>
         <div class="pdf-canvas-card" id="pdfCanvasCard">
           <canvas id="pdfCanvas"></canvas>
         </div>
@@ -9843,6 +10118,20 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         renderArticlePage(pdfCurrentPage);
       }
       initTouchZoomTracking();
+      updateOrientationTip();
+    }
+  }
+
+  function updateOrientationTip() {
+    const tip = document.getElementById('originalPageOrientationTip');
+    if (!tip) return;
+    const isPortrait = window.innerHeight > window.innerWidth;
+    const isMobileOrTablet = window.innerWidth <= 1024;
+    // Show disclaimer when user is viewing Original Page in vertical / portrait layout
+    if (articleViewerMode === 'original' && isPortrait && isMobileOrTablet) {
+      tip.style.display = 'flex';
+    } else {
+      tip.style.display = 'none';
     }
   }
 
@@ -10169,24 +10458,97 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   // ==========================================================================
-  // Liquid Mode Extraction & Hebrew / Footnote Reflow
+  // Liquid Mode 3.0 — Semantic Document Reconstruction Engine
   // ==========================================================================
-  function fixHebrewAndFootnoteFormatting(rawText) {
+
+  const HEBREW_DICT = new Set([
+    'של','את','על','לא','גם','כי','אם','או','עם','זה','הוא','היא','אין','יש','כל','מן','בין','לפי','אחר',
+    'שבת','תורה','מצוה','הלכה','גמרא','רש','רמב','משנה','ברכות','שבועות','ראש','השנה',
+    'אברהם','יצחק','יעקב','משה','אהרן','דוד','שלמה','ישראל','ירושלים','בית','המקדש',
+    'ה','ב','ל','מ','ו','כ','ד','ש',
+    'אלא','אבל','הרי','כדי','מפני','לכן','אפילו','עוד','רק','כאן','שם','מי','מה','איך','למה','מתי',
+    'ספר','פרק','סימן','סעיף','דף','עמוד','הערה','פסוק','שער','חלק','אות',
+    'רבי','רבנו','הגאון','מרן','הרב','מורנו','הרמבם','הרמבן','הרשבא','הריטבא','תוספות','הראבד',
+    'ראה','עיין','וכן','כגון','דהיינו','היינו','פירוש','ביאור','מבואר','מדבריו','שם','לקמן','לעיל',
+    'תלמוד','בבלי','ירושלמי','מדרש','רבה','תנחומא','זוהר','שולחן','ערוך','טור','חושן','משפט',
+    'אורח','חיים','יורה','דעה','אבן','העזר','משנה','ברורה','מגן','אברהם','טז','שך','פתחי','תשובה',
+    'מחלוקת','ספק','סברא','קושיא','תירוץ','פסק','דין','חיוב','פטור','איסור','היתר','טהרה','טומאה',
+    'קדושה','ברכה','תפלה','מנהג','ציבור','קהל','יחיד','יחד','חבר','תלמיד','חכם','חכמים','תנאים','אמוראים'
+  ]);
+
+  const NIKUD_REGEX = /[\u0591-\u05BD\u05BF\u05C1-\u05C2\u05C4-\u05C5\u05C7]/g;
+  const HEBREW_CHAR_REGEX = /[\u0590-\u05FF]/;
+  const HEBREW_BLOCK_REGEX = /((?:[\u0590-\u05FF][\u0590-\u05FF\s'"\u2013\u2014:,.()-]*[\u0590-\u05FF]|[\u0590-\u05FF]))/g;
+
+  let liquidFootnoteMap = {};
+
+  function isVisualLTR(tokens) {
+    if (tokens.length <= 1) return false;
+    const cleaned = tokens.map(t => t.replace(NIKUD_REGEX, '').replace(/[.,:;'"־–—()\[\]]/g, '').trim()).filter(Boolean);
+    if (!cleaned.length) return false;
+
+    let forwardWordHits = 0;
+    for (const t of cleaned) {
+      if (HEBREW_DICT.has(t)) forwardWordHits++;
+    }
+
+    let reversedCharHits = 0;
+    for (const t of cleaned) {
+      const revChars = Array.from(t).reverse().join('');
+      if (HEBREW_DICT.has(revChars)) reversedCharHits++;
+    }
+
+    if (reversedCharHits > forwardWordHits) {
+      return 'chars';
+    }
+
+    if (forwardWordHits > 0) {
+      const leadWord = cleaned[0];
+      const trailWord = cleaned[cleaned.length - 1];
+      const prepositions = new Set(['של', 'על', 'אל', 'כי', 'אם', 'או', 'עם', 'מן', 'לפי', 'אלא', 'אבל']);
+      if (prepositions.has(trailWord) && !prepositions.has(leadWord)) {
+        return 'words';
+      }
+    }
+
+    return 'words';
+  }
+
+  function processHebrewBlock(hebrewText) {
+    if (!hebrewText || !HEBREW_CHAR_REGEX.test(hebrewText)) return hebrewText;
+
+    let clean = hebrewText.replace(NIKUD_REGEX, '');
+    const tokens = clean.trim().split(/\s+/).filter(Boolean);
+    if (!tokens.length) return hebrewText;
+
+    let resolved;
+    const totalChars = tokens.reduce((acc, t) => acc + t.length, 0);
+    const avgLen = totalChars / tokens.length;
+
+    const orderType = isVisualLTR(tokens);
+
+    if (avgLen < 2.2 && tokens.length >= 3) {
+      const allChars = Array.from(clean.replace(/\s+/g, ''));
+      resolved = allChars.reverse().join('');
+    } else if (orderType === 'chars') {
+      resolved = tokens.map(t => Array.from(t).reverse().join('')).reverse().join(' ');
+    } else if (orderType === 'words') {
+      resolved = tokens.reverse().join(' ');
+    } else {
+      resolved = tokens.join(' ');
+    }
+
+    return '<span dir="rtl" class="liquid-hebrew">' + resolved + '</span>';
+  }
+
+  function formatLiquidText(rawText, isFootnoteSection) {
     if (!rawText) return '';
 
-    // 1. Identify and format footnote reference superscripts
-    const footnoteRegex = new RegExp('(\\b[a-zA-Z\\.\\,\\:\\;\\"\\\'\\?\\!]+)\\s*(\\d{1,3})\\b(?!\\s*[\\.\\,\\d\\/\\-])', 'g');
-    let text = rawText.replace(footnoteRegex, (m, word, num) => {
-      return word + '<sup class="liquid-footnote-ref">' + num + '</sup>';
-    });
+    let text = rawText;
 
-    // 2. Identify and format Hebrew text blocks & quotations
-    const hebrewBlockRegex = new RegExp('((?:[\\u0590-\\u05FF][\\u0590-\\u05FF\\s\\\'\\"\\u2013\\u2014\\:\\,\\.\\-\\(\\)]*[\\u0590-\\u05FF]|[\\u0590-\\u05FF]))', 'g');
-    const leadPunctRegex = new RegExp('^([\\s\\,\\.\\:\\;\\u201C\\u201D\\"\\\'\\(\\)]+)');
-    const trailPunctRegex = new RegExp('([\\s\\,\\.\\:\\;\\u201C\\u201D\\"\\\'\\(\\)]+)$');
-    const nikudRegex = new RegExp('[\\u0591-\\u05BD\\u05BF\\u05C1-\\u05C2\\u05C4-\\u05C5\\u05C7]', 'g');
-
-    text = text.replace(hebrewBlockRegex, (match) => {
+    text = text.replace(HEBREW_BLOCK_REGEX, (match) => {
+      const leadPunctRegex = /^([\s,.:;\u201C\u201D"'()]+)/;
+      const trailPunctRegex = /([\s,.:;\u201C\u201D"'()]+)$/;
       let prefix = '';
       let suffix = '';
       let core = match;
@@ -10202,30 +10564,211 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         core = core.slice(0, -suffix.length);
       }
 
-      if (!/[\u0590-\u05FF]/.test(core)) return match;
-
-      // Strip nikud marks for crisp, clean Liquid typography
-      let clean = core.replace(nikudRegex, '');
-      const tokens = clean.trim().split(/\s+/).filter(Boolean);
-      if (!tokens.length) return match;
-
-      const totalChars = tokens.reduce((acc, t) => acc + t.length, 0);
-      const avgLen = totalChars / tokens.length;
-
-      let resolved = '';
-      if (avgLen < 2.2 && tokens.length >= 3) {
-        // Letter-spaced character-by-character visual placement reversed
-        const allChars = Array.from(clean.replace(/\s+/g, ''));
-        resolved = allChars.reverse().join('');
-      } else {
-        // InDesign visual LTR word sequence reversed to natural Hebrew reading order
-        resolved = tokens.reverse().join(' ');
-      }
-
-      return prefix + '<span dir="rtl" class="liquid-hebrew">' + resolved + '</span>' + suffix;
+      if (!HEBREW_CHAR_REGEX.test(core)) return match;
+      return prefix + processHebrewBlock(core) + suffix;
     });
 
+    if (!isFootnoteSection) {
+      const footnoteRefRegex = /([a-zA-Z.,;:'"?!)\u05D0-\u05EA]+)\s*(\d{1,3})\b(?!\s*[.,\d\/\-:])/g;
+      text = text.replace(footnoteRefRegex, (m, word, num) => {
+        const fnNum = parseInt(num);
+        if (fnNum < 1 || fnNum > 200) return m;
+        const hasContent = liquidFootnoteMap[num];
+        const clickAttr = hasContent
+          ? ' onclick="showFootnotePopover(event, ' + num + ')" tabindex="0" role="button" aria-label="Footnote ' + num + '"'
+          : '';
+        return word + '<sup class="liquid-footnote-ref"' + clickAttr + ' data-fn="' + num + '">' + num + '</sup>';
+      });
+    }
+
     return text;
+  }
+
+  function showFootnotePopover(event, fnNum) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    closeFootnotePopover();
+
+    const content = liquidFootnoteMap[String(fnNum)];
+    if (!content) return;
+
+    const popover = document.createElement('div');
+    popover.className = 'liquid-footnote-popover';
+    popover.id = 'activeFootnotePopover';
+
+    const formattedContent = formatLiquidText(escapeHtml(content), true);
+
+    popover.innerHTML =
+      '<div class="fn-popover-header">' +
+        '<span class="fn-popover-num">Footnote ' + fnNum + '</span>' +
+        '<button class="fn-popover-close" onclick="closeFootnotePopover()" aria-label="Close">&times;</button>' +
+      '</div>' +
+      '<div class="fn-popover-body">' + formattedContent + '</div>';
+
+    document.body.appendChild(popover);
+
+    const rect = event.target.getBoundingClientRect();
+    const popW = Math.min(window.innerWidth * 0.9, 420);
+    let left = rect.left + rect.width / 2 - popW / 2;
+    let top = rect.bottom + 8;
+
+    if (left < 8) left = 8;
+    if (left + popW > window.innerWidth - 8) left = window.innerWidth - popW - 8;
+    if (top + 200 > window.innerHeight) {
+      top = rect.top - 8;
+      popover.classList.add('inverted');
+    }
+
+    popover.style.left = left + 'px';
+    popover.style.top = top + 'px';
+    popover.style.width = popW + 'px';
+
+    setTimeout(() => {
+      document.addEventListener('click', handlePopoverOutsideClick, { once: true });
+    }, 50);
+  }
+  window.showFootnotePopover = showFootnotePopover;
+
+  function handlePopoverOutsideClick(e) {
+    const popover = document.getElementById('activeFootnotePopover');
+    if (popover && !popover.contains(e.target)) {
+      closeFootnotePopover();
+    } else if (popover) {
+      document.addEventListener('click', handlePopoverOutsideClick, { once: true });
+    }
+  }
+
+  function closeFootnotePopover() {
+    const existing = document.getElementById('activeFootnotePopover');
+    if (existing) existing.remove();
+  }
+  window.closeFootnotePopover = closeFootnotePopover;
+
+  function cleanPdfLigatures(str) {
+    if (!str) return '';
+    return str
+      .replace(/\u001F/g, 'Th')
+      .replace(/\u001C/g, 'fi')
+      .replace(/\u001B/g, 'fl')
+      .replace(/\u0019/g, 'ffi')
+      .replace(/\u0017/g, 'ffl')
+      .replace(/\u001A/g, 'tt')
+      .replace(/\u001E/g, 'ff')
+      .replace(/\u001D/g, 'ff')
+      .replace(/[\u0014\u0018]/g, '—');
+  }
+
+  function buildColumnDetector(contentItems, pageWidth) {
+    if (!contentItems || !contentItems.length) return () => 0;
+
+    const pw = pageWidth || 612;
+    const bodyItems = contentItems.filter(it => {
+      const size = Math.abs(it.transform[3]);
+      const w = it.width || 20;
+      return size <= 13 && w < pw * 0.45 && it.str.trim().length >= 2;
+    });
+
+    const itemsToScan = bodyItems.length >= 10 ? bodyItems : contentItems;
+    const binWidth = 2;
+    const numBins = Math.ceil(pw / binWidth);
+    const histogram = new Array(numBins).fill(0);
+
+    for (const it of itemsToScan) {
+      const x = it.transform[4];
+      const w = it.width || (it.str.length * 5);
+      const startBin = Math.max(0, Math.floor(x / binWidth));
+      const endBin = Math.min(numBins - 1, Math.floor((x + w) / binWidth));
+      for (let b = startBin; b <= endBin; b++) {
+        histogram[b]++;
+      }
+    }
+
+    const minGapBins = 4;
+    const threshold = 1;
+    const gaps = [];
+    let gapStart = -1;
+
+    for (let b = 0; b < numBins; b++) {
+      if (histogram[b] <= threshold) {
+        if (gapStart === -1) gapStart = b;
+      } else {
+        if (gapStart !== -1) {
+          const gapLen = b - gapStart;
+          if (gapLen >= minGapBins) {
+            const gapCenter = (gapStart + b) / 2 * binWidth;
+            gaps.push({ center: gapCenter, width: gapLen * binWidth });
+          }
+          gapStart = -1;
+        }
+      }
+    }
+
+    const marginThreshold = pw * 0.12;
+    const rightMarginThreshold = pw * 0.88;
+    const interiorGaps = gaps.filter(g => g.center > marginThreshold && g.center < rightMarginThreshold);
+
+    if (interiorGaps.length === 0) {
+      return () => 0;
+    }
+
+    interiorGaps.sort((a, b) => a.center - b.center);
+    const boundaries = interiorGaps.map(g => g.center);
+
+    return function getColIdx(x) {
+      for (let i = 0; i < boundaries.length; i++) {
+        if (x < boundaries[i]) return i;
+      }
+      return boundaries.length;
+    };
+  }
+
+  function clusterFontSizes(contentItems) {
+    const sizeCounts = {};
+    for (const it of contentItems) {
+      if (!it.str.trim()) continue;
+      const size = Math.abs(it.transform[3]);
+      const rounded = Math.round(size * 10) / 10;
+      sizeCounts[rounded] = (sizeCounts[rounded] || 0) + it.str.length;
+    }
+
+    const sizes = Object.entries(sizeCounts)
+      .map(([s, count]) => ({ size: parseFloat(s), count }))
+      .sort((a, b) => b.count - a.count);
+
+    if (sizes.length === 0) return { bodySize: 10, titleSizes: new Set(), headerSizes: new Set(), subheaderSizes: new Set(), footnoteSizes: new Set(), superscriptThreshold: 0 };
+
+    const bodySize = sizes[0].size;
+
+    const titleSizes = new Set();
+    const headerSizes = new Set();
+    const subheaderSizes = new Set();
+    const footnoteSizes = new Set();
+    const superscriptThreshold = bodySize * 0.72;
+
+    for (const { size } of sizes) {
+      if (size >= bodySize * 1.55) {
+        titleSizes.add(size);
+      } else if (size >= bodySize * 1.25) {
+        headerSizes.add(size);
+      } else if (size >= bodySize * 1.10) {
+        subheaderSizes.add(size);
+      } else if (size <= bodySize * 0.85 && size > superscriptThreshold * 0.8) {
+        footnoteSizes.add(size);
+      }
+    }
+
+    return { bodySize, titleSizes, headerSizes, subheaderSizes, footnoteSizes, superscriptThreshold };
+  }
+
+  function classifyItem(item, clusters) {
+    const size = Math.round(Math.abs(item.transform[3]) * 10) / 10;
+    if (clusters.titleSizes.has(size)) return 'title';
+    if (clusters.headerSizes.has(size)) return 'header';
+    if (clusters.subheaderSizes.has(size)) return 'subheader';
+    if (size < clusters.superscriptThreshold) return 'superscript';
+    if (clusters.footnoteSizes.has(size)) return 'footnote';
+    return 'body';
   }
 
   async function extractAndRenderLiquidText() {
@@ -10235,10 +10778,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     activeExtractionId++;
     const currentExtractionId = activeExtractionId;
 
-    container.innerHTML = '<div class="article-loading-state"><div class="spinner"></div><span>Reflowing text for reading...</span></div>';
+    container.innerHTML = '<div class="article-loading-state"><div class="spinner"></div><span>Reconstructing document for Liquid reading...</span></div>';
 
-    let allPagesHtml = '';
     const hebrewRegex = /[\u0590-\u05FF]/;
+    const nikudRegex = /[\u0591-\u05BD\u05BF-\u05C2\u05C4-\u05C7]/g;
+    liquidFootnoteMap = {};
+
+    const pagesData = [];
+    const textFrequencyAcrossPages = {};
+    let docKicker = '';
+    let docAuthor = '';
+    let docRole = '';
+    let docTitle = '';
 
     for (let i = 1; i <= pdfTotalPages; i++) {
       if (currentExtractionId !== activeExtractionId) return;
@@ -10246,108 +10797,403 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         const page = await pdfDoc.getPage(i);
         if (currentExtractionId !== activeExtractionId) return;
         const textContent = await page.getTextContent();
-        const items = textContent.items;
-        if (!items || items.length === 0) continue;
+        const viewport = page.getViewport({ scale: 1.0 });
+        const rawItems = textContent.items;
+        if (!rawItems || rawItems.length === 0) { pagesData.push(null); continue; }
 
-        // Filter out running header/footer items (e.g. y < 45 or publication title)
-        const contentItems = items.filter(it => {
-          const y = it.transform[5];
-          if (y < 46 || y > 755) return false;
-          if (it.str.includes('Torah To-Go Series') || it.str.includes('Benjamin and Rose Berger')) return false;
-          return true;
-        });
+        const items = rawItems.map(it => {
+          const str = cleanPdfLigatures(it.str);
+          const size = Math.round(Math.abs(it.transform[3]) * 10) / 10;
+          return {
+            str,
+            size,
+            fontName: it.fontName,
+            transform: it.transform,
+            x: it.transform[4],
+            y: it.transform[5],
+            width: it.width || (str.length * size * 0.5),
+            isDropCap: (str.trim().length === 1 && size >= 30),
+            effectiveY: (str.trim().length === 1 && size >= 30) ? it.transform[5] + size * 0.75 : it.transform[5]
+          };
+        }).filter(it => it.str.trim().length > 0);
 
-        // Column detection and sorting:
-        // Col 0: x < 205, Col 1: 205 <= x < 385, Col 2: x >= 385
-        function getColIdx(x) {
-          if (x < 205) return 0;
-          if (x < 385) return 1;
-          return 2;
+        if (i === 1) {
+          const kickerItem = items.find(it => it.str.includes('Torah To-Go Series') || it.str.includes('Benjamin and Rose Berger'));
+          if (kickerItem) docKicker = kickerItem.str.trim();
+
+          const authorItem = items.find(it => it.size >= 16 && it.size <= 18 && (it.str.includes('Rabbi') || it.str.includes('Wiederblank') || it.str.includes('Rosensweig')));
+          if (authorItem) {
+            const nextAuthor = items.find(it => it.size === authorItem.size && it !== authorItem && Math.abs(it.x - authorItem.x) < 40 && Math.abs(it.y - authorItem.y) < 30);
+            docAuthor = nextAuthor ? authorItem.str.trim() + ' ' + nextAuthor.str.trim() : authorItem.str.trim();
+          }
+          const roleItem = items.find(it => (it.size === 9 || it.size === 10) && (it.str.includes('RIETS') || it.str.includes('Maggid') || it.str.includes('Rosh Yeshiva')));
+          if (roleItem) docRole = roleItem.str.trim();
         }
 
-        const sorted = [...contentItems].sort((a, b) => {
-          const cA = getColIdx(a.transform[4]);
-          const cB = getColIdx(b.transform[4]);
-          if (cA !== cB) return cA - cB;
-          return b.transform[5] - a.transform[5]; // Top to bottom within column
-        });
-
-        let pageLines = [];
-        let curLine = [];
-        let curY = null;
-        let curCol = null;
-
-        for (const it of sorted) {
-          const col = getColIdx(it.transform[4]);
-          const y = Math.round(it.transform[5]);
-          if (curCol === null || curCol !== col || Math.abs(curY - y) > 3.5) {
-            if (curLine.length) {
-              const lineStr = curLine.map(item => item.str).join(' ');
-              if (lineStr.trim()) pageLines.push(lineStr.trim());
-            }
-            curLine = [it];
-            curY = y;
-            curCol = col;
-          } else {
-            curLine.push(it);
+        for (const it of items) {
+          const t = it.str.trim();
+          if (t.length >= 8) {
+            textFrequencyAcrossPages[t] = (textFrequencyAcrossPages[t] || 0) + 1;
           }
         }
-        if (curLine.length) {
-          const lineStr = curLine.map(item => item.str).join(' ');
-          if (lineStr.trim()) pageLines.push(lineStr.trim());
-        }
 
-        // Group lines into semantic paragraphs
-        let paragraphs = [];
-        let curParagraph = '';
-
-        for (const line of pageLines) {
-          // Check if line looks like a header (e.g. Endnotes, title, capital section)
-          if (line.length < 50 && (/^[A-Z0-9\s—–:-]{3,}$/.test(line.trim()) || /^Endnotes/i.test(line.trim()))) {
-            if (curParagraph) {
-              paragraphs.push(curParagraph.trim());
-              curParagraph = '';
-            }
-            paragraphs.push('### ' + line.trim());
-            continue;
-          }
-
-          if (!curParagraph) {
-            curParagraph = line;
-          } else if (curParagraph.endsWith('.') || curParagraph.endsWith(':') || curParagraph.endsWith('?') || curParagraph.endsWith('!')) {
-            paragraphs.push(curParagraph.trim());
-            curParagraph = line;
-          } else {
-            curParagraph += ' ' + line;
-          }
-        }
-        if (curParagraph.trim()) {
-          paragraphs.push(curParagraph.trim());
-        }
-
-        let pageHtml = '<div class="liquid-page-block">';
-        pageHtml += '<div class="liquid-page-marker">📄 Page ' + i + ' of ' + pdfTotalPages + '</div>';
-
-        for (const p of paragraphs) {
-          if (p.startsWith('### ')) {
-            pageHtml += '<h3 class="liquid-heading">' + escapeHtml(p.substring(4)) + '</h3>';
-          } else {
-            const formatted = fixHebrewAndFootnoteFormatting(escapeHtml(p));
-            const isHebrewBlock = hebrewRegex.test(p) && p.length < 80;
-            pageHtml += '<p class="liquid-paragraph"' + (isHebrewBlock ? ' dir="rtl"' : '') + '>' + formatted + '</p>';
-          }
-        }
-        pageHtml += '</div>';
-        allPagesHtml += pageHtml;
+        pagesData.push({ items, viewport, pageNum: i });
       } catch (e) {
-        console.warn('Error parsing text for page ' + i, e);
+        console.warn('Error extracting page ' + i, e);
+        pagesData.push(null);
       }
     }
 
     if (currentExtractionId !== activeExtractionId) return;
 
-    if (allPagesHtml) {
-      container.innerHTML = allPagesHtml;
+    // Filter headers/footers
+    const parsedPages = [];
+    const allBodyItems = [];
+
+    for (const pd of pagesData) {
+      if (!pd) { parsedPages.push(null); continue; }
+      const { items, viewport, pageNum } = pd;
+      const pageHeight = viewport.height || 792;
+      const pageWidth = viewport.width || 612;
+
+      const contentItems = items.filter(it => {
+        const y = it.y;
+        if (y < 46 || y > pageHeight - 38) return false;
+        const s = it.str.trim();
+        if (!s) return false;
+        if (s.includes('Torah To-Go Series') || s.includes('Benjamin and Rose Berger')) return false;
+        if (s.includes('Yeshiva University') && s.length < 32) return false;
+        if (s.includes('Rabbi Isaac Elchanan Theological Seminary')) return false;
+        if (pdfTotalPages > 2 && textFrequencyAcrossPages[s] && textFrequencyAcrossPages[s] >= Math.min(3, Math.ceil(pdfTotalPages * 0.5))) {
+          if (y > pageHeight - 75 || y < 65) return false;
+        }
+        return true;
+      });
+
+      if (!contentItems.length) { parsedPages.push(null); continue; }
+
+      for (const it of contentItems) {
+        if (it.size >= 10 && it.size <= 12 && /^[a-zA-Z]/.test(it.str.trim()) && it.y > 60 && it.y < 720) {
+          allBodyItems.push(it);
+        }
+      }
+
+      parsedPages.push({ contentItems, pageWidth, pageHeight, pageNum });
+    }
+
+    // Document-level column detection
+    const binWidth = 2;
+    const numBins = Math.ceil(612 / binWidth);
+    const histogram = new Array(numBins).fill(0);
+    for (const it of allBodyItems) {
+      const startBin = Math.max(0, Math.floor(it.x / binWidth));
+      const endBin = Math.min(numBins - 1, Math.floor((it.x + it.width) / binWidth));
+      for (let b = startBin; b <= endBin; b++) histogram[b]++;
+    }
+
+    const gaps = [];
+    let gapStart = -1;
+    for (let b = 0; b < numBins; b++) {
+      if (histogram[b] <= 2) {
+        if (gapStart === -1) gapStart = b;
+      } else {
+        if (gapStart !== -1) {
+          if (b - gapStart >= 4) gaps.push((gapStart + b) / 2 * binWidth);
+          gapStart = -1;
+        }
+      }
+    }
+    let colBoundaries = gaps.filter(g => g > 612 * 0.15 && g < 612 * 0.85);
+    if (!colBoundaries.length) colBoundaries = [213, 395];
+
+    function getDocCol(x) {
+      for (let i = 0; i < colBoundaries.length; i++) {
+        if (x < colBoundaries[i]) return i;
+      }
+      return colBoundaries.length;
+    }
+
+    // Document semantic blocks
+    const documentBlocks = [];
+    let inEndnotesMode = false;
+    const endnoteRawLines = [];
+
+    for (const pd of parsedPages) {
+      if (!pd) continue;
+      const { contentItems, pageNum } = pd;
+      const dropCap = contentItems.find(it => it.isDropCap);
+
+      const spanningItems = [];
+      const colItems = [];
+
+      for (const it of contentItems) {
+        if (pageNum === 1 && it.size >= 20 && !it.isDropCap) {
+          spanningItems.push(it);
+        } else if (it.isDropCap) {
+          // Drop cap is handled via dropCap variable; do not add as a separate column item
+        } else {
+          it.col = getDocCol(it.x);
+          colItems.push(it);
+        }
+      }
+
+      if (spanningItems.length > 0) {
+        spanningItems.sort((a,b) => b.y - a.y);
+        for (const sit of spanningItems) {
+          if (sit.size >= 50) {
+            documentBlocks.push({ type: 'h2', text: sit.str.trim(), pageNum });
+          } else if (sit.size >= 20) {
+            docTitle = sit.str.trim();
+            documentBlocks.push({ type: 'h1', text: sit.str.trim(), pageNum });
+          }
+        }
+      }
+
+      const maxCol = colBoundaries.length;
+      for (let c = 0; c <= maxCol; c++) {
+        const cItems = colItems.filter(it => it.col === c);
+        if (!cItems.length) continue;
+
+        const filteredItems = cItems.filter(it => {
+          if (pageNum === 1 && (it.str.includes('Wiederblank') || it.str.includes('Rabbi Netanel') || it.str.includes('Maggid Shiur, RIETS'))) {
+            return false;
+          }
+          return true;
+        });
+        if (!filteredItems.length) continue;
+
+        filteredItems.sort((a,b) => b.effectiveY - a.effectiveY || a.x - b.x);
+
+        const rawLines = [];
+        let curLine = [];
+        let curBaseY = null;
+        for (const it of filteredItems) {
+          const isSup = (it.size <= 7.5 && /^\\d+$/.test(it.str.trim()));
+          const itemY = isSup ? it.y - 3.6 : it.y;
+          const roundedY = Math.round(itemY);
+
+          if (curBaseY === null || Math.abs(curBaseY - roundedY) > 3.5) {
+            if (curLine.length) rawLines.push({ items: curLine, y: curBaseY });
+            curLine = [it];
+            curBaseY = roundedY;
+          } else {
+            curLine.push(it);
+          }
+        }
+        if (curLine.length) rawLines.push({ items: curLine, y: curBaseY });
+
+        // Prepend drop-cap directly to the first word of column 0
+        if (c === 0 && dropCap && rawLines.length > 0 && rawLines[0].items.length > 0) {
+          rawLines[0].items.sort((a,b) => a.x - b.x);
+          rawLines[0].items[0].str = dropCap.str + rawLines[0].items[0].str;
+        }
+
+        for (const line of rawLines) {
+          const lineStrRaw = line.items.map(it => it.str).join('');
+          const hebrewCount = (lineStrRaw.match(/[\u0590-\u05FF]/g) || []).length;
+          const latinCount = (lineStrRaw.match(/[a-zA-Z]/g) || []).length;
+          const isHebrewLine = hebrewCount > latinCount && hebrewCount >= 3;
+
+          let lineText = '';
+          if (isHebrewLine) {
+            line.items.sort((a,b) => b.x - a.x);
+            let prevX = null;
+            for (const it of line.items) {
+              const curRight = it.x + (it.width || 5);
+              if (prevX !== null && (prevX - curRight) > 1.8) {
+                lineText += ' ';
+              }
+              lineText += it.str.replace(nikudRegex, '');
+              prevX = it.x;
+            }
+            lineText = lineText.trim();
+          } else {
+            line.items.sort((a,b) => a.x - b.x);
+            for (let j = 0; j < line.items.length; j++) {
+              const it = line.items[j];
+              if (it.size <= 7.5 && /^\\d+$/.test(it.str.trim())) {
+                lineText += '[FN:' + it.str.trim() + ']';
+              } else {
+                if (lineText && !lineText.endsWith(' ') && !lineText.endsWith('[FN:') && !lineText.endsWith('-')) {
+                  lineText += ' ';
+                }
+                lineText += it.str.trim();
+              }
+            }
+          }
+
+          if (/^Endnotes\\b/i.test(lineText.trim())) {
+            inEndnotesMode = true;
+            continue;
+          }
+
+          if (inEndnotesMode) {
+            if (lineText.includes('YU Tefillah Platform') || lineText.includes('BalkLegacy') || lineText.includes('Podcasts •')) {
+              continue;
+            }
+            endnoteRawLines.push(lineText);
+            continue;
+          }
+
+          const firstItem = line.items[0];
+          const isSectionHeading = (firstItem.size >= 12 && firstItem.size <= 16 && lineText.length < 50 && !lineText.endsWith('.') && (/^[A-Z]/.test(lineText) || isHebrewLine));
+
+          if (isSectionHeading) {
+            documentBlocks.push({ type: 'heading', text: lineText, pageNum });
+          } else if (isHebrewLine) {
+            documentBlocks.push({ type: 'hebrew-line', text: lineText, pageNum });
+          } else {
+            documentBlocks.push({ type: 'line', text: lineText, y: line.y, pageNum, col: c });
+          }
+        }
+      }
+    }
+
+    // Parse endnotes
+    let curFnNum = null;
+    let curFnText = '';
+    for (const line of endnoteRawLines) {
+      const match = line.match(/^(\\d{1,2})[\\.\\s]\\s*(.*)$/);
+      if (match) {
+        if (curFnNum !== null && curFnText.trim()) {
+          liquidFootnoteMap[String(curFnNum)] = curFnText.trim();
+        }
+        curFnNum = parseInt(match[1]);
+        curFnText = match[2];
+      } else if (curFnNum !== null) {
+        if (curFnText.endsWith('-')) curFnText = curFnText.slice(0, -1) + line;
+        else curFnText += ' ' + line;
+      }
+    }
+    if (curFnNum !== null && curFnText.trim()) {
+      liquidFootnoteMap[String(curFnNum)] = curFnText.trim();
+    }
+
+    // Assemble paragraphs from lines
+    const assembledBlocks = [];
+    let currentP = '';
+    let prevLineY = null;
+    let prevCol = null;
+    let prevPage = null;
+
+    for (const b of documentBlocks) {
+      if (b.type !== 'line') {
+        if (currentP) {
+          assembledBlocks.push({ type: 'p', text: currentP.trim(), pageNum: prevPage || b.pageNum });
+          currentP = '';
+          prevLineY = null;
+          prevCol = null;
+        }
+        assembledBlocks.push(b);
+        continue;
+      }
+
+      const sameColAndPage = (b.col === prevCol && b.pageNum === prevPage);
+      const delta = (sameColAndPage && prevLineY !== null) ? (prevLineY - b.y) : 0;
+      prevLineY = b.y;
+      prevCol = b.col;
+      prevPage = b.pageNum;
+
+      if (currentP && delta >= 18) {
+        assembledBlocks.push({ type: 'p', text: currentP.trim(), pageNum: b.pageNum });
+        currentP = '';
+      }
+
+      if (!currentP) {
+        currentP = b.text;
+      } else if (currentP.endsWith('-')) {
+        currentP = currentP + b.text;
+      } else {
+        currentP += ' ' + b.text;
+      }
+    }
+    if (currentP) assembledBlocks.push({ type: 'p', text: currentP.trim(), pageNum: prevPage });
+
+    // Group consecutive Hebrew lines
+    const finalBlocks = [];
+    let curHebrew = [];
+    for (const b of assembledBlocks) {
+      if (b.type === 'hebrew-line') {
+        curHebrew.push(b.text);
+      } else {
+        if (curHebrew.length > 0) {
+          finalBlocks.push({ type: 'hebrew-block', text: curHebrew.map(escapeHtml).join('<br>'), pageNum: b.pageNum });
+          curHebrew = [];
+        }
+        finalBlocks.push(b);
+      }
+    }
+    if (curHebrew.length > 0) {
+      finalBlocks.push({ type: 'hebrew-block', text: curHebrew.map(escapeHtml).join('<br>') });
+    }
+
+    // Helper to format body text with footnote superscripts
+    function renderFormattedText(text) {
+      if (!text) return '';
+      let escaped = escapeHtml(text);
+      escaped = escaped.replace(/\\[FN:(\\d+)\\]/g, (m, num) => {
+        const hasContent = liquidFootnoteMap[num];
+        const clickAttr = hasContent
+          ? ' onclick="showFootnotePopover(event, ' + num + ')" tabindex="0" role="button" aria-label="Footnote ' + num + '"'
+          : '';
+        return '<sup class="liquid-footnote-ref"' + clickAttr + ' data-fn="' + num + '">' + num + '</sup>';
+      });
+      return escaped;
+    }
+
+    // Build output HTML
+    let renderedHtml = '<div class="liquid-document-container">';
+
+    if (docKicker || docTitle || docAuthor) {
+      renderedHtml += '<header class="liquid-header">';
+      if (docKicker) renderedHtml += '<div class="liquid-kicker">' + escapeHtml(docKicker) + '</div>';
+      if (docTitle) renderedHtml += '<h1 class="liquid-title">' + escapeHtml(docTitle) + '</h1>';
+      if (docAuthor) renderedHtml += '<div class="liquid-byline">' + escapeHtml(docAuthor) + '</div>';
+      if (docRole) renderedHtml += '<div class="liquid-role">' + escapeHtml(docRole) + '</div>';
+      renderedHtml += '</header>';
+    }
+
+    let curPageMarker = null;
+    for (const b of finalBlocks) {
+      if (b.pageNum && b.pageNum !== curPageMarker) {
+        curPageMarker = b.pageNum;
+        renderedHtml += '<div class="liquid-page-marker">\uD83D\uDCC4 Page ' + curPageMarker + ' of ' + pdfTotalPages + '</div>';
+      }
+
+      if (b.type === 'h1') {
+        if (!docTitle) {
+          renderedHtml += '<h1 class="liquid-title">' + escapeHtml(b.text) + '</h1>';
+        }
+      } else if (b.type === 'h2') {
+        renderedHtml += '<h2 class="liquid-heading">' + escapeHtml(b.text) + '</h2>';
+      } else if (b.type === 'heading') {
+        renderedHtml += '<h3 class="liquid-heading">' + escapeHtml(b.text) + '</h3>';
+      } else if (b.type === 'hebrew-block') {
+        renderedHtml += '<div class="liquid-hebrew-block" dir="rtl">' + b.text + '</div>';
+      } else if (b.type === 'p') {
+        renderedHtml += '<p class="liquid-paragraph">' + renderFormattedText(b.text) + '</p>';
+      }
+    }
+
+    // Render Endnotes section if present
+    const endnoteNums = Object.keys(liquidFootnoteMap).map(Number).sort((a,b) => a - b);
+    if (endnoteNums.length > 0) {
+      renderedHtml += '<section class="liquid-endnotes">';
+      renderedHtml += '<h3 class="liquid-endnotes-title">Endnotes</h3>';
+      renderedHtml += '<ol class="liquid-endnotes-list">';
+      for (const num of endnoteNums) {
+        const text = liquidFootnoteMap[String(num)];
+        renderedHtml += '<li class="liquid-endnotes-item" id="fn-' + num + '">' + escapeHtml(text) + '</li>';
+      }
+      renderedHtml += '</ol></section>';
+    }
+
+    renderedHtml += '</div>';
+
+    if (currentExtractionId !== activeExtractionId) return;
+
+    if (finalBlocks.length > 0) {
+      container.innerHTML = renderedHtml;
       container.style.fontSize = liquidFontSizeRem + 'rem';
     } else {
       container.innerHTML = '<div style="text-align:center; padding: 40px 20px; color: var(--text-muted);">' +
@@ -10463,7 +11309,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           setArticleMode('liquid');
         }
       }
+      updateOrientationTip();
     }, 250);
+  });
+
+  window.addEventListener('resize', () => {
+    if (isCurrentShiurArticle && articleViewerMode === 'original') {
+      updateOrientationTip();
+    }
   });
 
   // Auto-load article if initial page load was an article

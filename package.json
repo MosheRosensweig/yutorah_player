@@ -17,6 +17,7 @@
   "author": "Moshe Rosensweig",
   "license": "MIT",
   "devDependencies": {
+    "pdfjs-dist": "^6.3.289",
     "wrangler": "^4.128.0"
   }
 }
