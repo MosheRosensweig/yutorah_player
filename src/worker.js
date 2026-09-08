@@ -1430,7 +1430,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
 
     /* Frozen Top Header (Always Fixed to Top of Viewport) */
-    header {
+    header#mainHeader {
       position: fixed;
       top: 0;
       left: 0;
@@ -2263,7 +2263,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
 
     @media (max-width: 600px) {
-      header {
+      header#mainHeader {
         padding: 8px 10px;
       }
       .header-spacer {
@@ -11394,13 +11394,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     let renderedHtml = '<div class="liquid-document-container">';
     renderedHtml += '<div class="liquid-wip-banner"><span>⚠️</span><span><strong>Liquid Mode Beta:</strong> This feature is still a work in progress.</span></div>';
 
-    if (docKicker || docTitle || docAuthor) {
-      renderedHtml += '<header class="liquid-header">';
-      if (docKicker) renderedHtml += '<div class="liquid-kicker">' + escapeHtml(docKicker) + '</div>';
+    // Document Header inside Liquid Mode container (docKicker banner disabled per user request)
+    if (docTitle || docAuthor) {
+      renderedHtml += '<div class="liquid-header">';
+      // docKicker ("The Benjamin..." banner) disabled for now per user request
+      // if (docKicker) renderedHtml += '<div class="liquid-kicker">' + escapeHtml(docKicker) + '</div>';
       if (docTitle) renderedHtml += '<h1 class="liquid-title">' + escapeHtml(docTitle) + '</h1>';
       if (docAuthor) renderedHtml += '<div class="liquid-byline">' + escapeHtml(docAuthor) + '</div>';
       if (docRole) renderedHtml += '<div class="liquid-role">' + escapeHtml(docRole) + '</div>';
-      renderedHtml += '</header>';
+      renderedHtml += '</div>';
     }
 
     let curPageMarker = null;
