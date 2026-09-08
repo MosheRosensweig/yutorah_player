@@ -11,13 +11,15 @@
 Below is a numbered assessment of the primary strategic initiatives for the YUTorah Enhanced Player, evaluating technical complexity, execution risk, operational cost, and user impact:
 
 | # | Strategic Initiative | Implementation Overview (2–3 Sentences) | Effort / Feasibility | User Impact |
-| :---: | :--- | :--- | :---: | :---: |
-| **1** | **Google OAuth 2.0 & Cloud History Sync** | Integrates an edge-native Google OAuth 2.0 / OpenID Connect authorization code flow with PKCE, storing persistent 1-year `HttpOnly` session tokens. User progress, listening history, and bookmarks synchronize bidirectionally to a Cloudflare D1 (Serverless SQLite) database with debounced 30-second playback heartbeats. Replaces the guest `localStorage` history tab with an organized chronological cloud view (*Today*, *Yesterday*, *This Week*) with full item removal and GDPR/CCPA export/erasure. | **Medium**<br>*(3–4 days)* | **CRITICAL**<br>★★★★★ |
-| **2** | **Shiur Audio Transcription & Mixed Hebrew/English Transliteration** | Orchestrates lazy on-demand speech-to-text via Groq Whisper Large-v3-Turbo seeded with a specialized 224-token "Yeshivish" rabbinic prompt, completing a 45-minute shiur in ~14 seconds for ~$0.03. Formats mixed Hebrew/English words (*"The \*gemara\* in \*Rosh Hashanah\* discusses whether \*tekiah\* is \*d'oraisa\*"*) using a deterministic Sefaria-derived prefix-stripping lexicon. Transcripts are cached permanently as JSON and WebVTT in Cloudflare R2 object storage so each lecture is only processed once across all users. | **Medium-High**<br>*(4–5 days)* | **TRANSFORMATIVE**<br>★★★★★ |
-| **3** | **Admin Portal, Storage Monitoring & Quota Telemetry** | Introduces a secure, lightweight `/admin` dashboard protected by Google OAuth and an encrypted admin email whitelist. Delivers real-time telemetry on Cloudflare free-tier quotas (D1 5GB, R2 10GB, KV 1,000 writes/day, Workers 100k requests/day) with visual burn-rate gauges and automated alerts. Provides administrative controls to selectively purge edge search caches, inspect and delete corrupted AI transcripts, and view edge error diagnostics. | **Low-Medium**<br>*(2–3 days)* | **HIGH (Ops)**<br>★★★★☆ |
-| **4** | **Advanced Multi-Criteria Search Modal** | Adds a distinct amber/purple accent filter button (`🎚️ Filters`) directly adjacent to the primary search button, launching an accessible modal dialog. Enables compound multi-field filtering across speakers (combobox), topics/subcategories, venues/institutions, lecture duration presets/ranges, and recording years. Employs a hybrid query pushdown strategy (translating speaker/topic/venue to upstream Solr facets while executing duration and date filtering via an edge/client pipeline with consistent 30-item page guarantees). | **Completed (Local)**<br>*(Verified)* | **VERY HIGH**<br>★★★★★ |
-| **5** | **Reverse Transliteration & Phonetic Equivalence Search Engine** | Modernizes the Summer 2018 Java recommender algorithm (`EnglishBackToHebrew.java`) into a lightning-fast (<5ms) edge TypeScript phonetic normalization pipeline. Unifies Ashkenazic and Sephardic spelling divergences (*shabbos* / *shabbat* $\to$ *שבת*; *sukka* / *succah* / *sukkah* $\to$ *סוכה*) and strips rabbinic honorifics (*Rav*, *Rabbi Dr.*, *Dayan*) to map queries to canonical speaker profiles (`teacherId`). Automatically expands user queries into multi-term boolean disjunctions or runs parallel Solr queries merged via Reciprocal Rank Fusion (RRF). | **Completed (Local)**<br>*(Verified)* | **MASSIVE**<br>★★★★★ |
-| **6** | **Official YUTorah REST & OpenAPI 3.0 Specification** | Formally documents the complete multi-tiered YUTorah ecosystem across `api.yutorah.org` (Solr search & homepage collections), `www.yutorah.org` (lecture sidebar, speaker bios, venues), and global media CDNs (`shiurim.yutorah.net`, `pub-*.r2.dev`, `CacheFly`). Details headers, parameters, response schemas, and Cloudflare Bot Management / Turnstile mitigation behaviors. Serves as the authoritative engineering reference for all current and future integrations. | **Completed**<br>*(Ready)* | **FOUNDATIONAL**<br>★★★★☆ |
+| :---: | :--- | :--- | :--- | :---: |
+| **1** | **Search Results: Top 3 Recent Matches Sub-Section** *(Next Up — Priority 1)* | Injects the top 3 most recent results matching the search and filter criteria directly above the main results grid under a dedicated `🕒 Recent Results` subtitle, followed by the remaining results under an improved `🎯 Most Relevant Results` section subtitle. Ensures users immediately discover the freshest lectures for any topic or speaker while retaining full relevance-based discovery. | **Low-Medium**<br>*(1–2 days)* | **VERY HIGH**<br>★★★★★ |
+| **2** | **Developer Mode: "Dev's Playlists", Progress Tracking & Multi-Playlist Engine** *(Next Up — Priority 2)* | Adds an exclusive "Dev's Playlists" tab between *Editor's Picks* and *Featured Series* on the homepage when Dev Mode is active. Features 3 default playlists: *History* (all listened lectures with attached mini progress bar, last-listened timestamp, and "x/y min through"), *Save for Later* (clock shortcut button on cards), and *Favorites* (star shortcut button on cards). Includes custom playlist creation with live autocomplete, multi-playlist membership via card/player plus (`+`) button, and playlist deletion with confirmation prompts. | **Medium**<br>*(2–3 days)* | **TRANSFORMATIVE**<br>★★★★★ |
+| **3** | **Google OAuth 2.0 & Cloud History Sync** | Integrates an edge-native Google OAuth 2.0 / OpenID Connect authorization code flow with PKCE, storing persistent 1-year `HttpOnly` session tokens. User progress, listening history, and bookmarks synchronize bidirectionally to a Cloudflare D1 (Serverless SQLite) database with debounced 30-second playback heartbeats. Replaces the guest `localStorage` history tab with an organized chronological cloud view (*Today*, *Yesterday*, *This Week*) with full item removal and GDPR/CCPA export/erasure. | **Medium**<br>*(3–4 days)* | **CRITICAL**<br>★★★★★ |
+| **4** | **Shiur Audio Transcription & Mixed Hebrew/English Transliteration** | Orchestrates lazy on-demand speech-to-text via Groq Whisper Large-v3-Turbo seeded with a specialized 224-token "Yeshivish" rabbinic prompt, completing a 45-minute shiur in ~14 seconds for ~$0.03. Formats mixed Hebrew/English words (*"The \*gemara\* in \*Rosh Hashanah\* discusses whether \*tekiah\* is \*d'oraisa\*"*) using a deterministic Sefaria-derived prefix-stripping lexicon. Transcripts are cached permanently as JSON and WebVTT in Cloudflare R2 object storage so each lecture is only processed once across all users. | **Medium-High**<br>*(4–5 days)* | **TRANSFORMATIVE**<br>★★★★★ |
+| **5** | **Admin Portal, Storage Monitoring & Quota Telemetry** | Introduces a secure, lightweight `/admin` dashboard protected by Google OAuth and an encrypted admin email whitelist. Delivers real-time telemetry on Cloudflare free-tier quotas (D1 5GB, R2 10GB, KV 1,000 writes/day, Workers 100k requests/day) with visual burn-rate gauges and automated alerts. Provides administrative controls to selectively purge edge search caches, inspect and delete corrupted AI transcripts, and view edge error diagnostics. | **Low-Medium**<br>*(2–3 days)* | **HIGH (Ops)**<br>★★★★☆ |
+| **6** | **Advanced Multi-Criteria Search Modal** | Adds a distinct amber/purple accent filter button (`🎚️ Filters`) directly adjacent to the primary search button, launching an accessible modal dialog. Enables compound multi-field filtering across speakers (combobox), topics/subcategories, venues/institutions, lecture duration presets/ranges, and recording years. Employs a hybrid query pushdown strategy (translating speaker/topic/venue to upstream Solr facets while executing duration and date filtering via an edge/client pipeline with consistent 30-item page guarantees). | **Completed (Local)**<br>*(Verified)* | **VERY HIGH**<br>★★★★★ |
+| **7** | **Reverse Transliteration & Phonetic Equivalence Search Engine** | Modernizes the Summer 2018 Java recommender algorithm (`EnglishBackToHebrew.java`) into a lightning-fast (<5ms) edge TypeScript phonetic normalization pipeline. Unifies Ashkenazic and Sephardic spelling divergences (*shabbos* / *shabbat* $\to$ *שבת*; *sukka* / *succah* / *sukkah* $\to$ *סוכה*) and strips rabbinic honorifics (*Rav*, *Rabbi Dr.*, *Dayan*) to map queries to canonical speaker profiles (`teacherId`). Automatically expands user queries into multi-term boolean disjunctions or runs parallel Solr queries merged via Reciprocal Rank Fusion (RRF). | **Completed (Local)**<br>*(Verified)* | **MASSIVE**<br>★★★★★ |
+| **8** | **Official YUTorah REST & OpenAPI 3.0 Specification** | Formally documents the complete multi-tiered YUTorah ecosystem across `api.yutorah.org` (Solr search & homepage collections), `www.yutorah.org` (lecture sidebar, speaker bios, venues), and global media CDNs (`shiurim.yutorah.net`, `pub-*.r2.dev`, `CacheFly`). Details headers, parameters, response schemas, and Cloudflare Bot Management / Turnstile mitigation behaviors. Serves as the authoritative engineering reference for all current and future integrations. | **Completed**<br>*(Ready)* | **FOUNDATIONAL**<br>★★★★☆ |
 
 ---
 
@@ -296,47 +298,220 @@ The full REST / OpenAPI 3.0.3 specification has been generated and saved directl
 
 ---
 
-## 7. Phased Implementation Milestones
+## 7. Search Results Enhancement: Most Recent Matches Sub-Section & Relevance Categorization
+
+### 7.1 Motivation & The "Recency Invisibility" Problem
+When users search YUTorah for broad topics (e.g. *"Pesach"*, *"Shabbos"*, *"Tefillah"*) or prolific speakers with hundreds of recordings (e.g. *"Rabbi Michael Rosensweig"*), Solr's default text-frequency relevance ranking heavily favors historic recordings with high term density. As a result:
+- Freshly uploaded shiurim recorded this week or season are often buried dozens of pages deep.
+- Users seeking current year recordings struggle to differentiate between newly uploaded material and decades-old archives without cumbersome manual year filtering.
+
+### 7.2 Two-Tier Query & Partitioning Strategy
+To solve this seamlessly across all searches, the search pipeline executes a coordinated two-tier result assembly:
+1. **Tier 1: Upstream Recency Query (`recentDocs`)**:
+   - The edge Worker executes an upstream query with identical filter criteria (`teacherId`, `subCategoryId`, `locationId`, `seriesId`, `minDuration`, `maxDuration`, `year`, `mediaType`), passing `sortIndex=1` (date descending) with `start=1` and `rows=3`.
+   - Solr immediately returns the 3 most recently recorded or submitted lectures matching every active filter.
+2. **Tier 2: Relevance & Series-Stacked Query (`docs`)**:
+   - The primary search query executes with Solr default relevance scoring and client-side synset/phonetic expansion ranking (`computeRelevanceScore` and `groupAndRankDocs`).
+3. **Deduplication & Page Accounting**:
+   - Any lecture included in `recentDocs` is flagged and deduplicated from the primary relevance list below to prevent identical cards appearing twice in close proximity.
+   - The combined payload returned to the client is:
+     ```json
+     {
+       "response": {
+         "recentDocs": [ /* top 3 most recent matching docs */ ],
+         "docs": [ /* relevance-ranked remaining docs */ ],
+         "numFound": 1420,
+         "start": 1
+       }
+     }
+     ```
+
+### 7.3 Visual Layout & Clear Subtitle Demarcation
+In place of a single undifferentiated grid of 30 cards, search results are cleanly segmented with clear semantic subheadings:
+1. **Recent Results Sub-Section**:
+   - **Header**: `<div class="search-results-subheading"><span>🕒</span> Recent Results</div>`
+   - Displays up to 3 cards for the freshest lectures matching the query.
+   - If total matches for a query are $\le 3$, all matches appear under Recent Results without an empty second section.
+2. **Relevance / All Matching Sub-Section**:
+   - **Header**: `<div class="search-results-subheading"><span>🎯</span> Most Relevant Results</div>` (or `📚 All Relevant Matches`)
+   - Displays the relevance-scored, topic-matched, and series-stacked shiurim.
+   - Preserves continuous pagination via the `"🔽 Load More Results"` button, seamlessly fetching additional pages into the relevance section.
+3. **Filter Inheritance**:
+   - Both sub-sections strictly honor all active filters from the Advanced Search Modal (Speaker, Topic, Venue, Duration presets, Year, and Media Type: *Audio Only* vs. *Articles Only*).
+
+---
+
+## 8. Developer Mode: "Dev's Playlists", Progress Tracking & Multi-Playlist Engine
+
+### 8.1 Overview & Dev Mode Isolation Guardrails
+Developer Mode (`isDevMode`) is a specialized diagnostic and power-user environment activated via the secret 7-tap gesture on the header calendar badge or by typing `'dev mode'` in the search bar.
+- **Zero Impact on Standard Public Users**:
+  - In normal (non-dev) mode, all playlist buttons, playlist tabs, progress tracks, and modal dialogs are completely inactive and hidden (`display: none !important; aria-hidden="true"`).
+  - Normal users experience fast, clean audio playback, search, and document reading with zero DOM bloat or performance degradation.
+- **Session & Local Persistence**:
+  - When unlocked, Dev Mode state is persisted in `localStorage.setItem('yutorah_dev_mode', 'true')` so developer workflows persist across page refreshes during iterative development.
+
+### 8.2 Homepage Placement: "Dev's Playlists" Section
+On the homepage, the collections area contains a tabbed bar (`⭐ Editor's Picks`, `📚 Featured Series`, `⏱️ Recently Uploaded`, etc.).
+- When Dev Mode is active, a dedicated new section tab is rendered **second in order, directly between *Editor's Picks* and *Featured Series***:
+  ```html
+  <button class="tab-btn dev-playlist-tab" id="tab-playlists" onclick="switchCollection('playlists')">
+    🎧 Dev's Playlists
+  </button>
+  ```
+- Clicking this tab transitions `#collectionsSection` to display `#grid-playlists`, an interactive playlist management interface featuring playlist pill selectors, playlist creation, and card management.
+
+### 8.3 The Three Core Default Playlists & Universal Progress Tracking
+Every developer workspace initializes with three foundational system playlists:
+
+```mermaid
+graph TD
+    subgraph DevPlaylists["🎧 Dev's Playlists Architecture"]
+        A["🕒 Save for Later<br>(Clock Button Toggle)"]
+        B["⭐ Favorites<br>(Star Button Toggle)"]
+        C["📜 History<br>(All Listened Shiurim)"]
+        D["📁 Custom Playlists<br>(User Defined & Named)"]
+    end
+    Progress["📊 Universal Progress Engine<br>(Attached Progress Track, Last Listened Time, x/y Min Through)"] --> A
+    Progress --> B
+    Progress --> C
+    Progress --> D
+```
+
+1. **`🕒 Save for Later`**:
+   - **Card Shortcut**: A dedicated Clock emoji button (`🕒` / `⏱️`) on every shiur card.
+   - **Visual States**:
+     - *Unpressed / Inactive*: Muted outline button (`opacity: 0.65`).
+     - *Pressed / Active*: Solid amber/gold badge (`background: #d97706; color: #fff; transform: scale(1.05)`).
+   - **Behavior**: Single-click toggles addition to / removal from the *"Save for Later"* playlist with instant toast notification.
+2. **`⭐ Favorites`**:
+   - **Card Shortcut**: A dedicated Star button (`⭐` / `☆`) on every shiur card.
+   - **Visual States**:
+     - *Unpressed / Inactive*: Hollow star (`☆`, subtle border).
+     - *Pressed / Active*: Filled vibrant golden star (`⭐` with warm glow).
+   - **Behavior**: Single-click toggles addition to / removal from the *"Favorites"* playlist.
+3. **`📜 History`**:
+   - Automatically tracks every lecture ever played in the app (both audio shiurim and article readings).
+   - Records the exact playback offset and last-active timestamp.
+4. **Universal Card Progress Display**:
+   - Across **ALL** playlists (History, Save for Later, Favorites, and Custom Playlists), cards automatically display rich playback progress if the user has ever listened to the shiur:
+     - **Mini Progress Bar**: Attached to the bottom edge of the card (identical to the sleek mini player track):
+       ```html
+       <div class="card-progress-track">
+         <div class="card-progress-fill" style="width: 45%;"></div>
+       </div>
+       ```
+     - **Listening Meta**:
+       - *Relative Timestamp*: e.g. `"🕒 Last listened: 2 hours ago"` or `"Yesterday"`.
+       - *Progress Text*: `"18/45 min through (40%)"`.
+
+### 8.4 Custom Playlists & "Add to Playlist" Dialog
+In Dev Mode, power users can organize study tracks and thematic lecture series into arbitrary custom playlists:
+- **Trigger**: A Plus button (`➕` / `📑+`) appears on:
+  1. Every card in search results, homepage tabs, and playlist grids.
+  2. The active player header when a shiur is open and streaming.
+- **Interactive Modal Dialog (`#playlistModal`)**:
+  - Displays the active shiur's thumbnail, title, and speaker.
+  - **Typeahead Combobox**: An input field with real-time dropdown filtering existing playlists as the user types, plus an instant `➕ Create "[New Name]"` action.
+  - **Multi-Playlist Checkbox List**: Displays all user playlists. Each row shows:
+    - Checkbox indicating membership (checked if the shiur is already in this playlist, unchecked if not).
+    - Playlist title and current shiur count.
+  - **Multi-Playlist Membership**: A shiur can reside in any number of playlists simultaneously. Checking or unchecking immediately adds or removes the shiur from that playlist.
+
+### 8.5 Playlist View & Item Removal Confirmation
+When browsing a playlist within the `🎧 Dev's Playlists` homepage tab:
+- The interface displays the playlist name, item count, total cumulative duration (e.g. *"14 Shiurim • 7 hrs 42 min"*), and an action bar (*"▶ Play All"*, *"Export JSON"*, *"Delete Playlist"*).
+- Every card rendered in the playlist view includes a red `✕ Remove from Playlist` button.
+- **Accidental Deletion Protection**: Clicking `✕ Remove` prompts an inline modal confirmation:
+  > *"Are you sure you want to remove this shiur from [Playlist Name]?"*  
+  > `[ Cancel ]` &nbsp;&nbsp; `[ 🗑️ Confirm Remove ]`
+
+### 8.6 Storage Schema & Client-Side Engine
+Playlists and playback progress are maintained with zero server roundtrips in browser `localStorage`:
+```typescript
+interface PlaybackRecord {
+  shiurId: string;
+  progressSec: number;
+  durationSec: number;
+  lastListened: number; // Unix timestamp ms
+  completed: boolean;
+}
+
+interface Playlist {
+  id: string;
+  name: string;
+  isSystem: boolean; // true for 'history', 'save_for_later', 'favorites'
+  createdAt: number;
+  items: Array<{
+    id: string;
+    title: string;
+    speaker: string;
+    photo: string;
+    duration: string;
+    audioUrl?: string;
+    addedAt: number;
+  }>;
+}
+```
+- **Storage Keys**:
+  - `yutorah_dev_playlists`: Keyed dictionary of `Playlist` objects.
+  - `yutorah_playback_progress`: Keyed dictionary of `PlaybackRecord` objects.
+- **Heartbeat & Event Hooks**:
+  - `audioElement.addEventListener('timeupdate', ...)`: Debounced update every 5 seconds.
+  - `audioElement.addEventListener('pause', ...)`: Immediate flush to `localStorage`.
+  - `audioElement.addEventListener('ended', ...)`: Marks `completed: true` and records 100% progress.
+
+---
+
+## 9. Phased Implementation Milestones
 
 ```mermaid
 gantt
     title YUTorah Enhanced Player Engineering Roadmap
     dateFormat  YYYY-MM-DD
-    section Milestone 1: Search & Discovery
-    Advanced Search Modal (UI & Post-Filter)     :active, m1_1, 2026-09-08, 3d
-    Reverse Transliteration & Phonetic Engine     :m1_2, after m1_1, 3d
-    section Milestone 2: Auth & User History
-    Cloudflare D1 Setup & Schema Migration        :m2_1, after m1_2, 2d
-    Google OAuth 2.0 PKCE Edge Implementation     :m2_2, after m2_1, 3d
-    History Tab UI & Debounced Cloud Sync         :m2_3, after m2_2, 3d
+    section Immediate Next Priorities
+    Feature 1: Top 3 Recent Search Matches & Subtitles   :active, feat_1, 2026-09-08, 2d
+    Feature 2: Dev Mode Playlists & Progress Engine       :feat_2, after feat_1, 3d
+    section Milestone 2: Cloud History & Auth
+    Cloudflare D1 Setup & Schema Migration               :m2_1, after feat_2, 2d
+    Google OAuth 2.0 PKCE Edge Implementation            :m2_2, after m2_1, 3d
+    Cloud History Tab & Bi-directional Sync              :m2_3, after m2_2, 3d
     section Milestone 3: AI Transcription
-    Groq Whisper Pipeline & Yeshivish Priming    :m3_1, after m2_3, 3d
-    Hebrew Term Italicizer & R2 Storage Cache     :m3_2, after m3_1, 3d
-    Player Interactive Synced Transcript UI       :m3_3, after m3_2, 3d
+    Groq Whisper Pipeline & Yeshivish Lexicon Priming    :m3_1, after m2_3, 3d
+    Hebrew Term Italicizer & R2 Storage Cache            :m3_2, after m3_1, 3d
+    Interactive Karaokee Synced Transcript UI            :m3_3, after m3_2, 3d
     section Milestone 4: Admin & Governance
-    Admin Dashboard UI & Storage Telemetry        :m4_1, after m3_3, 3d
-    Quota Alerting & Cache Purge Controls         :m4_2, after m4_1, 2d
+    Admin Dashboard UI & Storage Telemetry               :m4_1, after m3_3, 3d
+    Quota Alerting & Cache Purge Controls                :m4_2, after m4_1, 2d
 ```
 
-### Milestone 1: Search & Discovery Enhancements (Week 1)
-- Deploy amber `🎚️ Filters` button and responsive Advanced Search modal dialog.
-- Implement post-filtering pagination for duration (<15m, 15–45m, >45m) and recording year.
-- Integrate reverse transliteration synonym expansion (*shabbos* $\to$ *shabbat* $\to$ *שבת*) and honorific stripping.
+### Priority 1: Search Results Enhancement — Top 3 Recent Matches (Immediate Next)
+- Modify `executeSearchInternal` to execute parallel recency query (`sortIndex=1`, `rows=3`) matching active filter criteria.
+- Partition search results grid into `🕒 Recent Results` and `🎯 Most Relevant Results` sub-sections.
+- Apply automatic deduplication and responsive subheading styling.
 
-### Milestone 2: Accounts, Google OAuth & Cloud History Sync (Week 2)
+### Priority 2: Developer Mode — "Dev's Playlists" & Progress Tracking (Immediate Next)
+- Wire `isDevMode` listener and mount `🎧 Dev's Playlists` tab between *Editor's Picks* and *Featured Series*.
+- Implement `localStorage` store for default playlists (*History*, *Save for Later*, *Favorites*) and custom playlists.
+- Render attached card progress bars, last-listened timestamps, and x/y min text.
+- Add Clock (`🕒`) and Star (`⭐`) shortcut buttons and Plus (`➕`) "Add to Playlist" autocomplete modal dialog.
+- Implement removal workflow with `"Are you sure?"` confirmation prompt.
+- Verify 100% feature isolation in standard non-dev sessions.
+
+### Milestone 2: Accounts, Google OAuth & Cloud History Sync
 - Bind Cloudflare D1 database `YUTORAH_DB` and run schema migrations.
 - Implement `/auth/google`, `/auth/callback`, and JWT session cookie issuance.
 - Add Settings / Profile button next to Sun/Moon toggle.
 - Connect 30-second debounced client heartbeats to sync history and resume positions.
 - Replace local history tab with chronological cloud history view and deletion controls.
 
-### Milestone 3: AI Transcription & Mixed English/Hebrew Formatting (Week 3)
+### Milestone 3: AI Transcription & Mixed English/Hebrew Formatting
 - Bind Cloudflare R2 bucket `YUTORAH_TRANSCRIPTS`.
 - Implement lazy `/api/shiur/:id/transcript` endpoint orchestrating Groq Whisper Large-v3-Turbo.
 - Run deterministic Yeshivish lexicon post-processor to format and italicize Hebrew words.
 - Integrate synchronized karaoke-style transcript drawer into the web player.
 
-### Milestone 4: Admin Portal & Storage Telemetry (Week 4)
+### Milestone 4: Admin Portal & Storage Telemetry
 - Implement `/admin` route with Google OAuth admin email whitelist.
 - Build visual telemetry dashboards for D1 database, R2 transcripts, and KV cache usage.
 - Add cache-purge and transcript remediation tools.
