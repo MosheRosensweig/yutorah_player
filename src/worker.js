@@ -291,8 +291,12 @@ async function executeSearchInternal(searchParams) {
   // Recency sort (ROADMAP §7: Recent Results + §10 P4 sort control).
   // `sort=date|recent` or `sortIndex=1` returns date-descending windows.
   // `start` is then a 1-based ITEM offset (not a page) and `rows` the window size.
-  const sortParam = (searchParams.get('sort') || '').toLowerCase();
-  const wantsDateSort = sortParam === 'date' || sortParam === 'recent' || searchParams.get('sortIndex') === '1';
+  const sortParamRaw = (searchParams.get('sort') || '').toLowerCase();
+  const sortParam = (sortParamRaw === 'date' || sortParamRaw === 'recent' ||
+    sortParamRaw === 'newest' || sortParamRaw === 'oldest' || sortParamRaw === 'relevance') ? sortParamRaw : '';
+  const isRelevanceSort = !sortParam || sortParam === 'relevance';
+  const sortOldest = sortParam === 'oldest';
+  const wantsDateSort = sortParam === 'date' || sortParam === 'recent' || sortParam === 'newest' || sortParam === 'oldest' || searchParams.get('sortIndex') === '1';
   const rows = Math.min(Math.max(parseInt(searchParams.get('rows') || '30', 10) || 30, 1), 30);
 
   // Partition helper: on first-page relevance queries, lift the 3 freshest
@@ -304,7 +308,7 @@ async function executeSearchInternal(searchParams) {
     return String(d.shiurID || d.shiurid || d.id || '');
   }
   function partitionRecent(docs, numFound) {
-    if (start !== 1 || !docs || docs.length === 0) {
+    if (start !== 1 || !isRelevanceSort || !docs || docs.length === 0) {
       return { docs: docs || [], recentDocs: [], recentNumFound: 0 };
     }
     // Top-3 freshest as an EXTRA rail; the relevance list keeps all 30.
@@ -490,7 +494,9 @@ async function executeSearchInternal(searchParams) {
         }
       }
     }
-    merged.sort((a, b) => docDateStr(b).localeCompare(docDateStr(a)));
+    merged.sort((a, b) => sortOldest
+      ? docDateStr(a).localeCompare(docDateStr(b))
+      : docDateStr(b).localeCompare(docDateStr(a)));
     return { windowDocs: merged.slice(itemOffset - 1, itemOffset - 1 + rowCount), totalFound: totalFound || merged.length };
   }
 
@@ -548,11 +554,11 @@ async function executeSearchInternal(searchParams) {
     const locId = locationIds[0] || '';
     const sId = seriesIds[0] || '';
 
-    // Relevance page + global date window in parallel: the Recent sub-section
-    // shows the 3 GLOBALLY freshest matches (§7.2 Tier 1), not just the
-    // freshest of relevance page 1.
+    // Relevance page + global date window in parallel: the Recent rail
+    // shows the 3 GLOBALLY freshest matches — relevance sort only (under
+    // newest/oldest the list itself is chronological, so no rail).
     const mainPromise = fetchSolrSingle(effectiveQuery, start, tId, catId, locId, sId);
-    const datePromise = (start === 1)
+    const datePromise = (start === 1 && isRelevanceSort)
       ? fetchDateWindow(effectiveQuery, 1, 3)
       : Promise.resolve({ windowDocs: [], totalFound: 0 });
     const [{ docs, numFound }, { windowDocs: globalRecent, totalFound: recentTotal }] =
@@ -566,7 +572,7 @@ async function executeSearchInternal(searchParams) {
     const adjNumFound = tId ? Math.min(numFound, filteredDocs.length + (numFound - docs.length)) : numFound;
     // Relevance keeps its FULL page (30): the Recent-3 are an extra rail on
     // top, never carved out of the relevance list.
-    let recentDocs = (start === 1) ? globalRecent : [];
+    let recentDocs = (start === 1 && isRelevanceSort) ? globalRecent : [];
     let finalDocs = filteredDocs;
     let finalNumFound = adjNumFound;
     let finalRecentTotal = recentTotal;
@@ -4724,6 +4730,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       font-weight: 700;
       color: var(--text-muted);
     }
+    .date-quick-sep {
+      width: 1px;
+      align-self: stretch;
+      background: var(--border-light);
+      margin: 2px 2px;
+    }
     .date-quick-chip {
       cursor: pointer;
       border-radius: 20px;
@@ -4744,14 +4756,19 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       outline-offset: 2px;
     }
     [data-theme="dark"] .date-quick-chip {
-      background: #1f2937;
-      border-color: #4b5563;
-      color: #e5e7eb;
+      background: #141f2f;
+      border-color: #28364d;
+      color: #cbd5e1;
     }
     [data-theme="dark"] .date-quick-chip.selected {
-      background: var(--primary);
-      border-color: var(--primary);
+      background: #2b4c7e;
+      border-color: #2b4c7e;
       color: #fff;
+    }
+    @media (max-width: 640px) {
+      .date-quick-sep {
+        display: none;
+      }
     }
     /* Cards / Rows view toggle */
     .view-toggle-wrap {
@@ -6356,6 +6373,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       <button type="button" class="date-quick-chip" data-preset="yesterday" onclick="setDateQuick('yesterday', this)">Yesterday</button>
       <button type="button" class="date-quick-chip" data-preset="week" onclick="setDateQuick('week', this)">This Week</button>
       <button type="button" class="date-quick-chip" data-preset="month" onclick="setDateQuick('month', this)">This Month</button>
+      <span class="date-quick-sep" aria-hidden="true"></span>
+      <span class="date-quick-caption">Sort:</span>
+      <button type="button" class="date-quick-chip sort-chip selected" data-sort="relevance" onclick="setResultSort('relevance', this)">Relevance</button>
+      <button type="button" class="date-quick-chip sort-chip" data-sort="newest" onclick="setResultSort('newest', this)">Newest</button>
+      <button type="button" class="date-quick-chip sort-chip" data-sort="oldest" onclick="setResultSort('oldest', this)">Oldest</button>
     </div>
 
     <!-- Phonetic Expansion Notice Banner (Shown when transliteration synonyms were searched) -->
@@ -8798,7 +8820,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
 
     const terms = getActiveSearchTerms();
+    // Chronological sorts render in server order: any client re-ranking
+    // would silently undo newest/oldest.
+    const chronoSort = currentFilterParams.sort === 'newest' || currentFilterParams.sort === 'oldest';
     function renderList(docs) {
+      if (chronoSort) {
+        return docs.map(d => renderDocToCard(d)).join('');
+      }
       if (stackSeriesEnabled) {
         const grouped = groupAndRankDocs(docs, terms, currentSearchQuery);
         return grouped.map(renderGroupItem).join('');
@@ -9544,6 +9572,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           activeAdvancedFilters.dateRangeLabel = (bFrom || '…') + ' → ' + (bTo || '…');
         }
       }
+      const bSort = bp.get('sort') || '';
+      if (bSort === 'newest' || bSort === 'oldest') {
+        activeAdvancedFilters.sort = bSort;
+      }
     } catch (e) {}
     // SSR search grids render flat relevance only: re-render on boot so the
     // Recent rail + resolution disclaimer + did-you-mean strip materialize
@@ -9695,6 +9727,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       dateQuick,
       dateQuickLabel,
       dateRangeLabel,
+      sort: activeAdvancedFilters.sort === 'newest' || activeAdvancedFilters.sort === 'oldest' ? activeAdvancedFilters.sort : 'relevance',
       mediaType,
       mediaTypeLabel,
       enablePhonetics
@@ -9831,7 +9864,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   // Mutually exclusive with Year select and the custom date-time range:
   // setting one clears the others so filters can never empty-intersect.
   function setDateQuick(preset, btn) {
-    document.querySelectorAll('.date-quick-chip').forEach(b => b.classList.toggle('selected', b === btn || (b.dataset && b.dataset.preset === preset)));
+    document.querySelectorAll('.date-quick-chip[data-preset]').forEach(b => b.classList.toggle('selected', b === btn || (b.dataset && b.dataset.preset === preset)));
     const now = new Date();
     const today = fmtLocalDate(now);
     let from = '';
@@ -9878,9 +9911,23 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   function syncDateQuickChips() {
     const cur = (activeAdvancedFilters && activeAdvancedFilters.dateQuick) || 'all';
-    document.querySelectorAll('.date-quick-chip').forEach(b => {
+    document.querySelectorAll('.date-quick-chip[data-preset]').forEach(b => {
       b.classList.toggle('selected', (b.dataset && b.dataset.preset) === cur);
     });
+    const sort = (activeAdvancedFilters && activeAdvancedFilters.sort) || 'relevance';
+    document.querySelectorAll('.date-quick-chip[data-sort]').forEach(b => {
+      b.classList.toggle('selected', (b.dataset && b.dataset.sort) === sort);
+    });
+  }
+
+  // Result sort: relevance (default) / newest-first / oldest-first.
+  // Orthogonal to the date bounds above; the Recent rail only shows
+  // under relevance (chronological sorts need no rail).
+  function setResultSort(sort, btn) {
+    const s = (sort === 'newest' || sort === 'oldest') ? sort : 'relevance';
+    activeAdvancedFilters.sort = s;
+    syncDateQuickChips();
+    executeLiveSearch(activeAdvancedFilters.keywords || searchInput.value.trim(), { ...activeAdvancedFilters });
   }
 
   function clearAllFilters() {
@@ -9960,6 +10007,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     else newUrl.searchParams.delete('toDate');
     if (extraParams.dateQuick) newUrl.searchParams.set('dateQuick', extraParams.dateQuick);
     else newUrl.searchParams.delete('dateQuick');
+    if (extraParams.sort && extraParams.sort !== 'relevance') newUrl.searchParams.set('sort', extraParams.sort);
+    else newUrl.searchParams.delete('sort');
     newUrl.searchParams.delete('shiurId');
     newUrl.searchParams.delete('id');
     history.pushState({ search: query, ...extraParams }, '', newUrl.toString());
@@ -9997,6 +10046,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (extraParams.year) apiUrl += '&year=' + encodeURIComponent(extraParams.year);
     if (extraParams.fromDate) apiUrl += '&fromDate=' + encodeURIComponent(extraParams.fromDate);
     if (extraParams.toDate) apiUrl += '&toDate=' + encodeURIComponent(extraParams.toDate);
+    if (extraParams.sort && extraParams.sort !== 'relevance') apiUrl += '&sort=' + encodeURIComponent(extraParams.sort);
     if (extraParams.mediaType && extraParams.mediaType !== 'all') {
       apiUrl += '&mediaType=' + encodeURIComponent(extraParams.mediaType);
     }
@@ -10104,7 +10154,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
     const nextPage = currentSearchPage + 1;
 
-    let apiUrl = '/api/search?q=' + encodeURIComponent(currentSearchQuery || '') + '&page=' + nextPage + '&start=' + nextPage;
+    // Chronological sorts paginate by ITEM offset (the date window treats
+    // start as 1-based offset, not page); relevance paginates by page.
+    const chronoMore = currentFilterParams.sort === 'newest' || currentFilterParams.sort === 'oldest';
+    let apiUrl = '/api/search?q=' + encodeURIComponent(currentSearchQuery || '');
+    if (chronoMore) {
+      apiUrl += '&sort=' + encodeURIComponent(currentFilterParams.sort) + '&start=' + (currentLoadedDocsCount + 1) + '&rows=30';
+    } else {
+      apiUrl += '&page=' + nextPage + '&start=' + nextPage;
+    }
 
     const teachersList = currentFilterParams.teachers || (currentFilterParams.teacherId ? [{ id: currentFilterParams.teacherId }] : []);
     teachersList.forEach(t => {
@@ -10131,6 +10189,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (currentFilterParams.year) apiUrl += '&year=' + encodeURIComponent(currentFilterParams.year);
     if (currentFilterParams.fromDate) apiUrl += '&fromDate=' + encodeURIComponent(currentFilterParams.fromDate);
     if (currentFilterParams.toDate) apiUrl += '&toDate=' + encodeURIComponent(currentFilterParams.toDate);
+    if (currentFilterParams.sort && currentFilterParams.sort !== 'relevance') apiUrl += '&sort=' + encodeURIComponent(currentFilterParams.sort);
     if (currentFilterParams.mediaType && currentFilterParams.mediaType !== 'all') {
       apiUrl += '&mediaType=' + encodeURIComponent(currentFilterParams.mediaType);
     }
