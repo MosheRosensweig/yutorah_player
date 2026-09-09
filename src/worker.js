@@ -26,6 +26,7 @@ import {
   suggestDidYouMean
 } from './phonetic_engine.js';
 import AUTOCOMPLETE_META from './autocomplete_data.json' with { type: 'json' };
+import CHANGELOG from './changelog.json' with { type: 'json' };
 
 // Safe JSON embed for <script> contexts: neutralizes </script> breakouts.
 function jsEmbed(val) {
@@ -112,6 +113,18 @@ async function getDailySponsorship() {
         if (sponsorName && fullText.includes(sponsorName)) {
           const parts = fullText.split(sponsorName);
           formatted = escapeHtml(parts[0]) + '<strong>' + escapeHtml(sponsorName) + '</strong>' + escapeHtml(parts.slice(1).join(sponsorName));
+        } else {
+          // OG highlights the dedication itself (prefix + sponsor text spans)
+          // even when no separate sponsorName span is present: bold everything
+          // from the dedication prefix onward.
+          const seg = match[0].match(/id="sponsorSpan_prefix">([\s\S]*?)<\/span>\s*<span[^>]*id="sponsorSpan_sponsorText">([\s\S]*?)<\/span>/i);
+          if (seg) {
+            const prefix = decodeHtmlEntities(seg[1].replace(/<[^>]+>/g, '').trim());
+            const at = prefix ? fullText.indexOf(prefix) : -1;
+            if (at >= 0) {
+              formatted = escapeHtml(fullText.slice(0, at)) + '<strong>' + escapeHtml(fullText.slice(at)) + '</strong>';
+            }
+          }
         }
         result.text = formatted;
       }
@@ -762,8 +775,7 @@ export default {
       });
     }
 
-    // 0b. Fuzzy Suggest API: /api/suggest?q=... (ROADMAP §5.4)
-    // Damerau-Levenshtein over teachers/topics/venues (+ synset variants).
+    // 0b. Fuzzy Suggest API: /api/suggest?q=... (ROADMAP §5.4)    // Damerau-Levenshtein over teachers/topics/venues (+ synset variants).
     // Pure local data — no upstream calls, safe to hit on every keystroke pause.
     if (url.pathname === '/api/suggest') {
       const q = url.searchParams.get('q') || '';
@@ -782,6 +794,17 @@ export default {
           'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*',
           'Cache-Control': 'public, max-age=300'
+        }
+      });
+    }
+
+    // 0c. Change Log API: /api/changelog (dev settings "Change Log").
+    if (url.pathname === '/api/changelog') {
+      return new Response(JSON.stringify(CHANGELOG), {
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'public, max-age=60'
         }
       });
     }
@@ -1518,10 +1541,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         }
 
         // Pre-apply persisted cards/rows view to avoid a flash of cards.
+        // Mobile is always cards; desktop defaults to rows.
         try {
-          if (localStorage.getItem('yutorah_card_view') === 'rows') {
-            document.documentElement.classList.add('rows-view');
-          }
+          const sv = localStorage.getItem('yutorah_card_view');
+          const mob = window.matchMedia && window.matchMedia('(max-width: 640px)').matches;
+          const vv = (sv === 'rows' || sv === 'cards') ? (mob ? 'cards' : sv) : (mob ? 'cards' : 'rows');
+          if (vv === 'rows') document.documentElement.classList.add('rows-view');
         } catch (e) {}
 
         // [DEAD CODE / INACTIVE] Simple View mode switcher
@@ -4765,11 +4790,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       border-color: #2b4c7e;
       color: #fff;
     }
-    @media (max-width: 640px) {
-      .date-quick-sep {
-        display: none;
-      }
-    }
     /* Cards / Rows view toggle */
     .view-toggle-wrap {
       display: inline-flex;
@@ -4868,8 +4888,27 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         width: 100%;
         justify-content: space-between;
       }
+      /* Mobile: cards only (no rows toggle) + slimmer mini player. */
+      .view-toggle-wrap {
+        display: none;
+      }
+      #miniPlayer .expand-btn {
+        display: none;
+      }
+      #miniPlayer .mini-expand-hint {
+        display: inline-flex;
+      }
     }
     /* Play Queue popup + list (Dev Mode) */
+    .mini-expand-hint {
+      display: none;
+      align-items: center;
+      color: #fff;
+      opacity: 0.75;
+      font-size: 11px;
+      cursor: pointer;
+      padding: 4px 2px;
+    }
     .queue-popup {
       position: fixed;
       bottom: 84px;
@@ -4995,23 +5034,28 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       color: inherit;
     }
     .hero-slide.active {
-      display: block;
+      display: flex;
+      flex-direction: row;
+      align-items: stretch;
     }
     .hero-slide img {
-      width: 100%;
-      aspect-ratio: 16 / 9;
+      flex: 1;
+      min-width: 0;
+      aspect-ratio: 16 / 10;
       max-height: 340px;
       object-fit: cover;
+      object-position: left center;
       display: block;
     }
     .hero-caption {
-      position: absolute;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      padding: 36px 18px 14px;
-      background: linear-gradient(transparent, rgba(0, 0, 0, 0.72));
-      color: #fff;
+      flex: 0 0 300px;
+      padding: 18px;
+      background: var(--card, #fff);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 6px;
     }
     .hero-title {
       font-size: 20px;
@@ -5019,15 +5063,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     .hero-desc {
       font-size: 13px;
-      opacity: 0.92;
-      margin-top: 4px;
+      color: var(--text-muted);
       display: -webkit-box;
-      -webkit-line-clamp: 2;
+      -webkit-line-clamp: 4;
       -webkit-box-orient: vertical;
       overflow: hidden;
     }
     .hero-cta {
       display: inline-block;
+      align-self: flex-start;
       margin-top: 8px;
       font-size: 13px;
       font-weight: 800;
@@ -5054,11 +5098,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       background: rgba(0, 0, 0, 0.65);
     }
     .hero-prev { left: 10px; }
-    .hero-next { right: 10px; }
+    .hero-next { right: 316px; }
     .hero-dots {
       position: absolute;
       bottom: 10px;
-      right: 14px;
+      right: 314px;
       display: flex;
       gap: 6px;
     }
@@ -5092,26 +5136,70 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.55);
     }
     @media (max-width: 640px) {
+      .hero-slide.active {
+        flex-direction: column;
+      }
       .hero-slide img {
-        aspect-ratio: 4 / 3;
-        max-height: 260px;
+        aspect-ratio: 16 / 9;
+        max-height: 220px;
+      }
+      .hero-caption {
+        flex: none;
+        padding: 12px 14px 30px;
       }
       .hero-title {
         font-size: 16px;
       }
       .hero-desc {
-        display: none;
+        -webkit-line-clamp: 3;
       }
       .hero-dots {
         bottom: 8px;
         right: 10px;
       }
-      .hero-caption {
-        padding: 28px 12px 12px;
-      }
     }
     [data-theme="dark"] .hero-slideshow {
       background: #182232;
+    }
+    /* Circular queue-add button (Spotify-style: list + plus) */    .queue-circle-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 1.5px solid var(--border);
+      color: var(--text-muted);
+      background: transparent;
+      cursor: pointer;
+      flex-shrink: 0;
+      padding: 0;
+    }
+    .queue-circle-btn:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+    .queue-circle-btn.active-save {
+      border-color: var(--primary);
+      color: #fff;
+      background: var(--primary);
+    }
+    .queue-circle-btn:focus-visible {
+      outline: 2px solid var(--primary) !important;
+      outline-offset: 2px;
+    }
+    [data-theme="dark"] .queue-circle-btn {
+      border-color: #4b5563;
+      color: #94a3b8;
+    }
+    [data-theme="dark"] .queue-circle-btn:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+    [data-theme="dark"] .queue-circle-btn.active-save {
+      border-color: var(--primary);
+      background: var(--primary);
+      color: #fff;
     }
     /* Did You Mean strip (ROADMAP §5.4) */
     .did-you-mean-strip {
@@ -6178,6 +6266,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       <div class="settings-wrapper" style="display: none !important;" aria-hidden="true">
         <button type="button" id="settingsBtn" class="theme-toggle-btn settings-btn" onclick="toggleSettingsMenu(event)" title="Settings" style="display: none !important;">⚙️</button>
         <div id="settingsMenu" class="settings-menu" style="display: none !important;">
+          <button type="button" class="settings-menu-item dev-only" onclick="openChangelogModal()" title="Log of latest changes">
+            <span>📋</span> <span>Change Log</span>
+          </button>
           <!-- [DEAD CODE / INACTIVE] Switch to Simple View -->
           <button type="button" id="toggleViewModeBtn" class="settings-menu-item" onclick="toggleViewMode(event)" style="display: none !important;">
             <span id="viewModeIcon">✨</span> <span id="viewModeText">Switch to Simple View</span>
@@ -6808,6 +6899,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       </button>
       <button type="button" class="mini-btn expand-btn" onclick="expandPlayer(); event.stopPropagation();" title="Expand Full Player">⤢</button>
       <button type="button" class="mini-btn queue-btn dev-only" onclick="toggleQueuePopup(); event.stopPropagation();" title="Play Queue (Dev)">☰</button>
+      <span class="mini-expand-hint" onclick="expandPlayer(); event.stopPropagation();" role="button" aria-label="Expand player" title="Expand">▲</span>
       <button type="button" class="mini-btn close-btn" onclick="closeMiniPlayer(); event.stopPropagation();" title="Stop & Close">✕</button>
     </div>
   </div>
@@ -7320,8 +7412,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         const pq = document.createElement('button');
         pq.type = 'button';
         pq.id = 'devPlayerQueueBtn';
-        pq.className = 'card-mini-btn';
-        pq.textContent = '⏭ Queue';
+        pq.className = 'queue-circle-btn dev-only';
+        pq.title = 'Add to play queue';
+        pq.setAttribute('aria-label', 'Add to play queue');
+        pq.innerHTML = devQueueIconSvg();
         pq.addEventListener('click', () => {
           if (currentShiurId) devQueueToggle(String(currentShiurId), false);
         });
@@ -9547,12 +9641,37 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         hero.addEventListener('mouseleave', heroResume);
         hero.addEventListener('focusin', heroPause);
         hero.addEventListener('focusout', heroResume);
+        // Swipe between slides (mobile): horizontal swipe navigates.
+        let heroTouchX = null;
+        hero.addEventListener('touchstart', e => {
+          if (e.touches && e.touches.length === 1) heroTouchX = e.touches[0].clientX;
+        }, { passive: true });
+        hero.addEventListener('touchend', e => {
+          if (heroTouchX === null || !e.changedTouches || e.changedTouches.length === 0) return;
+          const dx = e.changedTouches[0].clientX - heroTouchX;
+          heroTouchX = null;
+          if (Math.abs(dx) < 40) return;
+          if (dx < 0) heroGo(1);
+          else heroGo(-1);
+        }, { passive: true });
       }
     } catch (e) {}
-    // Restore persisted cards/rows view before first paint matters.
+    // Restore cards/rows view (mobile forced to cards, desktop to stored-or-rows).
     try {
-      if (localStorage.getItem('yutorah_card_view') === 'rows') setCardView('rows');
-      else setCardView('cards');
+      setCardView(defaultCardView(), false);
+    } catch (e) {}
+    // Enforce mobile-cards when crossing the breakpoint after load.
+    try {
+      let lastMobile = isMobileView();
+      window.addEventListener('resize', () => {
+        try {
+          const m = isMobileView();
+          if (m !== lastMobile) {
+            lastMobile = m;
+            setCardView(defaultCardView(), false);
+          }
+        } catch (e) {}
+      });
     } catch (e) {}
     // Hydrate date bounds from the URL (?fromDate=&toDate=&dateQuick=) so a
     // reload or shared link keeps the active date filter + chip state.
@@ -10240,6 +10359,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       closeSearchPreview();
       closeConfirmModal();
       closePlaylistModal();
+      closeChangelogModal();
       const qp = document.getElementById('queuePopup');
       if (qp) qp.style.display = 'none';
     }
@@ -11232,20 +11352,32 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       ' · ' + cur + '/' + tot + ' min through (' + pct + '%)</div></div>';
   }
 
+  // Spotify-style circular queue icon: list lines + plus.
+  function devQueueIconSvg() {
+    return '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">' +
+      '<line x1="4" y1="7" x2="12" y2="7"></line>' +
+      '<line x1="4" y1="12" x2="12" y2="12"></line>' +
+      '<line x1="4" y1="17" x2="10" y2="17"></line>' +
+      '<line x1="16.5" y1="13.5" x2="16.5" y2="20.5"></line>' +
+      '<line x1="13" y1="17" x2="20" y2="17"></line>' +
+      '</svg>';
+  }
+
   function devCardActionsHtml(id, isCover) {
     if (!isDevMode) return '';
     const inSave = devInPlaylist('save_for_later', id);
     const inFav = devInPlaylist('favorites', id);
     const inQ = isCover ? devSeriesQueued(id) : devInQueue(id);
-    const qLabel = isCover ? '⏭ Series' : '⏭ Queue';
+    const qLabel = isCover ? 'Queue series' : 'Add to play queue';
     const qCall = isCover ? 'devQueueToggle(\\\'' + id + '\\\', true, this)' : 'devQueueToggle(\\\'' + id + '\\\', false, this)';
     return '<div class="card-mini-actions dev-only">' +
       '<span role="button" tabindex="0" class="card-mini-btn' + (inSave ? ' active-save' : '') + '" data-dev-save="' + id + '"' +
       ' onclick="event.stopPropagation(); event.preventDefault(); toggleDevSave(\\\'' + id + '\\\')">🕒 Later</span>' +
       '<span role="button" tabindex="0" class="card-mini-btn' + (inFav ? ' active-fav' : '') + '" data-dev-fav="' + id + '"' +
       ' onclick="event.stopPropagation(); event.preventDefault(); toggleDevFav(\\\'' + id + '\\\')">☆ Fav</span>' +
-      '<span role="button" tabindex="0" class="card-mini-btn' + (inQ ? ' active-save' : '') + '" data-dev-queue="' + id + '"' + (isCover ? ' data-dev-cover="1"' : '') +
-      ' onclick="event.stopPropagation(); event.preventDefault(); ' + qCall + '">' + qLabel + '</span>' +
+      '<span role="button" tabindex="0" class="queue-circle-btn' + (inQ ? ' active-save' : '') + '" data-dev-queue="' + id + '"' + (isCover ? ' data-dev-cover="1"' : '') +
+      ' title="' + qLabel + '" aria-label="' + qLabel + '"' +
+      ' onclick="event.stopPropagation(); event.preventDefault(); ' + qCall + '">' + devQueueIconSvg() + '</span>' +
       '<span role="button" tabindex="0" class="card-mini-btn" onclick="event.stopPropagation(); event.preventDefault(); openPlaylistModal(\\\'' + id + '\\\')">➕ Playlist</span>' +
       '</div>';
   }
@@ -11488,6 +11620,57 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   function closeConfirmModal() {
     devConfirmCb = null;
     const m = document.getElementById('confirmModal');
+    if (m) m.remove();
+  }
+
+  // Change Log modal (dev settings): latest changes, most recent on top.
+  async function openChangelogModal() {
+    closeChangelogModal();
+    const menu = document.getElementById('settingsMenu');
+    if (menu) menu.style.display = 'none';
+    const overlay = document.createElement('div');
+    overlay.id = 'changelogModal';
+    overlay.style.cssText = 'position:fixed; inset:0; z-index:10000; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; padding:16px;';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', 'Change log');
+    const box = document.createElement('div');
+    box.style.cssText = 'background:var(--card,#fff); color:var(--text,#111); border-radius:14px; max-width:480px; width:100%; max-height:80vh; overflow:auto; padding:18px; border:1px solid var(--border-light);';
+    box.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">' +
+      '<div style="font-weight:800; font-size:16px;">📋 Latest Changes</div>' +
+      '<button type="button" class="card-mini-btn" onclick="closeChangelogModal()">Close ×</button></div>' +
+      '<div id="changelogList"><div style="color:var(--text-muted);">Loading…</div></div>';
+    overlay.appendChild(box);
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeChangelogModal(); });
+    document.body.appendChild(overlay);
+    try {
+      const res = await fetch('/api/changelog');
+      const data = await res.json();
+      const entries = (data && data.entries) || [];
+      const list = box.querySelector('#changelogList');
+      if (!list) return;
+      if (entries.length === 0) {
+        list.innerHTML = '<div style="color:var(--text-muted);">No changes logged yet.</div>';
+        return;
+      }
+      list.innerHTML = entries.map(en => {
+        let when = String(en.date || '');
+        try {
+          const d = new Date(when);
+          if (!isNaN(d)) when = d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+        } catch (e) {}
+        return '<div style="padding:8px 0; border-bottom:1px solid var(--border-light);">' +
+          '<div style="font-size:12px; color:var(--text-muted);">' + escapeHtml(when) + '</div>' +
+          '<div style="font-size:14px;">' + escapeHtml(en.message || '') + '</div></div>';
+      }).join('');
+    } catch (e) {
+      const list = box.querySelector('#changelogList');
+      if (list) list.innerHTML = '<div style="color:var(--text-muted);">Could not load the change log.</div>';
+    }
+  }
+
+  function closeChangelogModal() {
+    const m = document.getElementById('changelogModal');
     if (m) m.remove();
   }
 
@@ -12310,14 +12493,37 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   // Cards / Rows view (persisted). Rows = one full-width row per shiur,
   // yutorah.org style; applies to every shiur grid on the page.
-  function setCardView(view) {
-    const v = view === 'rows' ? 'rows' : 'cards';
+  // Mobile is always cards (toggle hidden); desktop defaults to rows.
+  function isMobileView() {
+    try {
+      return window.matchMedia && window.matchMedia('(max-width: 640px)').matches;
+    } catch (e) {
+      return false;
+    }
+  }
+  function storedCardView() {
+    try {
+      return localStorage.getItem('yutorah_card_view') || '';
+    } catch (e) {
+      return '';
+    }
+  }
+  function setCardView(view, persist) {
+    let v = view === 'rows' ? 'rows' : 'cards';
+    if (v === 'rows' && isMobileView()) v = 'cards';
     document.body.classList.toggle('rows-view', v === 'rows');
     if (document.documentElement) document.documentElement.classList.toggle('rows-view', v === 'rows');
-    try { localStorage.setItem('yutorah_card_view', v); } catch (e) {}
+    if (persist !== false) {
+      try { localStorage.setItem('yutorah_card_view', v); } catch (e) {}
+    }
     document.querySelectorAll('.view-toggle-btn').forEach(b => {
       b.classList.toggle('selected', b.dataset && b.dataset.view === v);
     });
+  }
+  function defaultCardView() {
+    const stored = storedCardView();
+    if (stored === 'rows' || stored === 'cards') return isMobileView() ? 'cards' : stored;
+    return isMobileView() ? 'cards' : 'rows';
   }
 
   // Hero slideshow rotation (6s autoplay, dots + arrows, pause on hover).
