@@ -43,16 +43,20 @@ body = await res.json();
 assert.deepEqual(body.suggestions, [], '/api/suggest short query → []');
 console.log('  ✅ /api/suggest endpoint correct.');
 
-// 5. /api/search Recent Results partition (§7)
+// 5. /api/search Recent Results rail (§7): full 30 relevance + extra 3 recent
 res = await worker.fetch(new Request('https://x/api/search?q=shabbos&start=1'), {}, mockCtx);
 assert.equal(res.status, 200, '/api/search 200');
 body = await res.json();
-assert.equal((body.response.recentDocs || []).length, 3, 'first page lifts exactly 3 recentDocs');
-const relIds = new Set(body.response.docs.map(d => String(d.shiurID || d.shiurid || d.id)));
-for (const d of body.response.recentDocs) {
-  assert.ok(!relIds.has(String(d.shiurID || d.shiurid || d.id)), 'recentDocs deduped out of relevance docs');
-}
-console.log('  ✅ recentDocs partition (3, deduped) correct.');
+assert.equal((body.response.recentDocs || []).length, 3, 'first page carries exactly 3 recentDocs');
+assert.equal(body.response.docs.length, 30, 'relevance keeps its full 30 (recent rail is extra, not carved out)');
+console.log('  ✅ recentDocs rail (3 extra) + full relevance page correct.');
+
+// 5b. Speaker auto-resolution disclaimer (§4th fix)
+res = await worker.fetch(new Request('https://x/api/search?q=Lebowitz&start=1'), {}, mockCtx);
+body = await res.json();
+assert.ok(body.queryResolution && body.queryResolution.display.includes('Lebowitz'),
+  'speaker query returns queryResolution, got: ' + JSON.stringify(body.queryResolution));
+console.log('  ✅ queryResolution disclaimer payload correct.');
 
 // 6. sort=date window is reverse-chronological
 res = await worker.fetch(new Request('https://x/api/search?q=shabbos&sort=date&start=1&rows=5'), {}, mockCtx);

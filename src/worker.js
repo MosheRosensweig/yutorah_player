@@ -27,6 +27,11 @@ import {
 } from './phonetic_engine.js';
 import AUTOCOMPLETE_META from './autocomplete_data.json' with { type: 'json' };
 
+// Safe JSON embed for <script> contexts: neutralizes </script> breakouts.
+function jsEmbed(val) {
+  return JSON.stringify(val === undefined ? null : val).replace(/</g, '\\u003c');
+}
+
 const TARGET_API_ORIGIN = 'https://www.yutorah.org';
 const API_ORIGIN = 'https://api.yutorah.org';
 
@@ -285,10 +290,9 @@ async function executeSearchInternal(searchParams) {
     if (start !== 1 || !docs || docs.length === 0) {
       return { docs: docs || [], recentDocs: [], recentNumFound: 0 };
     }
+    // Top-3 freshest as an EXTRA rail; the relevance list keeps all 30.
     const byDate = [...docs].sort((a, b) => docDateStr(b).localeCompare(docDateStr(a)));
-    const recentDocs = byDate.slice(0, 3);
-    const recentSet = new Set(recentDocs);
-    return { docs: docs.filter(d => !recentSet.has(d)), recentDocs, recentNumFound: numFound };
+    return { docs, recentDocs: byDate.slice(0, 3), recentNumFound: numFound };
   }
   // Fuzzy fallback (ROADMAP §5.4): ranked teacher/topic/venue candidates for
   // the raw query — consumed by the "Did you mean …?" strip + /api/suggest.
@@ -314,18 +318,23 @@ async function executeSearchInternal(searchParams) {
   // Phonetic & Speaker Auto-Resolution
   let effectiveQuery = rawQ;
   let expandedInfo = null;
+  // When the engine rewrites the user's text into a resolved entity filter,
+  // the UI shows a "Showing results for X (you searched Y)" disclaimer.
+  let resolvedDisplay = '';
 
   if (teacherIds.length === 0 && rawQ && !disablePhonetics) {
     const entityParse = parseQueryEntities(rawQ);
     if (entityParse.speaker) {
       teacherIds = [entityParse.speaker.id];
       effectiveQuery = entityParse.remainingQuery;
+      resolvedDisplay = entityParse.speaker.name;
     }
   } else if (teacherIds.length === 0 && rawQ && disablePhonetics) {
     const resolvedSpk = resolveSpeaker(rawQ);
     if (resolvedSpk) {
       teacherIds = [resolvedSpk.id];
       effectiveQuery = '';
+      resolvedDisplay = resolvedSpk.name;
     }
   }
 
@@ -424,9 +433,15 @@ async function executeSearchInternal(searchParams) {
     const settled = await Promise.all(fanout);
     const seen = new Set();
     let merged = [];
+    // Total = sum of each entity's FIRST-page numFound. Every page of the
+    // same entity reports the identical upstream total — summing all pages
+    // would inflate the count up to 4x.
     let totalFound = 0;
+    for (let e = 0; e < entities.length; e++) {
+      const first = settled[e * pagesToCover];
+      if (first) totalFound += first.numFound || 0;
+    }
     for (const r of settled) {
-      totalFound += r.numFound;
       for (const doc of r.docs) {
         const docTeacherId = String(doc.teacherid || doc.teacherId || '');
         if ((teacherIds.length === 0 || teacherIds.includes(docTeacherId)) && matchesPostFilters(doc)) {
@@ -456,7 +471,8 @@ async function executeSearchInternal(searchParams) {
         sort: 'date'
       },
       phoneticExpansion: null,
-      didYouMean: didYouMeanIfWeak(windowDocs.length)
+      didYouMean: didYouMeanIfWeak(windowDocs.length),
+      queryResolution: resolvedDisplay ? { original: rawQ, display: resolvedDisplay } : null
     };
   }
 
@@ -465,9 +481,23 @@ async function executeSearchInternal(searchParams) {
   const isMultiCategory = subCategoryIds.length > 1;
   const isMultiTarget = isMultiTeacher || isMultiLocation || isMultiCategory;
 
-  // Weak-hit threshold: at or below this many total hits we also return
-  // fuzzy candidates so the UI can render a "Did you mean …?" strip
+  // Weak-hit threshold: at or below this many UNIQUE total hits we also
+  // return fuzzy candidates so the UI can render a "Did you mean …?" strip
   // (above the message when zero hits, below the list when 1+ weak hits).
+  // Recent/relevance rails may overlap (no carve-out), so shared ids count once.
+  function undupedHitCount(docs, recentDocs) {
+    const ids = new Set();
+    for (const d of (recentDocs || [])) {
+      const id = docIdStr(d);
+      if (id) ids.add(id);
+    }
+    let n = (recentDocs || []).length;
+    for (const d of (docs || [])) {
+      const id = docIdStr(d);
+      if (!id || !ids.has(id)) n++;
+    }
+    return n;
+  }
   function didYouMeanIfWeak(totalHits) {
     try {
       return totalHits <= 5 ? didYouMeanFor() : [];
@@ -498,24 +528,13 @@ async function executeSearchInternal(searchParams) {
     }) : docs;
 
     const adjNumFound = tId ? Math.min(numFound, filteredDocs.length + (numFound - docs.length)) : numFound;
-    let recentDocs = [];
-    let finalDocs = filteredDocs;
-    if (start === 1 && globalRecent.length > 0) {
-      const recentIds = new Set();
-      for (const d of globalRecent) {
-        const rid = docIdStr(d);
-        if (rid) recentIds.add(rid);
-      }
-      recentDocs = globalRecent;
-      finalDocs = filteredDocs.filter(d => {
-        const id = docIdStr(d);
-        return !id || !recentIds.has(id);
-      });
-    }
-    const totalHits = finalDocs.length + recentDocs.length;
+    // Relevance keeps its FULL page (30): the Recent-3 are an extra rail on
+    // top, never carved out of the relevance list.
+    const recentDocs = (start === 1) ? globalRecent : [];
+    const totalHits = undupedHitCount(filteredDocs, recentDocs);
     return {
       response: {
-        docs: finalDocs,
+        docs: filteredDocs,
         recentDocs,
         recentNumFound: start === 1 ? (recentTotal || adjNumFound) : 0,
         numFound: adjNumFound,
@@ -526,7 +545,8 @@ async function executeSearchInternal(searchParams) {
         tokens: expandedInfo.expandedTokens,
         synset: expandedInfo.matchedSynset
       } : null,
-      didYouMean: didYouMeanIfWeak(totalHits)
+      didYouMean: didYouMeanIfWeak(totalHits),
+      queryResolution: resolvedDisplay ? { original: rawQ, display: resolvedDisplay } : null
     };
   }
 
@@ -612,7 +632,7 @@ async function executeSearchInternal(searchParams) {
   const recentCountFinal = hasPostFilter
     ? (partedFinal.docs.length + partedFinal.recentDocs.length)
     : partedFinal.recentNumFound;
-  const weakTotal = partedFinal.docs.length + partedFinal.recentDocs.length;
+  const weakTotal = undupedHitCount(partedFinal.docs, partedFinal.recentDocs);
   return {
     response: {
       docs: partedFinal.docs,
@@ -627,7 +647,8 @@ async function executeSearchInternal(searchParams) {
       tokens: expandedInfo.expandedTokens,
       synset: expandedInfo.matchedSynset
     } : null,
-    didYouMean: didYouMeanIfWeak(weakTotal)
+    didYouMean: didYouMeanIfWeak(weakTotal),
+    queryResolution: resolvedDisplay ? { original: rawQ, display: resolvedDisplay } : null
   };
 }
 
@@ -954,6 +975,8 @@ export default {
     let initialPhoneticExpansion = null;
     let initialRecentDocs = [];
     let initialRecentNumFound = 0;
+    let initialQueryResolution = null;
+    let initialDidYouMean = [];
 
     if (!shiurData && searchQuery) {
       try {
@@ -963,6 +986,8 @@ export default {
         initialPhoneticExpansion = searchPayload?.phoneticExpansion || null;
         initialRecentDocs = searchPayload?.response?.recentDocs || [];
         initialRecentNumFound = searchPayload?.response?.recentNumFound || 0;
+        initialQueryResolution = searchPayload?.queryResolution || null;
+        initialDidYouMean = searchPayload?.didYouMean || [];
       } catch (e) {
         console.error('Error pre-fetching search in SSR:', e);
       }
@@ -995,6 +1020,8 @@ export default {
       initialPhoneticExpansion,
       initialRecentDocs,
       initialRecentNumFound,
+      initialQueryResolution,
+      initialDidYouMean,
       isClassicSearch
     }), {
       headers: {
@@ -1141,7 +1168,7 @@ function normalizeShiur(s) {
   return { id, title, speaker, photo, duration, date, category, isNew, description, keywords, series, location };
 }
 
-function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpeed = '', themeMode = '', homepageData, sponsorshipText = '', sponsorshipPlainText = '', sponsorshipAudioUrl = '', searchQuery, initialSearchResults, initialNumFound = 0, initialPhoneticExpansion = null, initialRecentDocs = [], initialRecentNumFound = 0, isClassicSearch = false }) {
+function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpeed = '', themeMode = '', homepageData, sponsorshipText = '', sponsorshipPlainText = '', sponsorshipAudioUrl = '', searchQuery, initialSearchResults, initialNumFound = 0, initialPhoneticExpansion = null, initialRecentDocs = [], initialRecentNumFound = 0, initialQueryResolution = null, initialDidYouMean = [], isClassicSearch = false }) {
   const isPlaying = Boolean(shiurData || directAudio);
 
   const initialSearchTerms = [];
@@ -4566,6 +4593,39 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       background: #453b0a;
       border-color: #a16207;
     }
+    [data-theme="dark"] .card-mini-btn {
+      background: #1f2937;
+      border-color: #4b5563;
+      color: #e5e7eb;
+    }
+    [data-theme="dark"] .card-mini-btn.active-save {
+      background: #d97706;
+      border-color: #d97706;
+      color: #fff;
+    }
+    [data-theme="dark"] .card-mini-btn.active-fav {
+      background: #b45309;
+      border-color: #fbbf24;
+      color: #fff;
+    }
+    [data-theme="dark"] .playlist-pill {
+      background: #1f2937;
+      border-color: #4b5563;
+      color: #e5e7eb;
+    }
+    [data-theme="dark"] .playlist-pill.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+    }
+    [data-theme="dark"] .did-you-mean-chip {
+      background: #1f2937;
+      border-color: var(--primary-light);
+      color: var(--primary-light);
+    }
+    [data-theme="dark"] .card-progress-track {
+      background: #374151;
+    }
     .did-you-mean-chip {
       cursor: pointer;
       border: 1px solid var(--primary);
@@ -4584,6 +4644,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       outline: 2px solid var(--primary);
       outline-offset: -2px;
       background: #eef2f7;
+    }
+    [data-theme="dark"] .preview-focused {
+      background: #24344d;
     }
     /* Dev Playlists (ROADMAP §8) — hidden unless Dev Mode */
     body:not(.dev-mode-active) .dev-only {
@@ -4606,7 +4669,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       font-size: 13px;
       font-weight: 700;
       border: 1px solid var(--border-light);
-      background: var(--card-bg, #fff);
+      background: var(--card, #fff);
     }
     .playlist-pill.active {
       background: var(--primary);
@@ -5993,7 +6056,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       ${shiurTeachers.length > 0 ? `
       <div class="meta-row">
         <span class="meta-label">👤 Speaker</span>
-        ${shiurTeachers.map(t => `<button class="meta-chip speaker-chip" onclick='filterByTeacher(${JSON.stringify(t.id)}, ${JSON.stringify(t.name).replace(/'/g, '&#39;')})'>${escapeHtml(t.name)}</button>`).join('')}
+        ${shiurTeachers.map(t => `<button class="meta-chip speaker-chip" onclick='filterByTeacher(${JSON.stringify(t.id)}, ${JSON.stringify(t.name).replace(/'/g, '&#39;').replace(/</g, '&#60;')})'>${escapeHtml(t.name)}</button>`).join('')}
       </div>` : ''}
       ${shiurDate ? `
       <div class="meta-row">
@@ -6003,20 +6066,20 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       ${shiurLocations.length > 0 ? `
       <div class="meta-row">
         <span class="meta-label">📍 Venue</span>
-        ${shiurLocations.map(loc => `<button class="meta-chip venue-chip" onclick='filterByLocation(${JSON.stringify(loc.id)}, ${JSON.stringify(loc.name).replace(/'/g, '&#39;')})'>${escapeHtml(loc.name)}</button>`).join('')}
+        ${shiurLocations.map(loc => `<button class="meta-chip venue-chip" onclick='filterByLocation(${JSON.stringify(loc.id)}, ${JSON.stringify(loc.name).replace(/'/g, '&#39;').replace(/</g, '&#60;')})'>${escapeHtml(loc.name)}</button>`).join('')}
       </div>` : ''}
       ${Object.keys(shiurCategories).length > 0 ? `
       <div class="meta-row">
         <span class="meta-label">📂 Topics</span>
         ${Object.entries(shiurCategories).map(([groupName, cats]) =>
           `<span class="meta-group-name">${escapeHtml(groupName)}:</span>` +
-          cats.map(c => `<button class="meta-chip category-chip" onclick='filterByCategory(${JSON.stringify(c.id)}, ${JSON.stringify(c.name).replace(/'/g, '&#39;')})'>${escapeHtml(c.name)}</button>`).join('')
+          cats.map(c => `<button class="meta-chip category-chip" onclick='filterByCategory(${JSON.stringify(c.id)}, ${JSON.stringify(c.name).replace(/'/g, '&#39;').replace(/</g, '&#60;')})'>${escapeHtml(c.name)}</button>`).join('')
         ).join(' ')}
       </div>` : ''}
       ${shiurKeywords.length > 0 ? `
       <div class="meta-row">
         <span class="meta-label">🏷️ Tags</span>
-        ${shiurKeywords.map(k => `<button class="meta-chip keyword-chip" onclick='searchFor(${JSON.stringify(k.title).replace(/'/g, '&#39;')})'>${escapeHtml(k.title)}</button>`).join('')}
+        ${shiurKeywords.map(k => `<button class="meta-chip keyword-chip" onclick='searchFor(${JSON.stringify(k.title).replace(/'/g, '&#39;').replace(/</g, '&#60;')})'>${escapeHtml(k.title)}</button>`).join('')}
       </div>` : ''}
     </div>
   </div>
@@ -6514,11 +6577,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   const audio = document.getElementById('audioElement');
-  let initialTimestamp = ${JSON.stringify(timestamp)};
-  let initialPlaybackSpeed = ${JSON.stringify(playbackSpeed || '')};
-  let hasAudio = ${JSON.stringify(Boolean(audioUrl))};
-  let currentShiurId = ${JSON.stringify(shiurId || '')};
-  const INITIAL_ARTICLE_PDF = ${JSON.stringify(articlePdfUrl || '')};
+  let initialTimestamp = ${jsEmbed(timestamp)};
+  let initialPlaybackSpeed = ${jsEmbed(playbackSpeed || '')};
+  let hasAudio = ${jsEmbed(Boolean(audioUrl))};
+  let currentShiurId = ${jsEmbed(shiurId || '')};
+  const INITIAL_ARTICLE_PDF = ${jsEmbed(articlePdfUrl || '')};
   let currentArticlePdf = INITIAL_ARTICLE_PDF;
   let isCurrentShiurArticle = Boolean(INITIAL_ARTICLE_PDF);
   let initialTimeApplied = false;
@@ -6526,8 +6589,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   let lastUrlUpdateTime = 0;
   let isManuallyMinimized = false;
   let isExpandingUntil = 0;
-  let currentSpeakerTeacherId = ${JSON.stringify(currentTeacherId || '')};
-  let currentSpeakerName = ${JSON.stringify(speaker || '')};
+  let currentSpeakerTeacherId = ${jsEmbed(currentTeacherId || '')};
+  let currentSpeakerName = ${jsEmbed(speaker || '')};
 
   function handleSpeakerClick() {
     if (currentSpeakerTeacherId) {
@@ -6537,9 +6600,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
   }
 
-  const DAILY_SPONSOR_AUDIO = ${JSON.stringify(sponsorshipAudioUrl || '')};
-  const DAILY_SPONSOR_TEXT = ${JSON.stringify(sponsorshipText || '')};
-  const DAILY_SPONSOR_PLAIN = ${JSON.stringify(sponsorshipPlainText || '')};
+  const DAILY_SPONSOR_AUDIO = ${jsEmbed(sponsorshipAudioUrl || '')};
+  const DAILY_SPONSOR_TEXT = ${jsEmbed(sponsorshipText || '')};
+  const DAILY_SPONSOR_PLAIN = ${jsEmbed(sponsorshipPlainText || '')};
 
   let currentSponsorAudio = DAILY_SPONSOR_AUDIO;
   let currentSponsorText = DAILY_SPONSOR_TEXT;
@@ -6631,6 +6694,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         details.appendChild(b);
       }
     } catch (e) {}
+
+    // Retrofit every card already on the page (server-rendered collections,
+    // SSR search grid): progress + buttons are fundamental in dev mode.
+    try { devUpgradeCards(); } catch (e) {}
 
     return true;
   }
@@ -6739,15 +6806,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   if (hasAudio && currentShiurId) {
     pendingShiur = {
       id: currentShiurId,
-      title: ${JSON.stringify(title || '')},
-      speaker: ${JSON.stringify(speaker || '')},
-      teacherId: ${JSON.stringify(currentTeacherId || '')},
-      photo: ${JSON.stringify(photo || '')},
-      duration: ${JSON.stringify(duration || '')},
-      meta: ${JSON.stringify(meta || '')},
-      desc: ${JSON.stringify(description || '')},
-      audioSrc: ${JSON.stringify(audioUrl || '')},
-      dlSrc: ${JSON.stringify(audioUrl || '')},
+      title: ${jsEmbed(title || '')},
+      speaker: ${jsEmbed(speaker || '')},
+      teacherId: ${jsEmbed(currentTeacherId || '')},
+      photo: ${jsEmbed(photo || '')},
+      duration: ${jsEmbed(duration || '')},
+      meta: ${jsEmbed(meta || '')},
+      desc: ${jsEmbed(description || '')},
+      audioSrc: ${jsEmbed(audioUrl || '')},
+      dlSrc: ${jsEmbed(audioUrl || '')},
       resumeSec: parseFloat(initialTimestamp) || 0
     };
   }
@@ -7446,24 +7513,29 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     return null;
   }
 
-  let currentSearchQuery = ${JSON.stringify(searchQuery || '')};
+  let currentSearchQuery = ${jsEmbed(searchQuery || '')};
   let currentFilterParams = {};
-  let currentLoadedDocsCount = ${JSON.stringify(initialSearchResults ? initialSearchResults.length : 0)};
-  let totalSearchResults = ${JSON.stringify(initialNumFound || 0)};
-  let currentSearchPage = Math.floor(${JSON.stringify(initialSearchResults ? initialSearchResults.length : 0)} / 30) || 1;
+  let currentLoadedDocsCount = ${jsEmbed(initialSearchResults ? initialSearchResults.length : 0)};
+  let totalSearchResults = ${jsEmbed(initialNumFound || 0)};
+  let currentSearchPage = Math.floor(${jsEmbed(initialSearchResults ? initialSearchResults.length : 0)} / 30) || 1;
   let isLoadingMore = false;
 
   // ROADMAP §7: Recent Results sub-section state (independent of relevance).
-  let currentRecentDocs = ${JSON.stringify(initialRecentDocs || [])};
-  let recentNumFound = ${JSON.stringify(initialRecentNumFound || 0)};
+  let currentRecentDocs = ${jsEmbed(initialRecentDocs || [])};
+  let recentNumFound = ${jsEmbed(initialRecentNumFound || 0)};
   let recentVisibleCount = 3;
   let recentExhausted = false;
   let isLoadingMoreRecent = false;
   let recentReqSeq = 0;
+  // Item offset already requested from the date window (initial rail = 3).
+  // Advances by ROWS per fetch regardless of display-dedup, so overlapping
+  // windows can never livelock the button; the true tail ends it.
+  let recentFetched = 3;
   let currentSearchAbort = null;
-  let currentPhoneticTokens = ${JSON.stringify(initialPhoneticExpansion?.tokens || [])};
-  let currentSearchDocs = ${JSON.stringify(initialSearchResults || [])};
-  let currentDidYouMean = [];
+  let currentPhoneticTokens = ${jsEmbed(initialPhoneticExpansion?.tokens || [])};
+  let currentSearchDocs = ${jsEmbed(initialSearchResults || [])};
+  let currentDidYouMean = ${jsEmbed(initialDidYouMean || [])};
+  let currentQueryResolution = ${jsEmbed(initialQueryResolution || null)};
   let showMatchReasons = false;
   let useClassicSearch = ${Boolean(isClassicSearch)};
   let stackSeriesEnabled = true;
@@ -7836,6 +7908,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         ? '<span class="series-expand-icon">➖</span> <span class="series-expand-text">Minimize series</span>'
         : '<span class="series-expand-icon">➕</span> <span class="series-expand-text">View ' + count + ' more in series</span>';
     }
+    if (isHidden) {
+      try { if (typeof devUpgradeCards === 'function') devUpgradeCards(drawer); } catch (e) {}
+    }
   }
 
   function onToggleClassicSearch(checked) {
@@ -8008,7 +8083,21 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   function renderCurrentSearchResults() {
     const grid = document.getElementById('searchResultsGrid');
     if (!grid) return;
-    if ((!currentRecentDocs || currentRecentDocs.length === 0) && (!currentSearchDocs || currentSearchDocs.length === 0)) return;
+    // Zero-hit state (e.g. SSR reload): still restore the disclaimer +
+    // did-you-mean strips from hydrated state.
+    if ((!currentRecentDocs || currentRecentDocs.length === 0) && (!currentSearchDocs || currentSearchDocs.length === 0)) {
+      let eHtml = '';
+      if (currentQueryResolution && currentQueryResolution.display) {
+        eHtml += '<div class="did-you-mean-strip"><span>🔍 Showing results for &quot;' +
+          escapeHtml(currentQueryResolution.display) + '&quot; — you searched &quot;' +
+          escapeHtml(currentQueryResolution.original) + '&quot;.</span></div>';
+      }
+      if (currentDidYouMean && currentDidYouMean.length > 0) {
+        eHtml += renderDidYouMeanStrip(currentDidYouMean);
+      }
+      if (eHtml) grid.innerHTML = eHtml;
+      return;
+    }
 
     const terms = getActiveSearchTerms();
     function renderList(docs) {
@@ -8028,6 +8117,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
 
     let html = '';
+    // "Showing results for X (you searched Y)" when the engine resolved the
+    // query text into an entity filter (speaker auto-resolution).
+    if (currentQueryResolution && currentQueryResolution.display) {
+      html += '<div class="did-you-mean-strip"><span>🔍 Showing results for &quot;' +
+        escapeHtml(currentQueryResolution.display) + '&quot; — you searched &quot;' +
+        escapeHtml(currentQueryResolution.original) + '&quot;.</span></div>';
+    }
 
     // ROADMAP §7: 🕒 Recent Results sub-section (own Load More).
     const visibleRecent = (currentRecentDocs || []).slice(0, recentVisibleCount);
@@ -8063,6 +8159,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
     grid.innerHTML = html;
     grid.classList.toggle('explain-matches-active', showMatchReasons);
+    // Live-search path: drawer sub-cards and fresh cards get dev buttons +
+    // progress immediately (retrofit is idempotent).
+    try { if (typeof devUpgradeCards === 'function') devUpgradeCards(grid); } catch (e) {}
   }
 
   async function loadMoreRecentResults() {
@@ -8071,6 +8170,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (recentVisibleCount < currentRecentDocs.length) {
       recentVisibleCount += 3;
       renderCurrentSearchResults();
+      const rb0 = document.getElementById('loadMoreRecentBtn');
+      if (rb0 && rb0.scrollIntoView) rb0.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       return;
     }
     isLoadingMoreRecent = true;
@@ -8083,7 +8184,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (spinner) spinner.style.display = 'inline-block';
     try {
       let apiUrl = '/api/search?q=' + encodeURIComponent(currentSearchQuery || '') +
-        '&sort=date&start=' + (currentRecentDocs.length + 1) + '&rows=6';
+        '&sort=date&start=' + (recentFetched + 1) + '&rows=6';
       const teachersList = currentFilterParams.teachers || (currentFilterParams.teacherId ? [{ id: currentFilterParams.teacherId }] : []);
       teachersList.forEach(t => { apiUrl += '&teacherId=' + encodeURIComponent(t.id); });
       const categoriesList = currentFilterParams.categories || (currentFilterParams.subCategoryId ? [{ id: currentFilterParams.subCategoryId }] : []);
@@ -8106,6 +8207,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (myRecentReq !== recentReqSeq) return;
       const fresh = data?.response?.docs || [];
       if (data?.response?.numFound) recentNumFound = data.response.numFound;
+      recentFetched += 6;
       let added = 0;
       if (fresh.length > 0) {
         const known = new Set([
@@ -8120,19 +8222,22 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
             added++;
           }
         }
-        if (added > 0) recentVisibleCount += 3;
+        if (added > 0) recentVisibleCount += added;
       }
-      // Exhausted when the window under-delivers OR contributes nothing new
-      // (fully overlapping windows would otherwise livelock the button).
-      if (fresh.length < 6 || added === 0) recentExhausted = true;
+      // Exhausted only on true under-delivery. Fully-overlapping windows
+      // merely add nothing while the offset still advances past them.
+      if (fresh.length < 6) recentExhausted = true;
       renderCurrentSearchResults();
+      const rb = document.getElementById('loadMoreRecentBtn');
+      if (rb && rb.scrollIntoView) rb.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     } catch (err) {
+      if (myRecentReq !== recentReqSeq) return;
       console.error('Failed to load more recent results:', err);
       if (btn) btn.disabled = false;
       if (btnText) btnText.textContent = '🔽 Load More Recent';
       if (spinner) spinner.style.display = 'none';
     } finally {
-      isLoadingMoreRecent = false;
+      if (myRecentReq === recentReqSeq) isLoadingMoreRecent = false;
     }
   }
 
@@ -8782,6 +8887,20 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   // Initialize listeners on DOMContentLoaded
   document.addEventListener('DOMContentLoaded', () => {
+    // SSR search grids render flat relevance only: re-render on boot so the
+    // Recent rail + resolution disclaimer + did-you-mean strip materialize
+    // from hydrated state (including zero-hit states).
+    try {
+      const hasState = (currentSearchDocs && currentSearchDocs.length > 0) ||
+        (currentRecentDocs && currentRecentDocs.length > 0) ||
+        (currentDidYouMean && currentDidYouMean.length > 0) ||
+        (currentQueryResolution && currentQueryResolution.display);
+      if (hasState &&
+          document.getElementById('searchResultsSection') &&
+          document.getElementById('searchResultsSection').style.display !== 'none') {
+        renderCurrentSearchResults();
+      }
+    } catch (e) {}
     // ROADMAP §8.1: Dev Mode persists across reloads once unlocked.
     try {
       if (localStorage.getItem('yutorah_dev_mode') === 'true' && !isDevMode) {
@@ -9015,9 +9134,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     currentRecentDocs = [];
     recentNumFound = 0;
     currentDidYouMean = [];
+    currentQueryResolution = null;
     recentVisibleCount = 3;
     recentExhausted = false;
     recentReqSeq++;
+    recentFetched = 3;
     currentLoadedDocsCount = 0;
     totalSearchResults = 0;
     isLoadingMore = false;
@@ -9106,13 +9227,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       spinner.style.display = 'none';
 
       const docs = data?.response?.docs || [];
-      // Loaded count includes the lifted Recent-3: numFound counts them too,
-      // so the label and the loaded>=total termination stay exact.
+      // Relevance pages are the paginated unit (full 30); the Recent rail
+      // sits on top and is counted separately via recentNumFound.
       currentRecentDocs = data?.response?.recentDocs || [];
-      totalSearchResults = data?.response?.numFound || (docs.length + currentRecentDocs.length);
-      currentLoadedDocsCount = docs.length + currentRecentDocs.length;
+      totalSearchResults = data?.response?.numFound || docs.length;
+      currentLoadedDocsCount = docs.length;
       recentNumFound = data?.response?.recentNumFound || 0;
       currentDidYouMean = data?.didYouMean || [];
+      currentQueryResolution = data?.queryResolution || null;
       recentVisibleCount = 3;
       recentExhausted = false;
 
@@ -9142,6 +9264,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         let emptyHtml = '<div style="padding: 30px; text-align: center; color: var(--text-muted); grid-column: 1/-1;">No shiurim found matching these criteria. Try adjusting your filters or search keywords.</div>';
         if (currentDidYouMean.length > 0) {
           emptyHtml = renderDidYouMeanStrip(currentDidYouMean) + emptyHtml;
+        }
+        if (currentQueryResolution && currentQueryResolution.display) {
+          emptyHtml = '<div class="did-you-mean-strip"><span>🔍 Showing results for &quot;' +
+            escapeHtml(currentQueryResolution.display) + '&quot; — you searched &quot;' +
+            escapeHtml(currentQueryResolution.original) + '&quot;.</span></div>' + emptyHtml;
         }
         grid.innerHTML = emptyHtml;
         loadMoreBox.style.display = 'none';
@@ -9252,13 +9379,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         spinner.style.display = 'none';
       }
     } catch (err) {
-      if (myRecentReq !== recentReqSeq) return;
-      console.error('Failed to load more recent results:', err);
-      if (btn) btn.disabled = false;
-      if (btnText) btnText.textContent = '🔽 Load More Recent';
-      if (spinner) spinner.style.display = 'none';
+      console.error('Failed to load more results:', err);
+      btn.disabled = false;
+      btnText.textContent = '🔽 Load More Results';
+      spinner.style.display = 'none';
     } finally {
-      if (myRecentReq === recentReqSeq) isLoadingMoreRecent = false;
+      isLoadingMore = false;
     }
   }
 
@@ -9287,8 +9413,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     currentRecentDocs = [];
     recentNumFound = 0;
     currentDidYouMean = [];
+    currentQueryResolution = null;
     recentVisibleCount = 3;
     recentExhausted = false;
+    recentFetched = 3;
     currentPhoneticTokens = [];
     currentSearchPage = 1;
     showMatchReasons = false;
@@ -9344,20 +9472,24 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   function renderDocToCard(d, options = {}) {
     const id = d.shiurid || d.shiurID || d.id || '';
+    // Normalize duration once: snapshots store display strings ("45 min",
+    // "1h 22m") while Solr docs carry bare minutes — suffix only the latter.
+    const durRaw = d.durationformatted || d.duration || '';
+    const duration = durRaw ? (String(durRaw).match(/[a-z]/i) ? String(durRaw) : durRaw + ' min') : '';
     if (id && typeof devDocCache !== 'undefined') {
       devDocCache[String(id)] = {
         id: String(id),
         title: d.shiurtitle || d.shiurTitle || d.title || 'Untitled',
         speaker: d.teacherfullname || (d.shiurTeachers && d.shiurTeachers[0] ? d.shiurTeachers[0].teacherFullName : (d.speaker || 'YUTorah')),
         photo: d.PHOTO ? (d.PHOTO.startsWith('http') ? d.PHOTO : 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/' + d.PHOTO) : (d.photo || ''),
-        duration: d.durationformatted || (d.duration ? d.duration + ' min' : ''),
-        date: d.shiurdateformatted || d.shiurDateFormatted || d.shiurdate || d.shiurDate || d.shiurdatesubmitted || d.shiurDateSubmitted || d.date || ''
+        duration: duration,
+        date: d.shiurdateformatted || d.shiurDateFormatted || d.shiurdate || d.shiurDate || d.shiurdatesubmitted || d.shiurDateSubmitted || d.date || '',
+        isArticle: Boolean(d.isArticle) || String(d.mediatypecategory || d.mediaTypeCategory || '').toLowerCase() === 'text'
       };
     }
     const title = d.shiurtitle || d.shiurTitle || d.title || 'Untitled';
     const speaker = d.teacherfullname || (d.shiurTeachers && d.shiurTeachers[0] ? d.shiurTeachers[0].teacherFullName : (d.speaker || 'YUTorah'));
     const photo = d.PHOTO ? (d.PHOTO.startsWith('http') ? d.PHOTO : 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/' + d.PHOTO) : (d.photo || 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/_default.jpg');
-    const duration = d.durationformatted || (d.duration ? d.duration + ' min' : '');
     const rawDate = d.shiurdateformatted || d.shiurDateFormatted || d.shiurdate || d.shiurDate || d.shiurdatesubmitted || d.shiurDateSubmitted || d.date || '';
     const date = formatShiurDate(rawDate);
     const isNew = isShiurNew(d.shiurdatesubmitted || d.shiurDateSubmitted || rawDate);
@@ -9366,7 +9498,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
     const mediaCat = (d.mediatypecategory || d.mediaTypeCategory || '').toLowerCase();
     const urlCheck = d.shiururl || d.shiurURL || d.playerDownloadURL || d.downloadURL || '';
-    const isArticle = mediaCat === 'text' || mediaCat === 'article' || /\\.pdf(\$|\\?)/i.test(urlCheck);
+    const isArticle = Boolean(d.isArticle) || mediaCat === 'text' || mediaCat === 'article' || /\\.pdf(\$|\\?)/i.test(urlCheck);
 
     const metaParts = [];
     if (isArticle) {
@@ -9446,7 +9578,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   function renderSeriesSubCard(sub, partNumber) {
     const id = sub.shiurid || sub.shiurID || sub.id || '';
     const title = sub.shiurtitle || sub.shiurTitle || sub.title || 'Untitled';
-    const duration = sub.durationformatted || (sub.duration ? sub.duration + ' min' : '');
+    const subDurRaw = sub.durationformatted || sub.duration || '';
+    const duration = subDurRaw ? (String(subDurRaw).match(/[a-z]/i) ? String(subDurRaw) : subDurRaw + ' min') : '';
     const rawDate = sub.shiurdateformatted || sub.shiurDateFormatted || sub.shiurdate || sub.shiurdatesubmitted || '';
     const date = formatShiurDate(rawDate);
     const terms = getActiveSearchTerms();
@@ -9939,18 +10072,44 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     return ['history', 'save_for_later', 'favorites'].concat(Object.keys(store.custom || {}));
   }
 
+  // Split a rendered meta string ("1h 22m · September 8, 2026",
+  // "📄 Article · March 3, 2019", "⏱ 1 hr 6 min · Yesterday") into clean
+  // { duration, date }. Shared by card snapshots and the player save path.
+  function devSplitMeta(meta) {
+    const out = { duration: '', date: '' };
+    const s = String(meta || '');
+    if (!s) return out;
+    const cut = s.indexOf('·');
+    const head = (cut === -1 ? s : s.slice(0, cut)).trim();
+    const tail = cut === -1 ? '' : s.slice(cut + 1).trim();
+    const dm = head.match(/(\\d+\\s*h(?:r)?(?:\\s*\\d+\\s*m(?:in)?)?|\\d+\\s*min(?:ute)?s?|\\d+\\s*m\\b|\\d+\\s*sec(?:ond)?s?)/i);
+    if (dm) {
+      out.duration = dm[1].trim();
+      out.date = tail;
+    } else if (tail) {
+      out.date = tail;
+    } else {
+      out.date = head;
+    }
+    return out;
+  }
+
   function devSnapshot(id) {
     if (devDocCache[id]) return devDocCache[id];
     if (String(currentShiurId) === String(id)) {
       const t = document.getElementById('shiurTitle');
       const s = document.getElementById('shiurSpeaker');
       const img = document.getElementById('speakerImg');
+      const mEl = document.getElementById('shiurMeta');
+      const split = devSplitMeta(mEl ? mEl.textContent : '');
       return {
         id: id,
         title: t ? t.textContent : 'Untitled',
         speaker: s ? s.textContent : 'YUTorah',
         photo: img ? img.src : '',
-        duration: '',
+        duration: split.duration,
+        date: split.date,
+        isArticle: Boolean(isCurrentShiurArticle),
         addedAt: Date.now()
       };
     }
@@ -10013,6 +10172,74 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       el.classList.toggle('active-fav', on);
       el.textContent = on ? '⭐ Saved' : '☆ Fav';
     });
+  }
+
+  // Fundamental-cards guarantee (§8): server-rendered cards (homepage
+  // collections, SSR search grid, Recently Viewed) never pass through
+  // renderDocToCard, so after Dev Mode activates we walk every card link and
+  // retrofit the mini actions + progress bar, snapshotting metadata from the
+  // card DOM itself. Re-runs are cheap and refresh stale progress.
+  function devSnapshotFromCard(link) {
+    const id = link.getAttribute('data-id');
+    if (!id) return null;
+    if (devDocCache[id]) return id;
+    const text = sel => {
+      const el = link.querySelector(sel);
+      return el ? (el.textContent || '').trim() : '';
+    };
+    const img = link.querySelector('img.quick-card-avatar');
+    // Top-level cards keep meta in .quick-card-bottom; series sub-cards use
+    // .series-sub-meta — support both so drawer saves keep duration + date.
+    const meta = text('.quick-card-bottom span') || text('.series-sub-meta');
+    const split = devSplitMeta(meta);
+    let title = text('.quick-card-title') || text('.series-sub-title') || 'Untitled';
+    title = title.replace(/^#\\d+\\s*/, '');
+    const badge = text('.quick-card-bottom') + ' ' + text('.series-sub-meta');
+    devDocCache[id] = {
+      id: String(id),
+      title: title,
+      speaker: text('.quick-card-speaker') || 'YUTorah',
+      photo: img ? (img.getAttribute('src') || '') : '',
+      duration: split.duration,
+      date: split.date,
+      isArticle: badge.indexOf('📄') !== -1
+    };
+    return id;
+  }
+
+  function devUpgradeCards(root) {
+    if (!isDevMode) return;
+    const scope = root || document;
+    if (!scope.querySelectorAll) return;
+    scope.querySelectorAll('a.quick-card-link[data-id], a.series-sub-card[data-id]').forEach(link => {
+      const id = devSnapshotFromCard(link);
+      if (!id) return;
+      if (!link.querySelector('.card-mini-actions')) {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = devCardActionsHtml(String(id)) + devProgressHtml(String(id));
+        while (tmp.firstChild) link.appendChild(tmp.firstChild);
+      } else {
+        // Refresh stale progress: add the bar if the first upgrade ran
+        // before any progress existed, else swap in the latest record.
+        const fresh = devProgressHtml(String(id));
+        const old = link.querySelector('.dev-progress-wrap');
+        if (old) {
+          if (fresh) {
+            const tmp = document.createElement('div');
+            tmp.innerHTML = fresh;
+            if (tmp.firstChild) old.replaceWith(tmp.firstChild);
+            else old.remove();
+          } else {
+            old.remove();
+          }
+        } else if (fresh) {
+          const tmp = document.createElement('div');
+          tmp.innerHTML = fresh;
+          while (tmp.firstChild) link.appendChild(tmp.firstChild);
+        }
+      }
+    });
+    devRefreshCardButtons();
   }
 
   function getPlaybackProgress() {
@@ -10086,7 +10313,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const pct = Math.min(100, Math.round((rec.progressSec / rec.durationSec) * 100));
     const cur = Math.floor(rec.progressSec / 60);
     const tot = Math.floor(rec.durationSec / 60);
-    return '<div class="dev-only"><div class="card-progress-track"><div class="card-progress-fill" style="width: ' + pct + '%;"></div></div>' +
+    return '<div class="dev-only dev-progress-wrap"><div class="card-progress-track"><div class="card-progress-fill" style="width: ' + pct + '%;"></div></div>' +
       '<div class="card-listen-meta">🕒 Last listened: ' + escapeHtml(devRelativeTime(rec.lastListened)) +
       ' · ' + cur + '/' + tot + ' min through (' + pct + '%)</div></div>';
   }
@@ -10109,8 +10336,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (typeof str === 'number') return Math.round(str);
     const s = String(str);
     let mins = 0;
-    let m = s.match(/(\\d+)\\s*h/i);
-    if (m) mins += parseInt(m[1], 10) * 60;
+    let m = s.match(/(\\d+)\\s*hr/i);
+    if (m) {
+      mins += parseInt(m[1], 10) * 60;
+    } else {
+      m = s.match(/(\\d+)\\s*h/i);
+      if (m) mins += parseInt(m[1], 10) * 60;
+    }
     m = s.match(/(\\d+)\\s*min/i);
     if (m) mins += parseInt(m[1], 10);
     else {
@@ -10283,7 +10515,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     overlay.setAttribute('aria-label', 'Add to playlist');
     overlay.style.cssText = 'position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; padding:16px;';
     const box = document.createElement('div');
-    box.style.cssText = 'background:var(--card-bg,#fff); color:var(--text,#111); border-radius:14px; max-width:440px; width:100%; max-height:80vh; overflow:auto; padding:18px;';
+    box.style.cssText = 'background:var(--card,#fff); color:var(--text,#111); border-radius:14px; max-width:440px; width:100%; max-height:80vh; overflow:auto; padding:18px; border:1px solid var(--border-light);';
     function rowHtml(pid, name, icon, count, checked) {
       return '<label style="display:flex; align-items:center; gap:8px; padding:7px 4px; cursor:pointer;" data-pl-row="' + escapeHtml(name.toLowerCase()) + '">' +
         '<input type="checkbox" data-pl-check="' + pid + '"' + (checked ? ' checked' : '') + (pid === 'history' ? ' disabled' : '') + '>' +
@@ -10457,7 +10689,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   // Holiday & Seasonal Theme Management (Light Mode Exclusively)
-  const clientThemes = ${JSON.stringify(THEMES)};
+  const clientThemes = ${jsEmbed(THEMES)};
 
   function getClientHebrewDate() {
     try {
@@ -10766,6 +10998,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     } else if (activeName === 'playlists') {
       renderPlaylistsGrid();
     }
+    try { if (typeof devUpgradeCards === 'function') devUpgradeCards(); } catch (e) {}
   }
 
   // Audio Controls
@@ -11088,10 +11321,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   // Mobile Lock Screen (MediaSession)
   if ('mediaSession' in navigator && hasAudio) {
     navigator.mediaSession.metadata = new MediaMetadata({
-      title: ${JSON.stringify(title)},
-      artist: ${JSON.stringify(speaker)},
+      title: ${jsEmbed(title)},
+      artist: ${jsEmbed(speaker)},
       album: 'YUTorah Online',
-      artwork: ${JSON.stringify(photo ? [{ src: photo, sizes: '300x300', type: 'image/jpeg' }] : [])}
+      artwork: ${jsEmbed(photo ? [{ src: photo, sizes: '300x300', type: 'image/jpeg' }] : [])}
     });
     try {
       navigator.mediaSession.setActionHandler('play', () => audio.play());
