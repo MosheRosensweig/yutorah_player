@@ -4,3 +4,8 @@ compatibility_date = "2024-09-01"
 
 [observability]
 enabled = true
+
+# Dev version of the site (second public link). Deploy with:
+#   npx wrangler deploy --env dev
+[env.dev]
+name = "yutorah-player-dev"
