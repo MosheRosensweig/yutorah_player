@@ -35,6 +35,23 @@ function jsEmbed(val) {
 const TARGET_API_ORIGIN = 'https://www.yutorah.org';
 const API_ORIGIN = 'https://api.yutorah.org';
 
+// Decode HTML entities from scraped upstream text BEFORE our own escaping,
+// or sequences like l&#x27;ilui double-escape into visible "l&#x27;ilui".
+// &amp; decodes LAST so double-encoded input (&amp;lt;) survives correctly.
+function decodeHtmlEntities(s) {
+  return String(s || '')
+    .replace(/&#x27;|&#39;|&#x22;|&quot;|&lt;|&gt;/gi, m => {
+      const k = m.toLowerCase();
+      if (k === '&#x27;' || k === '&#39;') return "'";
+      if (k === '&#x22;' || k === '&quot;') return '"';
+      if (k === '&lt;') return '<';
+      return '>';
+    })
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCharCode(parseInt(n, 16)))
+    .replace(/&amp;/gi, '&');
+}
+
 // In-memory cache for homepage collections (5 minutes)
 let homeDataCache = null;
 let homeDataCacheTime = 0;
@@ -87,8 +104,8 @@ async function getDailySponsorship() {
       const match = html.match(/Learning on the Marcos and Adina Katz YUTorah site is sponsored today[\s\S]*?<\/p>/i);
       if (match) {
         const nameMatch = match[0].match(/id="sponsorSpan_sponsorName">([\s\S]*?)<\/span>/i);
-        const sponsorName = nameMatch ? nameMatch[1].replace(/<[^>]+>/g, '').trim() : '';
-        const fullText = match[0].replace(/<\/p>/i, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        const sponsorName = nameMatch ? decodeHtmlEntities(nameMatch[1].replace(/<[^>]+>/g, '').trim()) : '';
+        const fullText = decodeHtmlEntities(match[0].replace(/<\/p>/i, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
 
         result.plainText = fullText;
         let formatted = escapeHtml(fullText);
@@ -316,25 +333,35 @@ async function executeSearchInternal(searchParams) {
   }
 
   // Phonetic & Speaker Auto-Resolution
+  // Single-word queries NEVER narrow to one speaker: "rosensweig" must match
+  // every Rosensweig (Michael, Itamar, Bernard…) via text search — explicit
+  // teacher clicks still filter by teacherId exactly. Multi-word queries
+  // ("Schachter Shabbos") keep the speaker+topic split. Corrections happen
+  // only when nothing literally matches (see typo auto-correct below).
   let effectiveQuery = rawQ;
   let expandedInfo = null;
   // When the engine rewrites the user's text into a resolved entity filter,
   // the UI shows a "Showing results for X (you searched Y)" disclaimer.
   let resolvedDisplay = '';
+  const rawWordCount = rawQ.trim() ? rawQ.trim().split(/\s+/).length : 0;
 
   if (teacherIds.length === 0 && rawQ && !disablePhonetics) {
-    const entityParse = parseQueryEntities(rawQ);
-    if (entityParse.speaker) {
-      teacherIds = [entityParse.speaker.id];
-      effectiveQuery = entityParse.remainingQuery;
-      resolvedDisplay = entityParse.speaker.name;
+    if (rawWordCount > 1) {
+      const entityParse = parseQueryEntities(rawQ);
+      if (entityParse.speaker) {
+        teacherIds = [entityParse.speaker.id];
+        effectiveQuery = entityParse.remainingQuery;
+        resolvedDisplay = entityParse.speaker.name;
+      }
     }
   } else if (teacherIds.length === 0 && rawQ && disablePhonetics) {
-    const resolvedSpk = resolveSpeaker(rawQ);
-    if (resolvedSpk) {
-      teacherIds = [resolvedSpk.id];
-      effectiveQuery = '';
-      resolvedDisplay = resolvedSpk.name;
+    if (rawWordCount > 1) {
+      const resolvedSpk = resolveSpeaker(rawQ);
+      if (resolvedSpk) {
+        teacherIds = [resolvedSpk.id];
+        effectiveQuery = '';
+        resolvedDisplay = resolvedSpk.name;
+      }
     }
   }
 
@@ -375,8 +402,17 @@ async function executeSearchInternal(searchParams) {
       }
     }
 
-    if (fromDate && docDate && docDate.slice(0, 10) < fromDate) return false;
-    if (toDate && docDate && docDate.slice(0, 10) > toDate) return false;
+    // Date bounds compare at the bound's own precision: date-only bounds
+    // compare YYYY-MM-DD; datetime bounds compare through minutes.
+    // Unknown doc dates pass (same as before).
+    if (fromDate && docDate) {
+      const L = Math.min(fromDate.length, 16);
+      if (docDate.slice(0, L) < fromDate.slice(0, L)) return false;
+    }
+    if (toDate && docDate) {
+      const L = Math.min(toDate.length, 16);
+      if (docDate.slice(0, L) > toDate.slice(0, L)) return false;
+    }
 
     return true;
   }
@@ -458,7 +494,7 @@ async function executeSearchInternal(searchParams) {
     return { windowDocs: merged.slice(itemOffset - 1, itemOffset - 1 + rowCount), totalFound: totalFound || merged.length };
   }
 
-  // Date-sorted window branch (powers Recent Results + Load More Recent).
+  // Date-sorted window branch (powers the Recent Results rail).
   // `start` here is a 1-based ITEM offset (rawItemStart, pre-normalization).
   if (wantsDateSort) {
     const itemOffset = rawItemStart;
@@ -530,22 +566,75 @@ async function executeSearchInternal(searchParams) {
     const adjNumFound = tId ? Math.min(numFound, filteredDocs.length + (numFound - docs.length)) : numFound;
     // Relevance keeps its FULL page (30): the Recent-3 are an extra rail on
     // top, never carved out of the relevance list.
-    const recentDocs = (start === 1) ? globalRecent : [];
-    const totalHits = undupedHitCount(filteredDocs, recentDocs);
+    let recentDocs = (start === 1) ? globalRecent : [];
+    let finalDocs = filteredDocs;
+    let finalNumFound = adjNumFound;
+    let finalRecentTotal = recentTotal;
+    let didYouMean = null;
+
+    // Typo auto-correct (single-word queries only): if NOTHING literally
+    // matches the typed token but a distance-1 correction exists, show the
+    // correction's results with a "you searched X" disclaimer instead of
+    // silently fuzzy-matching. "rosensweig" matches literally, so it is
+    // never rewritten; "weiderblank" becomes "Rabbi Netanel Wiederblank".
+    // Applies on every page so Load-More stays on the corrected query.
+    let typoSwapped = false;
+    if (rawWordCount === 1 && !disablePhonetics && teacherIds.length === 0) {
+      const ql = rawQ.toLowerCase();
+      const docText = d => [
+        d.shiurtitle, d.shiurTitle, d.title, d.teacherfullname,
+        ((d.shiurTeachers || []).map(t => t.teacherFullName || '').join(' ')),
+        d.shiurdescription, d.description, d.seriesname, d.seriesName,
+        d.subcategoryname, d.categoryname,
+        (Array.isArray(d.shiurkeywords) ? d.shiurkeywords.join(' ') : d.shiurkeywords)
+      ].join(' ').toLowerCase();
+      const literalHit = [...finalDocs, ...recentDocs].some(d => docText(d).includes(ql));
+      if (!literalHit) {
+        let top = null;
+        try {
+          const sug = suggestDidYouMean(rawQ, {
+            teacher: AUTOCOMPLETE_META.teachers || [],
+            topic: AUTOCOMPLETE_META.categories || [],
+            venue: AUTOCOMPLETE_META.venues || []
+          }, { limit: 1 });
+          if (sug.length > 0 && sug[0].distance <= 1 && sug[0].text.toLowerCase() !== ql) top = sug[0];
+        } catch (e) { top = null; }
+        if (top) {
+          const re = await fetchSolrSingle(top.text, start, '', '', '', '');
+          if (re.docs.length > 0) {
+            finalDocs = re.docs;
+            finalNumFound = re.numFound;
+            if (start === 1) {
+              const dateRe = await fetchDateWindow(top.text, 1, 3);
+              recentDocs = dateRe.windowDocs;
+              finalRecentTotal = dateRe.totalFound;
+            } else {
+              recentDocs = [];
+            }
+            resolvedDisplay = top.text;
+            typoSwapped = true;
+            didYouMean = [];
+          }
+        }
+      }
+    }
+
+    const totalHits = undupedHitCount(finalDocs, recentDocs);
+    if (didYouMean === null) didYouMean = didYouMeanIfWeak(totalHits);
     return {
       response: {
-        docs: filteredDocs,
+        docs: finalDocs,
         recentDocs,
-        recentNumFound: start === 1 ? (recentTotal || adjNumFound) : 0,
-        numFound: adjNumFound,
+        recentNumFound: start === 1 ? (finalRecentTotal || finalNumFound) : 0,
+        numFound: finalNumFound,
         start
       },
-      phoneticExpansion: (expandedInfo && expandedInfo.expandedTokens && expandedInfo.expandedTokens.length > 1) ? {
+      phoneticExpansion: (!typoSwapped && expandedInfo && expandedInfo.expandedTokens && expandedInfo.expandedTokens.length > 1) ? {
         original: rawQ,
         tokens: expandedInfo.expandedTokens,
         synset: expandedInfo.matchedSynset
       } : null,
-      didYouMean: didYouMeanIfWeak(totalHits),
+      didYouMean,
       queryResolution: resolvedDisplay ? { original: rawQ, display: resolvedDisplay } : null
     };
   }
@@ -1386,6 +1475,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           document.documentElement.removeAttribute('data-theme');
         }
 
+        // Pre-apply persisted cards/rows view to avoid a flash of cards.
+        try {
+          if (localStorage.getItem('yutorah_card_view') === 'rows') {
+            document.documentElement.classList.add('rows-view');
+          }
+        } catch (e) {}
+
         // [DEAD CODE / INACTIVE] Simple View mode switcher
         // var savedMode = localStorage.getItem('yutorah_view_mode');
         // if (savedMode === 'simple') document.documentElement.setAttribute('data-view', 'simple');
@@ -1432,6 +1528,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       background: #131c2a;
       color: #e7edf7;
       border-color: #28364d;
+    }
+    [data-theme="dark"] input[type="datetime-local"] {
+      color-scheme: dark;
     }
     [data-theme="dark"] input:focus,
     [data-theme="dark"] select:focus {
@@ -4576,6 +4675,254 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       font-weight: 600;
       color: var(--text-muted);
     }
+    /* Quick Date Filters (every search) */
+    .date-quick-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin: 10px 0 4px;
+    }
+    .date-quick-caption {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-muted);
+    }
+    .date-quick-chip {
+      cursor: pointer;
+      border-radius: 20px;
+      padding: 5px 13px;
+      font-size: 12.5px;
+      font-weight: 700;
+      border: 1px solid var(--border-light);
+      background: var(--card, #fff);
+      color: var(--text);
+    }
+    .date-quick-chip.selected {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+    }
+    .date-quick-chip:focus-visible {
+      outline: 2px solid var(--primary) !important;
+      outline-offset: 2px;
+    }
+    [data-theme="dark"] .date-quick-chip {
+      background: #1f2937;
+      border-color: #4b5563;
+      color: #e5e7eb;
+    }
+    [data-theme="dark"] .date-quick-chip.selected {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+    }
+    /* Cards / Rows view toggle */
+    .view-toggle-wrap {
+      display: inline-flex;
+      gap: 4px;
+      align-items: center;
+    }
+    .view-toggle-btn {
+      cursor: pointer;
+      border: 1px solid var(--border-light);
+      background: var(--card, #fff);
+      color: var(--text-muted);
+      border-radius: 16px;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 4px 11px;
+    }
+    .view-toggle-btn.selected {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+    }
+    .view-toggle-btn:focus-visible {
+      outline: 2px solid var(--primary) !important;
+      outline-offset: 2px;
+    }
+    [data-theme="dark"] .view-toggle-btn {
+      background: #1f2937;
+      border-color: #4b5563;
+      color: #e5e7eb;
+    }
+    [data-theme="dark"] .view-toggle-btn.selected {
+      background: #2b4c7e;
+      border-color: #2b4c7e;
+      color: #fff;
+    }
+    /* Rows view: one shiur per full-width row (yutorah.org style) */
+    .rows-view .shiur-cards-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .rows-view .quick-card-link {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+    }
+    .rows-view .quick-card-top {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .rows-view .quick-card-info {
+      min-width: 0;
+      flex: 1;
+    }
+    .rows-view .quick-card-avatar {
+      width: 44px;
+      height: 44px;
+      flex-shrink: 0;
+    }
+    .rows-view .quick-card-match-reason {
+      display: none;
+    }
+    .rows-view .quick-card-link .series-cover-badge {
+      display: none;
+    }
+    .rows-view .quick-card-link {
+      flex-wrap: wrap;
+    }
+    .rows-view .quick-card-link .card-mini-actions,
+    .rows-view .quick-card-link .dev-progress-wrap {
+      flex-basis: 100%;
+    }
+    .rows-view .quick-card-bottom {
+      border-top: none;
+      padding-top: 0;
+      flex-shrink: 0;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
+    }
+    .rows-view .card-mini-actions {
+      flex-shrink: 0;
+    }
+    @media (max-width: 640px) {
+      .rows-view .quick-card-link {
+        flex-wrap: wrap;
+      }
+      .rows-view .quick-card-bottom {
+        flex-direction: row;
+        align-items: center;
+        width: 100%;
+        justify-content: space-between;
+      }
+    }
+    /* Play Queue popup + list (Dev Mode) */
+    .queue-popup {
+      position: fixed;
+      bottom: 84px;
+      right: 12px;
+      width: min(370px, 94vw);
+      max-height: 52vh;
+      display: flex;
+      flex-direction: column;
+      background: var(--card, #fff);
+      color: var(--text);
+      border: 1px solid var(--border-light);
+      border-radius: 14px;
+      box-shadow: var(--shadow-hover);
+      z-index: 9000;
+      overflow: hidden;
+    }
+    .queue-popup-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 800;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border-light);
+    }
+    .queue-count {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+    .queue-popup-header .card-mini-btn {
+      margin-left: auto;
+    }
+    .queue-list {
+      overflow-y: auto;
+      padding: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .queue-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 8px;
+      border: 1px solid var(--border-light);
+      border-radius: 10px;
+      background: transparent;
+    }
+    .queue-row.dragging {
+      opacity: 0.45;
+    }
+    .queue-pos {
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--text-muted);
+      min-width: 18px;
+      text-align: center;
+    }
+    .queue-handle {
+      cursor: grab;
+      color: var(--text-muted);
+      font-size: 14px;
+      user-select: none;
+    }
+    .queue-main {
+      flex: 1;
+      min-width: 0;
+    }
+    .queue-title {
+      font-size: 13px;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .queue-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .queue-row-btns {
+      display: flex;
+      gap: 2px;
+      flex-shrink: 0;
+    }
+    .queue-row-btns .card-mini-btn {
+      padding: 2px 7px;
+      font-size: 11px;
+    }
+    .queue-popup-footer {
+      padding: 8px 12px;
+      border-top: 1px solid var(--border-light);
+      display: flex;
+      justify-content: flex-end;
+    }
+    .queue-empty {
+      padding: 18px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+    [data-theme="dark"] .queue-popup {
+      background: #182232;
+    }
     /* Did You Mean strip (ROADMAP §5.4) */
     .did-you-mean-strip {
       grid-column: 1 / -1;
@@ -4714,8 +5061,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       opacity: 1;
     }
     .card-mini-btn.active-fav {
-      background: #fbbf24;
+      background: #b45309;
       border-color: #b45309;
+      color: #fff;
       opacity: 1;
     }
 
@@ -5827,6 +6175,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     <!-- Active Filter Pills Bar (Shown when multi-criteria filters are active) -->
     <div id="activeFiltersBar" class="active-filters-bar" style="display: none;"></div>
 
+    <!-- Quick Date Filters (every search: All / Today / Yesterday / This Week / This Month) -->
+    <div id="dateQuickRow" class="date-quick-row">
+      <span class="date-quick-caption">📅 When:</span>
+      <button type="button" class="date-quick-chip selected" data-preset="all" onclick="setDateQuick('all', this)">All Dates</button>
+      <button type="button" class="date-quick-chip" data-preset="today" onclick="setDateQuick('today', this)">Today</button>
+      <button type="button" class="date-quick-chip" data-preset="yesterday" onclick="setDateQuick('yesterday', this)">Yesterday</button>
+      <button type="button" class="date-quick-chip" data-preset="week" onclick="setDateQuick('week', this)">This Week</button>
+      <button type="button" class="date-quick-chip" data-preset="month" onclick="setDateQuick('month', this)">This Month</button>
+    </div>
+
     <!-- Phonetic Expansion Notice Banner (Shown when transliteration synonyms were searched) -->
     <div id="phoneticNoticeBanner" class="phonetic-notice-banner" style="${initialPhoneticExpansion && initialPhoneticExpansion.tokens && initialPhoneticExpansion.tokens.length > 1 ? 'display: flex;' : 'display: none;'}">
       ${initialPhoneticExpansion && initialPhoneticExpansion.tokens && initialPhoneticExpansion.tokens.length > 1 ? `
@@ -5888,6 +6246,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
             </span>
             <span class="match-toggle-label">📚 Stack Series</span>
           </label>
+          <div class="view-toggle-wrap" role="group" aria-label="Cards or rows view">
+            <button type="button" class="view-toggle-btn selected" data-view="cards" onclick="setCardView('cards')" title="Card grid view">🃏 Cards</button>
+            <button type="button" class="view-toggle-btn" data-view="rows" onclick="setCardView('rows')" title="One-per-row list view like yutorah.org">📋 Rows</button>
+          </div>
         </div>
         <button class="close-results-btn" onclick="clearSearch()">Clear Search ×</button>
       </div>
@@ -6108,6 +6470,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   <div class="collections-section" id="collectionsSection" style="${initialSearchResults ? 'display: none;' : ''}">
     <div class="section-header">
       <h2 class="section-title" id="activeCollectionTitle">⭐ Editor's Picks</h2>
+      <div class="view-toggle-wrap" role="group" aria-label="Cards or rows view">
+        <button type="button" class="view-toggle-btn selected" data-view="cards" onclick="setCardView('cards')" title="Card grid view">🃏 Cards</button>
+        <button type="button" class="view-toggle-btn" data-view="rows" onclick="setCardView('rows')" title="One-per-row list view like yutorah.org">📋 Rows</button>
+      </div>
       <div class="tab-bar">
         <button class="tab-btn active" id="tab-editors" onclick="switchCollection('editors')">⭐ Editor's Picks</button>
         <button class="tab-btn dev-playlist-tab dev-only" id="tab-playlists" aria-hidden="true" onclick="switchCollection('playlists')">🎧 Dev's Playlists</button>
@@ -6224,8 +6590,22 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         </svg>
       </button>
       <button type="button" class="mini-btn expand-btn" onclick="expandPlayer(); event.stopPropagation();" title="Expand Full Player">⤢</button>
+      <button type="button" class="mini-btn queue-btn dev-only" onclick="toggleQueuePopup(); event.stopPropagation();" title="Play Queue (Dev)">☰</button>
       <button type="button" class="mini-btn close-btn" onclick="closeMiniPlayer(); event.stopPropagation();" title="Stop & Close">✕</button>
     </div>
+  </div>
+</div>
+
+<div id="queuePopup" class="queue-popup dev-only" style="display: none;" role="dialog" aria-label="Play Queue">
+  <div class="queue-popup-header">
+    <span>📋 Up Next</span>
+    <span id="queueCount" class="queue-count"></span>
+    <button type="button" class="card-mini-btn" onclick="toggleQueuePopup()" aria-label="Close queue">×</button>
+  </div>
+  <div id="queueList" class="queue-list"></div>
+  <div class="queue-popup-footer">
+    <button type="button" class="card-mini-btn" onclick="devPlayNextFromQueue()">▶ Play Next Now</button>
+    <button type="button" class="card-mini-btn" onclick="devQueueClear()">Clear Queue</button>
   </div>
 </div>
 
@@ -6405,6 +6785,19 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
             <option value="pre-2000">Pre-2000 Vintage Archive</option>
           </optgroup>
         </select>
+      </div>
+
+      <!-- Custom Date & Time Range (overrides Year / Quick presets) -->
+      <div class="filter-group">
+        <label class="filter-label">
+          <span>Custom Date &amp; Time Range</span>
+          <span class="filter-label-hint" id="dateRangeHint">From date-time to date-time</span>
+        </label>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+          <input type="datetime-local" id="advFromDateTime" class="filter-select" style="flex: 1; min-width: 180px;" aria-label="From date and time">
+          <span style="color: var(--text-muted); font-weight: 700;">→</span>
+          <input type="datetime-local" id="advToDateTime" class="filter-select" style="flex: 1; min-width: 180px;" aria-label="To date and time">
+        </div>
       </div>
     </div>
     <div class="modal-footer">
@@ -6649,6 +7042,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   // Developer Mode: the ONLY way in is typing "dev mode" (case-insensitive)
   // in the search box. There is no tap gesture for dev mode.
   let isDevMode = false;
+  // Elements revealed by activateDevMode (re-hidden by deactivateDevMode).
+  var devRevealedSettings = [];
 
   function activateDevMode() {
     if (isDevMode) return false;
@@ -6657,17 +7052,23 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     document.body.classList.add('dev-mode-active');
 
     // Reveal hidden settings wrapper and advanced search button
+    devRevealedSettings = [];
     const settingsWrap = document.querySelector('.settings-wrapper');
     if (settingsWrap) {
       settingsWrap.style.setProperty('display', 'block', 'important');
       settingsWrap.removeAttribute('aria-hidden');
+      devRevealedSettings.push(settingsWrap);
     }
     const settingsBtn = document.getElementById('settingsBtn');
-    if (settingsBtn) settingsBtn.style.setProperty('display', 'inline-flex', 'important');
+    if (settingsBtn) {
+      settingsBtn.style.setProperty('display', 'inline-flex', 'important');
+      devRevealedSettings.push(settingsBtn);
+    }
     const settingsMenu = document.getElementById('settingsMenu');
     if (settingsMenu) {
       settingsMenu.querySelectorAll('[style*="display: none !important"]').forEach(el => {
         el.style.removeProperty('display');
+        devRevealedSettings.push(el);
       });
     }
     // Reveal the playlists tab to assistive tech (hidden via aria until dev).
@@ -6678,20 +7079,47 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (plGrid) plGrid.removeAttribute('aria-hidden');
     } catch (e) {}
 
-    // ROADMAP §8.4: ➕ "Add to Playlist" on the active player header.
+    // ROADMAP §8.4: player-header quick actions — Later, Fav, Add to Playlist.
     try {
       const details = document.querySelector('.shiur-details');
-      if (details && !document.getElementById('devPlayerAddBtn')) {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.id = 'devPlayerAddBtn';
-        b.className = 'card-mini-btn dev-only';
-        b.textContent = '➕ Playlist';
-        b.style.marginTop = '8px';
-        b.addEventListener('click', () => {
+      if (details && !document.getElementById('devPlayerActions')) {
+        const wrap = document.createElement('div');
+        wrap.id = 'devPlayerActions';
+        wrap.className = 'card-mini-actions dev-only';
+        wrap.style.marginTop = '8px';
+        const mkBtn = (bid, label, fn) => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.id = bid;
+          b.className = 'card-mini-btn';
+          b.textContent = label;
+          b.addEventListener('click', () => {
+            if (currentShiurId) fn(String(currentShiurId));
+          });
+          return b;
+        };
+        wrap.appendChild(mkBtn('devPlayerSaveBtn', '🕒 Later', toggleDevSave));
+        wrap.appendChild(mkBtn('devPlayerFavBtn', '☆ Fav', toggleDevFav));
+        const pq = document.createElement('button');
+        pq.type = 'button';
+        pq.id = 'devPlayerQueueBtn';
+        pq.className = 'card-mini-btn';
+        pq.textContent = '⏭ Queue';
+        pq.addEventListener('click', () => {
+          if (currentShiurId) devQueueToggle(String(currentShiurId), false);
+        });
+        wrap.appendChild(pq);
+        const pl = document.createElement('button');
+        pl.type = 'button';
+        pl.id = 'devPlayerAddBtn';
+        pl.className = 'card-mini-btn dev-only';
+        pl.textContent = '➕ Playlist';
+        pl.addEventListener('click', () => {
           if (currentShiurId) openPlaylistModal(String(currentShiurId));
         });
-        details.appendChild(b);
+        wrap.appendChild(pl);
+        details.appendChild(wrap);
+        devRefreshCardButtons();
       }
     } catch (e) {}
 
@@ -6699,6 +7127,46 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     // SSR search grid): progress + buttons are fundamental in dev mode.
     try { devUpgradeCards(); } catch (e) {}
 
+    return true;
+  }
+
+  // Typing "exit dev mode" (case-insensitive) leaves Dev Mode: hide all dev
+  // UI, restore aria gating, and re-render the current view without extras.
+  function deactivateDevMode() {
+    if (!isDevMode) return false;
+    isDevMode = false;
+    try { localStorage.removeItem('yutorah_dev_mode'); } catch (e) {}
+    document.body.classList.remove('dev-mode-active');
+    activeDevPlaylistId = 'history';
+    try {
+      const plTab = document.getElementById('tab-playlists');
+      if (plTab) plTab.setAttribute('aria-hidden', 'true');
+      const plGrid = document.getElementById('grid-playlists');
+      if (plGrid) {
+        plGrid.setAttribute('aria-hidden', 'true');
+        plGrid.style.display = 'none';
+      }
+      // Re-hide exactly what activateDevMode revealed (tracked list).
+      try {
+        (devRevealedSettings || []).forEach(el => {
+          if (el && el.style) el.style.setProperty('display', 'none', 'important');
+        });
+      } catch (e) {}
+      devRevealedSettings = [];
+      const settingsMenu = document.getElementById('settingsMenu');
+      if (settingsMenu) settingsMenu.style.display = 'none';
+      const settingsWrapBack = document.querySelector('.settings-wrapper');
+      if (settingsWrapBack) settingsWrapBack.setAttribute('aria-hidden', 'true');
+      closePlaylistModal();
+      closeConfirmModal();
+      const qp = document.getElementById('queuePopup');
+      if (qp) qp.style.display = 'none';
+      const activeTab = document.querySelector('.tab-btn.active');
+      if (activeTab && activeTab.id === 'tab-playlists') {
+        switchCollection('editors');
+      }
+      renderCurrentSearchResults();
+    } catch (e) {}
     return true;
   }
 
@@ -7191,10 +7659,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
                 durationLabel: '',
                 year: '',
                 yearLabel: '',
+                fromDate: '',
+                toDate: '',
+                dateQuick: '',
+                dateQuickLabel: '',
+                dateRangeLabel: '',
                 mediaType: 'all',
                 mediaTypeLabel: '',
                 enablePhonetics: true
               };
+              syncDateQuickChips();
               executeLiveSearch('', { ...activeAdvancedFilters, label: 'Shiurim by ' + t.name });
             }
           });
@@ -7226,10 +7700,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
                 durationLabel: '',
                 year: '',
                 yearLabel: '',
+                fromDate: '',
+                toDate: '',
+                dateQuick: '',
+                dateQuickLabel: '',
+                dateRangeLabel: '',
                 mediaType: 'all',
                 mediaTypeLabel: '',
                 enablePhonetics: true
               };
+              syncDateQuickChips();
               executeLiveSearch('', { ...activeAdvancedFilters, label: 'Topic: ' + c.name });
             }
           });
@@ -7394,6 +7874,20 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       return;
     }
 
+    // Typing "exit dev mode" (case-insensitive) leaves Dev Mode.
+    if (query.toLowerCase() === 'exit dev mode') {
+      searchInput.value = '';
+      clearSearchBtn.style.display = 'none';
+      closeSearchPreview();
+      if (isDevMode) {
+        deactivateDevMode();
+        flashToast('👋 Dev Mode Off', false, false);
+      } else {
+        flashToast('Dev Mode is not active', false, false);
+      }
+      return;
+    }
+
     if (query.length < 2) {
       closeSearchPreview();
       return;
@@ -7412,7 +7906,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       (activeAdvancedFilters.locations && activeAdvancedFilters.locations.length > 0) ||
       (activeAdvancedFilters.series && activeAdvancedFilters.series.length > 0) ||
       activeAdvancedFilters.minDuration || activeAdvancedFilters.maxDuration ||
-      activeAdvancedFilters.year ||
+      activeAdvancedFilters.year || activeAdvancedFilters.fromDate || activeAdvancedFilters.toDate ||
       (activeAdvancedFilters.mediaType && activeAdvancedFilters.mediaType !== 'all');
   }
 
@@ -7449,6 +7943,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         flashToast('🛠️ Dev Mode Unlocked!', false, true);
       } else {
         flashToast('🛠️ Dev Mode already active', false, true);
+      }
+      return;
+    }
+
+    if (rawBarValue.toLowerCase() === 'exit dev mode') {
+      searchInput.value = '';
+      if (clearSearchBtn) clearSearchBtn.style.display = 'none';
+      if (isDevMode) {
+        deactivateDevMode();
+        flashToast('👋 Dev Mode Off', false, false);
+      } else {
+        flashToast('Dev Mode is not active', false, false);
       }
       return;
     }
@@ -7520,17 +8026,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   let currentSearchPage = Math.floor(${jsEmbed(initialSearchResults ? initialSearchResults.length : 0)} / 30) || 1;
   let isLoadingMore = false;
 
-  // ROADMAP §7: Recent Results sub-section state (independent of relevance).
+  // Recent Results rail state (fixed top-3, no expansion control).
   let currentRecentDocs = ${jsEmbed(initialRecentDocs || [])};
   let recentNumFound = ${jsEmbed(initialRecentNumFound || 0)};
-  let recentVisibleCount = 3;
-  let recentExhausted = false;
-  let isLoadingMoreRecent = false;
-  let recentReqSeq = 0;
-  // Item offset already requested from the date window (initial rail = 3).
-  // Advances by ROWS per fetch regardless of display-dedup, so overlapping
-  // windows can never livelock the button; the true tail ends it.
-  let recentFetched = 3;
   let currentSearchAbort = null;
   let currentPhoneticTokens = ${jsEmbed(initialPhoneticExpansion?.tokens || [])};
   let currentSearchDocs = ${jsEmbed(initialSearchResults || [])};
@@ -7904,9 +8402,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     drawer.style.display = isHidden ? 'flex' : 'none';
     if (btn) {
       const count = btn.dataset.subCount || '';
+      const sTitle = (btn.dataset && btn.dataset.seriesTitle) || 'this';
+      const moreLabel = 'View ' + count + ' more in \u2018' + sTitle + '\u2019 Series';
       btn.innerHTML = isHidden
         ? '<span class="series-expand-icon">➖</span> <span class="series-expand-text">Minimize series</span>'
-        : '<span class="series-expand-icon">➕</span> <span class="series-expand-text">View ' + count + ' more in series</span>';
+        : '<span class="series-expand-icon">➕</span> <span class="series-expand-text">' + escapeHtml(moreLabel) + '</span>';
     }
     if (isHidden) {
       try { if (typeof devUpgradeCards === 'function') devUpgradeCards(drawer); } catch (e) {}
@@ -8095,7 +8595,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (currentDidYouMean && currentDidYouMean.length > 0) {
         eHtml += renderDidYouMeanStrip(currentDidYouMean);
       }
-      if (eHtml) grid.innerHTML = eHtml;
+      if (eHtml) {
+        eHtml += '<div style="padding: 30px; text-align: center; color: var(--text-muted); grid-column: 1/-1;">No shiurim found matching these criteria. Try adjusting your filters or search keywords.</div>';
+        grid.innerHTML = eHtml;
+      }
       return;
     }
 
@@ -8125,22 +8628,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         escapeHtml(currentQueryResolution.original) + '&quot;.</span></div>';
     }
 
-    // ROADMAP §7: 🕒 Recent Results sub-section (own Load More).
-    const visibleRecent = (currentRecentDocs || []).slice(0, recentVisibleCount);
+    // Recent Results rail: fixed top-3 freshest, no expansion control.
+    const visibleRecent = (currentRecentDocs || []).slice(0, 3);
     if (visibleRecent.length > 0) {
       const recentTotal = recentNumFound || currentRecentDocs.length;
       html += '<div class="search-results-subheading"><span>🕒</span><span>Recent Results</span>' +
         '<span class="sub-count">' + recentTotal.toLocaleString() + ' matching</span></div>';
       html += renderList(visibleRecent);
-      const bufferedRemain = recentVisibleCount < currentRecentDocs.length;
-      const serverRemain = !recentExhausted && recentTotal > currentRecentDocs.length;
-      if (bufferedRemain || serverRemain) {
-        html += '<div style="grid-column: 1/-1; text-align: center; margin: 4px 0 12px;">' +
-          '<button id="loadMoreRecentBtn" class="load-more-btn" onclick="loadMoreRecentResults()">' +
-          '<span id="loadMoreRecentBtnText">🔽 Load More Recent</span>' +
-          '<span id="loadMoreRecentSpinner" class="spinner-small" style="display: none;"></span>' +
-          '</button></div>';
-      }
     }
 
     // 🎯 Relevance sub-section (own separate Load More).
@@ -8162,83 +8656,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     // Live-search path: drawer sub-cards and fresh cards get dev buttons +
     // progress immediately (retrofit is idempotent).
     try { if (typeof devUpgradeCards === 'function') devUpgradeCards(grid); } catch (e) {}
-  }
-
-  async function loadMoreRecentResults() {
-    if (isLoadingMoreRecent || recentExhausted) return;
-    // Serve from the already-fetched date-sorted buffer first.
-    if (recentVisibleCount < currentRecentDocs.length) {
-      recentVisibleCount += 3;
-      renderCurrentSearchResults();
-      const rb0 = document.getElementById('loadMoreRecentBtn');
-      if (rb0 && rb0.scrollIntoView) rb0.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-      return;
-    }
-    isLoadingMoreRecent = true;
-    const myRecentReq = ++recentReqSeq;
-    const btn = document.getElementById('loadMoreRecentBtn');
-    const btnText = document.getElementById('loadMoreRecentBtnText');
-    const spinner = document.getElementById('loadMoreRecentSpinner');
-    if (btn) btn.disabled = true;
-    if (btnText) btnText.textContent = 'Loading recent shiurim...';
-    if (spinner) spinner.style.display = 'inline-block';
-    try {
-      let apiUrl = '/api/search?q=' + encodeURIComponent(currentSearchQuery || '') +
-        '&sort=date&start=' + (recentFetched + 1) + '&rows=6';
-      const teachersList = currentFilterParams.teachers || (currentFilterParams.teacherId ? [{ id: currentFilterParams.teacherId }] : []);
-      teachersList.forEach(t => { apiUrl += '&teacherId=' + encodeURIComponent(t.id); });
-      const categoriesList = currentFilterParams.categories || (currentFilterParams.subCategoryId ? [{ id: currentFilterParams.subCategoryId }] : []);
-      categoriesList.forEach(c => { apiUrl += '&subCategoryId=' + encodeURIComponent(c.id); });
-      const locationsList = currentFilterParams.locations || (currentFilterParams.locationId ? [{ id: currentFilterParams.locationId }] : []);
-      locationsList.forEach(l => { apiUrl += '&locationId=' + encodeURIComponent(l.id); });
-      const seriesList = currentFilterParams.series || (currentFilterParams.seriesId ? [{ id: currentFilterParams.seriesId }] : []);
-      seriesList.forEach(s => { apiUrl += '&seriesId=' + encodeURIComponent(s.id); });
-      if (currentFilterParams.minDuration) apiUrl += '&minDuration=' + encodeURIComponent(currentFilterParams.minDuration);
-      if (currentFilterParams.maxDuration) apiUrl += '&maxDuration=' + encodeURIComponent(currentFilterParams.maxDuration);
-      if (currentFilterParams.year) apiUrl += '&year=' + encodeURIComponent(currentFilterParams.year);
-      if (currentFilterParams.mediaType && currentFilterParams.mediaType !== 'all') {
-        apiUrl += '&mediaType=' + encodeURIComponent(currentFilterParams.mediaType);
-      }
-      if (currentFilterParams.enablePhonetics === false || (currentFilterParams.enablePhonetics === undefined && useClassicSearch)) {
-        apiUrl += '&exact=1';
-      }
-      const res = await fetch(apiUrl);
-      const data = await res.json();
-      if (myRecentReq !== recentReqSeq) return;
-      const fresh = data?.response?.docs || [];
-      if (data?.response?.numFound) recentNumFound = data.response.numFound;
-      recentFetched += 6;
-      let added = 0;
-      if (fresh.length > 0) {
-        const known = new Set([
-          ...currentRecentDocs.map(d => String(d.shiurID || d.shiurid || d.id || '')),
-          ...currentSearchDocs.map(d => String(d.shiurID || d.shiurid || d.id || ''))
-        ]);
-        for (const d of fresh) {
-          const id = String(d.shiurID || d.shiurid || d.id || '');
-          if (id && !known.has(id)) {
-            known.add(id);
-            currentRecentDocs.push(d);
-            added++;
-          }
-        }
-        if (added > 0) recentVisibleCount += added;
-      }
-      // Exhausted only on true under-delivery. Fully-overlapping windows
-      // merely add nothing while the offset still advances past them.
-      if (fresh.length < 6) recentExhausted = true;
-      renderCurrentSearchResults();
-      const rb = document.getElementById('loadMoreRecentBtn');
-      if (rb && rb.scrollIntoView) rb.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    } catch (err) {
-      if (myRecentReq !== recentReqSeq) return;
-      console.error('Failed to load more recent results:', err);
-      if (btn) btn.disabled = false;
-      if (btnText) btnText.textContent = '🔽 Load More Recent';
-      if (spinner) spinner.style.display = 'none';
-    } finally {
-      if (myRecentReq === recentReqSeq) isLoadingMoreRecent = false;
-    }
   }
 
   function goHome(e) {
@@ -8652,6 +9069,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
     document.getElementById('advKeywords').value = activeAdvancedFilters.keywords || '';
     document.getElementById('advYearSelect').value = activeAdvancedFilters.year || '';
+    // datetime-local needs a full "YYYY-MM-DDTHH:MM": pad date-only values
+    // (e.g. from quick presets) so the round trip survives Apply.
+    function padDateTime(v) {
+      if (!v) return '';
+      return v.length === 10 ? v + 'T00:00' : v;
+    }
+    const advFrom = document.getElementById('advFromDateTime');
+    if (advFrom) advFrom.value = padDateTime(activeAdvancedFilters.fromDate || '');
+    const advTo = document.getElementById('advToDateTime');
+    if (advTo) advTo.value = padDateTime(activeAdvancedFilters.toDate || '');
     const phonToggle = document.getElementById('advPhoneticsToggle');
     if (phonToggle) {
       phonToggle.checked = activeAdvancedFilters.enablePhonetics !== false;
@@ -8887,6 +9314,30 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   // Initialize listeners on DOMContentLoaded
   document.addEventListener('DOMContentLoaded', () => {
+    // Restore persisted cards/rows view before first paint matters.
+    try {
+      if (localStorage.getItem('yutorah_card_view') === 'rows') setCardView('rows');
+      else setCardView('cards');
+    } catch (e) {}
+    // Hydrate date bounds from the URL (?fromDate=&toDate=&dateQuick=) so a
+    // reload or shared link keeps the active date filter + chip state.
+    try {
+      const bp = new URLSearchParams(window.location.search);
+      const bFrom = bp.get('fromDate') || '';
+      const bTo = bp.get('toDate') || '';
+      const bQ = bp.get('dateQuick') || '';
+      if (bFrom || bTo) {
+        activeAdvancedFilters.fromDate = bFrom;
+        activeAdvancedFilters.toDate = bTo;
+        const okQuick = (bQ === 'today' || bQ === 'yesterday' || bQ === 'week' || bQ === 'month') ? bQ : '';
+        activeAdvancedFilters.dateQuick = okQuick;
+        const qLabels = { today: 'Today', yesterday: 'Yesterday', week: 'This Week', month: 'This Month' };
+        activeAdvancedFilters.dateQuickLabel = qLabels[okQuick] || '';
+        if (!okQuick) {
+          activeAdvancedFilters.dateRangeLabel = (bFrom || '…') + ' → ' + (bTo || '…');
+        }
+      }
+    } catch (e) {}
     // SSR search grids render flat relevance only: re-render on boot so the
     // Recent rail + resolution disclaimer + did-you-mean strip materialize
     // from hydrated state (including zero-hit states).
@@ -8943,6 +9394,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   function resetAdvancedFilters() {
     document.getElementById('advKeywords').value = '';
     document.getElementById('advYearSelect').value = '';
+    const rFrom = document.getElementById('advFromDateTime');
+    if (rFrom) rFrom.value = '';
+    const rTo = document.getElementById('advToDateTime');
+    if (rTo) rTo.value = '';
+    // Clear the in-memory quick preset too, or Reset→Apply would resurrect
+    // a highlighted chip with no date bounds behind it.
+    activeAdvancedFilters.dateQuick = '';
+    activeAdvancedFilters.dateQuickLabel = '';
+    syncDateQuickChips();
     const phonToggle = document.getElementById('advPhoneticsToggle');
     if (phonToggle) {
       phonToggle.checked = true;
@@ -8985,6 +9445,33 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const phonToggle = document.getElementById('advPhoneticsToggle');
     const enablePhonetics = phonToggle ? phonToggle.checked : true;
 
+    // Custom date-time range (mutually exclusive with Year + quick presets:
+    // whichever is set wins, the others are cleared).
+    const fromDtEl = document.getElementById('advFromDateTime');
+    const toDtEl = document.getElementById('advToDateTime');
+    const fromDate = fromDtEl ? fromDtEl.value.trim() : '';
+    const toDate = toDtEl ? toDtEl.value.trim() : '';
+    let finalYear = year;
+    let finalYearLabel = yearLabel;
+    let dateQuick = activeAdvancedFilters.dateQuick || '';
+    let dateQuickLabel = activeAdvancedFilters.dateQuickLabel || '';
+    let dateRangeLabel = '';
+    function fmtDt(v) {
+      if (!v) return '…';
+      const parts = v.split('T');
+      return parts[0] + (parts[1] ? ' ' + parts[1] : '');
+    }
+    if (fromDate || toDate) {
+      finalYear = '';
+      finalYearLabel = '';
+      dateQuick = '';
+      dateQuickLabel = '';
+      dateRangeLabel = fmtDt(fromDate) + ' → ' + fmtDt(toDate);
+    } else if (finalYear) {
+      dateQuick = '';
+      dateQuickLabel = '';
+    }
+
     activeAdvancedFilters = {
       keywords: kw,
       teachers: [...modalTempFilters.teachers],
@@ -8994,8 +9481,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       minDuration,
       maxDuration,
       durationLabel,
-      year,
-      yearLabel,
+      year: finalYear,
+      yearLabel: finalYearLabel,
+      fromDate,
+      toDate,
+      dateQuick,
+      dateQuickLabel,
+      dateRangeLabel,
       mediaType,
       mediaTypeLabel,
       enablePhonetics
@@ -9053,6 +9545,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       pills.push('<span class="active-filter-pill">📅 ' + escapeHtml(activeAdvancedFilters.yearLabel || activeAdvancedFilters.year) + ' <button type="button" onclick="removeSingleFilter(&quot;year&quot;)" title="Remove">✕</button></span>');
     }
 
+    // Date-range pill (quick preset label or custom from→to label)
+    if (activeAdvancedFilters.fromDate || activeAdvancedFilters.toDate) {
+      const dl = activeAdvancedFilters.dateQuickLabel || activeAdvancedFilters.dateRangeLabel ||
+        ((activeAdvancedFilters.fromDate || '…') + ' → ' + (activeAdvancedFilters.toDate || '…'));
+      pills.push('<span class="active-filter-pill">🗓️ ' + escapeHtml(dl) + ' <button type="button" onclick="removeSingleFilter(&quot;dateRange&quot;)" title="Remove">✕</button></span>');
+    }
+
     // Media Format pill
     if (activeAdvancedFilters.mediaType && activeAdvancedFilters.mediaType !== 'all') {
       const icon = activeAdvancedFilters.mediaType === 'audio' ? '🎙️' : '📄';
@@ -9076,6 +9575,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       const advBtn = document.getElementById('advancedSearchBtn');
       if (advBtn) advBtn.classList.remove('active');
     }
+    syncDateQuickChips();
   }
 
   function toggleFilterPhonetics(enable) {
@@ -9104,8 +9604,76 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     } else if (type === 'mediaType') {
       activeAdvancedFilters.mediaType = 'all';
       activeAdvancedFilters.mediaTypeLabel = '';
+    } else if (type === 'dateRange') {
+      activeAdvancedFilters.fromDate = '';
+      activeAdvancedFilters.toDate = '';
+      activeAdvancedFilters.dateQuick = '';
+      activeAdvancedFilters.dateQuickLabel = '';
+      activeAdvancedFilters.dateRangeLabel = '';
+      syncDateQuickChips();
     }
     executeLiveSearch(activeAdvancedFilters.keywords || '', { ...activeAdvancedFilters });
+  }
+
+  function fmtLocalDate(d) {
+    const p = n => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+  }
+
+  // Quick date presets (Today / Yesterday / This Week / This Month).
+  // Mutually exclusive with Year select and the custom date-time range:
+  // setting one clears the others so filters can never empty-intersect.
+  function setDateQuick(preset, btn) {
+    document.querySelectorAll('.date-quick-chip').forEach(b => b.classList.toggle('selected', b === btn || (b.dataset && b.dataset.preset === preset)));
+    const now = new Date();
+    const today = fmtLocalDate(now);
+    let from = '';
+    let to = '';
+    let label = '';
+    if (preset === 'today') {
+      from = today;
+      to = today;
+      label = 'Today';
+    } else if (preset === 'yesterday') {
+      const y = new Date(now);
+      y.setDate(y.getDate() - 1);
+      from = fmtLocalDate(y);
+      to = from;
+      label = 'Yesterday';
+    } else if (preset === 'week') {
+      const s = new Date(now);
+      s.setDate(s.getDate() - s.getDay());
+      from = fmtLocalDate(s);
+      to = today;
+      label = 'This Week';
+    } else if (preset === 'month') {
+      from = today.slice(0, 7) + '-01';
+      to = today;
+      label = 'This Month';
+    }
+    activeAdvancedFilters.fromDate = from;
+    activeAdvancedFilters.toDate = to;
+    activeAdvancedFilters.dateQuick = preset === 'all' ? '' : preset;
+    activeAdvancedFilters.dateQuickLabel = label;
+    activeAdvancedFilters.dateRangeLabel = '';
+    if (preset !== 'all') {
+      activeAdvancedFilters.year = '';
+      activeAdvancedFilters.yearLabel = '';
+      const ys = document.getElementById('advYearSelect');
+      if (ys) ys.value = '';
+      const fdt = document.getElementById('advFromDateTime');
+      if (fdt) fdt.value = '';
+      const tdt = document.getElementById('advToDateTime');
+      if (tdt) tdt.value = '';
+    }
+    executeLiveSearch(activeAdvancedFilters.keywords || searchInput.value.trim(), { ...activeAdvancedFilters });
+  }
+
+  function syncDateQuickChips() {
+    const cur = (activeAdvancedFilters && activeAdvancedFilters.dateQuick) || 'all';
+    document.querySelectorAll('.date-quick-chip').forEach(b => {
+      b.classList.toggle('selected', (b.dataset && b.dataset.preset) === cur);
+    });
   }
 
   function clearAllFilters() {
@@ -9120,10 +9688,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       durationLabel: '',
       year: '',
       yearLabel: '',
+      fromDate: '',
+      toDate: '',
+      dateQuick: '',
+      dateQuickLabel: '',
+      dateRangeLabel: '',
       mediaType: 'all',
       mediaTypeLabel: '',
       enablePhonetics: true
     };
+    syncDateQuickChips();
     executeLiveSearch(searchInput.value.trim(), {});
   }
 
@@ -9135,10 +9709,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     recentNumFound = 0;
     currentDidYouMean = [];
     currentQueryResolution = null;
-    recentVisibleCount = 3;
-    recentExhausted = false;
-    recentReqSeq++;
-    recentFetched = 3;
     currentLoadedDocsCount = 0;
     totalSearchResults = 0;
     isLoadingMore = false;
@@ -9172,11 +9742,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     loadMoreBox.style.display = 'none';
     if (phoneticBanner) phoneticBanner.style.display = 'none';
 
-    // Update browser URL without reload
+    // Update browser URL without reload (search + date bounds survive reload)
     const newUrl = new URL(window.location.href);
     newUrl.pathname = '/';
     if (query) newUrl.searchParams.set('search', query);
     else newUrl.searchParams.delete('search');
+    if (extraParams.fromDate) newUrl.searchParams.set('fromDate', extraParams.fromDate);
+    else newUrl.searchParams.delete('fromDate');
+    if (extraParams.toDate) newUrl.searchParams.set('toDate', extraParams.toDate);
+    else newUrl.searchParams.delete('toDate');
+    if (extraParams.dateQuick) newUrl.searchParams.set('dateQuick', extraParams.dateQuick);
+    else newUrl.searchParams.delete('dateQuick');
     newUrl.searchParams.delete('shiurId');
     newUrl.searchParams.delete('id');
     history.pushState({ search: query, ...extraParams }, '', newUrl.toString());
@@ -9212,6 +9788,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (extraParams.minDuration) apiUrl += '&minDuration=' + encodeURIComponent(extraParams.minDuration);
     if (extraParams.maxDuration) apiUrl += '&maxDuration=' + encodeURIComponent(extraParams.maxDuration);
     if (extraParams.year) apiUrl += '&year=' + encodeURIComponent(extraParams.year);
+    if (extraParams.fromDate) apiUrl += '&fromDate=' + encodeURIComponent(extraParams.fromDate);
+    if (extraParams.toDate) apiUrl += '&toDate=' + encodeURIComponent(extraParams.toDate);
     if (extraParams.mediaType && extraParams.mediaType !== 'all') {
       apiUrl += '&mediaType=' + encodeURIComponent(extraParams.mediaType);
     }
@@ -9235,8 +9813,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       recentNumFound = data?.response?.recentNumFound || 0;
       currentDidYouMean = data?.didYouMean || [];
       currentQueryResolution = data?.queryResolution || null;
-      recentVisibleCount = 3;
-      recentExhausted = false;
 
       // Handle Phonetic Expansion Notice
       if (data?.phoneticExpansion && !useClassicSearch) {
@@ -9274,7 +9850,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         loadMoreBox.style.display = 'none';
         return;
       }
-      currentDidYouMean = [];
+      // Keep the server's weak-hit suggestions: renderCurrentSearchResults
+      // appends the strip BELOW the list when 1+ weak hits exist (§5.4).
 
       currentSearchDocs = docs;
       renderCurrentSearchResults();
@@ -9345,6 +9922,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (currentFilterParams.minDuration) apiUrl += '&minDuration=' + encodeURIComponent(currentFilterParams.minDuration);
     if (currentFilterParams.maxDuration) apiUrl += '&maxDuration=' + encodeURIComponent(currentFilterParams.maxDuration);
     if (currentFilterParams.year) apiUrl += '&year=' + encodeURIComponent(currentFilterParams.year);
+    if (currentFilterParams.fromDate) apiUrl += '&fromDate=' + encodeURIComponent(currentFilterParams.fromDate);
+    if (currentFilterParams.toDate) apiUrl += '&toDate=' + encodeURIComponent(currentFilterParams.toDate);
     if (currentFilterParams.mediaType && currentFilterParams.mediaType !== 'all') {
       apiUrl += '&mediaType=' + encodeURIComponent(currentFilterParams.mediaType);
     }
@@ -9393,6 +9972,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (e.key === 'Escape') {
       closeAdvancedModal();
       closeSearchPreview();
+      closeConfirmModal();
+      closePlaylistModal();
+      const qp = document.getElementById('queuePopup');
+      if (qp) qp.style.display = 'none';
     }
   });
 
@@ -9414,9 +9997,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     recentNumFound = 0;
     currentDidYouMean = [];
     currentQueryResolution = null;
-    recentVisibleCount = 3;
-    recentExhausted = false;
-    recentFetched = 3;
     currentPhoneticTokens = [];
     currentSearchPage = 1;
     showMatchReasons = false;
@@ -9443,10 +10023,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       durationLabel: '',
       year: '',
       yearLabel: '',
+      fromDate: '',
+      toDate: '',
+      dateQuick: '',
+      dateQuickLabel: '',
+      dateRangeLabel: '',
       mediaType: 'all',
       mediaTypeLabel: '',
       enablePhonetics: true
     };
+    syncDateQuickChips();
     const advBtn = document.getElementById('advancedSearchBtn');
     if (advBtn) advBtn.classList.remove('active');
 
@@ -9570,7 +10156,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         '<span>' + bottomMeta + '</span>' +
         actionBadge +
       '</div>' +
-      (typeof devCardActionsHtml === 'function' ? devCardActionsHtml(String(id)) : '') +
+      (typeof devCardActionsHtml === 'function' ? devCardActionsHtml(String(id), Boolean(options.isCover)) : '') +
       (typeof devProgressHtml === 'function' ? devProgressHtml(String(id)) : '') +
     '</a>';
   }
@@ -9630,14 +10216,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     const cover = item.cover;
     const subDocs = item.subDocs;
+    const coverId = String(cover.shiurid || cover.shiurID || cover.id || '');
+    if (coverId && typeof devSeriesCache !== 'undefined') {
+      devSeriesCache[coverId] = { title: item.title || 'Series', docs: item.docs || [] };
+    }
     const drawerId = 'series_drawer_' + (cover.shiurid || cover.shiurID || cover.id || '') + '_' + Math.random().toString(36).substring(2, 7);
     const coverHtml = renderDocToCard(cover, { isCover: true, seriesTitle: item.title, seriesCount: item.docs.length });
     const subCardsHtml = subDocs.map((sub, idx) => renderSeriesSubCard(sub, idx + 2)).join('');
 
     return '<div class="quick-card-series-group">' +
       coverHtml +
-      '<button type="button" class="series-expand-btn" data-drawer-target="' + drawerId + '" data-sub-count="' + subDocs.length + '" onclick="toggleSeriesDrawer(event, this.dataset.drawerTarget)">' +
-        '<span class="series-expand-icon">➕</span> <span class="series-expand-text">View ' + subDocs.length + ' more in series</span>' +
+      '<button type="button" class="series-expand-btn" data-drawer-target="' + drawerId + '" data-sub-count="' + subDocs.length + '" data-series-title="' + escapeHtml(item.title || '') + '" onclick="toggleSeriesDrawer(event, this.dataset.drawerTarget)">' +
+        '<span class="series-expand-icon">➕</span> <span class="series-expand-text">View ' + subDocs.length + ' more in \u2018' + escapeHtml(item.title || 'this') + '\u2019 Series</span>' +
       '</button>' +
       '<div id="' + drawerId + '" class="series-drawer" style="display: none;">' +
         subCardsHtml +
@@ -9752,8 +10342,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         photo: photo,
         duration: duration,
         date: date,
+        dateISO: rawDate || '',
         isArticle: isArticle
       });
+      try { if (typeof devRefreshCardButtons === 'function') devRefreshCardButtons(); } catch (e) {}
 
       // Render rich metadata immediately
       renderMetadataBox(data);
@@ -9834,6 +10426,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       console.error('Failed to load shiur:', err);
       document.getElementById('shiurTitle').textContent = 'Error loading shiur #' + id;
       document.getElementById('shiurSpeaker').textContent = 'Please check the ID or try again.';
+      try { if (typeof devRefreshCardButtons === 'function') devRefreshCardButtons(); } catch (e) {}
     }
   }
 
@@ -9940,8 +10533,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         photo: shiur.photo || '',
         duration: shiur.duration || '',
         date: shiur.date || '',
+        dateISO: shiur.dateISO || '',
         category: shiur.category || '',
-        isArticle: Boolean(shiur.isArticle)
+        isArticle: Boolean(shiur.isArticle),
+        listenedAt: Date.now()
       });
       if (history.length > 24) history = history.slice(0, 24);
       localStorage.setItem('yutorah_recent_history', JSON.stringify(history));
@@ -10146,7 +10741,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   function toggleDevSave(id) {
     const want = !devInPlaylist('save_for_later', id);
     if (devSetMembership('save_for_later', id, want)) {
-      flashToast(want ? '🕒 Saved for Later' : '🕒 Removed from Save for Later', !want, false);
+      // Silent by design: the button recolor is the only feedback.
       devRefreshCardButtons();
       if (document.getElementById('grid-playlists') && document.getElementById('grid-playlists').style.display !== 'none') renderPlaylistsGrid();
     }
@@ -10155,7 +10750,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   function toggleDevFav(id) {
     const want = !devInPlaylist('favorites', id);
     if (devSetMembership('favorites', id, want)) {
-      flashToast(want ? '⭐ Added to Favorites' : '⭐ Removed from Favorites', !want, false);
+      // Silent by design: the button recolor is the only feedback.
       devRefreshCardButtons();
       if (document.getElementById('grid-playlists') && document.getElementById('grid-playlists').style.display !== 'none') renderPlaylistsGrid();
     }
@@ -10165,13 +10760,43 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     document.querySelectorAll('[data-dev-save]').forEach(el => {
       const on = devInPlaylist('save_for_later', el.getAttribute('data-dev-save'));
       el.classList.toggle('active-save', on);
-      el.textContent = on ? '🕒 Saved' : '🕒 Later';
+      el.title = on ? 'Saved for later' : 'Save for later';
     });
     document.querySelectorAll('[data-dev-fav]').forEach(el => {
       const on = devInPlaylist('favorites', el.getAttribute('data-dev-fav'));
       el.classList.toggle('active-fav', on);
-      el.textContent = on ? '⭐ Saved' : '☆ Fav';
+      el.title = on ? 'In favorites' : 'Add to favorites';
     });
+    document.querySelectorAll('[data-dev-queue]').forEach(el => {
+      const qid = el.getAttribute('data-dev-queue');
+      const isCoverBtn = el.getAttribute('data-dev-cover') === '1';
+      const on = isCoverBtn ? devSeriesQueued(qid) : devInQueue(qid);
+      el.classList.toggle('active-save', on);
+      el.title = on ? 'In play queue' : 'Add to play queue';
+    });
+    // Player-header buttons track the currently loaded shiur.
+    try {
+      if (typeof currentShiurId !== 'undefined' && currentShiurId) {
+        const ps = document.getElementById('devPlayerSaveBtn');
+        if (ps) {
+          const on = devInPlaylist('save_for_later', String(currentShiurId));
+          ps.classList.toggle('active-save', on);
+          ps.title = on ? 'Saved for later' : 'Save for later';
+        }
+        const pf = document.getElementById('devPlayerFavBtn');
+        if (pf) {
+          const on = devInPlaylist('favorites', String(currentShiurId));
+          pf.classList.toggle('active-fav', on);
+          pf.title = on ? 'In favorites' : 'Add to favorites';
+        }
+        const pq = document.getElementById('devPlayerQueueBtn');
+        if (pq) {
+          const on = devInQueue(String(currentShiurId));
+          pq.classList.toggle('active-save', on);
+          pq.title = on ? 'In play queue' : 'Add to play queue';
+        }
+      }
+    } catch (e) {}
   }
 
   // Fundamental-cards guarantee (§8): server-rendered cards (homepage
@@ -10215,8 +10840,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       const id = devSnapshotFromCard(link);
       if (!id) return;
       if (!link.querySelector('.card-mini-actions')) {
+        const isCoverLink = Boolean(link.querySelector('.series-cover-badge'));
         const tmp = document.createElement('div');
-        tmp.innerHTML = devCardActionsHtml(String(id)) + devProgressHtml(String(id));
+        tmp.innerHTML = devCardActionsHtml(String(id), isCoverLink) + devProgressHtml(String(id));
         while (tmp.firstChild) link.appendChild(tmp.firstChild);
       } else {
         // Refresh stale progress: add the bar if the first upgrade ran
@@ -10318,16 +10944,21 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       ' · ' + cur + '/' + tot + ' min through (' + pct + '%)</div></div>';
   }
 
-  function devCardActionsHtml(id) {
+  function devCardActionsHtml(id, isCover) {
     if (!isDevMode) return '';
     const inSave = devInPlaylist('save_for_later', id);
     const inFav = devInPlaylist('favorites', id);
+    const inQ = isCover ? devSeriesQueued(id) : devInQueue(id);
+    const qLabel = isCover ? '⏭ Series' : '⏭ Queue';
+    const qCall = isCover ? 'devQueueToggle(\\\'' + id + '\\\', true, this)' : 'devQueueToggle(\\\'' + id + '\\\', false, this)';
     return '<div class="card-mini-actions dev-only">' +
       '<span role="button" tabindex="0" class="card-mini-btn' + (inSave ? ' active-save' : '') + '" data-dev-save="' + id + '"' +
-      ' onclick="event.stopPropagation(); event.preventDefault(); toggleDevSave(\\'' + id + '\\')">' + (inSave ? '🕒 Saved' : '🕒 Later') + '</span>' +
+      ' onclick="event.stopPropagation(); event.preventDefault(); toggleDevSave(\\\'' + id + '\\\')">🕒 Later</span>' +
       '<span role="button" tabindex="0" class="card-mini-btn' + (inFav ? ' active-fav' : '') + '" data-dev-fav="' + id + '"' +
-      ' onclick="event.stopPropagation(); event.preventDefault(); toggleDevFav(\\'' + id + '\\')">' + (inFav ? '⭐ Saved' : '☆ Fav') + '</span>' +
-      '<span role="button" tabindex="0" class="card-mini-btn" onclick="event.stopPropagation(); event.preventDefault(); openPlaylistModal(\\'' + id + '\\')">➕ Playlist</span>' +
+      ' onclick="event.stopPropagation(); event.preventDefault(); toggleDevFav(\\\'' + id + '\\\')">☆ Fav</span>' +
+      '<span role="button" tabindex="0" class="card-mini-btn' + (inQ ? ' active-save' : '') + '" data-dev-queue="' + id + '"' + (isCover ? ' data-dev-cover="1"' : '') +
+      ' onclick="event.stopPropagation(); event.preventDefault(); ' + qCall + '">' + qLabel + '</span>' +
+      '<span role="button" tabindex="0" class="card-mini-btn" onclick="event.stopPropagation(); event.preventDefault(); openPlaylistModal(\\\'' + id + '\\\')">➕ Playlist</span>' +
       '</div>';
   }
 
@@ -10422,6 +11053,31 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const grid = document.getElementById('grid-playlists');
     if (!grid || !isDevMode) return;
     const store = getDevStore();
+    // Queue pseudo-view ('queue' is not a stored playlist).
+    if (activeDevPlaylistId === 'queue') {
+      const qpills = devPlaylistIds(store).map(pid => {
+        const p = getDevPlaylist(store, pid);
+        if (!p) return '';
+        const n = (p.items || []).length;
+        return '<button type="button" class="playlist-pill"' +
+      ' onclick="activeDevPlaylistId=\\'' + pid + '\\'; renderPlaylistsGrid();">' +
+          escapeHtml(p.icon || '📁') + ' ' + escapeHtml(p.name) + ' (' + n + ')</button>';
+      }).join('');
+      const qq = getDevQueue();
+      let qhtml = '<div class="playlist-pills">' + qpills +
+        '<button type="button" class="playlist-pill active" onclick="activeDevPlaylistId=\\'queue\\'; renderPlaylistsGrid();">📋 Queue (' + qq.length + ')</button>' +
+        '<button type="button" class="playlist-pill" onclick="devPromptNewPlaylist()">➕ New Playlist</button></div>';
+      qhtml += '<div class="search-results-subheading"><span>📋</span><span>Play Queue</span>' +
+        '<span class="sub-count">' + qq.length + (qq.length === 1 ? ' item' : ' items') + ' · auto-plays next</span></div>';
+      if (qq.length > 0) {
+        qhtml += '<div style="grid-column:1/-1; margin-bottom:8px; display:flex; gap:8px;">' +
+          '<button type="button" class="card-mini-btn" onclick="devPlayNextFromQueue()">▶ Play Next Now</button>' +
+          '<button type="button" class="card-mini-btn" onclick="devQueueClear()">Clear Queue</button></div>';
+      }
+      qhtml += '<div style="grid-column:1/-1;">' + devQueueListHtml() + '</div>';
+      grid.innerHTML = qhtml;
+      return;
+    }
     if (!getDevPlaylist(store, activeDevPlaylistId)) activeDevPlaylistId = 'history';
     const pl = getDevPlaylist(store, activeDevPlaylistId);
     const pills = devPlaylistIds(store).map(pid => {
@@ -10434,7 +11090,20 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }).join('');
     let html = '<div class="playlist-pills">' + pills +
       '<button type="button" class="playlist-pill" onclick="devPromptNewPlaylist()">➕ New Playlist</button></div>';
-    const items = (pl && pl.items) || [];
+    let items = (pl && pl.items) || [];
+    // History sort: last-listened (default, recency of play) vs shiur date.
+    let historySort = 'listened';
+    try { historySort = localStorage.getItem('yutorah_history_sort') || 'listened'; } catch (e) {}
+    if (pl && pl.isHistory) {
+      if (historySort !== 'shiurdate') historySort = 'listened';
+      if (historySort === 'shiurdate') {
+        items = [...items].sort((a, b) => String(b.dateISO || b.date || '').localeCompare(String(a.dateISO || a.date || '')));
+      }
+      html += '<div style="grid-column:1/-1; margin-bottom:8px; display:flex; gap:6px; align-items:center; flex-wrap:wrap;">' +
+        '<span style="font-size:12px; font-weight:700; color:var(--text-muted);">Order:</span>' +
+        '<button type="button" class="card-mini-btn' + (historySort === 'listened' ? ' active-save' : '') + '" onclick="setHistorySort(\\'listened\\')">🕒 Last Listened</button>' +
+        '<button type="button" class="card-mini-btn' + (historySort === 'shiurdate' ? ' active-save' : '') + '" onclick="setHistorySort(\\'shiurdate\\')">📅 Shiur Date</button></div>';
+    }
     html += '<div class="search-results-subheading"><span>' + escapeHtml((pl && pl.icon) || '📁') + '</span>' +
       '<span>' + escapeHtml((pl && pl.name) || '') + '</span>' +
       '<span class="sub-count">' + items.length + ' Shiurim • ' + escapeHtml(devTotalDuration(items)) + '</span></div>';
@@ -10491,15 +11160,392 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     } catch (e) {}
   }
 
+  function setHistorySort(mode) {
+    try { localStorage.setItem('yutorah_history_sort', mode === 'shiurdate' ? 'shiurdate' : 'listened'); } catch (e) {}
+    renderPlaylistsGrid();
+  }
+
+  // Generic in-app confirm dialog (no system popups): title + body text,
+  // Cancel / confirmLabel buttons; onConfirm runs on confirmation.
+  let devConfirmCb = null;
+  function openConfirmModal(opts) {
+    closeConfirmModal();
+    const o = opts || {};
+    const overlay = document.createElement('div');
+    overlay.id = 'confirmModal';
+    overlay.style.cssText = 'position:fixed; inset:0; z-index:10000; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; padding:16px;';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', o.title || 'Confirm');
+    const box = document.createElement('div');
+    box.style.cssText = 'background:var(--card,#fff); color:var(--text,#111); border-radius:14px; max-width:400px; width:100%; padding:20px; border:1px solid var(--border-light);';
+    box.innerHTML = '<div style="font-weight:800; font-size:16px; margin-bottom:8px;">' + escapeHtml(o.title || 'Are you sure?') + '</div>' +
+      '<div style="font-size:14px; color:var(--text-muted); margin-bottom:16px;">' + escapeHtml(o.body || '') + '</div>' +
+      '<div style="display:flex; gap:8px; justify-content:flex-end;">' +
+      '<button type="button" class="card-mini-btn" id="confirmModalCancel">Cancel</button>' +
+      '<button type="button" class="card-mini-btn active-save" id="confirmModalOk">' + escapeHtml(o.confirmLabel || 'Confirm') + '</button></div>';
+    overlay.appendChild(box);
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeConfirmModal(); });
+    document.body.appendChild(overlay);
+    devConfirmCb = (typeof o.onConfirm === 'function') ? o.onConfirm : null;
+    box.querySelector('#confirmModalCancel').addEventListener('click', closeConfirmModal);
+    box.querySelector('#confirmModalOk').addEventListener('click', () => {
+      const cb = devConfirmCb;
+      devConfirmCb = null;
+      closeConfirmModal();
+      if (cb) cb();
+    });
+  }
+
+  function closeConfirmModal() {
+    devConfirmCb = null;
+    const m = document.getElementById('confirmModal');
+    if (m) m.remove();
+  }
+
   function devDeletePlaylist() {
     const store = getDevStore();
     const pl = store.custom[activeDevPlaylistId];
     if (!pl) return;
-    if (!window.confirm('Delete playlist "' + pl.name + '"? Shiurim stay in your other playlists.')) return;
-    delete store.custom[activeDevPlaylistId];
-    activeDevPlaylistId = 'history';
-    saveDevStore(store);
-    renderPlaylistsGrid();
+    openConfirmModal({
+      title: 'Delete Playlist',
+      body: 'Delete "' + pl.name + '"? Shiurim stay in your other playlists.',
+      confirmLabel: '🗑️ Delete',
+      onConfirm: () => {
+        const s = getDevStore();
+        delete s.custom[activeDevPlaylistId];
+        activeDevPlaylistId = 'history';
+        saveDevStore(s);
+        renderPlaylistsGrid();
+      }
+    });
+  }
+
+  var DEV_QUEUE_KEY = 'yutorah_dev_queue';
+  var devSeriesCache = {};
+
+  // Play queue (Dev Mode): ordered top→bottom, auto-plays next on track end.
+  // Items are shiur snapshots or { kind:'series', seriesTitle, items:[...] }
+  // series entries expand in place when they reach the front.
+  function getDevQueue() {
+    try {
+      const q = JSON.parse(localStorage.getItem(DEV_QUEUE_KEY) || '[]');
+      return Array.isArray(q) ? q : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveDevQueue(q) {
+    try {
+      localStorage.setItem(DEV_QUEUE_KEY, JSON.stringify(q || []));
+    } catch (e) {
+      if (e && (e.name === 'QuotaExceededError' || e.code === 22)) {
+        flashToast('⚠️ Storage full — queue change was NOT saved', true, false);
+      }
+    }
+    renderQueuePopup();
+    if (document.getElementById('grid-playlists') && activeDevPlaylistId === 'queue') renderPlaylistsGrid();
+  }
+
+  function devQueueFlatIds() {
+    const ids = new Set();
+    for (const it of getDevQueue()) {
+      if (it.kind === 'series') (it.items || []).forEach(s => ids.add(String(s.id)));
+      else if (it.id) ids.add(String(it.id));
+    }
+    return ids;
+  }
+
+  function devInQueue(id) {
+    return devQueueFlatIds().has(String(id));
+  }
+
+  function devQueueAdd(id) {
+    const sid = String(id);
+    if (devInQueue(sid)) return true;
+    const snap = devSnapshot(sid);
+    if (!snap) return false;
+    const q = getDevQueue();
+    snap.queuedAt = Date.now();
+    q.push(snap);
+    saveDevQueue(q);
+    devRefreshCardButtons();
+    return true;
+  }
+
+  function devQueueAddSeries(coverId, coverBtn) {
+    const cid = String(coverId);
+    // Toggle off: a queued series removes as one unit.
+    const q0 = getDevQueue();
+    if (q0.some(it => it.kind === 'series' && String(it.coverId || '') === cid)) {
+      saveDevQueue(q0.filter(it => !(it.kind === 'series' && String(it.coverId || '') === cid)));
+      devRefreshCardButtons();
+      return true;
+    }
+    // Fast path: client-grouped docs cached at render time.
+    const entry = devSeriesCache[cid];
+    if (entry && entry.docs && entry.docs.length > 0) {
+      const already = devQueueFlatIds();
+      const items = entry.docs.map(d => {
+        const did = String(d.shiurid || d.shiurID || d.id || '');
+        return {
+          id: did,
+          title: d.shiurtitle || d.shiurTitle || d.title || 'Untitled',
+          speaker: d.teacherfullname || (d.shiurTeachers && d.shiurTeachers[0] ? d.shiurTeachers[0].teacherFullName : (d.speaker || 'YUTorah')),
+          photo: d.photo || '',
+          duration: d.durationformatted || (d.duration ? d.duration + ' min' : ''),
+          queuedAt: Date.now()
+        };
+      }).filter(s => s.id && !already.has(s.id));
+      if (items.length === 0) return false;
+      const q = getDevQueue();
+      q.push({ kind: 'series', coverId: cid, seriesTitle: entry.title || 'Series', items: items, queuedAt: Date.now() });
+      saveDevQueue(q);
+      devRefreshCardButtons();
+      return true;
+    }
+    // Fallback (SSR covers have no cached docs): scrape the drawer's
+    // sub-card anchors from the DOM — same snapshots as single adds.
+    let drawer = null;
+    try {
+      const scope = (coverBtn && coverBtn.closest) ? coverBtn.closest('.quick-card-series-group') : null;
+      const coverLink = scope
+        ? scope.querySelector('a.quick-card-link[data-id="' + cid + '"]')
+        : document.querySelector('a.quick-card-link[data-id="' + cid + '"]');
+      const group = coverLink && coverLink.closest ? coverLink.closest('.quick-card-series-group') : null;
+      drawer = group ? group.querySelector('.series-drawer') : null;
+    } catch (e) { drawer = null; }
+    if (drawer) {
+      const already = devQueueFlatIds();
+      const items = [];
+      drawer.querySelectorAll('a.series-sub-card[data-id]').forEach(a => {
+        const sid = a.getAttribute('data-id');
+        if (!sid || already.has(String(sid))) return;
+        devSnapshotFromCard(a);
+        const snap = devDocCache[String(sid)];
+        if (snap) {
+          items.push({ id: String(sid), title: snap.title, speaker: snap.speaker, photo: snap.photo, duration: snap.duration, queuedAt: Date.now() });
+          already.add(String(sid));
+        }
+      });
+      // Include the cover itself as part one (null-safe: cover may be gone).
+      if (!already.has(cid)) {
+        const coverLink = coverLinkSafe(cid);
+        if (coverLink) {
+          devSnapshotFromCard(coverLink);
+          const csnap = devDocCache[cid];
+          if (csnap) items.unshift({ id: cid, title: csnap.title, speaker: csnap.speaker, photo: csnap.photo, duration: csnap.duration, queuedAt: Date.now() });
+        }
+      }
+      if (items.length === 0) return false;
+      // Series title from the drawer's own expander button (scoped lookup).
+      let sTitle = 'Series';
+      try {
+        const scopeGroup = drawer.closest ? drawer.closest('.quick-card-series-group') : null;
+        const titleBtn = scopeGroup ? scopeGroup.querySelector('[data-series-title]') : null;
+        if (titleBtn && titleBtn.getAttribute) sTitle = titleBtn.getAttribute('data-series-title') || sTitle;
+      } catch (e) {}
+      const q = getDevQueue();
+      q.push({ kind: 'series', coverId: cid, seriesTitle: sTitle, items: items, queuedAt: Date.now() });
+      saveDevQueue(q);
+      devRefreshCardButtons();
+      return true;
+    }
+    return devQueueAdd(cid);
+  }
+
+  function coverLinkSafe(cid) {
+    try {
+      return document.querySelector('a.quick-card-link[data-id="' + cid + '"]');
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function devSeriesQueued(coverId) {
+    const cid = String(coverId);
+    return getDevQueue().some(it => it.kind === 'series' && String(it.coverId || '') === cid);
+  }
+
+  function devQueueToggle(id, isCover, btn) {
+    if (isCover) {
+      devQueueAddSeries(id, btn || null);
+      return;
+    }
+    if (devInQueue(id)) {
+      devQueueRemoveId(id);
+    } else {
+      devQueueAdd(id);
+    }
+  }
+
+  function devQueueRemoveId(id) {
+    const sid = String(id);
+    const q = getDevQueue().map(it => {
+      if (it.kind === 'series') {
+        return { ...it, items: (it.items || []).filter(s => String(s.id) !== sid) };
+      }
+      return it;
+    }).filter(it => it.kind === 'series' ? (it.items && it.items.length > 0) : String(it.id) !== sid);
+    saveDevQueue(q);
+    devRefreshCardButtons();
+  }
+
+  function devQueueRemoveAt(idx) {
+    const q = getDevQueue();
+    if (idx < 0 || idx >= q.length) return;
+    q.splice(idx, 1);
+    saveDevQueue(q);
+    devRefreshCardButtons();
+  }
+
+  function devQueueMove(idx, dir) {
+    const q = getDevQueue();
+    const j = idx + dir;
+    if (idx < 0 || idx >= q.length || j < 0 || j >= q.length) return;
+    const tmp = q[idx];
+    q[idx] = q[j];
+    q[j] = tmp;
+    saveDevQueue(q);
+  }
+
+  function devQueueMoveTo(fromIdx, toIdx) {
+    const q = getDevQueue();
+    if (fromIdx < 0 || fromIdx >= q.length) return;
+    toIdx = Math.max(0, Math.min(q.length - 1, toIdx));
+    if (fromIdx === toIdx) return;
+    const it = q.splice(fromIdx, 1)[0];
+    q.splice(toIdx, 0, it);
+    saveDevQueue(q);
+  }
+
+  function devQueueClear() {
+    const q = getDevQueue();
+    if (q.length === 0) return;
+    openConfirmModal({
+      title: 'Clear Queue',
+      body: 'Remove all ' + q.length + ' item' + (q.length === 1 ? '' : 's') + ' from the play queue?',
+      confirmLabel: '🗑️ Clear',
+      onConfirm: () => {
+        saveDevQueue([]);
+        devRefreshCardButtons();
+      }
+    });
+  }
+
+  // Shift the next playable shiur, expanding series entries in place.
+  // Returns { id, title } or null when the queue is empty (or dev is off).
+  function devQueuePopNext() {
+    if (!isDevMode) return null;
+    let q = getDevQueue();
+    while (q.length > 0) {
+      const head = q[0];
+      if (head.kind === 'series') {
+        const parts = (head.items || []).filter(s => s && s.id);
+        q.shift();
+        for (let i = parts.length - 1; i >= 0; i--) q.unshift(parts[i]);
+        saveDevQueue(q);
+        continue;
+      }
+      q.shift();
+      saveDevQueue(q);
+      const nid = String(head.id || '');
+      if (!nid) continue;
+      return { id: nid, title: head.title || 'Untitled' };
+    }
+    saveDevQueue(q);
+    return null;
+  }
+
+  function devPlayNextFromQueue() {
+    const next = devQueuePopNext();
+    if (!next) return false;
+    devRefreshCardButtons();
+    try {
+      const label = String(next.title || 'Untitled');
+      flashToast('▶ Up Next: ' + (label.length > 60 ? label.slice(0, 60) + '…' : label), false, false);
+    } catch (e) {}
+    playShiurById(null, next.id);
+    return true;
+  }
+
+  // Queue popup (mini-player ☰ + playlists tab share this renderer).
+  let devDragIdx = -1;
+  function toggleQueuePopup() {
+    if (!isDevMode) return;
+    const pop = document.getElementById('queuePopup');
+    if (!pop) return;
+    if (pop.style.display === 'none') {
+      renderQueuePopup();
+      pop.style.display = 'flex';
+    } else {
+      pop.style.display = 'none';
+    }
+  }
+
+  function devQueueListHtml() {
+    const q = getDevQueue();
+    if (q.length === 0) {
+      return '<div class="queue-empty">Queue is empty — tap ⏭ Queue on any card to line up what plays next.</div>';
+    }
+    return q.map((it, idx) => {
+      const isSeries = it.kind === 'series';
+      const title = isSeries ? ('📚 ' + (it.seriesTitle || 'Series') + ' (' + ((it.items || []).length) + ' parts)') : (it.title || 'Untitled');
+      const sub = isSeries ? 'Series — expands when reached' : ((it.speaker || 'YUTorah') + (it.duration ? ' · ' + it.duration : ''));
+      return '<div class="queue-row" draggable="true" data-qidx="' + idx + '"' +
+        ' ondragstart="devQueueDragStart(event, ' + idx + ')" ondragover="devQueueDragOver(event)" ondrop="devQueueDrop(event, ' + idx + ')" ondragend="devQueueDragEnd(event)">' +
+        '<span class="queue-handle" title="Drag to reorder">⠿</span>' +
+        '<span class="queue-pos">' + (idx + 1) + '</span>' +
+        '<div class="queue-main"><div class="queue-title">' + escapeHtml(title) + '</div>' +
+        '<div class="queue-sub">' + escapeHtml(sub) + '</div></div>' +
+        '<div class="queue-row-btns">' +
+        '<button type="button" class="card-mini-btn" onclick="devQueueMove(' + idx + ', -1)" title="Move up">▲</button>' +
+        '<button type="button" class="card-mini-btn" onclick="devQueueMove(' + idx + ', 1)" title="Move down">▼</button>' +
+        '<button type="button" class="card-mini-btn" onclick="devQueueRemoveAt(' + idx + ')" title="Remove">✕</button>' +
+        '</div></div>';
+    }).join('');
+  }
+
+  function renderQueuePopup() {
+    const pop = document.getElementById('queuePopup');
+    const list = document.getElementById('queueList');
+    const count = document.getElementById('queueCount');
+    if (!pop || !list) return;
+    if (!isDevMode) {
+      pop.style.display = 'none';
+      return;
+    }
+    const q = getDevQueue();
+    list.innerHTML = devQueueListHtml();
+    if (count) count.textContent = q.length === 1 ? '1 item' : q.length + ' items';
+  }
+
+  function devQueueDragStart(e, idx) {
+    devDragIdx = idx;
+    const row = e.target.closest ? e.target.closest('.queue-row') : null;
+    if (row) row.classList.add('dragging');
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setData('text/plain', String(idx)); } catch (err) {}
+    }
+  }
+
+  function devQueueDragOver(e) {
+    if (e.preventDefault) e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+  }
+
+  function devQueueDrop(e, idx) {
+    if (e.preventDefault) e.preventDefault();
+    if (e.stopPropagation) e.stopPropagation();
+    if (devDragIdx >= 0 && devDragIdx !== idx) devQueueMoveTo(devDragIdx, idx);
+    devDragIdx = -1;
+  }
+
+  function devQueueDragEnd() {
+    devDragIdx = -1;
+    document.querySelectorAll('.queue-row.dragging').forEach(el => el.classList.remove('dragging'));
   }
 
   function openPlaylistModal(id) {
@@ -10974,6 +12020,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
   });
 
+  // Cards / Rows view (persisted). Rows = one full-width row per shiur,
+  // yutorah.org style; applies to every shiur grid on the page.
+  function setCardView(view) {
+    const v = view === 'rows' ? 'rows' : 'cards';
+    document.body.classList.toggle('rows-view', v === 'rows');
+    if (document.documentElement) document.documentElement.classList.toggle('rows-view', v === 'rows');
+    try { localStorage.setItem('yutorah_card_view', v); } catch (e) {}
+    document.querySelectorAll('.view-toggle-btn').forEach(b => {
+      b.classList.toggle('selected', b.dataset && b.dataset.view === v);
+    });
+  }
+
   function switchCollection(activeName) {
     collections.forEach(name => {
       const tab = document.getElementById('tab-' + name);
@@ -11276,6 +12334,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     updatePlayPauseIcons(false);
     if (typeof devMarkCompleted === 'function' && !isSponsorPlaying) devMarkCompleted();
+    // Dev queue: auto-play the next queued shiur when a track ends.
+    if (!isSponsorPlaying) {
+      try {
+        if (typeof devPlayNextFromQueue === 'function' && devPlayNextFromQueue()) return;
+      } catch (e) {}
+    }
     if (currentShiurId) {
       try { localStorage.removeItem('yutorah_progress_' + currentShiurId); } catch(e) {}
     }
@@ -11379,6 +12443,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         initTheme();
         applyHolidayTheme();
       }
+      try { if (typeof devRefreshCardButtons === 'function') devRefreshCardButtons(); } catch (e) {}
     } catch(e) {}
   });
 
@@ -13142,8 +14207,8 @@ function renderGroupItemHtml(item, searchTerms = []) {
   return `
     <div class="quick-card-series-group">
       ${coverHtml}
-      <button type="button" class="series-expand-btn" data-drawer-target="${drawerId}" data-sub-count="${subDocs.length}" onclick="toggleSeriesDrawer(event, this.dataset.drawerTarget)">
-        <span class="series-expand-icon">➕</span> <span class="series-expand-text">View ${subDocs.length} more in series</span>
+      <button type="button" class="series-expand-btn" data-drawer-target="${drawerId}" data-sub-count="${subDocs.length}" data-series-title="${escapeHtml(item.title || '')}" onclick="toggleSeriesDrawer(event, this.dataset.drawerTarget)">
+        <span class="series-expand-icon">➕</span> <span class="series-expand-text">View ${subDocs.length} more in ‘${escapeHtml(item.title || 'this')}’ Series</span>
       </button>
       <div id="${drawerId}" class="series-drawer" style="display: none;">
         ${subCardsHtml}

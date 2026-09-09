@@ -51,12 +51,23 @@ assert.equal((body.response.recentDocs || []).length, 3, 'first page carries exa
 assert.equal(body.response.docs.length, 30, 'relevance keeps its full 30 (recent rail is extra, not carved out)');
 console.log('  ✅ recentDocs rail (3 extra) + full relevance page correct.');
 
-// 5b. Speaker auto-resolution disclaimer (§4th fix)
+// 5b. Speaker auto-resolution rules: single-word surnames must NOT narrow
+// (all Rosensweigs match); multi-word names still resolve with disclaimer;
+// distance-1 typos auto-correct onto the obvious entity with disclaimer.
 res = await worker.fetch(new Request('https://x/api/search?q=Lebowitz&start=1'), {}, mockCtx);
 body = await res.json();
+assert.equal(body.queryResolution, null, 'single-word surname must not narrow to one speaker');
+res = await worker.fetch(new Request('https://x/api/search?q=Aryeh%20Lebowitz&start=1'), {}, mockCtx);
+body = await res.json();
 assert.ok(body.queryResolution && body.queryResolution.display.includes('Lebowitz'),
-  'speaker query returns queryResolution, got: ' + JSON.stringify(body.queryResolution));
-console.log('  ✅ queryResolution disclaimer payload correct.');
+  'multi-word speaker query resolves with disclaimer, got: ' + JSON.stringify(body.queryResolution));
+res = await worker.fetch(new Request('https://x/api/search?q=weiderblank&start=1'), {}, mockCtx);
+body = await res.json();
+assert.ok(body.queryResolution && body.queryResolution.original === 'weiderblank' &&
+  body.queryResolution.display.includes('Wiederblank'),
+  'typo auto-corrects with you-searched disclaimer, got: ' + JSON.stringify(body.queryResolution));
+assert.ok((body.response.docs || []).length > 0, 'auto-corrected query returns results');
+console.log('  ✅ resolution rules (no narrow / multi-word resolve / typo correct) correct.');
 
 // 6. sort=date window is reverse-chronological
 res = await worker.fetch(new Request('https://x/api/search?q=shabbos&sort=date&start=1&rows=5'), {}, mockCtx);
