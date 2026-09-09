@@ -1382,6 +1382,29 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   let recentlyUploaded = [];
   let popularShiurim = [];
   let dailyShiurim = [];
+  let heroSlides = [];
+
+  // Map an upstream slideshow target to our player: lecture links stay
+  // in-app, yutorah.org section links open there, externals open new-tab.
+  // Unknown or dangerous schemes (javascript:, data:, …) fall back to '#'.
+  function heroSlideLink(target) {
+    const t = String(target || '').trim();
+    const relLec = t.match(/^\/lectures\/(\d+)/);
+    if (relLec) return { href: '/' + relLec[1], external: false };
+    const abs = t.match(/^https?:\/\/([^\/]+)(\/.*)?$/i);
+    if (abs) {
+      const host = abs[1].toLowerCase();
+      if (host === 'yutorah.org' || host.endsWith('.yutorah.org')) {
+        const inner = abs[2] || '/';
+        const innerLec = inner.match(/^\/lectures\/(\d+)/);
+        if (innerLec) return { href: '/' + innerLec[1], external: false };
+        return { href: t, external: true };
+      }
+      return { href: t, external: true };
+    }
+    if (t.startsWith('/')) return { href: 'https://www.yutorah.org' + t, external: true };
+    return { href: '#', external: false };
+  }
 
   if (homepageData) {
     if (Array.isArray(homepageData.editorsPicks) && homepageData.editorsPicks.length > 0) {
@@ -1398,6 +1421,19 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     if (Array.isArray(homepageData.dailyShiurim) && homepageData.dailyShiurim.length > 0) {
       dailyShiurim = homepageData.dailyShiurim.map(normalizeShiur);
+    }
+    if (Array.isArray(homepageData.slideshow) && homepageData.slideshow.length > 0) {
+      heroSlides = homepageData.slideshow.map(s => {
+        const link = heroSlideLink(s.targetURL);
+        return {
+          name: s.name || '',
+          description: s.description || '',
+          imageURL: s.imageURL || '',
+          urlTitle: s.urlTitle || 'Listen now',
+          href: link.href,
+          external: link.external
+        };
+      }).filter(s => s.imageURL);
     }
   }
 
@@ -4923,6 +4959,143 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     [data-theme="dark"] .queue-popup {
       background: #182232;
     }
+    /* Hero slideshow (yutorah.org spotlight) */
+    .hero-slideshow {
+      position: relative;
+      border-radius: 14px;
+      overflow: hidden;
+      margin-bottom: 18px;
+      background: var(--card, #fff);
+      border: 1px solid var(--border-light);
+    }
+    .hero-slides {
+      position: relative;
+    }
+    .hero-slide {
+      display: none;
+      position: relative;
+      text-decoration: none;
+      color: inherit;
+    }
+    .hero-slide.active {
+      display: block;
+    }
+    .hero-slide img {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      max-height: 340px;
+      object-fit: cover;
+      display: block;
+    }
+    .hero-caption {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      padding: 36px 18px 14px;
+      background: linear-gradient(transparent, rgba(0, 0, 0, 0.72));
+      color: #fff;
+    }
+    .hero-title {
+      font-size: 20px;
+      font-weight: 800;
+    }
+    .hero-desc {
+      font-size: 13px;
+      opacity: 0.92;
+      margin-top: 4px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .hero-cta {
+      display: inline-block;
+      margin-top: 8px;
+      font-size: 13px;
+      font-weight: 800;
+      background: #2b4c7e;
+      color: #fff;
+      border-radius: 16px;
+      padding: 5px 14px;
+    }
+    .hero-arrow {
+      position: absolute;
+      top: 42%;
+      transform: translateY(-50%);
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: none;
+      background: rgba(0, 0, 0, 0.45);
+      color: #fff;
+      font-size: 22px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .hero-arrow:hover {
+      background: rgba(0, 0, 0, 0.65);
+    }
+    .hero-prev { left: 10px; }
+    .hero-next { right: 10px; }
+    .hero-dots {
+      position: absolute;
+      bottom: 10px;
+      right: 14px;
+      display: flex;
+      gap: 6px;
+    }
+    .hero-dot {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      padding: 0;
+      position: relative;
+    }
+    .hero-dot::after {
+      content: "";
+      position: absolute;
+      top: 7px;
+      left: 7px;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.45);
+    }
+    .hero-dot.active::after {
+      background: #fff;
+    }
+    .hero-dot:focus-visible,
+    .hero-arrow:focus-visible {
+      outline: 2px solid #fff !important;
+      outline-offset: 1px;
+      box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.55);
+    }
+    @media (max-width: 640px) {
+      .hero-slide img {
+        aspect-ratio: 4 / 3;
+        max-height: 260px;
+      }
+      .hero-title {
+        font-size: 16px;
+      }
+      .hero-desc {
+        display: none;
+      }
+      .hero-dots {
+        bottom: 8px;
+        right: 10px;
+      }
+      .hero-caption {
+        padding: 28px 12px 12px;
+      }
+    }
+    [data-theme="dark"] .hero-slideshow {
+      background: #182232;
+    }
     /* Did You Mean strip (ROADMAP §5.4) */
     .did-you-mean-strip {
       grid-column: 1 / -1;
@@ -6468,6 +6641,28 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   <!-- Collections Section (Original 7 Tabs from YUTorah) -->
   <div class="collections-section" id="collectionsSection" style="${initialSearchResults ? 'display: none;' : ''}">
+    ${heroSlides.length > 0 ? `
+    <div class="hero-slideshow" id="heroSlideshow" role="region" aria-roledescription="carousel" aria-label="Featured shiurim">
+      <div class="hero-slides">
+        ${heroSlides.map((s, i) => {
+          const inner = `
+          <img src="${escapeHtml(s.imageURL)}" alt="${escapeHtml(s.name)}" loading="${i === 0 ? 'eager' : 'lazy'}">
+          <div class="hero-caption">
+            <div class="hero-title">${escapeHtml(s.name)}</div>
+            ${s.description ? `<div class="hero-desc">${escapeHtml(s.description)}</div>` : ''}
+            <span class="hero-cta">${escapeHtml(s.urlTitle)} →</span>
+          </div>`;
+          return s.href === '#'
+            ? `<div class="hero-slide${i === 0 ? ' active' : ''}"${i === 0 ? '' : ' inert'}>${inner}</div>`
+            : `<a class="hero-slide${i === 0 ? ' active' : ''}" href="${escapeHtml(s.href)}"${s.external ? ' target="_blank" rel="noopener noreferrer"' : ''} aria-hidden="${i === 0 ? 'false' : 'true'}"${i === 0 ? '' : ' tabindex="-1" inert'}>${inner}</a>`;
+        }).join('')}
+      </div>
+      <button type="button" class="hero-arrow hero-prev" onclick="heroGo(-1)" aria-label="Previous">‹</button>
+      <button type="button" class="hero-arrow hero-next" onclick="heroGo(1)" aria-label="Next">›</button>
+      <div class="hero-dots" role="group" aria-label="Slideshow navigation">
+        ${heroSlides.map((s, i) => `<button type="button" class="hero-dot${i === 0 ? ' active' : ''}" onclick="heroGoTo(${i})" aria-label="Slide ${i + 1}: ${escapeHtml(s.name)}"></button>`).join('')}
+      </div>
+    </div>` : ''}
     <div class="section-header">
       <h2 class="section-title" id="activeCollectionTitle">⭐ Editor's Picks</h2>
       <div class="view-toggle-wrap" role="group" aria-label="Cards or rows view">
@@ -9314,6 +9509,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   // Initialize listeners on DOMContentLoaded
   document.addEventListener('DOMContentLoaded', () => {
+    try {
+      const hero = document.getElementById('heroSlideshow');
+      if (hero) {
+        heroRestart();
+        const heroPause = () => { try { if (heroTimer) { clearInterval(heroTimer); heroTimer = null; } } catch (e) {} };
+        const heroResume = () => { if (!heroTimer) heroRestart(); };
+        hero.addEventListener('mouseenter', heroPause);
+        hero.addEventListener('mouseleave', heroResume);
+        hero.addEventListener('focusin', heroPause);
+        hero.addEventListener('focusout', heroResume);
+      }
+    } catch (e) {}
     // Restore persisted cards/rows view before first paint matters.
     try {
       if (localStorage.getItem('yutorah_card_view') === 'rows') setCardView('rows');
@@ -12032,6 +12239,51 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     });
   }
 
+  // Hero slideshow rotation (6s autoplay, dots + arrows, pause on hover).
+  let heroIdx = 0;
+  let heroTimer = null;
+  function heroShow(i) {
+    const slides = document.querySelectorAll('#heroSlideshow .hero-slide');
+    const dots = document.querySelectorAll('#heroSlideshow .hero-dot');
+    if (!slides.length) return;
+    heroIdx = ((i % slides.length) + slides.length) % slides.length;
+    slides.forEach((s, k) => {
+      const on = k === heroIdx;
+      s.classList.toggle('active', on);
+      if (s.tagName === 'A') {
+        s.setAttribute('aria-hidden', on ? 'false' : 'true');
+        if (on) {
+          s.removeAttribute('tabindex');
+          s.removeAttribute('inert');
+        } else {
+          s.setAttribute('tabindex', '-1');
+          s.setAttribute('inert', '');
+        }
+      } else {
+        if (on) s.removeAttribute('inert');
+        else s.setAttribute('inert', '');
+      }
+    });
+    dots.forEach((d, k) => d.classList.toggle('active', k === heroIdx));
+  }
+  function heroGo(dir) {
+    heroShow(heroIdx + dir);
+    heroRestart();
+  }
+  function heroGoTo(i) {
+    heroShow(i);
+    heroRestart();
+  }
+  function heroRestart() {
+    try { if (heroTimer) { clearInterval(heroTimer); heroTimer = null; } } catch (e) {}
+    try {
+      if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    } catch (e) {}
+    heroTimer = setInterval(() => {
+      const slides = document.querySelectorAll('#heroSlideshow .hero-slide');
+      if (slides.length > 1 && !document.hidden) heroShow(heroIdx + 1);
+    }, 6000);
+  }
   function switchCollection(activeName) {
     collections.forEach(name => {
       const tab = document.getElementById('tab-' + name);
