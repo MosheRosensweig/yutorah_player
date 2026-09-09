@@ -10568,6 +10568,28 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       document.getElementById('shiurSpeaker').textContent = speaker;
       document.getElementById('shiurMeta').textContent = meta;
 
+      // Upload date (vs given date): lightweight Solr id-lookup, applied
+      // progressively without delaying playback. Shown only when different.
+      try {
+        fetch('/api/search?q=' + encodeURIComponent(id) + '&start=1&rows=1').then(r => {
+          if (!r.ok) return null;
+          return r.json();
+        }).then(sdata => {
+          if (!sdata || String(currentShiurId) !== String(id)) return;
+          const sdocs = sdata.response ? (sdata.response.docs || []) : [];
+          // Exact-ID match only: q= is full-text relevance, so a fallback
+          // to sdocs[0] could stamp an unrelated shiur's upload date.
+          const hit = sdocs.find(d => String(d.shiurID || d.shiurid || d.id || '') === String(id));
+          if (!hit) return;
+          const upRaw = hit.shiurdatesubmittedformatted || hit.shiurdatesubmitted || '';
+          const upFmt = upRaw ? formatShiurDate(upRaw) : '';
+          if (upFmt && upFmt !== date && String(currentShiurId) === String(id)) {
+            const metaEl = document.getElementById('shiurMeta');
+            if (metaEl) metaEl.textContent = meta + ' · Uploaded ' + upFmt;
+          }
+        }).catch(() => {});
+      } catch (e) {}
+
       const img = document.getElementById('speakerImg');
       if (photo) {
         img.src = photo;
