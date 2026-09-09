@@ -1690,5 +1690,114 @@ export function groupAndRankDocs(docs, queryTerms = [], rawQuery = '') {
   return items;
 }
 
+// 4. Fuzzy "Did You Mean" (Damerau-Levenshtein) — ROADMAP §5.4
+// Matches a possibly-misspelled query against known entity indexes
+// (teacher / topic / venue names + synset variants) and returns ranked
+// candidates. Pure + dependency-free so it runs identically on the edge
+// (worker) and in the browser (as-you-type chips).
+export function damerauLevenshtein(a, b) {
+  const s = String(a || '').toLowerCase();
+  const t = String(b || '').toLowerCase();
+  const m = s.length;
+  const n = t.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  // Optimal string alignment (restricted Damerau-Levenshtein): adjacent
+  // transposition counts as a single edit — covers "weider" vs "wieder".
+  const d = Array.from({ length: m + 1 }, (_, i) => [i, ...Array(n).fill(0)]);
+  for (let j = 1; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = s[i - 1] === t[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(
+        d[i - 1][j] + 1,      // deletion
+        d[i][j - 1] + 1,      // insertion
+        d[i - 1][j - 1] + cost // substitution
+      );
+      if (i > 1 && j > 1 && s[i - 1] === t[j - 2] && s[i - 2] === t[j - 1]) {
+        d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1); // transposition
+      }
+    }
+  }
+  return d[m][n];
+}
+
+function fuzzyNormName(name) {
+  return stripSpeakerHonorifics(String(name || '')).toLowerCase().trim();
+}
+
+// candidatesByType: { teacher: [{id,name,count?}], topic: [...], venue: [...] }
+// Returns up to `limit` ranked suggestions: [{ text, type, id, distance }].
+// Gating: absolute distance <= maxDistance AND distance <= 25% of the longer
+// string, so garbage input yields zero suggestions rather than noise.
+// Exact substring matches short-circuit with distance 0 (ranked first).
+export function suggestDidYouMean(query, candidatesByType = {}, opts = {}) {
+  const q = String(query || '').trim().toLowerCase();
+  if (q.length < 2) return [];
+  const limit = opts.limit || 5;
+  const maxDistance = opts.maxDistance != null ? opts.maxDistance : 2;
+  const out = [];
+  const seen = new Set();
+  const qWords = q.split(/\s+/);
+
+  function consider(text, type, id, count) {
+    const norm = fuzzyNormName(text);
+    if (!norm || seen.has(type + '|' + norm)) return;
+    // Compare against full name AND each word (covers "Lebowtiz" -> "Rabbi Aryeh Lebowitz").
+    const targets = [norm, ...norm.split(/\s+/).filter(w => w.length >= 3)];
+    let best = Infinity;
+    for (const target of targets) {
+      // Substring counts as a free match only when it covers most of the
+      // query — otherwise short words ("eider", "blank") hijack longer
+      // typo queries ("weiderblank") that truly belong to distance-1
+      // candidates ("wiederblank").
+      if ((target.includes(q) && q.length >= 3) ||
+          (q.includes(target) && target.length >= q.length * 0.6)) { best = 0; break; }
+      // Prefix-friendly: compare the query to the same-length prefix of the
+      // target so partial typing ("weider") matches ("wiederblank").
+      const probe = target.length > q.length ? target.slice(0, q.length) : target;
+      const dist = damerauLevenshtein(q, probe);
+      if (dist < best) best = dist;
+      if (best === 1) break;
+    }
+    const gate = Math.min(maxDistance, Math.floor(Math.max(q.length, 4) * 0.25) + 1);
+    // Very short queries: substring-only, otherwise 2-char probes match on a
+    // single shared letter and flood suggestions with confident junk.
+    if (q.length <= 3 && best > 0) return;
+    if (best <= gate) {
+      seen.add(type + '|' + norm);
+      out.push({ text: String(text), type, id: id != null ? String(id) : '', distance: best, count: count || 0 });
+    }
+  }
+
+  const pools = [
+    ['teacher', candidatesByType.teacher || candidatesByType.teachers || []],
+    ['topic', candidatesByType.topic || candidatesByType.categories || []],
+    ['venue', candidatesByType.venue || candidatesByType.venues || candidatesByType.locations || []]
+  ];
+  for (const [type, list] of pools) {
+    for (const c of list) {
+      if (typeof c === 'string') consider(c, type, '');
+      else if (c && c.name) consider(c.name, type, c.id, c.count);
+    }
+  }
+  // Synset variant pool: misspelled concepts ("shabos" -> "shabbat").
+  // Skipped for very short queries (see substring-only rule above).
+  try {
+    if (q.length > 3) for (const syn of SYNSETS) {
+      for (const v of (syn.variants || [])) {
+        if (damerauLevenshtein(q, v) <= Math.min(maxDistance, 2) && !seen.has('topic|' + v)) {
+          seen.add('topic|' + v);
+          out.push({ text: syn.canonical, type: 'topic', id: '', distance: damerauLevenshtein(q, v), count: 0 });
+          break;
+        }
+      }
+    }
+  } catch (e) { /* SYNSETS unavailable in some contexts */ }
+
+  out.sort((a, b) => (a.distance - b.distance) || ((b.count || 0) - (a.count || 0)));
+  return out.slice(0, limit);
+}
+
 
 

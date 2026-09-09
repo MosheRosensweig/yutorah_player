@@ -21,7 +21,9 @@ import {
   extractSnippet,
   buildMatchReasons,
   computeRelevanceScore,
-  groupAndRankDocs
+  groupAndRankDocs,
+  damerauLevenshtein,
+  suggestDidYouMean
 } from './phonetic_engine.js';
 import AUTOCOMPLETE_META from './autocomplete_data.json' with { type: 'json' };
 
@@ -248,6 +250,9 @@ async function executeSearchInternal(searchParams) {
   const locationIds = extractIdList('locationId', 'venueId');
   const seriesIds = extractIdList('seriesId', 'series');
   let start = parseInt(searchParams.get('page') || searchParams.get('start') || '1', 10);
+  // Raw item offset, captured BEFORE page normalization — the date branch
+  // (sort=date) treats `start` as a 1-based item offset, not a page.
+  const rawItemStart = Math.max(parseInt(searchParams.get('start') || '1', 10) || 1, 1);
   if (!searchParams.has('page') && start > 30) {
     start = Math.floor((start - 1) / 30) + 1;
   }
@@ -260,6 +265,44 @@ async function executeSearchInternal(searchParams) {
   const fromDate = searchParams.get('fromDate') || '';
   const toDate = searchParams.get('toDate') || '';
   const mediaType = (searchParams.get('mediaType') || searchParams.get('media') || '').toLowerCase(); // 'all' | 'audio' | 'article' | 'text'
+
+  // Recency sort (ROADMAP §7: Recent Results + §10 P4 sort control).
+  // `sort=date|recent` or `sortIndex=1` returns date-descending windows.
+  // `start` is then a 1-based ITEM offset (not a page) and `rows` the window size.
+  const sortParam = (searchParams.get('sort') || '').toLowerCase();
+  const wantsDateSort = sortParam === 'date' || sortParam === 'recent' || searchParams.get('sortIndex') === '1';
+  const rows = Math.min(Math.max(parseInt(searchParams.get('rows') || '30', 10) || 30, 1), 30);
+
+  // Partition helper: on first-page relevance queries, lift the 3 freshest
+  // docs into `recentDocs` and dedupe them out of the relevance list.
+  function docDateStr(d) {
+    return String(d.shiurdate || d.shiurdatesubmitted || d.shiurDate || d.shiurDateSubmitted || '');
+  }
+  function docIdStr(d) {
+    return String(d.shiurID || d.shiurid || d.id || '');
+  }
+  function partitionRecent(docs, numFound) {
+    if (start !== 1 || !docs || docs.length === 0) {
+      return { docs: docs || [], recentDocs: [], recentNumFound: 0 };
+    }
+    const byDate = [...docs].sort((a, b) => docDateStr(b).localeCompare(docDateStr(a)));
+    const recentDocs = byDate.slice(0, 3);
+    const recentSet = new Set(recentDocs);
+    return { docs: docs.filter(d => !recentSet.has(d)), recentDocs, recentNumFound: numFound };
+  }
+  // Fuzzy fallback (ROADMAP §5.4): ranked teacher/topic/venue candidates for
+  // the raw query — consumed by the "Did you mean …?" strip + /api/suggest.
+  function didYouMeanFor() {
+    try {
+      return suggestDidYouMean(rawQ, {
+        teacher: AUTOCOMPLETE_META.teachers || [],
+        topic: AUTOCOMPLETE_META.categories || [],
+        venue: AUTOCOMPLETE_META.venues || []
+      }, { limit: 5 });
+    } catch (e) {
+      return [];
+    }
+  }
 
   function isDocArticle(doc) {
     if (!doc) return false;
@@ -336,17 +379,84 @@ async function executeSearchInternal(searchParams) {
     if (locId) targetUrl += `&locationId=${encodeURIComponent(locId)}`;
     if (sId) targetUrl += `&seriesId=${encodeURIComponent(sId)}`;
 
-    const upstream = await fetch(targetUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-        'Accept': 'application/json'
+    try {
+      const upstream = await fetch(targetUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+          'Accept': 'application/json'
+        }
+      });
+      if (!upstream.ok) return { docs: [], numFound: 0 };
+      const json = await upstream.json();
+      return {
+        docs: json?.response?.docs || [],
+        numFound: json?.response?.numFound || 0
+      };
+    } catch (e) {
+      // Per-page failure must never fail the whole search (fanout safety).
+      return { docs: [], numFound: 0 };
+    }
+  }
+
+  // Shared date-window fetcher: fans out over the first few upstream pages
+  // with identical filters, merges + dedupes, applies post-filters, sorts by
+  // date descending, and slices [itemOffset, itemOffset + rowCount).
+  // Returns { windowDocs, totalFound }. Upstream Solr has no reliable
+  // date-sort param, hence the merge-sort over relevance pages.
+  async function fetchDateWindow(query, itemOffset, rowCount) {
+    const tId = teacherIds[0] || '';
+    const catId = subCategoryIds[0] || '';
+    const locId = locationIds[0] || '';
+    const sId = seriesIds[0] || '';
+    const multiEntities = [];
+    if (teacherIds.length > 1) teacherIds.forEach(id => multiEntities.push({ tId: id, catId, locId, sId }));
+    else if (subCategoryIds.length > 1) subCategoryIds.forEach(id => multiEntities.push({ tId, catId: id, locId, sId }));
+    else if (locationIds.length > 1) locationIds.forEach(id => multiEntities.push({ tId, catId, locId: id, sId }));
+    else if (seriesIds.length > 1) seriesIds.forEach(id => multiEntities.push({ tId, catId, locId, sId: id }));
+    const entities = multiEntities.length > 0 ? multiEntities : [{ tId, catId, locId, sId }];
+    const pagesToCover = Math.min(4, Math.ceil((itemOffset + rowCount) / 30) + 1);
+    const fanout = [];
+    for (const ent of entities) {
+      for (let p = 1; p <= pagesToCover; p++) {
+        fanout.push(fetchSolrSingle(query, p, ent.tId, ent.catId, ent.locId, ent.sId));
       }
-    });
-    if (!upstream.ok) return { docs: [], numFound: 0 };
-    const json = await upstream.json();
+    }
+    const settled = await Promise.all(fanout);
+    const seen = new Set();
+    let merged = [];
+    let totalFound = 0;
+    for (const r of settled) {
+      totalFound += r.numFound;
+      for (const doc of r.docs) {
+        const docTeacherId = String(doc.teacherid || doc.teacherId || '');
+        if ((teacherIds.length === 0 || teacherIds.includes(docTeacherId)) && matchesPostFilters(doc)) {
+          const id = docIdStr(doc);
+          if (id) {
+            if (seen.has(id)) continue;
+            seen.add(id);
+          }
+          merged.push(doc);
+        }
+      }
+    }
+    merged.sort((a, b) => docDateStr(b).localeCompare(docDateStr(a)));
+    return { windowDocs: merged.slice(itemOffset - 1, itemOffset - 1 + rowCount), totalFound: totalFound || merged.length };
+  }
+
+  // Date-sorted window branch (powers Recent Results + Load More Recent).
+  // `start` here is a 1-based ITEM offset (rawItemStart, pre-normalization).
+  if (wantsDateSort) {
+    const itemOffset = rawItemStart;
+    const { windowDocs, totalFound } = await fetchDateWindow(effectiveQuery, itemOffset, rows);
     return {
-      docs: json?.response?.docs || [],
-      numFound: json?.response?.numFound || 0
+      response: {
+        docs: windowDocs,
+        numFound: totalFound,
+        start: itemOffset,
+        sort: 'date'
+      },
+      phoneticExpansion: null,
+      didYouMean: didYouMeanIfWeak(windowDocs.length)
     };
   }
 
@@ -355,30 +465,68 @@ async function executeSearchInternal(searchParams) {
   const isMultiCategory = subCategoryIds.length > 1;
   const isMultiTarget = isMultiTeacher || isMultiLocation || isMultiCategory;
 
+  // Weak-hit threshold: at or below this many total hits we also return
+  // fuzzy candidates so the UI can render a "Did you mean …?" strip
+  // (above the message when zero hits, below the list when 1+ weak hits).
+  function didYouMeanIfWeak(totalHits) {
+    try {
+      return totalHits <= 5 ? didYouMeanFor() : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
   if (!isMultiTarget && !hasPostFilter) {
     const tId = teacherIds[0] || '';
     const catId = subCategoryIds[0] || '';
     const locId = locationIds[0] || '';
     const sId = seriesIds[0] || '';
 
-    const { docs, numFound } = await fetchSolrSingle(effectiveQuery, start, tId, catId, locId, sId);
+    // Relevance page + global date window in parallel: the Recent sub-section
+    // shows the 3 GLOBALLY freshest matches (§7.2 Tier 1), not just the
+    // freshest of relevance page 1.
+    const mainPromise = fetchSolrSingle(effectiveQuery, start, tId, catId, locId, sId);
+    const datePromise = (start === 1)
+      ? fetchDateWindow(effectiveQuery, 1, 3)
+      : Promise.resolve({ windowDocs: [], totalFound: 0 });
+    const [{ docs, numFound }, { windowDocs: globalRecent, totalFound: recentTotal }] =
+      await Promise.all([mainPromise, datePromise]);
 
     const filteredDocs = tId ? docs.filter(doc => {
       const docTeacherId = String(doc.teacherid || doc.teacherId || '');
       return docTeacherId === String(tId);
     }) : docs;
 
+    const adjNumFound = tId ? Math.min(numFound, filteredDocs.length + (numFound - docs.length)) : numFound;
+    let recentDocs = [];
+    let finalDocs = filteredDocs;
+    if (start === 1 && globalRecent.length > 0) {
+      const recentIds = new Set();
+      for (const d of globalRecent) {
+        const rid = docIdStr(d);
+        if (rid) recentIds.add(rid);
+      }
+      recentDocs = globalRecent;
+      finalDocs = filteredDocs.filter(d => {
+        const id = docIdStr(d);
+        return !id || !recentIds.has(id);
+      });
+    }
+    const totalHits = finalDocs.length + recentDocs.length;
     return {
       response: {
-        docs: filteredDocs,
-        numFound: tId ? Math.min(numFound, filteredDocs.length + (numFound - docs.length)) : numFound,
+        docs: finalDocs,
+        recentDocs,
+        recentNumFound: start === 1 ? (recentTotal || adjNumFound) : 0,
+        numFound: adjNumFound,
         start
       },
       phoneticExpansion: (expandedInfo && expandedInfo.expandedTokens && expandedInfo.expandedTokens.length > 1) ? {
         original: rawQ,
         tokens: expandedInfo.expandedTokens,
         synset: expandedInfo.matchedSynset
-      } : null
+      } : null,
+      didYouMean: didYouMeanIfWeak(totalHits)
     };
   }
 
@@ -458,18 +606,28 @@ async function executeSearchInternal(searchParams) {
     }
   }
 
+  const partedFinal = partitionRecent(accumulatedDocs, totalEstimatedFound || accumulatedDocs.length);
+  // Under post-filters the upstream total is unfiltered, so report the known
+  // filtered pool size as the recent-match count instead of overstating it.
+  const recentCountFinal = hasPostFilter
+    ? (partedFinal.docs.length + partedFinal.recentDocs.length)
+    : partedFinal.recentNumFound;
+  const weakTotal = partedFinal.docs.length + partedFinal.recentDocs.length;
   return {
     response: {
-      docs: accumulatedDocs,
+      docs: partedFinal.docs,
+      recentDocs: partedFinal.recentDocs,
+      recentNumFound: recentCountFinal,
       numFound: totalEstimatedFound || accumulatedDocs.length,
-      filteredCount: accumulatedDocs.length,
+      filteredCount: partedFinal.docs.length,
       start
     },
     phoneticExpansion: expandedInfo ? {
       original: rawQ,
       tokens: expandedInfo.expandedTokens,
       synset: expandedInfo.matchedSynset
-    } : null
+    } : null,
+    didYouMean: didYouMeanIfWeak(weakTotal)
   };
 }
 
@@ -484,6 +642,30 @@ export default {
           'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*',
           'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800'
+        }
+      });
+    }
+
+    // 0b. Fuzzy Suggest API: /api/suggest?q=... (ROADMAP §5.4)
+    // Damerau-Levenshtein over teachers/topics/venues (+ synset variants).
+    // Pure local data — no upstream calls, safe to hit on every keystroke pause.
+    if (url.pathname === '/api/suggest') {
+      const q = url.searchParams.get('q') || '';
+      let suggestions = [];
+      try {
+        suggestions = suggestDidYouMean(q, {
+          teacher: AUTOCOMPLETE_META.teachers || [],
+          topic: AUTOCOMPLETE_META.categories || [],
+          venue: AUTOCOMPLETE_META.venues || []
+        }, { limit: 8 });
+      } catch (e) {
+        suggestions = [];
+      }
+      return new Response(JSON.stringify({ query: q, suggestions }), {
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'public, max-age=300'
         }
       });
     }
@@ -770,6 +952,8 @@ export default {
     let initialSearchResults = null;
     let initialNumFound = 0;
     let initialPhoneticExpansion = null;
+    let initialRecentDocs = [];
+    let initialRecentNumFound = 0;
 
     if (!shiurData && searchQuery) {
       try {
@@ -777,6 +961,8 @@ export default {
         initialSearchResults = searchPayload?.response?.docs || [];
         initialNumFound = searchPayload?.response?.numFound || initialSearchResults.length;
         initialPhoneticExpansion = searchPayload?.phoneticExpansion || null;
+        initialRecentDocs = searchPayload?.response?.recentDocs || [];
+        initialRecentNumFound = searchPayload?.response?.recentNumFound || 0;
       } catch (e) {
         console.error('Error pre-fetching search in SSR:', e);
       }
@@ -807,6 +993,8 @@ export default {
       initialSearchResults,
       initialNumFound,
       initialPhoneticExpansion,
+      initialRecentDocs,
+      initialRecentNumFound,
       isClassicSearch
     }), {
       headers: {
@@ -953,7 +1141,7 @@ function normalizeShiur(s) {
   return { id, title, speaker, photo, duration, date, category, isNew, description, keywords, series, location };
 }
 
-function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpeed = '', themeMode = '', homepageData, sponsorshipText = '', sponsorshipPlainText = '', sponsorshipAudioUrl = '', searchQuery, initialSearchResults, initialNumFound = 0, initialPhoneticExpansion = null, isClassicSearch = false }) {
+function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpeed = '', themeMode = '', homepageData, sponsorshipText = '', sponsorshipPlainText = '', sponsorshipAudioUrl = '', searchQuery, initialSearchResults, initialNumFound = 0, initialPhoneticExpansion = null, initialRecentDocs = [], initialRecentNumFound = 0, isClassicSearch = false }) {
   const isPlaying = Boolean(shiurData || directAudio);
 
   const initialSearchTerms = [];
@@ -4346,6 +4534,128 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       100% { transform: rotate(360deg); }
     }
 
+    /* Search Results Sub-Sections (ROADMAP §7: Recent + Relevant) */
+    .search-results-subheading {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 17px;
+      font-weight: 800;
+      margin: 18px 0 12px;
+      grid-column: 1 / -1;
+    }
+    .search-results-subheading .sub-count {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+    /* Did You Mean strip (ROADMAP §5.4) */
+    .did-you-mean-strip {
+      grid-column: 1 / -1;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      background: #fffbeb;
+      border: 1px solid #fcd34d;
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-size: 14px;
+    }
+    [data-theme="dark"] .did-you-mean-strip {
+      background: #453b0a;
+      border-color: #a16207;
+    }
+    .did-you-mean-chip {
+      cursor: pointer;
+      border: 1px solid var(--primary);
+      background: #fff;
+      color: var(--primary);
+      border-radius: 20px;
+      padding: 5px 12px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .did-you-mean-chip:hover {
+      background: var(--primary);
+      color: #fff;
+    }
+    .preview-focused {
+      outline: 2px solid var(--primary);
+      outline-offset: -2px;
+      background: #eef2f7;
+    }
+    /* Dev Playlists (ROADMAP §8) — hidden unless Dev Mode */
+    body:not(.dev-mode-active) .dev-only {
+      display: none !important;
+    }
+    .dev-playlist-tab {
+      border-style: dashed;
+    }
+    .playlist-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 4px 0 14px;
+      grid-column: 1 / -1;
+    }
+    .playlist-pill {
+      cursor: pointer;
+      border-radius: 20px;
+      padding: 6px 14px;
+      font-size: 13px;
+      font-weight: 700;
+      border: 1px solid var(--border-light);
+      background: var(--card-bg, #fff);
+    }
+    .playlist-pill.active {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+    }
+    .card-progress-track {
+      height: 4px;
+      background: #e4e8ef;
+      border-radius: 0 0 10px 10px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+    .card-progress-fill {
+      height: 100%;
+      background: var(--primary);
+      border-radius: inherit;
+    }
+    .card-listen-meta {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+    .card-mini-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .card-mini-btn {
+      cursor: pointer;
+      border: 1px solid var(--border-light);
+      background: transparent;
+      border-radius: 16px;
+      font-size: 12px;
+      padding: 3px 9px;
+      opacity: 0.85;
+    }
+    .card-mini-btn.active-save {
+      background: #d97706;
+      color: #fff;
+      border-color: #d97706;
+      opacity: 1;
+    }
+    .card-mini-btn.active-fav {
+      background: #fbbf24;
+      border-color: #b45309;
+      opacity: 1;
+    }
+
     /* Load More Button */
     .load-more-btn {
       background: var(--card);
@@ -5737,6 +6047,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       <h2 class="section-title" id="activeCollectionTitle">⭐ Editor's Picks</h2>
       <div class="tab-bar">
         <button class="tab-btn active" id="tab-editors" onclick="switchCollection('editors')">⭐ Editor's Picks</button>
+        <button class="tab-btn dev-playlist-tab dev-only" id="tab-playlists" aria-hidden="true" onclick="switchCollection('playlists')">🎧 Dev's Playlists</button>
         <button class="tab-btn" id="tab-series" onclick="switchCollection('series')">📚 Featured Series</button>
         <button class="tab-btn" id="tab-recent" onclick="switchCollection('recent')">⏱️ Recently Uploaded</button>
         <button class="tab-btn" id="tab-popular" onclick="switchCollection('popular')">🔥 Most Popular</button>
@@ -5750,6 +6061,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     <!-- Collection Grids -->
     <div class="shiur-cards-grid" id="grid-editors">
       ${editorsPicks.map(renderShiurCardHtml).join('')}
+    </div>
+
+    <div class="shiur-cards-grid" id="grid-playlists" style="display: none;" aria-hidden="true">
+      <!-- Populated client-side by the Dev Playlists engine (ROADMAP §8) -->
     </div>
 
     <div class="series-grid" id="grid-series" style="display: none;">
@@ -6268,12 +6583,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
   }
 
-  // Developer Mode (Active for current session until reload upon secret 7-tap)
+  // Developer Mode: the ONLY way in is typing "dev mode" (case-insensitive)
+  // in the search box. There is no tap gesture for dev mode.
   let isDevMode = false;
 
   function activateDevMode() {
     if (isDevMode) return false;
     isDevMode = true;
+    try { localStorage.setItem('yutorah_dev_mode', 'true'); } catch (e) {}
     document.body.classList.add('dev-mode-active');
 
     // Reveal hidden settings wrapper and advanced search button
@@ -6290,13 +6607,37 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         el.style.removeProperty('display');
       });
     }
+    // Reveal the playlists tab to assistive tech (hidden via aria until dev).
+    try {
+      const plTab = document.getElementById('tab-playlists');
+      if (plTab) plTab.removeAttribute('aria-hidden');
+      const plGrid = document.getElementById('grid-playlists');
+      if (plGrid) plGrid.removeAttribute('aria-hidden');
+    } catch (e) {}
+
+    // ROADMAP §8.4: ➕ "Add to Playlist" on the active player header.
+    try {
+      const details = document.querySelector('.shiur-details');
+      if (details && !document.getElementById('devPlayerAddBtn')) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.id = 'devPlayerAddBtn';
+        b.className = 'card-mini-btn dev-only';
+        b.textContent = '➕ Playlist';
+        b.style.marginTop = '8px';
+        b.addEventListener('click', () => {
+          if (currentShiurId) openPlaylistModal(String(currentShiurId));
+        });
+        details.appendChild(b);
+      }
+    } catch (e) {}
 
     return true;
   }
 
   // Secret taps on Calendar Icon / Holiday Motif:
   //   3 taps = toggle pre-roll enable/disable (always works)
-  //   7 taps = unlock Dev Mode for this session (resets on page reload)
+  // (Dev Mode is NOT available via taps — type "dev mode" in search instead.)
   let calendarClickCount = 0;
   let calendarClickTimer = null;
   let toastTimer = null;
@@ -6308,19 +6649,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     calendarClickCount++;
     clearTimeout(calendarClickTimer);
 
-    if (calendarClickCount >= 7) {
-      // 7 taps: unlock dev mode (preroll was already toggled at tap 3)
-      calendarClickCount = 0;
-      if (!isDevMode) {
-        activateDevMode();
-        flashToast('🛠️ Dev Mode Unlocked!', false, true);
-      } else {
-        flashToast('🛠️ Dev Mode already active', false, true);
-      }
-    } else if (calendarClickCount === 3) {
+    if (calendarClickCount === 3) {
       // 3 taps: toggle pre-roll enable/disable
       togglePreRoll();
-      // Don't reset counter — user might keep tapping to 7 for dev mode
+      calendarClickCount = 0;
       calendarClickTimer = setTimeout(() => {
         calendarClickCount = 0;
       }, 2000);
@@ -6724,10 +7056,30 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       previewAbortCtrl = null;
     }
     currentPreviewReqId++;
+    previewFocusables = [];
+    previewFocusIdx = -1;
     if (searchPreviewDropdown) {
       searchPreviewDropdown.style.display = 'none';
       searchPreviewDropdown.innerHTML = '';
     }
+  }
+
+  // Keyboard navigation for the preview dropdown (§5.4: ↑/↓ + Enter/Esc).
+  let previewFocusables = [];
+  let previewFocusIdx = -1;
+  function updatePreviewFocus() {
+    previewFocusables.forEach((el, i) => {
+      if (i === previewFocusIdx) el.classList.add('preview-focused');
+      else el.classList.remove('preview-focused');
+    });
+    const cur = previewFocusables[previewFocusIdx];
+    if (cur && cur.scrollIntoView) cur.scrollIntoView({ block: 'nearest' });
+  }
+  function collectPreviewFocusables() {
+    if (!searchPreviewDropdown) return;
+    previewFocusables = Array.prototype.slice.call(
+      searchPreviewDropdown.querySelectorAll('[data-suggestion-idx], .preview-shiur-item, #previewViewAllBtn'));
+    previewFocusIdx = -1;
   }
 
   // Click outside closes search preview
@@ -6812,6 +7164,30 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
                 enablePhonetics: true
               };
               executeLiveSearch('', { ...activeAdvancedFilters, label: 'Topic: ' + c.name });
+            }
+          });
+        });
+      }
+
+      // ROADMAP §5.4: fuzzy fallback — when substring matches are thin,
+      // offer Levenshtein-ranked teacher/topic/venue candidates. Clicking
+      // one puts the corrected term in the search box and runs the search.
+      if (suggestions.length < 5) {
+        const haveTitles = new Set(suggestions.map(s => s.title.toLowerCase()));
+        const fuzzyIcons = { teacher: '👤', topic: '🏷️', venue: '📍' };
+        clientFuzzySuggest(query, 5).forEach(f => {
+          if (haveTitles.has(f.text.toLowerCase())) return;
+          haveTitles.add(f.text.toLowerCase());
+          suggestions.push({
+            type: f.type,
+            icon: fuzzyIcons[f.type] || '🔍',
+            title: f.text,
+            sub: (f.type === 'teacher' ? 'Speaker' : f.type === 'venue' ? 'Venue' : 'Topic') + ' · Did you mean?',
+            action: () => {
+              closeSearchPreview();
+              searchInput.value = f.text;
+              if (typeof clearSearchBtn !== 'undefined' && clearSearchBtn) clearSearchBtn.style.display = 'block';
+              doSearch();
             }
           });
         });
@@ -6917,6 +7293,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           doSearch();
         });
       }
+      collectPreviewFocusables();
     } catch (err) {
       if (err.name !== 'AbortError') {
         console.error('Preview fetch error:', err);
@@ -7029,6 +7406,19 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   searchInput.addEventListener('input', onSearchInput);
+  searchInput.addEventListener('keydown', (e) => {
+    const open = searchPreviewDropdown && searchPreviewDropdown.style.display === 'block' && previewFocusables.length > 0;
+    if (!open) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const dir = e.key === 'ArrowDown' ? 1 : -1;
+      previewFocusIdx = (previewFocusIdx + dir + previewFocusables.length) % previewFocusables.length;
+      updatePreviewFocus();
+    } else if (e.key === 'Enter' && previewFocusIdx >= 0 && previewFocusables[previewFocusIdx]) {
+      e.preventDefault();
+      previewFocusables[previewFocusIdx].click();
+    }
+  });
 
   if (searchInput.value.trim()) {
     clearSearchBtn.style.display = 'block';
@@ -7062,9 +7452,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   let totalSearchResults = ${JSON.stringify(initialNumFound || 0)};
   let currentSearchPage = Math.floor(${JSON.stringify(initialSearchResults ? initialSearchResults.length : 0)} / 30) || 1;
   let isLoadingMore = false;
+
+  // ROADMAP §7: Recent Results sub-section state (independent of relevance).
+  let currentRecentDocs = ${JSON.stringify(initialRecentDocs || [])};
+  let recentNumFound = ${JSON.stringify(initialRecentNumFound || 0)};
+  let recentVisibleCount = 3;
+  let recentExhausted = false;
+  let isLoadingMoreRecent = false;
+  let recentReqSeq = 0;
   let currentSearchAbort = null;
   let currentPhoneticTokens = ${JSON.stringify(initialPhoneticExpansion?.tokens || [])};
   let currentSearchDocs = ${JSON.stringify(initialSearchResults || [])};
+  let currentDidYouMean = [];
   let showMatchReasons = false;
   let useClassicSearch = ${Boolean(isClassicSearch)};
   let stackSeriesEnabled = true;
@@ -7501,17 +7900,123 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     renderCurrentSearchResults();
   }
 
+  // ROADMAP §5.4: client-side twin of the edge fuzzy engine (used for
+  // as-you-type chips; post-search strips come from /api/search didYouMean).
+  function clientLevenshtein(a, b) {
+    const s = String(a || '').toLowerCase();
+    const t = String(b || '').toLowerCase();
+    const m = s.length, n = t.length;
+    if (m === 0) return n;
+    if (n === 0) return m;
+    const d = [];
+    for (let i = 0; i <= m; i++) { d.push([i]); for (let j = 1; j <= n; j++) d[i].push(0); }
+    for (let j = 1; j <= n; j++) d[0][j] = j;
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        const cost = s[i - 1] === t[j - 1] ? 0 : 1;
+        let v = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
+        if (i > 1 && j > 1 && s[i - 1] === t[j - 2] && s[i - 2] === t[j - 1]) {
+          v = Math.min(v, d[i - 2][j - 2] + 1);
+        }
+        d[i][j] = v;
+      }
+    }
+    return d[m][n];
+  }
+
+  function clientFuzzySuggest(query, limit) {
+    const q = String(query || '').trim().toLowerCase();
+    limit = limit || 5;
+    if (q.length < 2 || typeof autocompleteCache === 'undefined' || !autocompleteCache) return [];
+    const pools = [
+      ['teacher', autocompleteCache.teachers || []],
+      ['topic', autocompleteCache.categories || []],
+      ['venue', autocompleteCache.venues || []]
+    ];
+    const out = [];
+    const seen = new Set();
+    for (const pair of pools) {
+      const type = pair[0];
+      for (const c of pair[1]) {
+        const name = typeof c === 'string' ? c : (c && c.name);
+        if (!name) continue;
+        const norm = String(name).replace(/^(rabbi|rav|dr|doctor|prof|dayan|maran|chacham|harav|reb|mrs|ms|mr)\\.?[\\s]+/i, '').toLowerCase().trim();
+        if (!norm || seen.has(type + '|' + norm)) continue;
+        const targets = [norm].concat(norm.split(/\\s+/).filter(w => w.length >= 3));
+        let best = Infinity;
+        for (const target of targets) {
+          if ((target.indexOf(q) !== -1 && q.length >= 3) ||
+              (q.indexOf(target) !== -1 && target.length >= q.length * 0.6)) { best = 0; break; }
+          const probe = target.length > q.length ? target.slice(0, q.length) : target;
+          const dist = clientLevenshtein(q, probe);
+          if (dist < best) best = dist;
+          if (best === 1) break;
+        }
+        const gate = Math.min(2, Math.floor(Math.max(q.length, 4) * 0.25) + 1);
+        if (q.length <= 3 && best > 0) continue;
+        if (best <= gate) {
+          seen.add(type + '|' + norm);
+          out.push({ text: String(name), type: type, id: (c && c.id) ? String(c.id) : '', distance: best, count: (c && c.count) || 0 });
+        }
+      }
+    }
+    // Compact synset twin (mirrors edge SYNSETS variants) so concept typos
+    // get as-you-type chips too — "same engine" on both surfaces (§5.4).
+    if (q.length > 3) {
+      const synPairs = [
+        ['shabbat', 'shabbat'], ['shabbos', 'shabbat'], ['shabos', 'shabbat'],
+        ['sukkah', 'sukkah'], ['sukka', 'sukkah'], ['succah', 'sukkah'], ['succa', 'sukkah'],
+        ['chanukah', 'chanukah'], ['hanukkah', 'chanukah'], ['chanuka', 'chanukah'],
+        ['teshuvah', 'teshuvah'], ['teshuva', 'teshuvah'], ['tshuva', 'teshuvah'],
+        ['pesach', 'pesach'], ['passover', 'pesach'],
+        ['muktzah', 'muktzah'], ['muktza', 'muktzah'],
+        ['kashrus', 'kashrus'], ['kashrut', 'kashrus'], ['kosher', 'kashrus'],
+        ['tefillah', 'tefillah'], ['tefila', 'tefillah'], ['tefillos', 'tefillah'],
+        ['brachos', 'brachos'], ['berachos', 'brachos'], ['bracha', 'brachos'], ['beracha', 'brachos'],
+        ['motzoei', 'motzoei'], ['motzei', 'motzoei'], ['motsai', 'motzoei']
+      ];
+      for (const pair of synPairs) {
+        const dist = clientLevenshtein(q, pair[0]);
+        if (dist <= 2 && !seen.has('topic|' + pair[0])) {
+          seen.add('topic|' + pair[0]);
+          out.push({ text: pair[1], type: 'topic', id: '', distance: dist, count: 0 });
+          break;
+        }
+      }
+    }
+    out.sort((a, b) => (a.distance - b.distance) || ((b.count || 0) - (a.count || 0)));
+    return out.slice(0, limit);
+  }
+
+  function renderDidYouMeanStrip(suggestions) {
+    const chips = suggestions.map(s =>
+      '<button type="button" class="did-you-mean-chip" data-text="' + encodeURIComponent(s.text) + '"' +
+      ' onclick="applyDidYouMean(decodeURIComponent(this.getAttribute(\\'data-text\\')))"' +
+      ' title="' + escapeHtml(s.type) + '">' + escapeHtml(s.text) + '</button>'
+    ).join('');
+    return '<div class="did-you-mean-strip"><span>🔍 Did you mean:</span>' + chips + '</div>';
+  }
+
+  function applyDidYouMean(text) {
+    if (!text) return;
+    searchInput.value = text;
+    if (clearSearchBtn) clearSearchBtn.style.display = 'block';
+    closeSearchPreview();
+    doSearch();
+  }
+
   function renderCurrentSearchResults() {
     const grid = document.getElementById('searchResultsGrid');
-    if (!grid || !currentSearchDocs || currentSearchDocs.length === 0) return;
+    if (!grid) return;
+    if ((!currentRecentDocs || currentRecentDocs.length === 0) && (!currentSearchDocs || currentSearchDocs.length === 0)) return;
 
     const terms = getActiveSearchTerms();
-
-    if (stackSeriesEnabled) {
-      const grouped = groupAndRankDocs(currentSearchDocs, terms, currentSearchQuery);
-      grid.innerHTML = grouped.map(renderGroupItem).join('');
-    } else {
-      const unstacked = [...currentSearchDocs].sort((a, b) => {
+    function renderList(docs) {
+      if (stackSeriesEnabled) {
+        const grouped = groupAndRankDocs(docs, terms, currentSearchQuery);
+        return grouped.map(renderGroupItem).join('');
+      }
+      const unstacked = [...docs].sort((a, b) => {
         const sa = computeRelevanceScore(a, terms, currentSearchQuery);
         const sb = computeRelevanceScore(b, terms, currentSearchQuery);
         if (sb !== sa) return sb - sa;
@@ -7519,10 +8024,116 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         const db = b.shiurdate || b.shiurdatesubmitted || '';
         return db.localeCompare(da);
       });
-      grid.innerHTML = unstacked.map(d => renderDocToCard(d)).join('');
+      return unstacked.map(d => renderDocToCard(d)).join('');
     }
 
+    let html = '';
+
+    // ROADMAP §7: 🕒 Recent Results sub-section (own Load More).
+    const visibleRecent = (currentRecentDocs || []).slice(0, recentVisibleCount);
+    if (visibleRecent.length > 0) {
+      const recentTotal = recentNumFound || currentRecentDocs.length;
+      html += '<div class="search-results-subheading"><span>🕒</span><span>Recent Results</span>' +
+        '<span class="sub-count">' + recentTotal.toLocaleString() + ' matching</span></div>';
+      html += renderList(visibleRecent);
+      const bufferedRemain = recentVisibleCount < currentRecentDocs.length;
+      const serverRemain = !recentExhausted && recentTotal > currentRecentDocs.length;
+      if (bufferedRemain || serverRemain) {
+        html += '<div style="grid-column: 1/-1; text-align: center; margin: 4px 0 12px;">' +
+          '<button id="loadMoreRecentBtn" class="load-more-btn" onclick="loadMoreRecentResults()">' +
+          '<span id="loadMoreRecentBtnText">🔽 Load More Recent</span>' +
+          '<span id="loadMoreRecentSpinner" class="spinner-small" style="display: none;"></span>' +
+          '</button></div>';
+      }
+    }
+
+    // 🎯 Relevance sub-section (own separate Load More).
+    if (currentSearchDocs && currentSearchDocs.length > 0) {
+      if (visibleRecent.length > 0) {
+        html += '<div class="search-results-subheading"><span>🎯</span><span>Most Relevant Results</span></div>';
+      }
+      html += renderList(currentSearchDocs);
+    }
+
+    // Weak-hit "Did you mean …?" strip goes BELOW the results (§5.4);
+    // the zero-hit case is rendered above the empty message by the caller.
+    if (currentDidYouMean && currentDidYouMean.length > 0) {
+      html += renderDidYouMeanStrip(currentDidYouMean);
+    }
+
+    grid.innerHTML = html;
     grid.classList.toggle('explain-matches-active', showMatchReasons);
+  }
+
+  async function loadMoreRecentResults() {
+    if (isLoadingMoreRecent || recentExhausted) return;
+    // Serve from the already-fetched date-sorted buffer first.
+    if (recentVisibleCount < currentRecentDocs.length) {
+      recentVisibleCount += 3;
+      renderCurrentSearchResults();
+      return;
+    }
+    isLoadingMoreRecent = true;
+    const myRecentReq = ++recentReqSeq;
+    const btn = document.getElementById('loadMoreRecentBtn');
+    const btnText = document.getElementById('loadMoreRecentBtnText');
+    const spinner = document.getElementById('loadMoreRecentSpinner');
+    if (btn) btn.disabled = true;
+    if (btnText) btnText.textContent = 'Loading recent shiurim...';
+    if (spinner) spinner.style.display = 'inline-block';
+    try {
+      let apiUrl = '/api/search?q=' + encodeURIComponent(currentSearchQuery || '') +
+        '&sort=date&start=' + (currentRecentDocs.length + 1) + '&rows=6';
+      const teachersList = currentFilterParams.teachers || (currentFilterParams.teacherId ? [{ id: currentFilterParams.teacherId }] : []);
+      teachersList.forEach(t => { apiUrl += '&teacherId=' + encodeURIComponent(t.id); });
+      const categoriesList = currentFilterParams.categories || (currentFilterParams.subCategoryId ? [{ id: currentFilterParams.subCategoryId }] : []);
+      categoriesList.forEach(c => { apiUrl += '&subCategoryId=' + encodeURIComponent(c.id); });
+      const locationsList = currentFilterParams.locations || (currentFilterParams.locationId ? [{ id: currentFilterParams.locationId }] : []);
+      locationsList.forEach(l => { apiUrl += '&locationId=' + encodeURIComponent(l.id); });
+      const seriesList = currentFilterParams.series || (currentFilterParams.seriesId ? [{ id: currentFilterParams.seriesId }] : []);
+      seriesList.forEach(s => { apiUrl += '&seriesId=' + encodeURIComponent(s.id); });
+      if (currentFilterParams.minDuration) apiUrl += '&minDuration=' + encodeURIComponent(currentFilterParams.minDuration);
+      if (currentFilterParams.maxDuration) apiUrl += '&maxDuration=' + encodeURIComponent(currentFilterParams.maxDuration);
+      if (currentFilterParams.year) apiUrl += '&year=' + encodeURIComponent(currentFilterParams.year);
+      if (currentFilterParams.mediaType && currentFilterParams.mediaType !== 'all') {
+        apiUrl += '&mediaType=' + encodeURIComponent(currentFilterParams.mediaType);
+      }
+      if (currentFilterParams.enablePhonetics === false || (currentFilterParams.enablePhonetics === undefined && useClassicSearch)) {
+        apiUrl += '&exact=1';
+      }
+      const res = await fetch(apiUrl);
+      const data = await res.json();
+      if (myRecentReq !== recentReqSeq) return;
+      const fresh = data?.response?.docs || [];
+      if (data?.response?.numFound) recentNumFound = data.response.numFound;
+      let added = 0;
+      if (fresh.length > 0) {
+        const known = new Set([
+          ...currentRecentDocs.map(d => String(d.shiurID || d.shiurid || d.id || '')),
+          ...currentSearchDocs.map(d => String(d.shiurID || d.shiurid || d.id || ''))
+        ]);
+        for (const d of fresh) {
+          const id = String(d.shiurID || d.shiurid || d.id || '');
+          if (id && !known.has(id)) {
+            known.add(id);
+            currentRecentDocs.push(d);
+            added++;
+          }
+        }
+        if (added > 0) recentVisibleCount += 3;
+      }
+      // Exhausted when the window under-delivers OR contributes nothing new
+      // (fully overlapping windows would otherwise livelock the button).
+      if (fresh.length < 6 || added === 0) recentExhausted = true;
+      renderCurrentSearchResults();
+    } catch (err) {
+      console.error('Failed to load more recent results:', err);
+      if (btn) btn.disabled = false;
+      if (btnText) btnText.textContent = '🔽 Load More Recent';
+      if (spinner) spinner.style.display = 'none';
+    } finally {
+      isLoadingMoreRecent = false;
+    }
   }
 
   function goHome(e) {
@@ -8171,6 +8782,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   // Initialize listeners on DOMContentLoaded
   document.addEventListener('DOMContentLoaded', () => {
+    // ROADMAP §8.1: Dev Mode persists across reloads once unlocked.
+    try {
+      if (localStorage.getItem('yutorah_dev_mode') === 'true' && !isDevMode) {
+        activateDevMode();
+      }
+    } catch (e) {}
     setupAutocompleteInput('teacher', 'advTeacherInput', 'teacherDropdown', 'teachers');
     setupAutocompleteInput('category', 'advCategoryInput', 'categoryDropdown', 'categories');
     setupAutocompleteInput('location', 'advLocationInput', 'locationDropdown', 'venues');
@@ -8395,6 +9012,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     currentSearchQuery = query;
     currentFilterParams = extraParams;
     currentSearchPage = 1;
+    currentRecentDocs = [];
+    recentNumFound = 0;
+    currentDidYouMean = [];
+    recentVisibleCount = 3;
+    recentExhausted = false;
+    recentReqSeq++;
     currentLoadedDocsCount = 0;
     totalSearchResults = 0;
     isLoadingMore = false;
@@ -8483,8 +9106,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       spinner.style.display = 'none';
 
       const docs = data?.response?.docs || [];
-      totalSearchResults = data?.response?.numFound || docs.length;
-      currentLoadedDocsCount = docs.length;
+      // Loaded count includes the lifted Recent-3: numFound counts them too,
+      // so the label and the loaded>=total termination stay exact.
+      currentRecentDocs = data?.response?.recentDocs || [];
+      totalSearchResults = data?.response?.numFound || (docs.length + currentRecentDocs.length);
+      currentLoadedDocsCount = docs.length + currentRecentDocs.length;
+      recentNumFound = data?.response?.recentNumFound || 0;
+      currentDidYouMean = data?.didYouMean || [];
+      recentVisibleCount = 3;
+      recentExhausted = false;
 
       // Handle Phonetic Expansion Notice
       if (data?.phoneticExpansion && !useClassicSearch) {
@@ -8506,12 +9136,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         : ('Showing ' + currentLoadedDocsCount + (totalSearchResults ? ' of ' + totalSearchResults.toLocaleString() : '') + ' results' + (query ? ' for "' + query + '"' : ''));
       label.textContent = resultsTitle;
 
-      if (docs.length === 0) {
+      if (docs.length === 0 && currentRecentDocs.length === 0) {
         currentSearchDocs = [];
-        grid.innerHTML = '<div style="padding: 30px; text-align: center; color: var(--text-muted); grid-column: 1/-1;">No shiurim found matching these criteria. Try adjusting your filters or search keywords.</div>';
+        currentDidYouMean = currentDidYouMean.length > 0 ? currentDidYouMean : clientFuzzySuggest(query, 5);
+        let emptyHtml = '<div style="padding: 30px; text-align: center; color: var(--text-muted); grid-column: 1/-1;">No shiurim found matching these criteria. Try adjusting your filters or search keywords.</div>';
+        if (currentDidYouMean.length > 0) {
+          emptyHtml = renderDidYouMeanStrip(currentDidYouMean) + emptyHtml;
+        }
+        grid.innerHTML = emptyHtml;
         loadMoreBox.style.display = 'none';
         return;
       }
+      currentDidYouMean = [];
 
       currentSearchDocs = docs;
       renderCurrentSearchResults();
@@ -8616,12 +9252,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         spinner.style.display = 'none';
       }
     } catch (err) {
-      console.error('Failed to load more results:', err);
-      btn.disabled = false;
-      btnText.textContent = '🔽 Load More Results';
-      spinner.style.display = 'none';
+      if (myRecentReq !== recentReqSeq) return;
+      console.error('Failed to load more recent results:', err);
+      if (btn) btn.disabled = false;
+      if (btnText) btnText.textContent = '🔽 Load More Recent';
+      if (spinner) spinner.style.display = 'none';
     } finally {
-      isLoadingMore = false;
+      if (myRecentReq === recentReqSeq) isLoadingMoreRecent = false;
     }
   }
 
@@ -8647,6 +9284,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (pNotice) pNotice.style.display = 'none';
 
     currentSearchDocs = [];
+    currentRecentDocs = [];
+    recentNumFound = 0;
+    currentDidYouMean = [];
+    recentVisibleCount = 3;
+    recentExhausted = false;
     currentPhoneticTokens = [];
     currentSearchPage = 1;
     showMatchReasons = false;
@@ -8702,6 +9344,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   function renderDocToCard(d, options = {}) {
     const id = d.shiurid || d.shiurID || d.id || '';
+    if (id && typeof devDocCache !== 'undefined') {
+      devDocCache[String(id)] = {
+        id: String(id),
+        title: d.shiurtitle || d.shiurTitle || d.title || 'Untitled',
+        speaker: d.teacherfullname || (d.shiurTeachers && d.shiurTeachers[0] ? d.shiurTeachers[0].teacherFullName : (d.speaker || 'YUTorah')),
+        photo: d.PHOTO ? (d.PHOTO.startsWith('http') ? d.PHOTO : 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/' + d.PHOTO) : (d.photo || ''),
+        duration: d.durationformatted || (d.duration ? d.duration + ' min' : ''),
+        date: d.shiurdateformatted || d.shiurDateFormatted || d.shiurdate || d.shiurDate || d.shiurdatesubmitted || d.shiurDateSubmitted || d.date || ''
+      };
+    }
     const title = d.shiurtitle || d.shiurTitle || d.title || 'Untitled';
     const speaker = d.teacherfullname || (d.shiurTeachers && d.shiurTeachers[0] ? d.shiurTeachers[0].teacherFullName : (d.speaker || 'YUTorah'));
     const photo = d.PHOTO ? (d.PHOTO.startsWith('http') ? d.PHOTO : 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/' + d.PHOTO) : (d.photo || 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/_default.jpg');
@@ -8786,6 +9438,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         '<span>' + bottomMeta + '</span>' +
         actionBadge +
       '</div>' +
+      (typeof devCardActionsHtml === 'function' ? devCardActionsHtml(String(id)) : '') +
+      (typeof devProgressHtml === 'function' ? devProgressHtml(String(id)) : '') +
     '</a>';
   }
 
@@ -9210,6 +9864,488 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }).join('');
   }
 
+  // =========================================================================
+  // ROADMAP §8: Dev Playlists engine (Dev Mode only — fully inert otherwise).
+  // Store: localStorage yutorah_dev_playlists (system + custom playlists)
+  // and yutorah_playback_progress (per-shiur playback records).
+  // =========================================================================
+  var DEV_PLAYLISTS_KEY = 'yutorah_dev_playlists';
+  var DEV_PROGRESS_KEY = 'yutorah_playback_progress';
+  var devDocCache = {};
+  var activeDevPlaylistId = 'history';
+  var devLastHeartbeat = 0;
+  // Memoized parses: renderDocToCard calls into the store per card, so we
+  // cache the parsed objects and invalidate on every save (same-tab writes
+  // always go through saveDevStore / the progress writers below).
+  var devStoreCache = null;
+  var devProgressCache = null;
+
+  function devDefaultStore() {
+    return {
+      activeId: 'history',
+      custom: {},
+      system: {
+        save_for_later: { id: 'save_for_later', name: 'Save for Later', icon: '🕒', items: [] },
+        favorites: { id: 'favorites', name: 'Favorites', icon: '⭐', items: [] }
+      }
+    };
+  }
+
+  function getDevStore() {
+    if (devStoreCache) return devStoreCache;
+    try {
+      const raw = localStorage.getItem(DEV_PLAYLISTS_KEY);
+      if (!raw) {
+        devStoreCache = devDefaultStore();
+        return devStoreCache;
+      }
+      const s = JSON.parse(raw);
+      if (!s.system) {
+        devStoreCache = devDefaultStore();
+        return devStoreCache;
+      }
+      if (!s.system.save_for_later) s.system.save_for_later = { id: 'save_for_later', name: 'Save for Later', icon: '🕒', items: [] };
+      if (!s.system.favorites) s.system.favorites = { id: 'favorites', name: 'Favorites', icon: '⭐', items: [] };
+      if (!s.custom) s.custom = {};
+      devStoreCache = s;
+      return s;
+    } catch (e) {
+      devStoreCache = devDefaultStore();
+      return devStoreCache;
+    }
+  }
+
+  function saveDevStore(store) {
+    devStoreCache = store;
+    try {
+      localStorage.setItem(DEV_PLAYLISTS_KEY, JSON.stringify(store));
+    } catch (e) {
+      if (e && (e.name === 'QuotaExceededError' || e.code === 22)) {
+        flashToast('⚠️ Storage full — playlist change was NOT saved', true, false);
+      }
+    }
+  }
+
+  function getDevPlaylist(store, pid) {
+    if (pid === 'history') {
+      return { id: 'history', name: 'History', icon: '📜', isHistory: true, items: getRecentHistory() };
+    }
+    if (store.system[pid]) return store.system[pid];
+    if (store.custom[pid]) return store.custom[pid];
+    return null;
+  }
+
+  function devPlaylistIds(store) {
+    return ['history', 'save_for_later', 'favorites'].concat(Object.keys(store.custom || {}));
+  }
+
+  function devSnapshot(id) {
+    if (devDocCache[id]) return devDocCache[id];
+    if (String(currentShiurId) === String(id)) {
+      const t = document.getElementById('shiurTitle');
+      const s = document.getElementById('shiurSpeaker');
+      const img = document.getElementById('speakerImg');
+      return {
+        id: id,
+        title: t ? t.textContent : 'Untitled',
+        speaker: s ? s.textContent : 'YUTorah',
+        photo: img ? img.src : '',
+        duration: '',
+        addedAt: Date.now()
+      };
+    }
+    return null;
+  }
+
+  function devInPlaylist(pid, id) {
+    const store = getDevStore();
+    const pl = getDevPlaylist(store, pid);
+    if (!pl || !pl.items) return false;
+    return pl.items.some(item => String(item.id) === String(id));
+  }
+
+  function devSetMembership(pid, id, want) {
+    if (pid === 'history') return false;
+    const store = getDevStore();
+    const pl = store.system[pid] || store.custom[pid];
+    if (!pl) return false;
+    const has = pl.items.some(item => String(item.id) === String(id));
+    if (want && !has) {
+      const snap = devSnapshot(id);
+      if (!snap) return false;
+      snap.addedAt = Date.now();
+      pl.items.unshift(snap);
+    } else if (!want && has) {
+      pl.items = pl.items.filter(item => String(item.id) !== String(id));
+    } else {
+      return true;
+    }
+    saveDevStore(store);
+    return true;
+  }
+
+  function toggleDevSave(id) {
+    const want = !devInPlaylist('save_for_later', id);
+    if (devSetMembership('save_for_later', id, want)) {
+      flashToast(want ? '🕒 Saved for Later' : '🕒 Removed from Save for Later', !want, false);
+      devRefreshCardButtons();
+      if (document.getElementById('grid-playlists') && document.getElementById('grid-playlists').style.display !== 'none') renderPlaylistsGrid();
+    }
+  }
+
+  function toggleDevFav(id) {
+    const want = !devInPlaylist('favorites', id);
+    if (devSetMembership('favorites', id, want)) {
+      flashToast(want ? '⭐ Added to Favorites' : '⭐ Removed from Favorites', !want, false);
+      devRefreshCardButtons();
+      if (document.getElementById('grid-playlists') && document.getElementById('grid-playlists').style.display !== 'none') renderPlaylistsGrid();
+    }
+  }
+
+  function devRefreshCardButtons() {
+    document.querySelectorAll('[data-dev-save]').forEach(el => {
+      const on = devInPlaylist('save_for_later', el.getAttribute('data-dev-save'));
+      el.classList.toggle('active-save', on);
+      el.textContent = on ? '🕒 Saved' : '🕒 Later';
+    });
+    document.querySelectorAll('[data-dev-fav]').forEach(el => {
+      const on = devInPlaylist('favorites', el.getAttribute('data-dev-fav'));
+      el.classList.toggle('active-fav', on);
+      el.textContent = on ? '⭐ Saved' : '☆ Fav';
+    });
+  }
+
+  function getPlaybackProgress() {
+    if (devProgressCache) return devProgressCache;
+    try {
+      devProgressCache = JSON.parse(localStorage.getItem(DEV_PROGRESS_KEY) || '{}');
+    } catch (e) {
+      devProgressCache = {};
+    }
+    return devProgressCache;
+  }
+
+  function getProgressRecord(id) {
+    if (!id) return null;
+    return getPlaybackProgress()[String(id)] || null;
+  }
+
+  function devRecordHeartbeat(force) {
+    if (!currentShiurId || isSponsorPlaying || !audio || !audio.duration || isNaN(audio.duration)) return;
+    const now = Date.now();
+    if (!force && now - devLastHeartbeat < 5000) return;
+    devLastHeartbeat = now;
+    try {
+      const all = getPlaybackProgress();
+      all[String(currentShiurId)] = {
+        shiurId: String(currentShiurId),
+        progressSec: Math.floor(audio.currentTime || 0),
+        durationSec: Math.floor(audio.duration || 0),
+        lastListened: now,
+        completed: false
+      };
+      localStorage.setItem(DEV_PROGRESS_KEY, JSON.stringify(all));
+    } catch (e) {}
+  }
+
+  function devMarkCompleted() {
+    if (!currentShiurId) return;
+    try {
+      const all = getPlaybackProgress();
+      const prev = all[String(currentShiurId)] || {};
+      all[String(currentShiurId)] = {
+        shiurId: String(currentShiurId),
+        progressSec: prev.durationSec || Math.floor((audio && audio.duration) || 0),
+        durationSec: prev.durationSec || Math.floor((audio && audio.duration) || 0),
+        lastListened: Date.now(),
+        completed: true
+      };
+      localStorage.setItem(DEV_PROGRESS_KEY, JSON.stringify(all));
+    } catch (e) {}
+  }
+
+  function devRelativeTime(ts) {
+    const diff = Date.now() - ts;
+    if (diff < 3600000) {
+      const m = Math.max(1, Math.round(diff / 60000));
+      return m + ' min ago';
+    }
+    if (diff < 86400000) {
+      const h = Math.round(diff / 3600000);
+      return h + (h === 1 ? ' hour ago' : ' hours ago');
+    }
+    const d = Math.round(diff / 86400000);
+    if (d === 1) return 'Yesterday';
+    return d + ' days ago';
+  }
+
+  function devProgressHtml(id) {
+    if (!isDevMode) return '';
+    const rec = getProgressRecord(id);
+    if (!rec || !rec.durationSec) return '';
+    const pct = Math.min(100, Math.round((rec.progressSec / rec.durationSec) * 100));
+    const cur = Math.floor(rec.progressSec / 60);
+    const tot = Math.floor(rec.durationSec / 60);
+    return '<div class="dev-only"><div class="card-progress-track"><div class="card-progress-fill" style="width: ' + pct + '%;"></div></div>' +
+      '<div class="card-listen-meta">🕒 Last listened: ' + escapeHtml(devRelativeTime(rec.lastListened)) +
+      ' · ' + cur + '/' + tot + ' min through (' + pct + '%)</div></div>';
+  }
+
+  function devCardActionsHtml(id) {
+    if (!isDevMode) return '';
+    const inSave = devInPlaylist('save_for_later', id);
+    const inFav = devInPlaylist('favorites', id);
+    return '<div class="card-mini-actions dev-only">' +
+      '<span role="button" tabindex="0" class="card-mini-btn' + (inSave ? ' active-save' : '') + '" data-dev-save="' + id + '"' +
+      ' onclick="event.stopPropagation(); event.preventDefault(); toggleDevSave(\\'' + id + '\\')">' + (inSave ? '🕒 Saved' : '🕒 Later') + '</span>' +
+      '<span role="button" tabindex="0" class="card-mini-btn' + (inFav ? ' active-fav' : '') + '" data-dev-fav="' + id + '"' +
+      ' onclick="event.stopPropagation(); event.preventDefault(); toggleDevFav(\\'' + id + '\\')">' + (inFav ? '⭐ Saved' : '☆ Fav') + '</span>' +
+      '<span role="button" tabindex="0" class="card-mini-btn" onclick="event.stopPropagation(); event.preventDefault(); openPlaylistModal(\\'' + id + '\\')">➕ Playlist</span>' +
+      '</div>';
+  }
+
+  function devParseMinutes(str) {
+    if (str == null) return 0;
+    if (typeof str === 'number') return Math.round(str);
+    const s = String(str);
+    let mins = 0;
+    let m = s.match(/(\\d+)\\s*h/i);
+    if (m) mins += parseInt(m[1], 10) * 60;
+    m = s.match(/(\\d+)\\s*min/i);
+    if (m) mins += parseInt(m[1], 10);
+    else {
+      m = s.match(/(\\d+)\\s*m\\b/i);
+      if (m) mins += parseInt(m[1], 10);
+    }
+    if (!mins) {
+      m = s.match(/(\\d+)\\s*sec/i);
+      if (m) mins += Math.round(parseInt(m[1], 10) / 60);
+      else {
+        m = s.match(/^\\s*(\\d+)\\s*$/);
+        if (m) mins += parseInt(m[1], 10);
+      }
+    }
+    return mins;
+  }
+
+  function devTotalDuration(items) {
+    const total = (items || []).reduce((sum, it) => sum + devParseMinutes(it.duration), 0);
+    if (total >= 60) {
+      const h = Math.floor(total / 60);
+      const m = total % 60;
+      return h + (h === 1 ? ' hr ' : ' hrs ') + m + ' min';
+    }
+    return total + ' min';
+  }
+
+  function devAskRemove(pid, id) {
+    const grid = document.getElementById('grid-playlists');
+    if (!grid) return;
+    grid.querySelectorAll('[data-dev-remove-confirm]').forEach(el => {
+      el.outerHTML = '<button type="button" class="card-mini-btn" data-dev-remove="' + el.getAttribute('data-dev-remove-confirm-pid') + ':' + el.getAttribute('data-dev-remove-confirm') + '"' +
+        ' onclick="devAskRemove(\\'' + el.getAttribute('data-dev-remove-confirm-pid') + '\\', \\'' + el.getAttribute('data-dev-remove-confirm') + '\\')">✕ Remove</button>';
+    });
+    const sel = grid.querySelector('[data-dev-remove="' + pid + ':' + id + '"]');
+    if (sel) {
+      const store = getDevStore();
+      const pl = getDevPlaylist(store, pid);
+      const plName = pl && pl.name ? pl.name : pid;
+      sel.outerHTML = '<span>Are you sure you want to remove this shiur from "' + escapeHtml(plName) + '?" ' +
+        '<button type="button" class="card-mini-btn" onclick="devDoRemove(\\'' + pid + '\\', \\'' + id + '\\')">🗑️ Confirm Remove</button> ' +
+        '<button type="button" class="card-mini-btn" onclick="renderPlaylistsGrid()">Cancel</button></span>';
+    }
+  }
+
+  function devDoRemove(pid, id) {
+    if (pid === 'history') {
+      try {
+        let history = getRecentHistory().filter(item => String(item.id) !== String(id));
+        localStorage.setItem('yutorah_recent_history', JSON.stringify(history));
+      } catch (e) {}
+    } else {
+      const store = getDevStore();
+      const pl = store.system[pid] || store.custom[pid];
+      if (pl) {
+        pl.items = pl.items.filter(item => String(item.id) !== String(id));
+        saveDevStore(store);
+      }
+    }
+    devRefreshCardButtons();
+    renderPlaylistsGrid();
+  }
+
+  function devCreatePlaylist(name) {
+    name = String(name || '').trim().slice(0, 60);
+    if (!name) return null;
+    const store = getDevStore();
+    const id = 'pl_' + Date.now().toString(36);
+    store.custom[id] = { id: id, name: name, icon: '📁', items: [] };
+    store.activeId = id;
+    activeDevPlaylistId = id;
+    saveDevStore(store);
+    return id;
+  }
+
+  function renderPlaylistsGrid() {
+    const grid = document.getElementById('grid-playlists');
+    if (!grid || !isDevMode) return;
+    const store = getDevStore();
+    if (!getDevPlaylist(store, activeDevPlaylistId)) activeDevPlaylistId = 'history';
+    const pl = getDevPlaylist(store, activeDevPlaylistId);
+    const pills = devPlaylistIds(store).map(pid => {
+      const p = getDevPlaylist(store, pid);
+      if (!p) return '';
+      const n = (p.items || []).length;
+      return '<button type="button" class="playlist-pill' + (pid === activeDevPlaylistId ? ' active' : '') + '"' +
+        ' onclick="activeDevPlaylistId=\\'' + pid + '\\'; renderPlaylistsGrid();">' +
+        escapeHtml(p.icon || '📁') + ' ' + escapeHtml(p.name) + ' (' + n + ')</button>';
+    }).join('');
+    let html = '<div class="playlist-pills">' + pills +
+      '<button type="button" class="playlist-pill" onclick="devPromptNewPlaylist()">➕ New Playlist</button></div>';
+    const items = (pl && pl.items) || [];
+    html += '<div class="search-results-subheading"><span>' + escapeHtml((pl && pl.icon) || '📁') + '</span>' +
+      '<span>' + escapeHtml((pl && pl.name) || '') + '</span>' +
+      '<span class="sub-count">' + items.length + ' Shiurim • ' + escapeHtml(devTotalDuration(items)) + '</span></div>';
+    if (!pl.isHistory && !store.system[pl.id]) {
+      html += '<div style="grid-column:1/-1; margin-bottom:8px; display:flex; gap:8px;">' +
+        '<button type="button" class="card-mini-btn" onclick="playDevPlaylistAll()">▶ Play All</button>' +
+        '<button type="button" class="card-mini-btn" onclick="devExportPlaylist()">Export JSON</button>' +
+        '<button type="button" class="card-mini-btn" onclick="devDeletePlaylist()">Delete Playlist</button></div>';
+    } else if (items.length > 0) {
+      html += '<div style="grid-column:1/-1; margin-bottom:8px;"><button type="button" class="card-mini-btn" onclick="playDevPlaylistAll()">▶ Play All</button></div>';
+    }
+    if (items.length === 0) {
+      html += '<div style="grid-column:1/-1; text-align:center; padding:30px; color:var(--text-muted);">Empty playlist — tap 🕒 Later, ☆ Fav or ➕ Playlist on any card to add shiurim.</div>';
+    } else {
+      html += items.map(item => {
+        const iid = String(item.id);
+        return '<div>' + renderDocToCard(item) +
+          '<div style="margin-top:6px; display:flex; gap:6px; align-items:center;">' +
+          '<button type="button" class="card-mini-btn" data-dev-remove="' + pl.id + ':' + iid + '"' +
+          ' onclick="devAskRemove(\\'' + pl.id + '\\', \\'' + iid + '\\')">✕ Remove from Playlist</button>' +
+          '</div></div>';
+      }).join('');
+    }
+    grid.innerHTML = html;
+  }
+
+  function devPromptNewPlaylist() {
+    const name = window.prompt('Name for the new playlist:');
+    if (name && name.trim()) {
+      devCreatePlaylist(name);
+      renderPlaylistsGrid();
+    }
+  }
+
+  function playDevPlaylistAll() {
+    const store = getDevStore();
+    const pl = getDevPlaylist(store, activeDevPlaylistId);
+    if (pl && pl.items && pl.items.length > 0) {
+      playShiurById(null, String(pl.items[0].id));
+    }
+  }
+
+  function devExportPlaylist() {
+    const store = getDevStore();
+    const pl = getDevPlaylist(store, activeDevPlaylistId);
+    if (!pl) return;
+    try {
+      const blob = new Blob([JSON.stringify(pl, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'playlist-' + pl.id + '.json';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    } catch (e) {}
+  }
+
+  function devDeletePlaylist() {
+    const store = getDevStore();
+    const pl = store.custom[activeDevPlaylistId];
+    if (!pl) return;
+    if (!window.confirm('Delete playlist "' + pl.name + '"? Shiurim stay in your other playlists.')) return;
+    delete store.custom[activeDevPlaylistId];
+    activeDevPlaylistId = 'history';
+    saveDevStore(store);
+    renderPlaylistsGrid();
+  }
+
+  function openPlaylistModal(id) {
+    if (!isDevMode) return;
+    closePlaylistModal();
+    const snap = devSnapshot(id);
+    if (!snap) return;
+    const store = getDevStore();
+    const overlay = document.createElement('div');
+    overlay.id = 'playlistModal';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', 'Add to playlist');
+    overlay.style.cssText = 'position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; padding:16px;';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:var(--card-bg,#fff); color:var(--text,#111); border-radius:14px; max-width:440px; width:100%; max-height:80vh; overflow:auto; padding:18px;';
+    function rowHtml(pid, name, icon, count, checked) {
+      return '<label style="display:flex; align-items:center; gap:8px; padding:7px 4px; cursor:pointer;" data-pl-row="' + escapeHtml(name.toLowerCase()) + '">' +
+        '<input type="checkbox" data-pl-check="' + pid + '"' + (checked ? ' checked' : '') + (pid === 'history' ? ' disabled' : '') + '>' +
+        '<span>' + escapeHtml(icon) + ' ' + escapeHtml(name) + ' (' + count + ')</span></label>';
+    }
+    function listHtml(filter) {
+      const s = getDevStore();
+      const f = String(filter || '').toLowerCase();
+      let h = '';
+      devPlaylistIds(s).forEach(pid => {
+        const p = getDevPlaylist(s, pid);
+        if (!p) return;
+        if (f && p.name.toLowerCase().indexOf(f) === -1) return;
+        h += rowHtml(pid, p.name, p.icon || '📁', (p.items || []).length, devInPlaylist(pid, id));
+      });
+      return h || '<div style="padding:8px; color:var(--text-muted);">No playlists match.</div>';
+    }
+    box.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">' +
+      '<div style="font-weight:800;">➕ Add to Playlist</div>' +
+      '<button type="button" class="card-mini-btn" onclick="closePlaylistModal()">Close ×</button></div>' +
+      '<div style="font-size:13px; color:var(--text-muted); margin-bottom:10px;">' + escapeHtml(snap.title) + '</div>' +
+      '<input id="devPlFilter" type="text" placeholder="Type to filter or create..." autocomplete="off"' +
+      ' style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-light); margin-bottom:6px;">' +
+      '<div id="devPlCreateWrap"></div>' +
+      '<div id="devPlList">' + listHtml('') + '</div>';
+    overlay.appendChild(box);
+    overlay.addEventListener('click', e => { if (e.target === overlay) closePlaylistModal(); });
+    document.body.appendChild(overlay);
+    const filterInput = box.querySelector('#devPlFilter');
+    const listEl = box.querySelector('#devPlList');
+    const createWrap = box.querySelector('#devPlCreateWrap');
+    filterInput.addEventListener('input', () => {
+      listEl.innerHTML = listHtml(filterInput.value);
+      const v = filterInput.value.trim();
+      if (v) {
+        createWrap.innerHTML = '<button type="button" class="card-mini-btn" id="devPlCreateBtn">➕ Create "' + escapeHtml(v) + '"</button>';
+        const cb = createWrap.querySelector('#devPlCreateBtn');
+        cb.addEventListener('click', () => {
+          const nid = devCreatePlaylist(v);
+          if (nid) devSetMembership(nid, id, true);
+          openPlaylistModal(id);
+          renderPlaylistsGrid();
+        });
+      } else {
+        createWrap.innerHTML = '';
+      }
+    });
+    listEl.addEventListener('change', e => {
+      const cb = e.target.closest('[data-pl-check]');
+      if (!cb) return;
+      devSetMembership(cb.getAttribute('data-pl-check'), id, cb.checked);
+      devRefreshCardButtons();
+    });
+    const first = box.querySelector('#devPlFilter');
+    if (first) first.focus();
+  }
+
+  function closePlaylistModal() {
+    const m = document.getElementById('playlistModal');
+    if (m) m.remove();
+  }
+
   let parshaShiurimLoaded = false;
   async function loadParshaShiurimGrid() {
     const grid = document.getElementById('grid-parsha');
@@ -9232,9 +10368,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   // Switch Collection Tabs
-  const collections = ['editors', 'series', 'recent', 'popular', 'viewed', 'parsha', 'daily', 'trending'];
+  const collections = ['editors', 'playlists', 'series', 'recent', 'popular', 'viewed', 'parsha', 'daily', 'trending'];
   const collectionTitles = {
     editors: "⭐ Editor's Picks",
+    playlists: "🎧 Dev's Playlists",
     series: "📚 Featured Series",
     recent: "⏱️ Recently Uploaded",
     popular: "🔥 Most Popular",
@@ -9626,6 +10763,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       renderRecentlyViewedGrid();
     } else if (activeName === 'parsha') {
       loadParshaShiurimGrid();
+    } else if (activeName === 'playlists') {
+      renderPlaylistsGrid();
     }
   }
 
@@ -9820,6 +10959,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   audio.addEventListener('pause', () => {
     updatePlayPauseIcons(false);
     updateUrlTimestamp(true);
+    if (typeof devRecordHeartbeat === 'function') devRecordHeartbeat(true);
     if (isSponsorPlaying) {
       clearSponsorTimers();
       stopSponsorRaf();
@@ -9875,6 +11015,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (miniTime) miniTime.textContent = formatTime(audio.currentTime) + ' / ' + formatTime(audio.duration);
 
     updateUrlTimestamp(false);
+    if (typeof devRecordHeartbeat === 'function') devRecordHeartbeat(false);
   });
   audio.addEventListener('loadedmetadata', () => {
     if (currentPlaybackRate) {
@@ -9901,6 +11042,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       return;
     }
     updatePlayPauseIcons(false);
+    if (typeof devMarkCompleted === 'function' && !isSponsorPlaying) devMarkCompleted();
     if (currentShiurId) {
       try { localStorage.removeItem('yutorah_progress_' + currentShiurId); } catch(e) {}
     }

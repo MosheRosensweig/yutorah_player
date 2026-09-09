@@ -356,7 +356,7 @@ In place of a single undifferentiated grid of 30 cards, search results are clean
 ## 8. Developer Mode: "Dev's Playlists", Progress Tracking & Multi-Playlist Engine
 
 ### 8.1 Overview & Dev Mode Isolation Guardrails
-Developer Mode (`isDevMode`) is a specialized diagnostic and power-user environment activated via the secret 7-tap gesture on the header calendar badge or by typing `'dev mode'` in the search bar.
+Developer Mode (`isDevMode`) is a specialized diagnostic and power-user environment activated by typing `'dev mode'` (case-insensitive) in the search bar — the sole entry method; there is no tap gesture for Dev Mode.
 - **Zero Impact on Standard Public Users**:
   - In normal (non-dev) mode, all playlist buttons, playlist tabs, progress tracks, and modal dialogs are completely inactive and hidden (`display: none !important; aria-hidden="true"`).
   - Normal users experience fast, clean audio playback, search, and document reading with zero DOM bloat or performance degradation.
