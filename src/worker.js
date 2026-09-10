@@ -5007,9 +5007,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     @media (max-width: 640px) {
       .hero-slide img {
-        object-position: 15% center;
-        -webkit-mask-image: linear-gradient(to right, transparent 0, #000 32%);
-        mask-image: linear-gradient(to right, transparent 0, #000 32%);
+        object-fit: contain;
+        object-position: center;
+        background: #0b1220;
+        -webkit-mask-image: none;
+        mask-image: none;
       }
     }
     .hero-caption {
