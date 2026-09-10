@@ -5018,22 +5018,22 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       top: 0;
       bottom: 0;
       width: 55%;
-      padding: 24px 64px 24px 22px;
+      padding: 28px 70px 28px 26px;
       background: linear-gradient(to left, rgba(0, 0, 0, 0.72) 55%, rgba(0, 0, 0, 0));
       color: #fff;
       display: flex;
       flex-direction: column;
       justify-content: center;
-      gap: 8px;
+      gap: 12px;
       text-shadow: 0 1px 6px rgba(0, 0, 0, 0.55);
     }
     .hero-title {
-      font-size: 28px;
+      font-size: 40px;
       font-weight: 800;
-      line-height: 1.2;
+      line-height: 1.15;
     }
     .hero-desc {
-      font-size: 15px;
+      font-size: 17px;
       opacity: 0.94;
       display: -webkit-box;
       -webkit-line-clamp: 4;
@@ -5043,13 +5043,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     .hero-cta {
       display: inline-block;
       align-self: flex-start;
-      margin-top: 8px;
-      font-size: 13px;
+      margin-top: 10px;
+      font-size: 16px;
       font-weight: 800;
       background: rgba(255, 255, 255, 0.92);
       color: #1e2530;
-      border-radius: 16px;
-      padding: 5px 14px;
+      border-radius: 18px;
+      padding: 8px 20px;
       text-shadow: none;
     }
     .hero-arrow {
