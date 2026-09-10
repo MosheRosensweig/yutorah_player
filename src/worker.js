@@ -5104,7 +5104,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     .hero-arrow:focus-visible {
       outline: 2px solid #fff !important;
       outline-offset: 1px;
-      box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.55);
+      box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.55), 0 0 0 6px var(--primary);
+    }
+    @media (max-width: 640px) {
+      .hero-dot:focus-visible,
+      .hero-arrow:focus-visible {
+        outline-color: var(--primary) !important;
+        box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.9);
+      }
     }
     @media (max-width: 640px) {
       .hero-caption {
@@ -5219,6 +5226,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     [data-theme="dark"] .did-you-mean-strip {
       background: #453b0a;
       border-color: #a16207;
+    }
+    .did-you-mean-strip.resolution-note {
+      background: #eef4ff;
+      border-color: #b9cdf3;
+    }
+    [data-theme="dark"] .did-you-mean-strip.resolution-note {
+      background: #1b2f4d;
+      border-color: #436ea8;
     }
     [data-theme="dark"] .card-mini-btn {
       background: #1f2937;
@@ -6939,14 +6954,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     <div class="mini-controls">
       <button type="button" class="mini-btn skip-btn" onclick="skip(-10); event.stopPropagation();" title="Back 10s">
         <svg width="44" height="28" viewBox="0 0 44 28" style="display:block;">
-          <polygon points="4,14 40,2 40,26" fill="rgba(255,255,255,0.18)" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" stroke-linejoin="round"/>
+          <polygon points="2,14 42,1 42,27" fill="rgba(255,255,255,0.18)" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" stroke-linejoin="round"/>
           <text x="26" y="18" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="11" font-weight="800" text-anchor="middle">-10</text>
         </svg>
       </button>
       <button type="button" class="mini-play-btn" id="miniPlayBtn" onclick="togglePlay(); event.stopPropagation();" title="Play/Pause"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style="display:block;"><path d="M8 5v14l11-7z"/></svg></button>
       <button type="button" class="mini-btn skip-btn" onclick="skip(10); event.stopPropagation();" title="Forward 10s">
         <svg width="44" height="28" viewBox="0 0 44 28" style="display:block;">
-          <polygon points="40,14 4,2 4,26" fill="rgba(255,255,255,0.18)" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" stroke-linejoin="round"/>
+          <polygon points="42,14 2,1 2,27" fill="rgba(255,255,255,0.18)" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" stroke-linejoin="round"/>
           <text x="18" y="18" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="11" font-weight="800" text-anchor="middle">+10</text>
         </svg>
       </button>
@@ -7439,12 +7454,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         wrap.id = 'devPlayerActions';
         wrap.className = 'card-mini-actions dev-only';
         wrap.style.marginTop = '8px';
-        const mkBtn = (bid, label, fn) => {
+        const mkBtn = (bid, labelHtml, fn) => {
           const b = document.createElement('button');
           b.type = 'button';
           b.id = bid;
           b.className = 'card-mini-btn';
-          b.textContent = label;
+          b.innerHTML = labelHtml;
           b.addEventListener('click', () => {
             if (currentShiurId) fn(String(currentShiurId));
           });
@@ -8953,7 +8968,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if ((!currentRecentDocs || currentRecentDocs.length === 0) && (!currentSearchDocs || currentSearchDocs.length === 0)) {
       let eHtml = '';
       if (currentQueryResolution && currentQueryResolution.display) {
-        eHtml += '<div class="did-you-mean-strip"><span>🔍 Showing results for &quot;' +
+        eHtml += '<div class="did-you-mean-strip resolution-note"><span>🔍 Showing results for &quot;' +
           escapeHtml(currentQueryResolution.display) + '&quot; — you searched &quot;' +
           escapeHtml(currentQueryResolution.original) + '&quot;.</span></div>';
       }
@@ -8994,7 +9009,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     // "Showing results for X (you searched Y)" shown only when the query
     // was rewritten (no speaker auto-resolution anymore).
     if (currentQueryResolution && currentQueryResolution.display) {
-      html += '<div class="did-you-mean-strip"><span>🔍 Showing results for &quot;' +
+      html += '<div class="did-you-mean-strip resolution-note"><span>🔍 Showing results for &quot;' +
         escapeHtml(currentQueryResolution.display) + '&quot; — you searched &quot;' +
         escapeHtml(currentQueryResolution.original) + '&quot;.</span></div>';
     }
@@ -10328,7 +10343,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           emptyHtml = renderDidYouMeanStrip(currentDidYouMean) + emptyHtml;
         }
         if (currentQueryResolution && currentQueryResolution.display) {
-          emptyHtml = '<div class="did-you-mean-strip"><span>🔍 Showing results for &quot;' +
+          emptyHtml = '<div class="did-you-mean-strip resolution-note"><span>🔍 Showing results for &quot;' +
             escapeHtml(currentQueryResolution.display) + '&quot; — you searched &quot;' +
             escapeHtml(currentQueryResolution.original) + '&quot;.</span></div>' + emptyHtml;
         }
@@ -11344,10 +11359,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   function devRefreshCardButtons() {
     const saveIc = getSaveIcon();
+    const saveId = getSaveIconId();
     document.querySelectorAll('[data-dev-save]').forEach(el => {
       const on = devInPlaylist('save_for_later', el.getAttribute('data-dev-save'));
       el.classList.toggle('active-save', on);
-      if (el.textContent !== saveIc) el.textContent = saveIc;
+      if (el.getAttribute('data-save-icon') !== saveId) {
+        el.innerHTML = saveIc;
+        el.setAttribute('data-save-icon', saveId);
+      }
       el.title = on ? 'Saved for later' : 'Save for later';
     });
     document.querySelectorAll('[data-dev-fav]').forEach(el => {
@@ -11534,31 +11553,54 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       ' · ' + cur + '/' + tot + ' min through (' + pct + '%)</div></div>';
   }
 
-  // Save-for-later button icon (dev-pickable from 5 clocks in settings).
-  const DEV_SAVE_ICONS = ['🕒', '⏰', '⏳', '⌛', '🕰️'];
-  function getSaveIcon() {
-    try {
-      const v = localStorage.getItem('yutorah_save_icon');
-      if (DEV_SAVE_ICONS.includes(v)) return v;
-    } catch (e) {}
-    return DEV_SAVE_ICONS[0];
+  // Save-for-later button icon (dev-pickable from 5 clocks in settings):
+  // the emoji favorite plus 4 SVG faces with progressively bolder hands.
+  function devClockSvg(handW, rimW, filled) {
+    var hands = filled
+      ? '<path d="M12 12 L12 6.5 L14 6.5 L14 12 L18 14 L17 15.8 Z" fill="currentColor" stroke="none"></path>'
+      : '<line x1="12" y1="12" x2="12" y2="6.5"></line>' +
+        '<line x1="12" y1="12" x2="17.5" y2="14.5"></line>';
+    return '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="' + rimW + '" aria-hidden="true">' +
+      '<circle cx="12" cy="12" r="9"></circle>' +
+      '<g stroke-width="' + handW + '" stroke-linecap="round">' + hands + '</g></svg>';
   }
-  function setSaveIcon(icon) {
-    if (!DEV_SAVE_ICONS.includes(icon)) return;
-    try { localStorage.setItem('yutorah_save_icon', icon); } catch (e) {}
+  var DEV_SAVE_ICONS = ['emoji', 'hands-light', 'hands-medium', 'hands-bold', 'hands-filled'];
+  function getSaveIconId() {
+    try {
+      var v = localStorage.getItem('yutorah_save_icon');
+      if (DEV_SAVE_ICONS.indexOf(v) !== -1) return v;
+    } catch (e) {}
+    return 'emoji';
+  }
+  function saveIconThumb(oid) {
+    if (oid === 'hands-light') return devClockSvg(2, 1.6, false);
+    if (oid === 'hands-medium') return devClockSvg(3.2, 1.8, false);
+    if (oid === 'hands-bold') return devClockSvg(4.5, 2.4, false);
+    if (oid === 'hands-filled') return devClockSvg(0, 2, true);
+    return '🕒';
+  }
+  function getSaveIconHtml() {
+    return saveIconThumb(getSaveIconId());
+  }
+  function getSaveIcon() {
+    return getSaveIconHtml();
+  }
+  function setSaveIcon(id) {
+    if (DEV_SAVE_ICONS.indexOf(id) === -1) return;
+    try { localStorage.setItem('yutorah_save_icon', id); } catch (e) {}
     devRefreshCardButtons();
-    const ps = document.getElementById('devPlayerSaveBtn');
-    if (ps) ps.textContent = icon;
+    var ps = document.getElementById('devPlayerSaveBtn');
+    if (ps) ps.innerHTML = getSaveIconHtml();
     renderSaveIconPicker();
   }
   function renderSaveIconPicker() {
-    const wrap = document.getElementById('saveIconPicker');
+    var wrap = document.getElementById('saveIconPicker');
     if (!wrap) return;
-    const cur = getSaveIcon();
-    wrap.innerHTML = DEV_SAVE_ICONS.map(ic =>
-      '<button type="button" class="card-mini-btn icon-btn' + (ic === cur ? ' active-save' : '') + '"' +
-      ' onclick="setSaveIcon(\\'' + ic + '\\')" title="Use ' + ic + ' for Save for Later">' + ic + '</button>'
-    ).join('');
+    var cur = getSaveIconId();
+    wrap.innerHTML = DEV_SAVE_ICONS.map(function(oid) {
+      return '<button type="button" class="card-mini-btn icon-btn' + (oid === cur ? ' active-save' : '') + '"' +
+        ' onclick="setSaveIcon(this.getAttribute(\\'data-oid\\'))" data-oid="' + oid + '" title="Save-for-later icon: ' + oid + '">' + saveIconThumb(oid) + '</button>';
+    }).join('');
   }
 
   // Spotify-style circular queue icon: list lines + plus.

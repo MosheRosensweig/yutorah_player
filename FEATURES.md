@@ -19,6 +19,7 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 9. [Smart Recommendations](#9-smart-recommendations)
 10. [Edge Infrastructure & Performance](#10-edge-infrastructure--performance)
 11. [Product Roadmap](#11-product-roadmap)
+12. [Recent Features — Search, Discovery & Dev Mode](#12-recent-features--search-discovery--dev-mode)
 
 ---
 
@@ -214,4 +215,41 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 - [ ] Multi-shiur playback queue ("Play Next" / Playlist mode).
 - [ ] Offline caching via Service Worker (PWA installable app).
 - [ ] Optional GitHub Pages static deployment fallback.
+
+---
+
+## 12. Recent Features — Search, Discovery & Dev Mode
+
+> Shipped on the `feat/discovery-wave` line (dev link). Items marked **(dev-only)** require Dev Mode: type `dev mode` in the search box to unlock, `exit dev mode` to leave.
+
+### Search results
+- **🕒 Recent Results rail**: every search opens with the 3 freshest matches (global date query, all filters honored), followed by the full 30-result relevance list with its own Load More.
+- **Quick date chips** (every search): All Dates / Today / Yesterday / This Week / This Month. Mutually exclusive with year/custom-range; persist in the URL; survive reload.
+- **Sort chips**: Relevance (default) / Newest / Oldest. Chronological sorts render in true server order with no relevance re-ranking; the Recent rail hides under chrono sorts; Load-More paginates by item offset.
+- **Advanced custom date-time range**: from/to `datetime-local` inputs in the Filters modal (minute precision server-side), with pill + reset/populate round-trip.
+- **No speaker auto-narrowing**: `rosensweig` and `rosensweig shabbos` match every Rosensweig via text search. Narrowing happens only through explicit filter chips, suggestion clicks, or speaker pages.
+- **Did-you-mean strip (on top)**: under-10-hit result sets and zero-literal typos show `🔍 Did you mean …?` above the results; clicking a chip runs the corrected search. Garbage input yields no suggestions.
+- **"Showing results for…" disclaimer**: appears only when the query was rewritten, echoing both strings.
+- **Reverse-transliteration row**: single clean row — circled `i` button toggles the explanation, On/Off switch beside the name (no more wall of text).
+- **Acronym + Hebrew alias search**: `yije` expands to "Young Israel of Jamaica Estates" (+ variants); `rosensweig` ↔ `רוזנצווייג` match bidirectionally.
+
+### Discovery
+- **Hero slideshow**: rotating spotlight slides from the live catalog feed (6s autoplay, dots/arrows/swipe, pause on hover/focus, `prefers-reduced-motion` respected, hidden slides inert). Caption overlays the image's blank right half like yutorah.org; stacks below on mobile with centered image + programmatic left fade.
+- **Cards/Rows view**: 🃏/📋 toggle on search + collections. Desktop defaults to rows (one full-width row per shiur); mobile is cards-only. Persisted, no reload flash.
+- **Series buttons**: `View 15 more in 'Series Name' Series` (collapse returns to a compact Minimize control).
+- **Sponsorship banner**: dedication text (from `l'ilui nishmas` onward) bolded like yutorah.org, entities decoded, both themes.
+- **Speaker pages**: teacher-filtered view renders 🆕 Most Recent 6 (newest first), 🏆 Top Lectures 10 (by views + downloads), then 📚 All Shiurim; frozen across Load-More.
+- **Player metadata**: given date plus a separate `📤 Uploaded …` row (between Date and Venue/Topics) whenever the upload date differs; hydrates on direct-link loads too. Topic chips search.
+
+### Cards & playback
+- **Play badge vs card**: only the ▶/Resume badge mini-plays in place; clicking anywhere else opens the full player. Tapping play on the already-playing shiur resumes/minimizes instead of restarting.
+- **Change Log** (dev-only): ⚙️ → Change Log lists every shipped change newest-first (backed by `src/changelog.json`, updated on every push).
+
+### Dev Mode playlists, queue & history
+- **🎧 Dev's Playlists tab** (second position): History, Save-for-Later, Favorites, custom playlists (create via modal, delete via custom confirm, export JSON, Play All).
+- **Card buttons**: 🕒 Later / ☆ Fav icon buttons (pick from 5 clocks in ⚙️ settings: emoji + 4 bolder-hand SVGs), Spotify-style circular queue button (single or whole-series from covers), ➕ Playlist modal with filter/create/checkboxes. Silent toggles (recolor only), progress bars + last-listened meta fundamental on every card.
+- **Player header**: Later / Fav / Queue / Playlist actions synced per track.
+- **Play queue**: card/cover/player queueing (series expand on play), mini-player ☰ popup + playlists-tab view, drag handles + ▲▼ + remove, Clear with confirm, autoplay-next with toast, `Escape` closes all dialogs.
+- **History**: sort by 🕒 Last Listened vs 📅 Shiur Date; per-track progress/heartbeat/completion tracking in `localStorage`.
+- **Isolation**: all dev UI hidden + inert without Dev Mode (CSS kill-switch, `aria-hidden`, JS guards); `exit dev mode` fully reverses unlock including settings gear.
 
