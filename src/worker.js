@@ -5165,8 +5165,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 28px;
-      height: 28px;
+      width: 30px;
+      height: 30px;
       border-radius: 50%;
       border: 1.5px solid var(--border);
       color: var(--text-muted);
@@ -6934,8 +6934,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           <div class="translit-badge-title">
             <span>✨ Reverse Transliteration Engine</span>
             <span style="font-size:10.5px; font-weight:700; background:#10b981; color:#fff; padding:1.5px 6px; border-radius:10px;">ENABLED BY DEFAULT</span>
+            <button type="button" class="translit-info-btn" onclick="document.getElementById('translitDesc').style.display=document.getElementById('translitDesc').style.display==='none'?'block':'none'" title="About transliteration">ⓘ</button>
           </div>
-          <div class="translit-badge-desc">
+          <div class="translit-badge-desc" id="translitDesc" style="display:none;">
             Automatically equates Ashkenazic &amp; Sephardic phonetics (<em>Shabbos ↔ Shabbat</em>, <em>Succah ↔ Sukkah</em>), expands English to Hebrew (<em>שבת, סוכה, פסח, מוצאי</em>), and auto-detects speakers. <strong>Unchecking this box uses the classic old YUTorah website search</strong> (strict literal match only).
           </div>
           <div class="filter-dimensions-hint">
@@ -7980,7 +7981,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
                 enablePhonetics: true
               };
               syncDateQuickChips();
-              executeLiveSearch('', { ...activeAdvancedFilters, label: 'Shiurim by ' + t.name });
+              executeLiveSearch('', { ...activeAdvancedFilters, speakerView: true, label: 'Shiurim by ' + t.name });
             }
           });
         });
@@ -8336,6 +8337,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   let totalSearchResults = ${jsEmbed(initialNumFound || 0)};
   let currentSearchPage = Math.floor(${jsEmbed(initialSearchResults ? initialSearchResults.length : 0)} / 30) || 1;
   let isLoadingMore = false;
+  let currentSpeakerViewCache = null;
 
   // Recent Results rail state (fixed top-3, no expansion control).
   let currentRecentDocs = ${jsEmbed(initialRecentDocs || [])};
@@ -8945,6 +8947,33 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         escapeHtml(currentQueryResolution.original) + '&quot;.</span></div>';
     }
 
+    // Speaker view (OG yutorah style): Most Recent 6 + Top Lectures.
+    const isSpeakerView = currentFilterParams && currentFilterParams.speakerView;
+    if (isSpeakerView && currentSearchDocs && currentSearchDocs.length > 0) {
+      const docKey = d => String(d.shiurID || d.shiurid || d.id || '');
+      const docDate = d => String(d.shiurdate || d.shiurdatesubmitted || d.shiurDate || d.shiurDateSubmitted || '');
+      const docPop = d => (parseInt(d.shiurvisitsnum, 10) || 0) + (parseInt(d.shiurdownloadsnum, 10) || 0);
+      if (!currentSpeakerViewCache) {
+        const byDate = [...currentSearchDocs].sort((a, b) => docDate(b).localeCompare(docDate(a)));
+        const recent6 = byDate.slice(0, 6);
+        const recentIds = new Set(recent6.map(docKey).filter(Boolean));
+        const byPop = [...currentSearchDocs].filter(d => { const k = docKey(d); return k && !recentIds.has(k); }).sort((a,b)=>docPop(b)-docPop(a));
+        const top10 = byPop.slice(0, 10);
+        const shownIds = new Set([...recent6, ...top10].map(docKey).filter(Boolean));
+        const rest = currentSearchDocs.filter(d => { const k = docKey(d); return !k || !shownIds.has(k); });
+        currentSpeakerViewCache = { recent6, top10, rest };
+      }
+      const { recent6, top10, rest } = currentSpeakerViewCache;
+      if (recent6.length) { html += '<div class="search-results-subheading"><span>🆕</span><span>Most Recent</span></div>'; html += renderList(recent6); }
+      if (top10.length) { html += '<div class="search-results-subheading"><span>🏆</span><span>Top Lectures</span></div>'; html += renderList(top10); }
+      if (rest.length) { html += '<div class="search-results-subheading"><span>📚</span><span>All Shiurim</span></div>'; html += renderList(rest); }
+      if (currentDidYouMean && currentDidYouMean.length) html += renderDidYouMeanStrip(currentDidYouMean);
+      grid.innerHTML = html;
+      grid.classList.toggle('explain-matches-active', showMatchReasons);
+      try { if (typeof devUpgradeCards === 'function') devUpgradeCards(grid); } catch(e){}
+      return;
+    }
+
     // Recent Results rail: fixed top-3 freshest, no expansion control.
     const visibleRecent = (currentRecentDocs || []).slice(0, 3);
     if (visibleRecent.length > 0) {
@@ -9154,6 +9183,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     clearSearchBtn.style.display = 'block';
     executeLiveSearch('', {
       teacherId: teacherId,
+      speakerView: true,
       label: 'Shiurim by ' + teacherName
     });
     const resSection = document.getElementById('searchResultsSection');
@@ -10082,6 +10112,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     recentNumFound = 0;
     currentDidYouMean = [];
     currentQueryResolution = null;
+    currentSpeakerViewCache = null;
     currentLoadedDocsCount = 0;
     totalSearchResults = 0;
     isLoadingMore = false;
@@ -10325,6 +10356,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         currentSearchPage = nextPage;
         currentLoadedDocsCount += newDocs.length;
         currentSearchDocs = currentSearchDocs.concat(newDocs);
+        if (currentSpeakerViewCache) currentSpeakerViewCache.rest = currentSpeakerViewCache.rest.concat(newDocs);
         renderCurrentSearchResults();
 
         const resultsTitle = currentFilterParams.label
@@ -10383,6 +10415,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     recentNumFound = 0;
     currentDidYouMean = [];
     currentQueryResolution = null;
+    currentSpeakerViewCache = null;
     currentPhoneticTokens = [];
     currentSearchPage = 1;
     showMatchReasons = false;
@@ -10526,7 +10559,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       ? '<span class="quick-play-badge" style="background:#10b981; color:#fff;">📄 Read</span>'
       : '<span class="quick-play-badge">▶ Play</span>';
 
-    return '<a href="/' + id + '" class="quick-card-link' + coverClass + '" onclick="playShiurById(event, this.dataset.id)" data-id="' + id + '">' +
+    return '<a href="/' + id + '" class="quick-card-link' + coverClass + '" onclick="playShiurById(event, this.dataset.id, true)" data-id="' + id + '">' +
       newBadge +
       seriesBadge +
       '<div class="quick-card-top">' +
@@ -10586,7 +10619,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       ? '<span class="series-sub-play" style="background:#10b981; color:#fff;">📄 Read</span>'
       : '<span class="series-sub-play">▶ Play</span>';
 
-    return '<a href="/' + id + '" class="series-sub-card" onclick="playShiurById(event, this.dataset.id)" data-id="' + id + '">' +
+    return '<a href="/' + id + '" class="series-sub-card" onclick="playShiurById(event, this.dataset.id, true)" data-id="' + id + '">' +
       '<div class="series-sub-header">' +
         '<div class="series-sub-title"><span style="opacity:0.75; font-weight:700; margin-right:4px;">#' + partNumber + '</span> ' + displayTitle + '</div>' +
         subAction +
@@ -10622,17 +10655,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   // Instant Play by Shiur ID (in-page without reload)
-  async function playShiurById(e, id) {
+  async function playShiurById(e, id, stayMini) {
     if (e) e.preventDefault();
 
     isManuallyMinimized = false;
-    isExpandingUntil = Date.now() + 800;
-    expandPlayer();
-
-    // Scroll player into view
-    const playerCard = document.getElementById('playerCard');
-    if (playerCard) {
-      playerCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (stayMini) {
+      // Card play: start in miniplayer, do not move screen
+      minimizePlayer();
+    } else {
+      isExpandingUntil = Date.now() + 800;
+      expandPlayer();
+      const playerCard = document.getElementById('playerCard');
+      if (playerCard) playerCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
     currentShiurId = id;
@@ -10982,7 +11016,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       const actionBadge = isDoc
         ? '<span class="quick-play-badge" style="background:#10b981; color:#fff;">📄 Read</span>'
         : '<span class="quick-play-badge">▶ Resume</span>';
-      return '<a href="/' + item.id + '" class="quick-card-link" onclick="playShiurById(event, this.dataset.id)" data-id="' + item.id + '">' +
+      return '<a href="/' + item.id + '" class="quick-card-link" onclick="playShiurById(event, this.dataset.id, true)" data-id="' + item.id + '">' +
         newBadge +
         '<div class="quick-card-top">' +
           '<img class="quick-card-avatar" src="' + escapeHtml(photo) + '" alt="' + escapeHtml(item.speaker) + '" loading="lazy" onerror="handleImgError(this)">' +
@@ -11551,12 +11585,26 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   function devPromptNewPlaylist() {
-    const name = window.prompt('Name for the new playlist:');
-    if (name && name.trim()) {
-      devCreatePlaylist(name);
-      renderPlaylistsGrid();
-    }
+    closeConfirmModal();
+    const overlay = document.createElement('div');
+    overlay.id = 'newPlaylistModal';
+    overlay.style.cssText = 'position:fixed; inset:0; z-index:10000; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; padding:16px;';
+    overlay.setAttribute('role','dialog');
+    overlay.setAttribute('aria-modal','true');
+    const box = document.createElement('div');
+    box.style.cssText = 'background:var(--card,#fff); color:var(--text,#111); border-radius:14px; max-width:360px; width:100%; padding:18px; border:1px solid var(--border-light);';
+    box.innerHTML = '<div style="font-weight:800; margin-bottom:10px;">➕ New Playlist</div><input id="newPlInput" type="text" placeholder="Playlist name" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-light);"><div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;"><button type="button" class="card-mini-btn" id="newPlCancel">Cancel</button><button type="button" class="card-mini-btn active-save" id="newPlOk">Create</button></div>';
+    overlay.appendChild(box);
+    overlay.addEventListener('click', e=>{ if(e.target===overlay){ overlay.remove(); }});
+    document.body.appendChild(overlay);
+    const input = box.querySelector('#newPlInput');
+    const ok = ()=>{ const v=(input.value||'').trim(); if(v){ devCreatePlaylist(v); renderPlaylistsGrid(); } overlay.remove(); };
+    box.querySelector('#newPlCancel').addEventListener('click', ()=>overlay.remove());
+    box.querySelector('#newPlOk').addEventListener('click', ok);
+    input.addEventListener('keydown', e=>{ if(e.key==='Enter') ok(); if(e.key==='Escape') overlay.remove(); });
+    setTimeout(()=>input.focus(), 50);
   }
+  function closeNewPlaylistModal(){ const m=document.getElementById('newPlaylistModal'); if(m) m.remove(); }
 
   function playDevPlaylistAll() {
     const store = getDevStore();
@@ -14662,7 +14710,7 @@ function renderShiurCardHtml(s, searchTerms = [], options = {}) {
     : '<span class="quick-play-badge">▶ Play</span>';
 
   return `
-    <a href="/${id}" class="quick-card-link${coverClass}" onclick="playShiurById(event, this.dataset.id)" data-id="${id}">
+    <a href="/${id}" class="quick-card-link${coverClass}" onclick="playShiurById(event, this.dataset.id, true)" data-id="${id}">
       ${newBadge}
       ${seriesBadge}
       <div class="quick-card-top">
@@ -14722,7 +14770,7 @@ function renderSeriesSubCardHtml(sub, partNumber, searchTerms = []) {
     : '<span class="series-sub-play">▶ Play</span>';
 
   return `
-    <a href="/${id}" class="series-sub-card" onclick="playShiurById(event, this.dataset.id)" data-id="${id}">
+    <a href="/${id}" class="series-sub-card" onclick="playShiurById(event, this.dataset.id, true)" data-id="${id}">
       <div class="series-sub-header">
         <div class="series-sub-title"><span style="opacity:0.75; font-weight:700; margin-right:4px;">#${partNumber}</span> ${displayTitle}</div>
         ${subAction}
