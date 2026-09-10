@@ -59,8 +59,12 @@ body = await res.json();
 assert.equal(body.queryResolution, null, 'single-word surname must not narrow to one speaker');
 res = await worker.fetch(new Request('https://x/api/search?q=Aryeh%20Lebowitz&start=1'), {}, mockCtx);
 body = await res.json();
-assert.ok(body.queryResolution && body.queryResolution.display.includes('Lebowitz'),
-  'multi-word speaker query resolves with disclaimer, got: ' + JSON.stringify(body.queryResolution));
+assert.equal(body.queryResolution, null, 'multi-word queries stay plain text (no speaker split)');
+res = await worker.fetch(new Request('https://x/api/search?q=rosensweig%20shabbos&start=1'), {}, mockCtx);
+body = await res.json();
+assert.equal(body.queryResolution, null, 'rosensweig shabbos does not narrow to one speaker');
+const teachers = new Set((body.response.docs || []).map(d => d.teacherfullname || ((d.shiurTeachers || [])[0] || {}).teacherFullName));
+assert.ok(teachers.size > 1 || (body.response.docs || []).length === 0, 'rosensweig shabbos spans multiple speakers, got: ' + JSON.stringify([...teachers]));
 res = await worker.fetch(new Request('https://x/api/search?q=weiderblank&start=1'), {}, mockCtx);
 body = await res.json();
 assert.ok(body.queryResolution && body.queryResolution.original === 'weiderblank' &&

@@ -11,11 +11,6 @@ import { THEMES } from './theme_definitions.js';
 import { THEME_ASSETS } from './theme_assets.js';
 import { 
   expandQueryWithPhonetics, 
-  resolveSpeaker, 
-  parseQueryEntities, 
-  stripSpeakerHonorifics, 
-  KNOWN_SPEAKERS, 
-  SYNSETS,
   COMMUNITY_ACRONYM_PHRASES,
   highlightMatches,
   extractSnippet,
@@ -349,38 +344,17 @@ async function executeSearchInternal(searchParams) {
     return mediaCat === 'text' || mediaCat === 'article' || /[.]pdf($|[?])/i.test(urlCheck);
   }
 
-  // Phonetic & Speaker Auto-Resolution
-  // Single-word queries NEVER narrow to one speaker: "rosensweig" must match
-  // every Rosensweig (Michael, Itamar, Bernard…) via text search — explicit
-  // teacher clicks still filter by teacherId exactly. Multi-word queries
-  // ("Schachter Shabbos") keep the speaker+topic split. Corrections happen
-  // only when nothing literally matches (see typo auto-correct below).
+  // NO speaker auto-resolution: every query is plain text unless the user
+  // sets an explicit teacher filter (chips, suggestion click, bio page).
+  // "rosensweig" and "rosensweig shabbos" both match every Rosensweig via
+  // text search. The only rewrite is the typo auto-correct below, which
+  // fires solely when nothing literally matches.
   let effectiveQuery = rawQ;
   let expandedInfo = null;
-  // When the engine rewrites the user's text into a resolved entity filter,
-  // the UI shows a "Showing results for X (you searched Y)" disclaimer.
+  // When the engine rewrites the user's text (typo auto-correct only), the
+  // UI shows a "Showing results for X (you searched Y)" disclaimer.
   let resolvedDisplay = '';
   const rawWordCount = rawQ.trim() ? rawQ.trim().split(/\s+/).length : 0;
-
-  if (teacherIds.length === 0 && rawQ && !disablePhonetics) {
-    if (rawWordCount > 1) {
-      const entityParse = parseQueryEntities(rawQ);
-      if (entityParse.speaker) {
-        teacherIds = [entityParse.speaker.id];
-        effectiveQuery = entityParse.remainingQuery;
-        resolvedDisplay = entityParse.speaker.name;
-      }
-    }
-  } else if (teacherIds.length === 0 && rawQ && disablePhonetics) {
-    if (rawWordCount > 1) {
-      const resolvedSpk = resolveSpeaker(rawQ);
-      if (resolvedSpk) {
-        teacherIds = [resolvedSpk.id];
-        effectiveQuery = '';
-        resolvedDisplay = resolvedSpk.name;
-      }
-    }
-  }
 
   if (year && /^\d{4}$/.test(year)) {
     effectiveQuery = effectiveQuery ? `${effectiveQuery} ${year}` : year;
@@ -3062,6 +3036,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       cursor: pointer;
       display: inline-block;
     }
+    .shiur-upload-date {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
     .shiur-meta {
       font-size: 13px;
       color: var(--text-muted);
@@ -4867,6 +4846,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     .rows-view .quick-card-link .dev-progress-wrap {
       flex-basis: 100%;
     }
+    .rows-view .quick-card-new-badge {
+      top: auto;
+      bottom: 9px;
+    }
+    .rows-view .quick-card-link {
+      padding-right: 52px;
+    }
     .rows-view .quick-card-bottom {
       border-top: none;
       padding-top: 0;
@@ -4895,20 +4881,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       #miniPlayer .expand-btn {
         display: none;
       }
-      #miniPlayer .mini-expand-hint {
-        display: inline-flex;
-      }
     }
     /* Play Queue popup + list (Dev Mode) */
-    .mini-expand-hint {
-      display: none;
-      align-items: center;
-      color: #fff;
-      opacity: 0.75;
-      font-size: 11px;
-      cursor: pointer;
-      padding: 4px 2px;
-    }
     .queue-popup {
       position: fixed;
       bottom: 84px;
@@ -5034,13 +5008,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       color: inherit;
     }
     .hero-slide.active {
-      display: flex;
-      flex-direction: row;
-      align-items: stretch;
+      display: block;
+      position: relative;
     }
     .hero-slide img {
-      flex: 1;
-      min-width: 0;
+      width: 100%;
       aspect-ratio: 16 / 10;
       max-height: 340px;
       object-fit: cover;
@@ -5048,22 +5020,26 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       display: block;
     }
     .hero-caption {
-      flex: 0 0 300px;
-      padding: 18px;
-      background: var(--card, #fff);
-      color: var(--text);
+      position: absolute;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      width: 44%;
+      padding: 24px 22px;
+      color: #fff;
       display: flex;
       flex-direction: column;
       justify-content: center;
-      gap: 6px;
+      gap: 8px;
+      text-shadow: 0 1px 6px rgba(0, 0, 0, 0.55);
     }
     .hero-title {
-      font-size: 20px;
+      font-size: 22px;
       font-weight: 800;
     }
     .hero-desc {
       font-size: 13px;
-      color: var(--text-muted);
+      opacity: 0.94;
       display: -webkit-box;
       -webkit-line-clamp: 4;
       -webkit-box-orient: vertical;
@@ -5075,10 +5051,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       margin-top: 8px;
       font-size: 13px;
       font-weight: 800;
-      background: #2b4c7e;
-      color: #fff;
+      background: rgba(255, 255, 255, 0.92);
+      color: #1e2530;
       border-radius: 16px;
       padding: 5px 14px;
+      text-shadow: none;
     }
     .hero-arrow {
       position: absolute;
@@ -5098,11 +5075,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       background: rgba(0, 0, 0, 0.65);
     }
     .hero-prev { left: 10px; }
-    .hero-next { right: 316px; }
+    .hero-next { right: 10px; }
     .hero-dots {
       position: absolute;
       bottom: 10px;
-      right: 314px;
+      left: 14px;
       display: flex;
       gap: 6px;
     }
@@ -5136,16 +5113,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.55);
     }
     @media (max-width: 640px) {
-      .hero-slide.active {
-        flex-direction: column;
+      .hero-caption {
+        position: static;
+        width: auto;
+        padding: 12px 14px 30px;
+        background: var(--card, #fff);
+        color: var(--text);
+        text-shadow: none;
       }
       .hero-slide img {
         aspect-ratio: 16 / 9;
         max-height: 220px;
-      }
-      .hero-caption {
-        flex: none;
-        padding: 12px 14px 30px;
       }
       .hero-title {
         font-size: 16px;
@@ -5157,16 +5135,33 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         bottom: 8px;
         right: 10px;
       }
+      .hero-next {
+        right: 10px;
+      }
     }
     [data-theme="dark"] .hero-slideshow {
       background: #182232;
+    }
+    .card-mini-btn.icon-btn {
+      padding: 3px 8px;
+      font-size: 14px;
+      line-height: 1.2;
+    }
+    .card-mini-btn:focus-visible {
+      outline: 2px solid var(--primary) !important;
+      outline-offset: 2px;
+    }
+    .quick-play-badge:focus-visible,
+    .series-sub-play:focus-visible {
+      outline: 2px solid var(--primary) !important;
+      outline-offset: 2px;
     }
     /* Circular queue-add button (Spotify-style: list + plus) */    .queue-circle-btn {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 30px;
-      height: 30px;
+      width: 28px;
+      height: 28px;
       border-radius: 50%;
       border: 1.5px solid var(--border);
       color: var(--text-muted);
@@ -5322,6 +5317,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       display: flex;
       gap: 6px;
       margin-top: 8px;
+      align-items: center;
     }
     .card-mini-btn {
       cursor: pointer;
@@ -5331,6 +5327,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       font-size: 12px;
       padding: 3px 9px;
       opacity: 0.85;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 28px;
+      line-height: 1.2;
+      vertical-align: middle;
     }
     .card-mini-btn.active-save {
       background: #d97706;
@@ -6575,6 +6577,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         <h1 id="shiurTitle" class="shiur-title">${escapeHtml(title)}</h1>
         <div id="shiurSpeaker" class="shiur-speaker" onclick="handleSpeakerClick()" title="View speaker page">${escapeHtml(speaker)}</div>
         <div id="shiurMeta" class="shiur-meta">${escapeHtml(meta)}</div>
+        <div id="shiurUploadDate" class="shiur-upload-date" style="display: none;"></div>
       </div>
     </div>
 
@@ -6899,7 +6902,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       </button>
       <button type="button" class="mini-btn expand-btn" onclick="expandPlayer(); event.stopPropagation();" title="Expand Full Player">⤢</button>
       <button type="button" class="mini-btn queue-btn dev-only" onclick="toggleQueuePopup(); event.stopPropagation();" title="Play Queue (Dev)">☰</button>
-      <span class="mini-expand-hint" onclick="expandPlayer(); event.stopPropagation();" role="button" aria-label="Expand player" title="Expand">▲</span>
       <button type="button" class="mini-btn close-btn" onclick="closeMiniPlayer(); event.stopPropagation();" title="Stop & Close">✕</button>
     </div>
   </div>
@@ -7408,8 +7410,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           });
           return b;
         };
-        wrap.appendChild(mkBtn('devPlayerSaveBtn', '🕒 Later', toggleDevSave));
-        wrap.appendChild(mkBtn('devPlayerFavBtn', '☆ Fav', toggleDevFav));
+        const psb = mkBtn('devPlayerSaveBtn', '🕒', toggleDevSave);
+        psb.classList.add('icon-btn');
+        psb.title = 'Save for later';
+        psb.setAttribute('aria-label', 'Save for later');
+        wrap.appendChild(psb);
+        const pfb = mkBtn('devPlayerFavBtn', '☆', toggleDevFav);
+        pfb.classList.add('icon-btn');
+        pfb.title = 'Add to favorites';
+        pfb.setAttribute('aria-label', 'Add to favorites');
+        wrap.appendChild(pfb);
         const pq = document.createElement('button');
         pq.type = 'button';
         pq.id = 'devPlayerQueueBtn';
@@ -8939,8 +8949,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
 
     let html = '';
-    // "Showing results for X (you searched Y)" when the engine resolved the
-    // query text into an entity filter (speaker auto-resolution).
+    // "Showing results for X (you searched Y)" shown only when the typo
+    // auto-correct rewrote the query (no speaker auto-resolution anymore).
     if (currentQueryResolution && currentQueryResolution.display) {
       html += '<div class="did-you-mean-strip"><span>🔍 Showing results for &quot;' +
         escapeHtml(currentQueryResolution.display) + '&quot; — you searched &quot;' +
@@ -9686,6 +9696,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         }, { passive: true });
       }
     } catch (e) {}
+    // Direct-link /<id> loads: hydrate the upload-date line (card plays
+    // do this inside playShiurById).
+    try {
+      const mm = document.getElementById('shiurMeta');
+      if (typeof currentShiurId !== 'undefined' && currentShiurId && mm && mm.textContent) {
+        const parts = mm.textContent.split('·');
+        const gdate = parts.length > 1 ? parts[parts.length - 1].trim() : '';
+        if (gdate) fetchUploadDate(String(currentShiurId), gdate);
+      }
+    } catch (e) {}
     // Restore cards/rows view (mobile forced to cards, desktop to stored-or-rows).
     try {
       setCardView(defaultCardView(), false);
@@ -10397,6 +10417,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
   });
 
+  // Keyboard activation for span-based buttons (play badges, dev actions):
+  // Enter/Space on a focused actionable span triggers its click.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const t = e.target && e.target.closest ? e.target.closest('[data-kbplay], .card-mini-actions [role="button"]') : null;
+    if (!t) return;
+    e.preventDefault();
+    t.click();
+  });
+
   function clearSearch() {
     closeSearchPreview();
     searchInput.value = '';
@@ -10555,11 +10585,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       ? '<div class="series-cover-badge">📚 Series · ' + (options.seriesCount || 'Multi-Part') + ' Shiurim</div>'
       : '';
     const coverClass = isCover ? ' is-series-cover' : '';
+    // Play badge mini-plays in place; anywhere else on the card opens the
+    // full player (expand + scroll), as before.
+    const badgePlay = 'event.stopPropagation(); playShiurById(event, \\'' + id + '\\', true)';
     const actionBadge = isArticle
       ? '<span class="quick-play-badge" style="background:#10b981; color:#fff;">📄 Read</span>'
-      : '<span class="quick-play-badge">▶ Play</span>';
+      : '<span class="quick-play-badge" role="button" tabindex="0" data-kbplay onclick="' + badgePlay + '">▶ Play</span>';
 
-    return '<a href="/' + id + '" class="quick-card-link' + coverClass + '" onclick="playShiurById(event, this.dataset.id, true)" data-id="' + id + '">' +
+    return '<a href="/' + id + '" class="quick-card-link' + coverClass + '" onclick="playShiurById(event, this.dataset.id)" data-id="' + id + '">' +
       newBadge +
       seriesBadge +
       '<div class="quick-card-top">' +
@@ -10617,9 +10650,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
     const subAction = isArticle
       ? '<span class="series-sub-play" style="background:#10b981; color:#fff;">📄 Read</span>'
-      : '<span class="series-sub-play">▶ Play</span>';
+      : '<span class="series-sub-play" role="button" tabindex="0" data-kbplay onclick="event.stopPropagation(); playShiurById(event, \\'' + id + '\\', true)">▶ Play</span>';
 
-    return '<a href="/' + id + '" class="series-sub-card" onclick="playShiurById(event, this.dataset.id, true)" data-id="' + id + '">' +
+    return '<a href="/' + id + '" class="series-sub-card" onclick="playShiurById(event, this.dataset.id)" data-id="' + id + '">' +
       '<div class="series-sub-header">' +
         '<div class="series-sub-title"><span style="opacity:0.75; font-weight:700; margin-right:4px;">#' + partNumber + '</span> ' + displayTitle + '</div>' +
         subAction +
@@ -10655,6 +10688,32 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   // Instant Play by Shiur ID (in-page without reload)
+  // Shared upload-date lookup for card plays AND direct-link loads.
+  function fetchUploadDate(id, givenDate) {
+    try {
+      fetch('/api/search?q=' + encodeURIComponent(id) + '&start=1&rows=1').then(r => {
+        if (!r.ok) return null;
+        return r.json();
+      }).then(sdata => {
+        if (!sdata || String(currentShiurId) !== String(id)) return;
+        const sdocs = sdata.response ? (sdata.response.docs || []) : [];
+        // Exact-ID match only: q= is full-text relevance, so a fallback
+        // to sdocs[0] could stamp an unrelated shiur's upload date.
+        const hit = sdocs.find(d => String(d.shiurID || d.shiurid || d.id || '') === String(id));
+        if (!hit) return;
+        const upRaw = hit.shiurdatesubmittedformatted || hit.shiurdatesubmitted || '';
+        const upFmt = upRaw ? formatShiurDate(upRaw) : '';
+        if (upFmt && upFmt !== givenDate && String(currentShiurId) === String(id)) {
+          const uEl = document.getElementById('shiurUploadDate');
+          if (uEl) {
+            uEl.textContent = 'Uploaded ' + upFmt;
+            uEl.style.display = 'block';
+          }
+        }
+      }).catch(() => {});
+    } catch (e) {}
+  }
+
   async function playShiurById(e, id, stayMini) {
     if (e) e.preventDefault();
 
@@ -10676,6 +10735,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     // Reset UI while loading
     document.getElementById('shiurTitle').textContent = 'Loading shiur #' + id + '...';
     document.getElementById('shiurSpeaker').textContent = 'Fetching audio stream...';
+    document.getElementById('shiurMeta').textContent = '';
+    const resetUploadEl = document.getElementById('shiurUploadDate');
+    if (resetUploadEl) {
+      resetUploadEl.style.display = 'none';
+      resetUploadEl.textContent = '';
+    }
     document.getElementById('shiurMeta').textContent = '';
     document.getElementById('shiurDesc').style.display = 'none';
 
@@ -10721,28 +10786,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       document.getElementById('shiurTitle').textContent = title;
       document.getElementById('shiurSpeaker').textContent = speaker;
       document.getElementById('shiurMeta').textContent = meta;
+      const uploadEl = document.getElementById('shiurUploadDate');
+      if (uploadEl) {
+        uploadEl.style.display = 'none';
+        uploadEl.textContent = '';
+      }
 
-      // Upload date (vs given date): lightweight Solr id-lookup, applied
-      // progressively without delaying playback. Shown only when different.
-      try {
-        fetch('/api/search?q=' + encodeURIComponent(id) + '&start=1&rows=1').then(r => {
-          if (!r.ok) return null;
-          return r.json();
-        }).then(sdata => {
-          if (!sdata || String(currentShiurId) !== String(id)) return;
-          const sdocs = sdata.response ? (sdata.response.docs || []) : [];
-          // Exact-ID match only: q= is full-text relevance, so a fallback
-          // to sdocs[0] could stamp an unrelated shiur's upload date.
-          const hit = sdocs.find(d => String(d.shiurID || d.shiurid || d.id || '') === String(id));
-          if (!hit) return;
-          const upRaw = hit.shiurdatesubmittedformatted || hit.shiurdatesubmitted || '';
-          const upFmt = upRaw ? formatShiurDate(upRaw) : '';
-          if (upFmt && upFmt !== date && String(currentShiurId) === String(id)) {
-            const metaEl = document.getElementById('shiurMeta');
-            if (metaEl) metaEl.textContent = meta + ' · Uploaded ' + upFmt;
-          }
-        }).catch(() => {});
-      } catch (e) {}
+      // Upload date on its own line under the metadata: lightweight Solr
+      // id-lookup, applied progressively without delaying playback.
+      // Shown only when different from the given date.
+      fetchUploadDate(id, date);
 
       const img = document.getElementById('speakerImg');
       if (photo) {
@@ -10868,6 +10921,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       console.error('Failed to load shiur:', err);
       document.getElementById('shiurTitle').textContent = 'Error loading shiur #' + id;
       document.getElementById('shiurSpeaker').textContent = 'Please check the ID or try again.';
+      const errUploadEl = document.getElementById('shiurUploadDate');
+      if (errUploadEl) {
+        errUploadEl.style.display = 'none';
+        errUploadEl.textContent = '';
+      }
       try { if (typeof devRefreshCardButtons === 'function') devRefreshCardButtons(); } catch (e) {}
     }
   }
@@ -11015,8 +11073,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       const bottomMeta = metaParts.join(' · ');
       const actionBadge = isDoc
         ? '<span class="quick-play-badge" style="background:#10b981; color:#fff;">📄 Read</span>'
-        : '<span class="quick-play-badge">▶ Resume</span>';
-      return '<a href="/' + item.id + '" class="quick-card-link" onclick="playShiurById(event, this.dataset.id, true)" data-id="' + item.id + '">' +
+        : '<span class="quick-play-badge" role="button" tabindex="0" data-kbplay onclick="event.stopPropagation(); playShiurById(event, \\'' + item.id + '\\', true)">▶ Resume</span>';
+      return '<a href="/' + item.id + '" class="quick-card-link" onclick="playShiurById(event, this.dataset.id)" data-id="' + item.id + '">' +
         newBadge +
         '<div class="quick-card-top">' +
           '<img class="quick-card-avatar" src="' + escapeHtml(photo) + '" alt="' + escapeHtml(item.speaker) + '" loading="lazy" onerror="handleImgError(this)">' +
@@ -11207,6 +11265,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     document.querySelectorAll('[data-dev-fav]').forEach(el => {
       const on = devInPlaylist('favorites', el.getAttribute('data-dev-fav'));
       el.classList.toggle('active-fav', on);
+      if (el.textContent === '☆' || el.textContent === '⭐') el.textContent = on ? '⭐' : '☆';
       el.title = on ? 'In favorites' : 'Add to favorites';
     });
     document.querySelectorAll('[data-dev-queue]').forEach(el => {
@@ -11229,6 +11288,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         if (pf) {
           const on = devInPlaylist('favorites', String(currentShiurId));
           pf.classList.toggle('active-fav', on);
+          pf.textContent = on ? '⭐' : '☆';
           pf.title = on ? 'In favorites' : 'Add to favorites';
         }
         const pq = document.getElementById('devPlayerQueueBtn');
@@ -11405,10 +11465,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const qLabel = isCover ? 'Queue series' : 'Add to play queue';
     const qCall = isCover ? 'devQueueToggle(\\\'' + id + '\\\', true, this)' : 'devQueueToggle(\\\'' + id + '\\\', false, this)';
     return '<div class="card-mini-actions dev-only">' +
-      '<span role="button" tabindex="0" class="card-mini-btn' + (inSave ? ' active-save' : '') + '" data-dev-save="' + id + '"' +
-      ' onclick="event.stopPropagation(); event.preventDefault(); toggleDevSave(\\\'' + id + '\\\')">🕒 Later</span>' +
-      '<span role="button" tabindex="0" class="card-mini-btn' + (inFav ? ' active-fav' : '') + '" data-dev-fav="' + id + '"' +
-      ' onclick="event.stopPropagation(); event.preventDefault(); toggleDevFav(\\\'' + id + '\\\')">☆ Fav</span>' +
+      '<span role="button" tabindex="0" class="card-mini-btn icon-btn' + (inSave ? ' active-save' : '') + '" data-dev-save="' + id + '"' +
+      ' title="Save for later" aria-label="Save for later"' +
+      ' onclick="event.stopPropagation(); event.preventDefault(); toggleDevSave(\\\'' + id + '\\\')">🕒</span>' +
+      '<span role="button" tabindex="0" class="card-mini-btn icon-btn' + (inFav ? ' active-fav' : '') + '" data-dev-fav="' + id + '"' +
+      ' title="Add to favorites" aria-label="Add to favorites"' +
+      ' onclick="event.stopPropagation(); event.preventDefault(); toggleDevFav(\\\'' + id + '\\\')">' + (inFav ? '⭐' : '☆') + '</span>' +
       '<span role="button" tabindex="0" class="queue-circle-btn' + (inQ ? ' active-save' : '') + '" data-dev-queue="' + id + '"' + (isCover ? ' data-dev-cover="1"' : '') +
       ' title="' + qLabel + '" aria-label="' + qLabel + '"' +
       ' onclick="event.stopPropagation(); event.preventDefault(); ' + qCall + '">' + devQueueIconSvg() + '</span>' +
@@ -14705,12 +14767,13 @@ function renderShiurCardHtml(s, searchTerms = [], options = {}) {
     ? `<div class="series-cover-badge">📚 Series · ${options.seriesCount || 'Multi-Part'} Shiurim</div>`
     : '';
   const coverClass = isCover ? ' is-series-cover' : '';
+  const badgePlay = `event.stopPropagation(); playShiurById(event, '${id}', true)`;
   const actionBadge = isArticle
     ? '<span class="quick-play-badge" style="background:#10b981; color:#fff;">📄 Read</span>'
-    : '<span class="quick-play-badge">▶ Play</span>';
+    : `<span class="quick-play-badge" role="button" tabindex="0" data-kbplay onclick="${badgePlay}">▶ Play</span>`;
 
   return `
-    <a href="/${id}" class="quick-card-link${coverClass}" onclick="playShiurById(event, this.dataset.id, true)" data-id="${id}">
+    <a href="/${id}" class="quick-card-link${coverClass}" onclick="playShiurById(event, this.dataset.id)" data-id="${id}">
       ${newBadge}
       ${seriesBadge}
       <div class="quick-card-top">
@@ -14765,12 +14828,13 @@ function renderSeriesSubCardHtml(sub, partNumber, searchTerms = []) {
   }
   if (dateStr) metaParts.push(escapeHtml(dateStr));
 
-  const subAction = isArticle
-    ? '<span class="series-sub-play" style="background:#10b981; color:#fff;">📄 Read</span>'
-    : '<span class="series-sub-play">▶ Play</span>';
+    const subPlay = `event.stopPropagation(); playShiurById(event, '${id}', true)`;
+    const subAction = isArticle
+      ? '<span class="series-sub-play" style="background:#10b981; color:#fff;">📄 Read</span>'
+      : `<span class="series-sub-play" role="button" tabindex="0" data-kbplay onclick="${subPlay}">▶ Play</span>`;
 
-  return `
-    <a href="/${id}" class="series-sub-card" onclick="playShiurById(event, this.dataset.id, true)" data-id="${id}">
+    return `
+    <a href="/${id}" class="series-sub-card" onclick="playShiurById(event, this.dataset.id)" data-id="${id}">
       <div class="series-sub-header">
         <div class="series-sub-title"><span style="opacity:0.75; font-weight:700; margin-right:4px;">#${partNumber}</span> ${displayTitle}</div>
         ${subAction}
