@@ -9,3 +9,9 @@ enabled = true
 #   npx wrangler deploy --env dev
 [env.dev]
 name = "yutorah-player-dev"
+
+[[env.dev.d1_databases]]
+binding = "yutorah_db"
+database_name = "yutorah-db"
+database_id = "f64d0181-1795-4e34-b2bf-4d828049ce61"
+migrations_dir = "migrations"

@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "test": "node tests/phonetic_engine.test.mjs && node tests/basic_functionality.test.mjs && node tests/fuzzy_suggest.test.mjs"
+    "test": "node tests/phonetic_engine.test.mjs && node tests/basic_functionality.test.mjs && node tests/fuzzy_suggest.test.mjs && node tests/auth_sync.test.mjs && node tests/sync_merge.test.mjs"
   },
   "keywords": [
     "yutorah",

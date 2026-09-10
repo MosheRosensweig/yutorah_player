@@ -28,6 +28,558 @@ function jsEmbed(val) {
   return JSON.stringify(val === undefined ? null : val).replace(/</g, '\\u003c');
 }
 
+// =========================================================================
+// Auth + cloud sync (Google OAuth 2.0 code flow + D1). Phase 2.
+// Setup: GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET (wrangler secret), and an
+// authorized redirect of https://<host>/auth/callback in Google Console.
+// Without credentials, /auth/google explains setup; all sync routes 503.
+// =========================================================================
+function b64urlEncode(bytes) {
+  const bin = String.fromCharCode(...new Uint8Array(bytes));
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function b64urlDecode(str) {
+  const s = String(str || '').replace(/-/g, '+').replace(/_/g, '/');
+  const bin = atob(s + '='.repeat((4 - (s.length % 4)) % 4));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+async function hmacSign(secret, data) {
+  const key = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return b64urlEncode(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(data)));
+}
+
+async function makeSessionJWT(secret, payload) {
+  const header = b64urlEncode(new TextEncoder().encode(JSON.stringify({ alg: 'HS256', typ: 'JWT' })));
+  const body = b64urlEncode(new TextEncoder().encode(JSON.stringify(payload)));
+  const sig = await hmacSign(secret, header + '.' + body);
+  return header + '.' + body + '.' + sig;
+}
+
+async function verifySessionJWT(secret, token) {
+  try {
+    const parts = String(token || '').split('.');
+    if (parts.length !== 3) return null;
+    const expect = await hmacSign(secret, parts[0] + '.' + parts[1]);
+    if (expect !== parts[2]) return null;
+    const payload = JSON.parse(new TextDecoder().decode(b64urlDecode(parts[1])));
+    if (!payload || !payload.uid) return null;
+    if (payload.exp && Date.now() > payload.exp) return null;
+    return payload;
+  } catch (e) {
+    return null;
+  }
+}
+
+function parseCookies(request) {
+  const out = {};
+  try {
+    const h = request.headers.get('cookie') || '';
+    for (const part of h.split(';')) {
+      const i = part.indexOf('=');
+      if (i > 0) out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+    }
+  } catch (e) {}
+  return out;
+}
+
+function isHttpsRequest(request) {
+  try {
+    return new URL(request.url).protocol === 'https:';
+  } catch (e) {
+    return true;
+  }
+}
+
+function sessionCookieHeader(token, maxAge, secure) {
+  return 'yutorah_session=' + encodeURIComponent(token) +
+    '; Path=/; HttpOnly;' + (secure === false ? '' : ' Secure;') + ' SameSite=Lax; Max-Age=' + maxAge;
+}
+
+function clearSessionCookieHeader(secure) {
+  return 'yutorah_session=; Path=/; HttpOnly;' + (secure === false ? '' : ' Secure;') + ' SameSite=Lax; Max-Age=0';
+}
+
+function randomToken(bytes = 32) {
+  return b64urlEncode(crypto.getRandomValues(new Uint8Array(bytes)));
+}
+
+async function getSessionUser(request, env) {
+  if (!env || !env.yutorah_db || !env.SESSION_SECRET) return null;
+  const cookies = parseCookies(request);
+  if (!cookies.yutorah_session) return null;
+  const payload = await verifySessionJWT(env.SESSION_SECRET, cookies.yutorah_session);
+  if (!payload) return null;
+  try {
+    const row = await env.yutorah_db.prepare('SELECT id, email, name, picture FROM users WHERE id = ?')
+      .bind(payload.uid).first();
+    if (!row) return null;
+    return { id: row.id, email: row.email, name: row.name, picture: row.picture };
+  } catch (e) {
+    return null;
+  }
+}
+
+function requireEnvJson(env) {
+  if (!env || !env.yutorah_db) {
+    return new Response(JSON.stringify({ error: 'sync unavailable: no database bound' }), {
+      status: 503, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+    });
+  }
+  return null;
+}
+
+// GET /api/me, /auth/*, /api/sync live under the main fetch handler.
+async function handleAuthRoutes(request, env, url) {
+  const path = url.pathname;
+
+  // ---- GET /api/me: session probe (never 503s on missing creds) ----
+  if (path === '/api/me') {
+    const user = await getSessionUser(request, env);
+    return new Response(JSON.stringify({ user: user || null }), {
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' }
+    });
+  }
+
+  const secureCookies = isHttpsRequest(request);
+  const allowedHosts = (env && (env.ALLOWED_HOSTS || '')).split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+  if (allowedHosts.length > 0 && !allowedHosts.includes(url.hostname.toLowerCase())) {
+    return new Response(JSON.stringify({ error: 'unknown host' }), {
+      status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+    });
+  }
+
+  // ---- POST /auth/logout (POST only: GET logout is CSRF-loggable) ----
+  if (path === '/auth/logout') {
+    if (request.method !== 'POST') {
+      return new Response(JSON.stringify({ error: 'use POST' }), {
+        status: 405, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+      });
+    }
+    return new Response(JSON.stringify({ ok: true }), {
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Set-Cookie': clearSessionCookieHeader(secureCookies)
+      }
+    });
+  }
+
+  const clientId = (env && (env.GOOGLE_CLIENT_ID || env.google_client_id)) || '';
+  const clientSecret = (env && (env.GOOGLE_CLIENT_SECRET || env.google_client_secret)) || '';
+  const origin = url.origin;
+
+  // ---- GET /auth/google: start OAuth (all three secrets required) ----
+  if (path === '/auth/google') {
+    if (!clientId || !clientSecret || !(env && env.SESSION_SECRET)) {
+      return new Response(
+        '<!DOCTYPE html><html><body style="font-family:sans-serif;max-width:560px;margin:60px auto;padding:0 20px;">' +
+        '<h2>Login not configured yet</h2>' +
+        '<p>Google OAuth credentials are missing. Owner setup:</p>' +
+        '<ol><li>Create an OAuth client at Google Cloud Console (APIs &amp; Services → Credentials).</li>' +
+        '<li>Add authorized redirect URI: <code>' + origin + '/auth/callback</code></li>' +
+        '<li>Run <code>npx wrangler secret put GOOGLE_CLIENT_ID</code>, <code>npx wrangler secret put GOOGLE_CLIENT_SECRET</code> and <code>npx wrangler secret put SESSION_SECRET</code> (64 random hex chars).</li></ol>' +
+        '<p><a href="/">← Back</a></p></body></html>',
+        { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+    }
+    const state = randomToken(24);
+    const stateSig = await hmacSign(env.SESSION_SECRET, state);
+    // PKCE S256: verifier stays in the signed state cookie, challenge goes out.
+    const verifier = randomToken(48);
+    const verifierDigest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+    const challenge = b64urlEncode(verifierDigest);
+    const authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: origin + '/auth/callback',
+      response_type: 'code',
+      scope: 'openid email profile',
+      state: state,
+      code_challenge: challenge,
+      code_challenge_method: 'S256',
+      prompt: 'select_account'
+    }).toString();
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: authUrl,
+        'Set-Cookie': 'yutorah_oauth_state=' + encodeURIComponent(state + '.' + stateSig + '.' + verifier) +
+          '; Path=/auth/callback; HttpOnly;' + (secureCookies ? ' Secure;' : '') + ' SameSite=Lax; Max-Age=600'
+      }
+    });
+  }
+
+  // ---- GET /auth/callback: finish OAuth ----
+  if (path === '/auth/callback') {
+    if (!clientId || !clientSecret || !env.SESSION_SECRET || !env.yutorah_db) {
+      return Response.redirect(origin + '/?auth=setup-needed', 302);
+    }
+    try {
+      const code = url.searchParams.get('code') || '';
+      const retState = url.searchParams.get('state') || '';
+      const cookies = parseCookies(request);
+      const saved = (cookies.yutorah_oauth_state || '').split('.');
+      if (!code || saved.length !== 3 || saved[0] !== retState) {
+        return Response.redirect(origin + '/?auth=state-mismatch', 302);
+      }
+      const expectSig = await hmacSign(env.SESSION_SECRET, saved[0]);
+      if (expectSig !== saved[1] || !saved[2]) {
+        return Response.redirect(origin + '/?auth=state-mismatch', 302);
+      }
+      const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          code, client_id: clientId, client_secret: clientSecret,
+          redirect_uri: origin + '/auth/callback', grant_type: 'authorization_code',
+          code_verifier: saved[2]
+        }).toString()
+      });
+      if (!tokenRes.ok) return Response.redirect(origin + '/?auth=token-failed', 302);
+      const tokens = await tokenRes.json();
+      const uiRes = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
+        headers: { Authorization: 'Bearer ' + tokens.access_token }
+      });
+      if (!uiRes.ok) return Response.redirect(origin + '/?auth=userinfo-failed', 302);
+      const ui = await uiRes.json();
+      if (!ui.sub || !ui.email) return Response.redirect(origin + '/?auth=userinfo-failed', 302);
+
+      const now = Date.now();
+      let user = await env.yutorah_db.prepare('SELECT id FROM users WHERE google_sub = ?')
+        .bind(String(ui.sub)).first();
+      let uid;
+      let isNew = false;
+      if (user) {
+        uid = user.id;
+        await env.yutorah_db.prepare(
+          'UPDATE users SET email = ?, name = ?, picture = ?, last_seen_at = ? WHERE id = ?')
+          .bind(String(ui.email), String(ui.name || ''), String(ui.picture || ''), now, uid).run();
+      } else {
+        uid = randomToken(12);
+        isNew = true;
+        await env.yutorah_db.prepare(
+          'INSERT INTO users (id, google_sub, email, name, picture, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+          .bind(uid, String(ui.sub), String(ui.email), String(ui.name || ''), String(ui.picture || ''), now, now).run();
+      }
+      const session = await makeSessionJWT(env.SESSION_SECRET, {
+        uid, exp: now + 365 * 24 * 3600 * 1000, iat: now
+      });
+      const outHeaders = new Headers();
+      outHeaders.set('Location', origin + '/?auth=ok' + (isNew ? '&new=1' : ''));
+      outHeaders.append('Set-Cookie', sessionCookieHeader(session, 365 * 24 * 3600, secureCookies));
+      outHeaders.append('Set-Cookie',
+        'yutorah_oauth_state=; Path=/auth/callback; HttpOnly;' + (secureCookies ? ' Secure;' : '') + ' SameSite=Lax; Max-Age=0');
+      return new Response(null, { status: 302, headers: outHeaders });
+    } catch (e) {
+      return Response.redirect(origin + '/?auth=error', 302);
+    }
+  }
+
+  return null;
+}
+
+// ---- Sync helpers: DB rows <-> client localStorage shapes ----
+// Only collections PRESENT in the request body are touched; absent keys
+// mean "not dirty, leave server state alone" (prevents empty-device wipes).
+function snapItemToRow(userId, playlist, it, position) {
+  return {
+    user_id: userId,
+    playlist,
+    shiur_id: String(it.id || ''),
+    position: position || 0,
+    title: String(it.title || 'Untitled'),
+    speaker: String(it.speaker || 'YUTorah'),
+    photo: String(it.photo || ''),
+    duration: String(it.duration || ''),
+    date_display: String(it.date || ''),
+    category: String(it.category || ''),
+    is_article: it.isArticle ? 1 : 0,
+    series_title: String(it.seriesTitle || ''),
+    cover_id: String(it.coverId || ''),
+    kind: it.kind === 'series' ? 'series' : 'shiur',
+    added_at: Number(it.addedAt || it.queuedAt || Date.now())
+  };
+}
+
+// Expand client queue entries (incl. collapsed series wrappers) into flat
+// member rows so series survive the round trip.
+function queueEntriesToRows(userId, queue) {
+  const rows = [];
+  let pos = 0;
+  for (const it of (queue || []).slice(0, 500)) {
+    if (!it) continue;
+    if (it.kind === 'series' && Array.isArray(it.items)) {
+      for (const s of it.items) {
+        if (!s || !s.id) continue;
+        const r = snapItemToRow(userId, 'queue', s, pos++);
+        r.kind = 'series';
+        r.series_title = String(it.seriesTitle || r.series_title);
+        r.cover_id = String(it.coverId || it.seriesTitle || '');
+        rows.push(r);
+      }
+    } else if (it.id) {
+      rows.push(snapItemToRow(userId, 'queue', it, pos++));
+    }
+  }
+  return rows;
+}
+
+async function pullUserState(db, userId) {
+  const hist = await db.prepare(
+    'SELECT shiur_id AS id, title, speaker, photo, duration, date_iso AS dateISO, date_display AS dateDisplay, ' +
+    'category, is_article AS isArticle, ' +
+    'progress_seconds AS progressSec, duration_seconds AS durationSec, ' +
+    'completed, last_listened_at AS lastListened, listen_count AS listenCount ' +
+    'FROM listening_history WHERE user_id = ? ORDER BY last_listened_at DESC LIMIT 500')
+    .bind(userId).all();
+  const items = await db.prepare(
+    'SELECT playlist, shiur_id AS id, position, title, speaker, photo, duration, date_display AS date, category, ' +
+    'is_article AS isArticle, series_title AS seriesTitle, cover_id AS coverId, kind, added_at AS addedAt ' +
+    'FROM playlist_items WHERE user_id = ? ORDER BY playlist, position, added_at LIMIT 2000')
+    .bind(userId).all();
+  const playlists = { save_for_later: [], favorites: [], custom: {} };
+  const queueFlat = [];
+  for (const r of (items.results || [])) {
+    const snap = {
+      id: r.id, title: r.title, speaker: r.speaker, photo: r.photo,
+      duration: r.duration, date: r.date || '', category: r.category || '',
+      isArticle: Boolean(r.isArticle), addedAt: r.addedAt, queuedAt: r.addedAt
+    };
+    if (r.seriesTitle) snap.seriesTitle = r.seriesTitle;
+    if (r.coverId) snap.coverId = r.coverId;
+    if (r.playlist === 'save_for_later') playlists.save_for_later.push(snap);
+    else if (r.playlist === 'favorites') playlists.favorites.push(snap);
+    else if (r.playlist === 'queue') queueFlat.push(snap);
+    else if (String(r.playlist).startsWith('custom:')) {
+      const name = String(r.playlist).slice(7);
+      if (!playlists.custom[name]) playlists.custom[name] = [];
+      playlists.custom[name].push(snap);
+    }
+  }
+  // Regroup queue series members back into collapsed series wrappers.
+  const queue = [];
+  const seriesGroups = new Map();
+  for (const s of queueFlat) {
+    if (s.kind === 'series' || s.coverId) {
+      const key = s.coverId || ('title:' + (s.seriesTitle || ''));
+      if (!seriesGroups.has(key)) {
+        const entry = { kind: 'series', coverId: s.coverId || '', seriesTitle: s.seriesTitle || 'Series', items: [], queuedAt: s.queuedAt };
+        seriesGroups.set(key, entry);
+        queue.push(entry);
+      }
+      seriesGroups.get(key).items.push({ ...s });
+    } else {
+      queue.push(s);
+    }
+  }
+  // Re-attach kind:'series' to grouped wrappers (spread above drops it).
+  for (const q of queue) {
+    if (q.items && !q.id) q.kind = 'series';
+  }
+  const history = (hist.results || []).map(h => ({
+    id: h.id, title: h.title, speaker: h.speaker, photo: h.photo,
+    duration: h.duration, date: h.dateDisplay || '', dateISO: h.dateISO || '',
+    category: h.category || '', isArticle: Boolean(h.isArticle),
+    listenedAt: h.lastListened
+  }));
+  const progress = {};
+  for (const h of (hist.results || [])) {
+    if ((h.progressSec || 0) > 0 || h.completed) {
+      progress[h.id] = {
+        shiurId: h.id,
+        progressSec: h.progressSec || 0, durationSec: h.durationSec || 0,
+        lastListened: h.lastListened, completed: Boolean(h.completed)
+      };
+    }
+  }
+  return { history, playlists, queue, progress };
+}
+
+async function handleSyncRoutes(request, env, url) {
+  if (url.pathname !== '/api/sync') return null;
+  const noDb = requireEnvJson(env);
+  if (noDb) return noDb;
+  const user = await getSessionUser(request, env);
+  if (!user) {
+    return new Response(JSON.stringify({ error: 'unauthorized' }), {
+      status: 401, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+    });
+  }
+  const db = env.yutorah_db;
+  // Sliding session: every authenticated sync extends the 1-year window.
+  const refreshed = await makeSessionJWT(env.SESSION_SECRET, {
+    uid: user.id, exp: Date.now() + 365 * 24 * 3600 * 1000, iat: Date.now()
+  });
+  const refreshCookie = sessionCookieHeader(refreshed, 365 * 24 * 3600, isHttpsRequest(request));
+
+  // ---- GET /api/sync: pull everything ----
+  if (request.method === 'GET') {
+    const state = await pullUserState(db, user.id);
+    return new Response(JSON.stringify({ user, ...state }), {
+      headers: {
+        'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'no-store', 'Set-Cookie': refreshCookie
+      }
+    });
+  }
+
+  // ---- POST /api/sync: merge client state (last-write-wins per item) ----
+  if (request.method === 'POST') {
+    let body = {};
+    try {
+      body = await request.json();
+    } catch (e) {
+      return new Response(JSON.stringify({ error: 'bad json' }), {
+        status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+      });
+    }
+    const now = Date.now();
+    const prog = body.progress && typeof body.progress === 'object' ? body.progress : {};
+
+    // History (+ progress folded in). listen_count increments on INSERT
+    // only — metadata re-pushes must not inflate it. History syncs only
+    // when the client marks it dirty (see body.dirty).
+    const dirty = (body.dirty && typeof body.dirty === 'object') ? body.dirty : null;
+    const dirtyHistory = dirty ? dirty.history === true : Array.isArray(body.history);
+    if (dirtyHistory && Array.isArray(body.history)) {
+      for (const h of body.history.slice(0, 500)) {
+        if (!h || !h.id) continue;
+        const sid = String(h.id);
+        const pr = prog[sid] || {};
+        const lastListened = Number(h.listenedAt || pr.lastListened || now);
+        const existing = await db.prepare(
+          'SELECT last_listened_at, progress_seconds, duration_seconds, completed ' +
+          'FROM listening_history WHERE user_id = ? AND shiur_id = ?')
+          .bind(user.id, sid).first();
+        if (existing && Number(existing.last_listened_at || 0) >= lastListened) continue;
+        // Never clobber stored progress with an empty record: a newer listen
+        // without progress data keeps the saved position/completion.
+        const incomingHasProgress = Number(pr.progressSec || 0) > 0 || pr.completed;
+        const keepProgress = existing && !incomingHasProgress &&
+          (Number(existing.progress_seconds || 0) > 0 || existing.completed);
+        const finalProgSec = keepProgress ? Number(existing.progress_seconds || 0) : Number(pr.progressSec || 0);
+        const finalDurSec = keepProgress ? Number(existing.duration_seconds || 0) : Number(pr.durationSec || 0);
+        const finalCompleted = keepProgress ? (existing.completed ? 1 : 0) : (pr.completed ? 1 : 0);
+        await db.prepare(
+          'INSERT INTO listening_history (user_id, shiur_id, title, speaker, photo, duration, date_iso, date_display, ' +
+          'category, is_article, progress_seconds, duration_seconds, completed, last_listened_at, listen_count) ' +
+          'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1) ' +
+          'ON CONFLICT(user_id, shiur_id) DO UPDATE SET title=excluded.title, speaker=excluded.speaker, ' +
+          'photo=excluded.photo, duration=excluded.duration, date_iso=excluded.date_iso, date_display=excluded.date_display, ' +
+          'category=excluded.category, is_article=excluded.is_article, ' +
+          'progress_seconds=excluded.progress_seconds, duration_seconds=excluded.duration_seconds, ' +
+          'completed=excluded.completed, last_listened_at=excluded.last_listened_at')
+          .bind(user.id, sid, String(h.title || 'Untitled'), String(h.speaker || 'YUTorah'),
+            String(h.photo || ''), String(h.duration || ''), String(h.dateISO || h.date || ''),
+            String(h.date || ''), String(h.category || ''), h.isArticle ? 1 : 0,
+            finalProgSec, finalDurSec, finalCompleted,
+            lastListened).run();
+      }
+    }
+
+    // Playlists + queue: ONLY collections named in body.dirty are touched.
+    // A dirty key is authoritative for that list (delete-missing + upsert);
+    // anything else leaves server rows alone. Without an explicit dirty
+    // flag, an empty device would wipe the cloud — hence the requirement.
+    // (Legacy clients without body.dirty fall back to presence semantics.)
+    const hasPlaylists = dirty
+      ? dirty.playlists === true
+      : (body.playlists && typeof body.playlists === 'object' &&
+        (Object.keys(body.playlists).length > 0));
+    const hasQueue = dirty
+      ? dirty.queue === true
+      : (Array.isArray(body.queue) && body.queue.length > 0);
+    if (hasPlaylists || hasQueue) {
+      const pls = hasPlaylists ? body.playlists : {};
+      const incoming = [];
+      let customTotal = 0;
+      const pushList = (key, arr, cap) => {
+        if (!Array.isArray(arr)) return;
+        arr.slice(0, cap || 500).forEach((it, i) => {
+          if (it && (it.id || (it.kind === 'series' && Array.isArray(it.items)))) {
+            incoming.push({ key, it, i });
+          }
+        });
+      };
+      if (hasPlaylists) {
+        pushList('save_for_later', pls.save_for_later);
+        pushList('favorites', pls.favorites);
+        if (pls.custom && typeof pls.custom === 'object') {
+          for (const [name, arr] of Object.entries(pls.custom)) {
+            if (typeof name !== 'string' || !name) continue;
+            if (customTotal + (Array.isArray(arr) ? arr.length : 0) > 2000) break;
+            customTotal += Array.isArray(arr) ? arr.length : 0;
+            pushList('custom:' + name.slice(0, 60), arr);
+          }
+        }
+      }
+      // Queue members (incl. expanded series rows) replace the queue wholesale.
+      let queueRows = [];
+      if (hasQueue) {
+        queueRows = queueEntriesToRows(user.id, body.queue);
+      }
+      const touched = new Set();
+      if (hasPlaylists) {
+        touched.add('save_for_later');
+        touched.add('favorites');
+        for (const r of incoming) touched.add(r.key);
+        const existingCustoms = await db.prepare(
+          "SELECT DISTINCT playlist FROM playlist_items WHERE user_id = ? AND playlist LIKE 'custom:%'")
+          .bind(user.id).all();
+        for (const r of (existingCustoms.results || [])) touched.add(r.playlist);
+      }
+      if (hasQueue) touched.add('queue');
+      const keep = new Set();
+      const upserts = [];
+      for (const { key, it, i } of incoming) {
+        upserts.push(snapItemToRow(user.id, key, it, i));
+        keep.add(key + '|' + String(it.id || ''));
+      }
+      for (const r of queueRows) {
+        upserts.push(r);
+        keep.add('queue|' + r.shiur_id);
+      }
+      const existing = await db.prepare(
+        'SELECT playlist, shiur_id FROM playlist_items WHERE user_id = ?').bind(user.id).all();
+      for (const r of (existing.results || [])) {
+        if (touched.has(r.playlist) && !keep.has(r.playlist + '|' + r.shiur_id)) {
+          await db.prepare('DELETE FROM playlist_items WHERE user_id = ? AND playlist = ? AND shiur_id = ?')
+            .bind(user.id, r.playlist, r.shiur_id).run();
+        }
+      }
+      for (const r of upserts) {
+        await db.prepare(
+          'INSERT INTO playlist_items (user_id, playlist, shiur_id, position, title, speaker, photo, duration, ' +
+          'date_display, category, is_article, series_title, cover_id, kind, added_at) ' +
+          'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ' +
+          'ON CONFLICT(user_id, playlist, shiur_id) DO UPDATE SET position=excluded.position, title=excluded.title, ' +
+          'speaker=excluded.speaker, photo=excluded.photo, duration=excluded.duration, date_display=excluded.date_display, ' +
+          'category=excluded.category, is_article=excluded.is_article, series_title=excluded.series_title, ' +
+          'cover_id=excluded.cover_id, kind=excluded.kind, added_at=MAX(playlist_items.added_at, excluded.added_at)')
+          .bind(r.user_id, r.playlist, r.shiur_id, r.position, r.title, r.speaker, r.photo,
+            r.duration, r.date_display || '', r.category || '', r.is_article ? 1 : 0,
+            r.series_title, r.cover_id || '', r.kind, r.added_at).run();
+      }
+    }
+
+    await db.prepare('UPDATE users SET last_seen_at = ? WHERE id = ?').bind(now, user.id).run();
+    const state = await pullUserState(db, user.id);
+    return new Response(JSON.stringify({ user, ...state }), {
+      headers: {
+        'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*',
+        'Set-Cookie': refreshCookie
+      }
+    });
+  }
+
+  return new Response(JSON.stringify({ error: 'method not allowed' }), {
+    status: 405, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+  });
+}
+
 const TARGET_API_ORIGIN = 'https://www.yutorah.org';
 const API_ORIGIN = 'https://api.yutorah.org';
 
@@ -727,6 +1279,18 @@ async function executeSearchInternal(searchParams) {
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+
+    // Auth + cloud sync (Google OAuth, /api/me, /api/sync).
+    if (url.pathname === '/api/me' || url.pathname === '/api/sync' ||
+        url.pathname === '/auth/google' || url.pathname === '/auth/callback' ||
+        url.pathname === '/auth/logout') {
+      const handled = await handleAuthRoutes(request, env, url) ||
+        await handleSyncRoutes(request, env, url);
+      if (handled) return handled;
+      return new Response(JSON.stringify({ error: 'not found' }), {
+        status: 404, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+      });
+    }
 
     // 0. Autocomplete Metadata API: /api/autocomplete-meta
     if (url.pathname === '/api/autocomplete-meta') {
@@ -5307,6 +5871,20 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       outline: 2px solid var(--primary) !important;
       outline-offset: 2px;
     }
+    .auth-btn {
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .auth-btn.logged-in {
+      padding: 2px;
+    }
+    .auth-btn img {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      display: block;
+    }
     /* Desktop text selection: content selectable, chrome is not. */
     .quick-card-title,
     .quick-card-speaker,
@@ -6558,6 +7136,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         </div>
       </div>
       <a href="https://www.givecampus.com/campaigns/50770/donations/new" target="_blank" rel="noopener noreferrer" class="support-yutorah-btn" title="Support YUTorah & Sponsor Learning (Opens in new window)">❤️ Support YUTorah</a>
+      <button type="button" id="authBtn" class="theme-toggle-btn auth-btn" onclick="handleAuthClick()" title="Sign in to sync across devices">👤 Sign in</button>
       <button type="button" id="themeToggleBtn" class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Dark / Light Mode">🌙</button>
       <div class="hebrew-date-badge" id="hebrewDateBadge" onclick="handleCalendarSecretClick(event)" title="">📅 ${escapeHtml(homepageData?.hebrewDateString || 'Calendar')}</div>
     </div>
@@ -9965,6 +10544,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   // Initialize listeners on DOMContentLoaded
   document.addEventListener('DOMContentLoaded', () => {
+    try { if (typeof bootAuth === 'function') bootAuth(); } catch (e) {}
     try {
       const hero = document.getElementById('heroSlideshow');
       if (hero) {
@@ -11383,6 +11963,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (history.length > 24) history = history.slice(0, 24);
       localStorage.setItem('yutorah_recent_history', JSON.stringify(history));
     } catch(e) {}
+    try {
+      if (typeof markCloudDirty === 'function') markCloudDirty('history');
+      if (typeof scheduleCloudSync === 'function') scheduleCloudSync();
+    } catch (e) {}
   }
 
   function renderRecentlyViewedGrid() {
@@ -11494,6 +12078,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         flashToast('⚠️ Storage full — playlist change was NOT saved', true, false);
       }
     }
+    try {
+      if (typeof markCloudDirty === 'function') markCloudDirty('playlists');
+      if (typeof scheduleCloudSync === 'function') scheduleCloudSync();
+    } catch (e) {}
   }
 
   function getDevPlaylist(store, pid) {
@@ -11764,6 +12352,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         completed: true
       };
       localStorage.setItem(DEV_PROGRESS_KEY, JSON.stringify(all));
+    } catch (e) {}
+    try {
+      if (typeof markCloudDirty === 'function') markCloudDirty('history');
+      if (typeof scheduleCloudSync === 'function') scheduleCloudSync();
     } catch (e) {}
   }
 
@@ -12093,6 +12685,319 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     renderPlaylistsGrid();
   }
 
+  // =========================================================================
+  // Cloud sync (Google login + D1). Local-first: localStorage stays the
+  // source of truth offline; when logged in, mutations schedule a debounced
+  // push and boot/login pulls server state (last-write-wins per item).
+  // =========================================================================
+  let cloudUser = null;
+  let cloudSyncTimer = null;
+  // Dirty collections: only these keys are sent on push (absent keys leave
+  // server rows untouched — an empty device can never wipe the cloud).
+  let cloudDirty = { playlists: false, queue: false, history: false };
+  function markCloudDirty(which) {
+    if (which === 'playlists') cloudDirty.playlists = true;
+    else if (which === 'queue') cloudDirty.queue = true;
+    else if (which === 'history' || which === 'progress') cloudDirty.history = true;
+  }
+  function markCloudAllDirty() {
+    cloudDirty.playlists = true;
+    cloudDirty.queue = true;
+    cloudDirty.history = true;
+  }
+
+  function cloudEnabled() {
+    return Boolean(cloudUser);
+  }
+
+  function handleAuthClick() {
+    if (cloudUser) {
+      openConfirmModal({
+        title: 'Sign out',
+        body: 'Sign out of ' + (cloudUser.email || 'your account') + '? Anything already synced stays saved in the cloud.',
+        confirmLabel: 'Sign out',
+        onConfirm: async () => {
+          try {
+            await fetch('/auth/logout', { method: 'POST' });
+          } catch (e) {}
+          cloudUser = null;
+          renderAuthBtn();
+          flashToast('👋 Signed out (local copy kept)', false, false);
+        }
+      });
+    } else {
+      window.location.href = '/auth/google';
+    }
+  }
+
+  function renderAuthBtn() {
+    const btn = document.getElementById('authBtn');
+    if (!btn) return;
+    if (cloudUser) {
+      btn.classList.add('logged-in');
+      btn.title = cloudUser.email || 'Signed in';
+      const pic = cloudUser.picture
+        ? '<img src="' + escapeHtml(cloudUser.picture) + '" alt="" referrerpolicy="no-referrer">'
+        : '👤';
+      btn.innerHTML = pic;
+    } else {
+      btn.classList.remove('logged-in');
+      btn.title = 'Sign in to sync across devices';
+      btn.textContent = '👤 Sign in';
+    }
+  }
+
+  function collectLocalState() {
+    const body = {
+      dirty: {
+        playlists: Boolean(cloudDirty.playlists),
+        queue: Boolean(cloudDirty.queue),
+        history: Boolean(cloudDirty.history)
+      }
+    };
+    if (cloudDirty.history) {
+      let history = [];
+      let progress = {};
+      try { history = JSON.parse(localStorage.getItem('yutorah_recent_history') || '[]'); } catch (e) {}
+      try { progress = JSON.parse(localStorage.getItem(DEV_PROGRESS_KEY) || '{}'); } catch (e) {}
+      // Fold each item's progress record into its history entry so a newer
+      // listen never wipes completion/progress server-side.
+      const byId = {};
+      for (const [sid, pr] of Object.entries(progress)) byId[String(sid)] = pr;
+      body.history = history.map(h => {
+        const pr = byId[String(h.id)] || {};
+        return { ...h, progressSec: pr.progressSec || 0, durationSec: pr.durationSec || 0, completed: Boolean(pr.completed) };
+      });
+      body.progress = progress;
+    }
+    if (cloudDirty.playlists) {
+      let store = null;
+      try { store = JSON.parse(localStorage.getItem(DEV_PLAYLISTS_KEY) || 'null'); } catch (e) {}
+      const playlists = { save_for_later: [], favorites: [], custom: {} };
+      if (store && store.system) {
+        playlists.save_for_later = store.system.save_for_later ? (store.system.save_for_later.items || []) : [];
+        playlists.favorites = store.system.favorites ? (store.system.favorites.items || []) : [];
+        for (const [pid, pl] of Object.entries(store.custom || {})) {
+          if (pl && pl.name) playlists.custom[pl.name] = pl.items || [];
+        }
+      }
+      body.playlists = playlists;
+    }
+    if (cloudDirty.queue) {
+      let queue = [];
+      try { queue = JSON.parse(localStorage.getItem(DEV_QUEUE_KEY) || '[]'); } catch (e) {}
+      body.queue = Array.isArray(queue) ? queue : [];
+    }
+    return body;
+  }
+
+  function slugPid(name) {
+    const slug = String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32) || 'list';
+    let h = 0;
+    for (const ch of String(name || '')) h = ((h * 31 + ch.charCodeAt(0)) >>> 0);
+    return 'pl_' + slug + '-' + h.toString(36);
+  }
+
+  // Per-item last-write-wins merge (never wholesale overwrite): offline work
+  // made before a pull resolves is preserved when it is newer.
+  function adoptCloudState(s) {
+    if (!s) return;
+    try {
+      if (Array.isArray(s.history)) {
+        let local = [];
+        try { local = JSON.parse(localStorage.getItem('yutorah_recent_history') || '[]'); } catch (e) {}
+        const byId = new Map();
+        for (const h of local) byId.set(String(h.id), h);
+        for (const h of s.history) {
+          const k = String(h.id);
+          const prev = byId.get(k);
+          if (!prev || Number(h.listenedAt || 0) >= Number(prev.listenedAt || 0)) byId.set(k, h);
+        }
+        const merged = [...byId.values()].sort((a, b) => Number(b.listenedAt || 0) - Number(a.listenedAt || 0)).slice(0, 100);
+        localStorage.setItem('yutorah_recent_history', JSON.stringify(merged));
+      }
+      if (s.playlists) {
+        const store = getDevStore();
+        const mergeItems = (localItems, serverItems) => {
+          const byId = new Map();
+          for (const it of (localItems || [])) byId.set(String(it.id), it);
+          for (const it of (serverItems || [])) {
+            const k = String(it.id);
+            const prev = byId.get(k);
+            if (!prev || Number(it.addedAt || 0) >= Number(prev.addedAt || 0)) byId.set(k, it);
+          }
+          return [...byId.values()];
+        };
+        store.system.save_for_later.items = mergeItems(store.system.save_for_later.items, s.playlists.save_for_later);
+        store.system.favorites.items = mergeItems(store.system.favorites.items, s.playlists.favorites);
+        // Match customs by name (keep local id + icon); adopt unknown names.
+        const icons = {};
+        try { Object.assign(icons, JSON.parse(localStorage.getItem('yutorah_custom_icons') || '{}')); } catch (e) {}
+        const byName = new Map();
+        for (const [pid, pl] of Object.entries(store.custom || {})) {
+          if (pl && pl.name) {
+            byName.set(pl.name, pid);
+            icons[pl.name] = pl.icon || icons[pl.name] || '📁';
+          }
+        }
+        for (const [name, items] of Object.entries(s.playlists.custom || {})) {
+          const pid = byName.get(name) || slugPid(name);
+          const prev = (store.custom[pid] && store.custom[pid].items) || [];
+          store.custom[pid] = {
+            id: pid, name, icon: icons[name] || '📁',
+            items: mergeItems(prev, items)
+          };
+        }
+        try { localStorage.setItem('yutorah_custom_icons', JSON.stringify(icons)); } catch (e) {}
+        if (!getDevPlaylist(store, activeDevPlaylistId)) activeDevPlaylistId = 'history';
+        devStoreCache = null;
+        try {
+          localStorage.setItem(DEV_PLAYLISTS_KEY, JSON.stringify(store));
+          devStoreCache = store;
+        } catch (e) {}
+      }
+      if (Array.isArray(s.queue)) {
+        try {
+          let localQ = [];
+          try { localQ = JSON.parse(localStorage.getItem(DEV_QUEUE_KEY) || '[]'); } catch (e) {}
+          // Server wins queue order, but local-only entries are appended.
+          const serverIds = new Set();
+          for (const it of s.queue) {
+            if (it.kind === 'series') (it.items || []).forEach(x => serverIds.add(String(x.id)));
+            else if (it.id) serverIds.add(String(it.id));
+          }
+          const extras = localQ.filter(it => {
+            if (it.kind === 'series') return !(it.items || []).some(x => serverIds.has(String(x.id)));
+            return it.id && !serverIds.has(String(it.id));
+          });
+          localStorage.setItem(DEV_QUEUE_KEY, JSON.stringify([...s.queue, ...extras]));
+        } catch (e) {}
+      }
+      if (s.progress && typeof s.progress === 'object') {
+        try {
+          const local = getPlaybackProgress();
+          const merged = { ...local };
+          for (const [sid, pr] of Object.entries(s.progress)) {
+            const prev = merged[sid];
+            if (!prev || Number(pr.lastListened || 0) >= Number((prev.lastListened || 0))) {
+              merged[sid] = pr;
+            }
+          }
+          localStorage.setItem(DEV_PROGRESS_KEY, JSON.stringify(merged));
+          devProgressCache = merged;
+        } catch (e) {}
+      }
+      renderQueuePopup();
+      devRefreshCardButtons();
+      if (document.getElementById('grid-playlists') && activeDevPlaylistId) renderPlaylistsGrid();
+    } catch (e) {}
+  }
+
+  function scheduleCloudSync() {
+    if (!cloudEnabled()) return;
+    try {
+      clearTimeout(cloudSyncTimer);
+      cloudSyncTimer = setTimeout(() => { cloudPush().catch(() => {}); }, 2500);
+    } catch (e) {}
+  }
+
+  async function cloudPush() {
+    if (!cloudEnabled()) return null;
+    const payload = collectLocalState();
+    const sent = {
+      playlists: Boolean(payload.playlists),
+      queue: Boolean(payload.queue),
+      history: Boolean(payload.history)
+    };
+    try {
+      const res = await fetch('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) return null;
+      if (sent.playlists) cloudDirty.playlists = false;
+      if (sent.queue) cloudDirty.queue = false;
+      if (sent.history) cloudDirty.history = false;
+      const state = await res.json();
+      adoptCloudState(state);
+      return state;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async function cloudPull() {
+    if (!cloudEnabled()) return null;
+    try {
+      const res = await fetch('/api/sync');
+      if (!res.ok) return null;
+      const state = await res.json();
+      adoptCloudState(state);
+      return state;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  const AUTH_ERROR_COPY = {
+    'setup-needed': 'Login is not configured yet — see docs/AUTH_SETUP.md.',
+    'state-mismatch': 'Login was interrupted (session mismatch). Please try again.',
+    'token-failed': 'Google rejected the login. Please try again.',
+    'userinfo-failed': 'Could not read your Google profile. Please try again.',
+    error: 'Login failed. Please try again.'
+  };
+
+  async function bootAuth() {
+    renderAuthBtn();
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const authStatus = params.get('auth');
+      if (authStatus && authStatus !== 'ok') {
+        flashToast('⚠️ ' + (AUTH_ERROR_COPY[authStatus] || AUTH_ERROR_COPY.error), true, false);
+        params.delete('auth');
+        const clean = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+        history.replaceState(history.state || {}, '', clean);
+      }
+      const res = await fetch('/api/me');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (authStatus === 'ok' && (!data || !data.user)) {
+        // Login redirect landed but no session (cookie blocked/expired):
+        // clean the params so the URL doesn't lie.
+        params.delete('auth');
+        params.delete('new');
+        const clean = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+        history.replaceState(history.state || {}, '', clean);
+        flashToast('⚠️ Signed in, but no session stuck — check third-party cookie settings and retry.', true, false);
+      }
+      if (data && data.user) {
+        cloudUser = data.user;
+        renderAuthBtn();
+        if (authStatus === 'ok') {
+          const isFirst = params.get('new') === '1';
+          params.delete('auth');
+          params.delete('new');
+          const clean = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+          history.replaceState(history.state || {}, '', clean);
+          if (isFirst) {
+            // Brand-new account: migrate this browser's library up.
+            markCloudAllDirty();
+            await cloudPush();
+            flashToast('👋 Signed in — library synced', false, false);
+          } else {
+            // Returning device: pull only (a push here with an empty
+            // library would be pointless; edits push themselves).
+            await cloudPull();
+            flashToast('👋 Welcome back — library synced', false, false);
+          }
+        } else {
+          await cloudPull();
+        }
+      }
+    } catch (e) {}
+  }
+
   // Generic in-app confirm dialog (no system popups): title + body text,
   // Cancel / confirmLabel buttons; onConfirm runs on confirmation.
   let devConfirmCb = null;
@@ -12225,6 +13130,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     renderQueuePopup();
     if (document.getElementById('grid-playlists') && activeDevPlaylistId === 'queue') renderPlaylistsGrid();
+    try {
+      if (typeof markCloudDirty === 'function') markCloudDirty('queue');
+      if (typeof scheduleCloudSync === 'function') scheduleCloudSync();
+    } catch (e) {}
   }
 
   function devQueueFlatIds() {
@@ -13323,6 +14232,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     updatePlayPauseIcons(false);
     updateUrlTimestamp(true);
     if (typeof devRecordHeartbeat === 'function') devRecordHeartbeat(true);
+    try {
+      if (typeof markCloudDirty === 'function') markCloudDirty('history');
+      if (typeof scheduleCloudSync === 'function') scheduleCloudSync();
+    } catch (e) {}
     if (isSponsorPlaying) {
       clearSponsorTimers();
       stopSponsorRaf();
@@ -13428,6 +14341,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
       updateUrlTimestamp(true);
+      try {
+        if (typeof markCloudDirty === 'function') markCloudDirty('history');
+        if (typeof scheduleCloudSync === 'function') scheduleCloudSync();
+      } catch (e) {}
     }
   });
   window.addEventListener('beforeunload', () => {

@@ -1,6 +1,6 @@
 # User Data Strategy: Storage, Auth, Scale, Popularity & PWA
 
-**Status: design document. Implementation: Phase 1 (local) is LIVE. Phases 2–4 are future plans — no database is bound today (`wrangler.toml` has zero D1/KV/R2 bindings) and nothing below changes the current 5 GB math until a binding ships.**
+**Status: Phase 1 (local) is LIVE. Phase 2 (Google OAuth + D1 sync) is implemented on `feat/auth-d1`, bound under `[env.dev]` only — production `wrangler.toml` still has zero DB bindings. Phases 3–4 remain future plans.**
 
 ---
 
@@ -23,13 +23,13 @@ All user-specific state lives in 13 namespaced `localStorage` keys. Nothing leav
 
 ---
 
-## 2. Cloud plan (Phase 2 — FUTURE): Google OAuth + Cloudflare D1
+## 2. Cloud plan (Phase 2 — IMPLEMENTED on `feat/auth-d1`, dev binding only): Google OAuth + Cloudflare D1
 
 ### 2.1 Auth choice: Google OAuth 2.0 (Authorization Code + PKCE), no passwords
 
 - **Why not our own email/password:** password hashes, reset-token email pipeline (needs Resend/Postmark), breach liability, and strictly worse UX — for ~0.2 KB/user *more* storage. There is no upside.
 - **Why not Apple-only / Facebook / magic links (v1):** Google covers Android + desktop + iOS-web; Apple Sign-In becomes *mandatory* only if we ship a native iOS app alongside third-party login (App Store rule 4.8) — defer until then.
-- **How it works on our stack:** Cloudflare Worker runs the OAuth code flow; Google returns an ID token; the Worker mints its own session JWT (`HttpOnly`, `Secure`, `SameSite=Lax` cookie). The Worker verifies Google's tokens via Google's JWKS (cached at the edge). No password, no secret, no session table needed if the JWT carries `{user_id, exp}` signed with `SESSION_SECRET` — stateless sessions, zero DB reads per request.
+- **How it works on our stack:** Cloudflare Worker runs the OAuth code flow; Google returns an ID token; the Worker mints its own session JWT (`HttpOnly`, `Secure` on https, `SameSite=Lax` cookie, `Secure` omitted on `http://localhost` so local dev works). The JWT carries `{user_id, exp}` signed with `SESSION_SECRET`; each authenticated request re-validates the user with one indexed `users` lookup (needed to surface profile + fail closed on deleted accounts) and sliding-refreshes the 1-year expiry on every sync call. No password, no session table.
 
 ### 2.2 Relogin frequency (Google, webapp)
 
@@ -59,15 +59,20 @@ CREATE TABLE listening_history (
   listen_count INTEGER DEFAULT 1,
   PRIMARY KEY (user_id, shiur_id)
 ) WITHOUT ROWID;
-CREATE TABLE playlist_items (           -- favorites, save-for-later, custom, queue
-  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  playlist TEXT NOT NULL,               -- 'favorites' | 'later' | 'queue' | custom id
+CREATE TABLE playlist_items (           -- save_for_later, favorites, custom:<name>, queue
+  user_id TEXT NOT NULL,
+  playlist TEXT NOT NULL,               -- 'save_for_later' | 'favorites' | 'queue' | 'custom:<name>'
   shiur_id TEXT NOT NULL,
   position INTEGER DEFAULT 0,           -- queue order / custom order
   title TEXT, speaker TEXT, photo TEXT, duration TEXT, -- denormalized snapshot
+  date_display TEXT DEFAULT '', category TEXT DEFAULT '', is_article INTEGER DEFAULT 0,
+  series_title TEXT DEFAULT '', cover_id TEXT DEFAULT '',
+  kind TEXT DEFAULT 'shiur',            -- 'shiur' | 'series' (queue wrappers expand to member rows)
   added_at INTEGER,
   PRIMARY KEY (user_id, playlist, shiur_id)
 ) WITHOUT ROWID;
+-- NOTE: inline REFERENCES are parsed but unenforced by SQLite (no FK pragma);
+-- cascades are handled in application code. All timestamps MILLISECONDS.
 CREATE TABLE public_playlists (         -- Phase 3: shareable
   id TEXT PRIMARY KEY,
   owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -108,14 +113,14 @@ Per-row reality check (SQLite `WITHOUT ROWID`, TEXT ids ~8–12 B, TEXT snapshot
 
 ### 2.5 Does this change the storage calculation?
 
-- **Today: no.** No bindings exist; current usage is 0 GB of Cloudflare storage and stays 0 until we bind D1.
+- **Today: dev only.** `yutorah_db` is bound under `[env.dev]` (production `wrangler.toml` still has no DB binding); current production usage is 0 GB. Sync protocol is dirty-flagged (`dirty: {playlists, queue, history}` — server touches only named collections), merges are per-item last-write-wins, sessions are JWT + one indexed `users` lookup per authenticated request with sliding 1-year refresh on sync.
 - **After Phase 2:** D1 free tier is 5 GB storage **plus** 100k row-writes/day and 5M reads/day. At ~100 heartbeat/batch writes per active user per day, writes bind first (~1,000 daily actives). Mitigation: batch heartbeats (flush every 30–60s + on pause/seek/close, exactly like today's debounced local writes), which keeps ~1–3k daily actives inside free tier.
 - **KV (optional, pennies):** session allowlist/rate-limit counters only — not user data. R2 (10 GB free) is for transcripts (Phase 4), unrelated to user prefs.
 
 ### 2.6 Migration path (no data loss)
 
-1. Ship Google login button; on first login, `POST /api/migrate` uploads the browser's `localStorage` payload once, server upserts with `ON CONFLICT DO UPDATE`, client keeps local keys as offline cache (last-write-wins by timestamp).
-2. Dual-write for one release (local + cloud), then cloud-primary with local fallback when offline.
+1. Ship Google login button; on first login (`?auth=ok&new=1`), `POST /api/sync` uploads the browser's `localStorage` payload once (dirty flags force all three collections), server upserts with `ON CONFLICT DO UPDATE`. Returning logins pull only.
+2. Sync is dirty-flagged, not dual-write: the client sends `dirty: {playlists, queue, history}` and the server touches **only** named collections (absent keys leave server rows alone, so an empty device can never wipe the cloud). Merges are per-item last-write-wins by timestamp on both push and pull; local remains the offline source of truth.
 
 ---
 
