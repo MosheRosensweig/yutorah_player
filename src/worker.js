@@ -5002,8 +5002,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       aspect-ratio: 16 / 10;
       max-height: 340px;
       object-fit: cover;
-      object-position: left center;
+      object-position: center;
       display: block;
+    }
+    @media (max-width: 640px) {
+      .hero-slide img {
+        -webkit-mask-image: linear-gradient(to right, transparent 0, #000 28%);
+        mask-image: linear-gradient(to right, transparent 0, #000 28%);
+      }
     }
     .hero-caption {
       position: absolute;
@@ -5021,11 +5027,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       text-shadow: 0 1px 6px rgba(0, 0, 0, 0.55);
     }
     .hero-title {
-      font-size: 22px;
+      font-size: 26px;
       font-weight: 800;
+      line-height: 1.2;
     }
     .hero-desc {
-      font-size: 13px;
+      font-size: 14px;
       opacity: 0.94;
       display: -webkit-box;
       -webkit-line-clamp: 4;
