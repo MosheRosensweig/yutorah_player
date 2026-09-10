@@ -918,6 +918,41 @@ export const SYNSETS = [
     canonical: "rosensweig",
     hebrew: ["רוזנצווייג"],
     variants: ["rosensweig"]
+  },
+  {
+    canonical: "gemara",
+    hebrew: ["גמרא", "תלמוד"],
+    variants: ["gemara", "gemora", "talmud", "talmod", "shas", "shass"]
+  },
+  {
+    canonical: "tanach",
+    hebrew: ["תנ״ך", "תנך"],
+    variants: ["tanach", "tanakh", "bible", "hebrew bible"]
+  },
+  {
+    canonical: "torah",
+    hebrew: ["תורה", "חומש"],
+    variants: ["torah", "tora", "chumash", "chumosh", "pentateuch", "five books", "hamisha chumshei torah"]
+  },
+  {
+    canonical: "nach",
+    hebrew: ["נ״ך", "נך"],
+    variants: ["nach", "nack", "neviim ketuvim", "prophets writings"]
+  },
+  {
+    canonical: "mishna",
+    hebrew: ["משנה", "משניות"],
+    variants: ["mishna", "mishnah", "mishnayos", "mishnayot"]
+  },
+  {
+    canonical: "midrash",
+    hebrew: ["מדרש", "מדרשים", "אגדה"],
+    variants: ["midrash", "midrashim", "medrash", "aggadah", "aggada", "agada"]
+  },
+  {
+    canonical: "halacha",
+    hebrew: ["הלכה", "הלכות"],
+    variants: ["halacha", "halakha", "halachos", "halachot", "halachah"]
   }
 ];
 

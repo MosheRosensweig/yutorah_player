@@ -51,6 +51,8 @@ function decodeHtmlEntities(s) {
 // In-memory cache for homepage collections (5 minutes)
 let homeDataCache = null;
 let homeDataCacheTime = 0;
+// Facet-count cache (signature -> { at, body }), 60s TTL, capped at 50.
+const facetCache = new Map();
 
 async function getHomepageData() {
   const now = Date.now();
@@ -325,13 +327,15 @@ async function executeSearchInternal(searchParams) {
   }
   // Fuzzy fallback (ROADMAP §5.4): ranked teacher/topic/venue candidates for
   // the raw query — consumed by the "Did you mean …?" strip + /api/suggest.
+  // Suggestions identical to the query itself are dropped (no pointless strip).
   function didYouMeanFor() {
     try {
+      const ql = String(rawQ || '').trim().toLowerCase();
       return suggestDidYouMean(rawQ, {
         teacher: AUTOCOMPLETE_META.teachers || [],
         topic: AUTOCOMPLETE_META.categories || [],
         venue: AUTOCOMPLETE_META.venues || []
-      }, { limit: 5 });
+      }, { limit: 5 }).filter(s => String(s.text || '').trim().toLowerCase() !== ql);
     } catch (e) {
       return [];
     }
@@ -734,18 +738,20 @@ export default {
         }
       });
     }
-
-    // 0b. Fuzzy Suggest API: /api/suggest?q=... (ROADMAP §5.4)    // Damerau-Levenshtein over teachers/topics/venues (+ synset variants).
+    // 0b. Fuzzy Suggest API: /api/suggest?q=... (ROADMAP §5.4)
+    // Damerau-Levenshtein over teachers/topics/venues (+ synset variants).
     // Pure local data — no upstream calls, safe to hit on every keystroke pause.
+    // Never suggests the query back to itself.
     if (url.pathname === '/api/suggest') {
       const q = url.searchParams.get('q') || '';
+      const ql = q.trim().toLowerCase();
       let suggestions = [];
       try {
         suggestions = suggestDidYouMean(q, {
           teacher: AUTOCOMPLETE_META.teachers || [],
           topic: AUTOCOMPLETE_META.categories || [],
           venue: AUTOCOMPLETE_META.venues || []
-        }, { limit: 8 });
+        }, { limit: 8 }).filter(s => String(s.text || '').trim().toLowerCase() !== ql);
       } catch (e) {
         suggestions = [];
       }
@@ -767,6 +773,59 @@ export default {
           'Cache-Control': 'public, max-age=60'
         }
       });
+    }
+
+    // 0d. Dynamic facet counts: /api/facets (powers filter dropdown counts
+    // that react to already-selected filters; upstream facet query, rows=0).
+    if (url.pathname === '/api/facets') {
+      try {
+        const fUrl = new URL(API_ORIGIN + '/search');
+        fUrl.searchParams.set('searchTerm', url.searchParams.get('q') || '');
+        fUrl.searchParams.set('rows', '0');
+        fUrl.searchParams.set('facet', 'true');
+        for (const [ours, up] of [['teacherId', 'teacherId'], ['subCategoryId', 'subCategoryId'], ['locationId', 'locationId'], ['seriesId', 'seriesId']]) {
+          for (const v of url.searchParams.getAll(ours)) {
+            if (v) fUrl.searchParams.append(up, v);
+          }
+        }
+        const cacheKey = 'facets:' + fUrl.searchParams.toString();
+        const cached = facetCache.get(cacheKey);
+        if (cached && Date.now() - cached.at < 60000) {
+          return new Response(JSON.stringify(cached.body), {
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'public, max-age=60' }
+          });
+        }
+        const upstream = await fetch(fUrl.toString(), {
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Accept': 'application/json' }
+        });
+        const norm = { teachers: [], categories: [], venues: [], series: [], total: 0 };
+        if (upstream.ok) {
+          const fj = await upstream.json();
+          norm.total = fj?.response?.numFound || 0;
+          const ff = fj?.facet_counts?.facet_fields || {};
+          const pick = (arr, idK, nameK) => (Array.isArray(arr) ? arr : []).map(e => ({
+            id: String(e[idK] ?? ''),
+            name: String(e[nameK] ?? ''),
+            count: Number(e.Match || 0)
+          })).filter(e => e.id && e.name);
+          norm.teachers = pick(ff.teachers, 'TeacherId', 'TeacherName');
+          norm.categories = pick(ff.subcategories, 'SubcategoryId', 'Subcategoryname');
+          norm.venues = pick(ff.locations, 'LocationId', 'LocationName');
+          norm.series = pick(ff.series, 'SeriesId', 'SeriesName');
+        }
+        facetCache.set(cacheKey, { at: Date.now(), body: norm });
+        if (facetCache.size > 50) {
+          const first = facetCache.keys().next().value;
+          facetCache.delete(first);
+        }
+        return new Response(JSON.stringify(norm), {
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'public, max-age=60' }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ teachers: [], categories: [], venues: [], series: [], total: 0 }), {
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+        });
+      }
     }
 
     // 1. Live Search API Proxy: /api/search?q=...
@@ -1373,26 +1432,62 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   let dailyShiurim = [];
   let heroSlides = [];
 
-  // Map an upstream slideshow target to our player: lecture links stay
-  // in-app, yutorah.org section links open there, externals open new-tab.
+  // Map an upstream slideshow target to our player, generically: lecture
+  // links stay in-app; yutorah search/filter URLs are translated into OUR
+  // routes (search text, teacher, category, sort) so any present or future
+  // slide deep-links into our library; externals open new-tab.
   // Unknown or dangerous schemes (javascript:, data:, …) fall back to '#'.
   function heroSlideLink(target) {
     const t = String(target || '').trim();
     const relLec = t.match(/^\/lectures\/(\d+)/);
     if (relLec) return { href: '/' + relLec[1], external: false };
     const abs = t.match(/^https?:\/\/([^\/]+)(\/.*)?$/i);
+    let inner = null;
+    let isYutorah = false;
     if (abs) {
       const host = abs[1].toLowerCase();
       if (host === 'yutorah.org' || host.endsWith('.yutorah.org')) {
-        const inner = abs[2] || '/';
-        const innerLec = inner.match(/^\/lectures\/(\d+)/);
-        if (innerLec) return { href: '/' + innerLec[1], external: false };
+        isYutorah = true;
+        inner = abs[2] || '/';
+      } else {
         return { href: t, external: true };
       }
-      return { href: t, external: true };
+    } else if (t.startsWith('/')) {
+      isYutorah = true;
+      inner = t;
+    } else {
+      return { href: '#', external: false };
     }
-    if (t.startsWith('/')) return { href: 'https://www.yutorah.org' + t, external: true };
-    return { href: '#', external: false };
+    const innerLec = inner.match(/^\/lectures\/(\d+)/);
+    if (innerLec) return { href: '/' + innerLec[1], external: false };
+    // Translate yutorah /search/?s=&teacher=&category=&collection=&sort=
+    // and /togo/* landing shortcuts into our routes. Unmapped params drop.
+    const qm = inner.match(/^\/search\/\?(.*)$/i);
+    if (qm) {
+      const qp = new URLSearchParams(qm[1]);
+      const out = new URLSearchParams();
+      const s = (qp.get('s') || '').trim();
+      if (s) out.set('search', s);
+      const teacher = (qp.get('teacher') || '').trim();
+      if (/^\d+$/.test(teacher)) out.set('teacherId', teacher);
+      else if (teacher) out.set('search', (s ? s + ' ' : '') + teacher);
+      const cat = (qp.get('category') || '').trim();
+      const catIds = cat.split(',').map(x => x.trim()).filter(x => /^\d+$/.test(x) && x !== '0');
+      if (catIds.length > 0) out.set('subCategoryId', catIds[0]);
+      const series = (qp.get('series') || '').trim();
+      if (/^\d+$/.test(series)) out.set('seriesId', series);
+      if (qp.get('sort') === '1') out.set('sort', 'newest');
+      const qs = out.toString();
+      if (qs) return { href: '/?' + qs, external: false };
+    }
+    const togo = inner.match(/^\/togo(\/.*)?$/i);
+    if (togo) return { href: '/?search=Torah To Go', external: false };
+    const catPage = inner.match(/^\/categories\/(.+)$/i);
+    if (catPage) {
+      const slug = catPage[1].split('/').filter(Boolean).pop() || '';
+      if (slug) return { href: '/?search=' + encodeURIComponent(slug.replace(/-/g, ' ')), external: false };
+    }
+    return { href: isYutorah ? ('https://www.yutorah.org' + inner) : t, external: true };
   }
 
   if (homepageData) {
@@ -5183,6 +5278,24 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       outline: 2px solid var(--primary) !important;
       outline-offset: 2px;
     }
+    /* Desktop text selection: content selectable, chrome is not. */
+    .quick-card-title,
+    .quick-card-speaker,
+    .quick-card-category,
+    .shiur-title,
+    .shiur-speaker,
+    .shiur-desc,
+    .bio-text,
+    .did-you-mean-strip,
+    .hero-title,
+    .hero-desc,
+    .search-results-text,
+    .meta-row,
+    .queue-title,
+    .queue-sub {
+      user-select: text;
+      -webkit-user-select: text;
+    }
     .quick-play-badge:focus-visible,
     .series-sub-play:focus-visible {
       outline: 2px solid var(--primary) !important;
@@ -8914,6 +9027,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       for (const c of pair[1]) {
         const name = typeof c === 'string' ? c : (c && c.name);
         if (!name) continue;
+        if (String(name).trim().toLowerCase() === q) continue;
         const norm = String(name).replace(/^(rabbi|rav|dr|doctor|prof|dayan|maran|chacham|harav|reb|mrs|ms|mr)\\.?[\\s]+/i, '').toLowerCase().trim();
         if (!norm || seen.has(type + '|' + norm)) continue;
         const targets = [norm].concat(norm.split(/\\s+/).filter(w => w.length >= 3));
@@ -8947,7 +9061,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         ['kashrus', 'kashrus'], ['kashrut', 'kashrus'], ['kosher', 'kashrus'],
         ['tefillah', 'tefillah'], ['tefila', 'tefillah'], ['tefillos', 'tefillah'],
         ['brachos', 'brachos'], ['berachos', 'brachos'], ['bracha', 'brachos'], ['beracha', 'brachos'],
-        ['motzoei', 'motzoei'], ['motzei', 'motzoei'], ['motsai', 'motzoei']
+        ['motzoei', 'motzoei'], ['motzei', 'motzoei'], ['motsai', 'motzoei'],
+        ['gemara', 'gemara'], ['gemora', 'gemara'], ['talmud', 'gemara'], ['shas', 'gemara'],
+        ['tanach', 'tanach'], ['tanakh', 'tanach'], ['bible', 'tanach'],
+        ['torah', 'torah'], ['tora', 'torah'], ['chumash', 'torah'], ['pentateuch', 'torah'],
+        ['nach', 'nach'], ['mishna', 'mishna'], ['mishnah', 'mishna'],
+        ['midrash', 'midrash'], ['medrash', 'midrash'], ['aggadah', 'midrash'],
+        ['aggada', 'midrash'], ['agada', 'midrash'], ['midrashim', 'midrash'],
+        ['halacha', 'halacha'], ['halakha', 'halacha'], ['halachos', 'halacha'],
+        ['halachot', 'halacha'], ['talmod', 'gemara'], ['shass', 'gemara'],
+        ['chumosh', 'torah'], ['mishnayos', 'mishna'], ['mishnayot', 'mishna'],
+        ['nack', 'nach'], ['hebrew bible', 'tanach'], ['five books', 'torah']
       ];
       for (const pair of synPairs) {
         const dist = clientLevenshtein(q, pair[0]);
@@ -9676,6 +9800,43 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   // Setup Live Filtering Autocomplete for Teacher, Category, Venue, Series inputs
+  // Facet-count cache: filter-signature -> { at, counts } (45s TTL).
+  // Counts make dropdowns reflect already-selected filters (dynamic facets).
+  // The dropdown's OWN type is excluded from the query so its options show
+  // counts under the other active filters (never self-zeroed).
+  const facetCountCache = { sig: '', at: 0, counts: null };
+  async function loadFacetCounts(skipType) {
+    const kwInput = document.getElementById('advKeywords');
+    const kw = ((kwInput && kwInput.value) || (activeAdvancedFilters && activeAdvancedFilters.keywords) || '').trim();
+    const parts = ['q:' + kw,
+      't:' + (modalTempFilters.teachers || []).map(t => t.id).sort().join(','),
+      'c:' + (modalTempFilters.categories || []).map(t => t.id).sort().join(','),
+      'l:' + (modalTempFilters.locations || []).map(t => t.id).sort().join(','),
+      's:' + (modalTempFilters.series || []).map(t => t.id).sort().join(','),
+      'skip:' + (skipType || '')];
+    const sig = parts.join('|');
+    if (facetCountCache.counts && facetCountCache.sig === sig && Date.now() - facetCountCache.at < 45000) {
+      return facetCountCache.counts;
+    }
+    try {
+      const q = new URLSearchParams();
+      if (kw) q.set('q', kw);
+      if (skipType !== 'teacher') (modalTempFilters.teachers || []).forEach(t => q.append('teacherId', t.id));
+      if (skipType !== 'category') (modalTempFilters.categories || []).forEach(t => q.append('subCategoryId', t.id));
+      if (skipType !== 'location') (modalTempFilters.locations || []).forEach(t => q.append('locationId', t.id));
+      if (skipType !== 'series') (modalTempFilters.series || []).forEach(t => q.append('seriesId', t.id));
+      const res = await fetch('/api/facets?' + q.toString());
+      if (!res.ok) return null;
+      const body = await res.json();
+      facetCountCache.sig = sig;
+      facetCountCache.at = Date.now();
+      facetCountCache.counts = body;
+      return body;
+    } catch (e) {
+      return null;
+    }
+  }
+
   function setupAutocompleteInput(type, inputId, dropdownId, dataKey) {
     const input = document.getElementById(inputId);
     const dropdown = document.getElementById(dropdownId);
@@ -9700,12 +9861,35 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         // Strip titles/honorifics from query if searching teachers
         const cleanVal = type === 'teacher' ? val.replace(/^(rabbi|rav|dr\.|dr|mrs\.|mrs|rebbetzin|r')\s+/i, '').trim() : val;
         
+        // Exclude already-selected options of this type (no duplicates).
+        const selectedIds = new Set(((type === 'teacher' ? modalTempFilters.teachers
+          : type === 'category' ? modalTempFilters.categories
+          : type === 'location' ? modalTempFilters.locations
+          : modalTempFilters.series) || []).map(t => String(t.id)));
+        // Dynamic facet counts for the OTHER active filters.
+        const facetKey = type === 'teacher' ? 'teachers' : type === 'category' ? 'categories'
+          : type === 'location' ? 'venues' : 'series';
+        let facetById = null;
+        try {
+          const fc = await loadFacetCounts(type);
+          if (fc && Array.isArray(fc[facetKey])) {
+            facetById = {};
+            for (const f of fc[facetKey]) facetById[String(f.id)] = f.count;
+          }
+        } catch (e) {}
+
         let matches = [];
         for (const item of items) {
+          if (selectedIds.has(String(item.id))) continue;
           const itemName = (item.name || '').toLowerCase();
           const cleanItemName = type === 'teacher' ? itemName.replace(/^(rabbi|rav|dr\.|dr|mrs\.|mrs|rebbetzin|r')\s+/i, '') : itemName;
           if (itemName.includes(val) || cleanItemName.includes(cleanVal)) {
-            matches.push(item);
+            const m = { id: item.id, name: item.name, count: item.count };
+            if (facetById && Object.prototype.hasOwnProperty.call(facetById, String(item.id))) {
+              m.count = facetById[String(item.id)];
+              m.faceted = true;
+            }
+            matches.push(m);
             if (matches.length >= 25) break;
           }
         }
@@ -10815,6 +10999,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   async function playShiurById(e, id, stayMini) {
     if (e) e.preventDefault();
+    // Text selection wins over card click: dragging to select title/speaker
+    // text must not start playback.
+    try {
+      const sel = window.getSelection ? window.getSelection() : null;
+      if (sel && !sel.isCollapsed && String(sel.toString()).trim().length > 0) {
+        sel.removeAllRanges();
+        return;
+      }
+    } catch (err) {}
 
     // Same track already loaded: never restart — resume if paused,
     // otherwise drop to the mini player and keep the position.
@@ -11586,17 +11779,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   var DEV_SAVE_ICONS = ['emoji', 'hands-light', 'hands-medium', 'hands-bold', 'hands-filled'];
   function getSaveIconId() {
     try {
-      var v = localStorage.getItem('yutorah_save_icon');
+      const v = localStorage.getItem('yutorah_save_icon');
       if (DEV_SAVE_ICONS.indexOf(v) !== -1) return v;
     } catch (e) {}
-    return 'emoji';
+    return 'hands-light';
   }
   function saveIconThumb(oid) {
-    if (oid === 'hands-light') return devClockSvg(2, 1.6, false);
+    if (oid === 'emoji') return '🕒';
     if (oid === 'hands-medium') return devClockSvg(3.2, 1.8, false);
     if (oid === 'hands-bold') return devClockSvg(4.5, 2.4, false);
     if (oid === 'hands-filled') return devClockSvg(0, 2, true);
-    return '🕒';
+    return devClockSvg(2, 1.6, false);
   }
   function getSaveIconHtml() {
     return saveIconThumb(getSaveIconId());
