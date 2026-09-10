@@ -527,9 +527,10 @@ async function executeSearchInternal(searchParams) {
     }
     return n;
   }
+  // Fewer than 10 hits: show results AND a "Did you mean …?" strip on top.
   function didYouMeanIfWeak(totalHits) {
     try {
-      return totalHits <= 5 ? didYouMeanFor() : [];
+      return totalHits < 10 ? didYouMeanFor() : [];
     } catch (e) {
       return [];
     }
@@ -559,20 +560,17 @@ async function executeSearchInternal(searchParams) {
     const adjNumFound = tId ? Math.min(numFound, filteredDocs.length + (numFound - docs.length)) : numFound;
     // Relevance keeps its FULL page (30): the Recent-3 are an extra rail on
     // top, never carved out of the relevance list.
-    let recentDocs = (start === 1 && isRelevanceSort) ? globalRecent : [];
-    let finalDocs = filteredDocs;
-    let finalNumFound = adjNumFound;
-    let finalRecentTotal = recentTotal;
-    let didYouMean = null;
-
-    // Typo auto-correct (single-word queries only): if NOTHING literally
-    // matches the typed token but a distance-1 correction exists, show the
-    // correction's results with a "you searched X" disclaimer instead of
-    // silently fuzzy-matching. "rosensweig" matches literally, so it is
-    // never rewritten; "weiderblank" becomes "Rabbi Netanel Wiederblank".
-    // Applies on every page so Load-More stays on the corrected query.
-    let typoSwapped = false;
-    if (rawWordCount === 1 && !disablePhonetics && teacherIds.length === 0) {
+    // No auto-rewrites: every query shows its own matches. When hits are
+    // thin (<10), didYouMeanIfWeak adds a "Did you mean …?" strip rendered
+    // ON TOP, and clicking a suggestion runs that corrected search.
+    const recentDocs = (start === 1 && isRelevanceSort) ? globalRecent : [];
+    const totalHits = undupedHitCount(filteredDocs, recentDocs);
+    let didYouMean = didYouMeanIfWeak(totalHits);
+    // Zero literal matches + a distance-1 correction: surface the notice
+    // even when phonetic expansion filled the page (no rewrite — the strip
+    // click runs the corrected search). This is the weiderblank case.
+    if ((!didYouMean || didYouMean.length === 0) && start === 1 &&
+        rawWordCount === 1 && !disablePhonetics && teacherIds.length === 0) {
       const ql = rawQ.toLowerCase();
       const docText = d => [
         d.shiurtitle, d.shiurTitle, d.title, d.teacherfullname,
@@ -581,48 +579,28 @@ async function executeSearchInternal(searchParams) {
         d.subcategoryname, d.categoryname,
         (Array.isArray(d.shiurkeywords) ? d.shiurkeywords.join(' ') : d.shiurkeywords)
       ].join(' ').toLowerCase();
-      const literalHit = [...finalDocs, ...recentDocs].some(d => docText(d).includes(ql));
+      const literalHit = [...filteredDocs, ...recentDocs].some(d => docText(d).includes(ql));
       if (!literalHit) {
-        let top = null;
         try {
           const sug = suggestDidYouMean(rawQ, {
             teacher: AUTOCOMPLETE_META.teachers || [],
             topic: AUTOCOMPLETE_META.categories || [],
             venue: AUTOCOMPLETE_META.venues || []
-          }, { limit: 1 });
-          if (sug.length > 0 && sug[0].distance <= 1 && sug[0].text.toLowerCase() !== ql) top = sug[0];
-        } catch (e) { top = null; }
-        if (top) {
-          const re = await fetchSolrSingle(top.text, start, '', '', '', '');
-          if (re.docs.length > 0) {
-            finalDocs = re.docs;
-            finalNumFound = re.numFound;
-            if (start === 1) {
-              const dateRe = await fetchDateWindow(top.text, 1, 3);
-              recentDocs = dateRe.windowDocs;
-              finalRecentTotal = dateRe.totalFound;
-            } else {
-              recentDocs = [];
-            }
-            resolvedDisplay = top.text;
-            typoSwapped = true;
-            didYouMean = [];
-          }
-        }
+          }, { limit: 3 });
+          const top = sug.filter(s => s.distance <= 1 && s.text.toLowerCase() !== ql);
+          if (top.length > 0) didYouMean = top;
+        } catch (e) {}
       }
     }
-
-    const totalHits = undupedHitCount(finalDocs, recentDocs);
-    if (didYouMean === null) didYouMean = didYouMeanIfWeak(totalHits);
     return {
       response: {
-        docs: finalDocs,
+        docs: filteredDocs,
         recentDocs,
-        recentNumFound: start === 1 ? (finalRecentTotal || finalNumFound) : 0,
-        numFound: finalNumFound,
+        recentNumFound: start === 1 ? (recentTotal || adjNumFound) : 0,
+        numFound: adjNumFound,
         start
       },
-      phoneticExpansion: (!typoSwapped && expandedInfo && expandedInfo.expandedTokens && expandedInfo.expandedTokens.length > 1) ? {
+      phoneticExpansion: (expandedInfo && expandedInfo.expandedTokens && expandedInfo.expandedTokens.length > 1) ? {
         original: rawQ,
         tokens: expandedInfo.expandedTokens,
         synset: expandedInfo.matchedSynset
@@ -2124,10 +2102,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       right: 10px;
       background: linear-gradient(135deg, #e67e22 0%, #d35400 100%);
       color: #ffffff;
-      font-size: 9px;
+      font-size: 10px;
       font-weight: 800;
       letter-spacing: 0.6px;
-      padding: 2px 6px;
+      padding: 3px 8px;
       border-radius: 4px;
       text-transform: uppercase;
       box-shadow: 0 1px 4px rgba(230, 126, 34, 0.35);
@@ -4847,8 +4825,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       flex-basis: 100%;
     }
     .rows-view .quick-card-new-badge {
-      top: auto;
-      bottom: 9px;
+      top: 9px;
+      bottom: auto;
     }
     .rows-view .quick-card-link {
       padding-right: 52px;
@@ -5024,8 +5002,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       right: 0;
       top: 0;
       bottom: 0;
-      width: 44%;
-      padding: 24px 22px;
+      width: 55%;
+      padding: 24px 64px 24px 22px;
+      background: linear-gradient(to left, rgba(0, 0, 0, 0.72) 55%, rgba(0, 0, 0, 0));
       color: #fff;
       display: flex;
       flex-direction: column;
@@ -5075,7 +5054,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       background: rgba(0, 0, 0, 0.65);
     }
     .hero-prev { left: 10px; }
-    .hero-next { right: 10px; }
+    .hero-next { right: calc(55% + 10px); }
     .hero-dots {
       position: absolute;
       bottom: 10px;
@@ -5838,6 +5817,47 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     [data-theme="dark"] .translit-badge-title {
       color: #93c5fd;
     }
+    .translit-info-btn {
+      width: 22px;
+      height: 22px;
+      flex-shrink: 0;
+      border-radius: 50%;
+      border: 1.5px solid var(--primary);
+      background: transparent;
+      color: var(--primary);
+      font-size: 13px;
+      font-weight: 800;
+      font-style: italic;
+      font-family: Georgia, serif;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0;
+    }
+    .translit-info-btn:hover {
+      background: var(--primary);
+      color: #fff;
+    }
+    .translit-info-btn:focus-visible {
+      outline: 2px solid var(--primary) !important;
+      outline-offset: 2px;
+    }
+    .translit-switch {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      cursor: pointer;
+      flex-shrink: 0;
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--text);
+    }
+    .translit-switch input {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--primary);
+      cursor: pointer;
+      margin: 0;
+    }
     .translit-badge-desc {
       font-size: 11.5px;
       color: var(--text-muted);
@@ -6271,6 +6291,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           <button type="button" class="settings-menu-item dev-only" onclick="openChangelogModal()" title="Log of latest changes">
             <span>📋</span> <span>Change Log</span>
           </button>
+          <div class="settings-menu-label dev-only" style="margin-top:6px;">Save button icon</div>
+          <div id="saveIconPicker" class="dev-only" style="display:flex; gap:6px; padding:4px 10px 8px; flex-wrap:wrap;"></div>
           <!-- [DEAD CODE / INACTIVE] Switch to Simple View -->
           <button type="button" id="toggleViewModeBtn" class="settings-menu-item" onclick="toggleViewMode(event)" style="display: none !important;">
             <span id="viewModeIcon">✨</span> <span id="viewModeText">Switch to Simple View</span>
@@ -6514,7 +6536,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
             </span>
             <span class="match-toggle-label">
               <span>🏛️ Use Classic Search</span>
-              <span class="classic-info-btn" onclick="toggleClassicInfoTooltip(event)" role="button" aria-label="About Classic Search" title="Learn about Classic Search">ⓘ</span>
+              <span class="classic-info-btn" onclick="toggleClassicInfoTooltip(event)" role="button" tabindex="0" data-kbplay aria-label="About Classic Search" title="Learn about Classic Search">ⓘ</span>
             </span>
           </label>
           <div id="classicSearchTooltip" class="classic-search-tooltip" style="display: none;" onclick="event.stopPropagation()">
@@ -6930,31 +6952,20 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       <button type="button" class="modal-close-btn" onclick="closeAdvancedModal()" aria-label="Close modal">✕</button>
     </div>
     <div class="modal-body">
-      <!-- Transliteration Engine Indicator & Toggle (Active by default) -->
+      <!-- Transliteration Engine: single row (info + name + on/off switch) -->
       <div class="transliteration-status-card">
-        <div style="flex:1;">
+        <button type="button" class="translit-info-btn" onclick="document.getElementById('translitDesc').style.display=document.getElementById('translitDesc').style.display==='none'?'block':'none'" title="About transliteration" aria-label="About transliteration">i</button>
+        <div style="flex:1; min-width:0;">
           <div class="translit-badge-title">
-            <span>✨ Reverse Transliteration Engine</span>
-            <span style="font-size:10.5px; font-weight:700; background:#10b981; color:#fff; padding:1.5px 6px; border-radius:10px;">ENABLED BY DEFAULT</span>
-            <button type="button" class="translit-info-btn" onclick="document.getElementById('translitDesc').style.display=document.getElementById('translitDesc').style.display==='none'?'block':'none'" title="About transliteration">ⓘ</button>
+            <span>✨ Reverse Transliteration</span>
           </div>
           <div class="translit-badge-desc" id="translitDesc" style="display:none;">
-            Automatically equates Ashkenazic &amp; Sephardic phonetics (<em>Shabbos ↔ Shabbat</em>, <em>Succah ↔ Sukkah</em>), expands English to Hebrew (<em>שבת, סוכה, פסח, מוצאי</em>), and auto-detects speakers. <strong>Unchecking this box uses the classic old YUTorah website search</strong> (strict literal match only).
-          </div>
-          <div class="filter-dimensions-hint">
-            <span style="font-size:11px; font-weight:700; color:var(--text-muted); margin-right:2px;">Filter across 7 catalog dimensions:</span>
-            <span class="dim-tag">👤 Speakers</span>
-            <span class="dim-tag">🏷️ Topics</span>
-            <span class="dim-tag">📍 Venues</span>
-            <span class="dim-tag">📚 Series</span>
-            <span class="dim-tag">🎧/📄 Format</span>
-            <span class="dim-tag">⏱️ Durations</span>
-            <span class="dim-tag">📅 Years</span>
+            Automatically equates Ashkenazic &amp; Sephardic phonetics (<em>Shabbos ↔ Shabbat</em>, <em>Succah ↔ Sukkah</em>), expands English to Hebrew (<em>שבת, סוכה, פסח, מוצאי</em>), and auto-detects speakers. <strong>Turning this off uses the classic old YUTorah website search</strong> (strict literal match only).
           </div>
         </div>
-        <label style="display:flex; flex-direction:column; align-items:center; gap:4px; cursor:pointer; flex-shrink:0;">
-          <input type="checkbox" id="advPhoneticsToggle" checked style="width:18px; height:18px; accent-color:var(--primary); cursor:pointer;" onchange="const l=document.getElementById('advPhoneticsToggleLabel'); if(l){ l.textContent=this.checked?'Enhanced':'Classic'; l.style.color=this.checked?'var(--text)':'var(--text-muted)'; }">
-          <span style="font-size:10.5px; font-weight:700; color:var(--text);" id="advPhoneticsToggleLabel">Enhanced</span>
+        <label class="translit-switch" title="Toggle enhanced search">
+          <input type="checkbox" id="advPhoneticsToggle" checked onchange="const l=document.getElementById('advPhoneticsToggleLabel'); if(l){ l.textContent=this.checked?'On':'Off'; }">
+          <span id="advPhoneticsToggleLabel">On</span>
         </label>
       </div>
 
@@ -7410,7 +7421,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           });
           return b;
         };
-        const psb = mkBtn('devPlayerSaveBtn', '🕒', toggleDevSave);
+        const psb = mkBtn('devPlayerSaveBtn', getSaveIcon(), toggleDevSave);
         psb.classList.add('icon-btn');
         psb.title = 'Save for later';
         psb.setAttribute('aria-label', 'Save for later');
@@ -8739,9 +8750,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   function onToggleClassicSearch(checked) {
     useClassicSearch = !!checked;
 
-    const advCheckbox = document.getElementById('advEnablePhonetics');
+    const advCheckbox = document.getElementById('advPhoneticsToggle');
     if (advCheckbox) {
       advCheckbox.checked = !useClassicSearch;
+      const phonLabel = document.getElementById('advPhoneticsToggleLabel');
+      if (phonLabel) phonLabel.textContent = advCheckbox.checked ? 'On' : 'Off';
     }
     if (activeAdvancedFilters) {
       activeAdvancedFilters.enablePhonetics = !useClassicSearch;
@@ -8949,13 +8962,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
 
     let html = '';
-    // "Showing results for X (you searched Y)" shown only when the typo
-    // auto-correct rewrote the query (no speaker auto-resolution anymore).
+    // "Showing results for X (you searched Y)" shown only when the query
+    // was rewritten (no speaker auto-resolution anymore).
     if (currentQueryResolution && currentQueryResolution.display) {
       html += '<div class="did-you-mean-strip"><span>🔍 Showing results for &quot;' +
         escapeHtml(currentQueryResolution.display) + '&quot; — you searched &quot;' +
         escapeHtml(currentQueryResolution.original) + '&quot;.</span></div>';
     }
+    // Did-you-mean strip always goes ON TOP when suggestions exist,
+    // whether zero hits or a thin (<10) result set.
 
     // Speaker view (OG yutorah style): Most Recent 6 + Top Lectures.
     const isSpeakerView = currentFilterParams && currentFilterParams.speakerView;
@@ -8974,10 +8989,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         currentSpeakerViewCache = { recent6, top10, rest };
       }
       const { recent6, top10, rest } = currentSpeakerViewCache;
+      if (currentDidYouMean && currentDidYouMean.length) html += renderDidYouMeanStrip(currentDidYouMean);
       if (recent6.length) { html += '<div class="search-results-subheading"><span>🆕</span><span>Most Recent</span></div>'; html += renderList(recent6); }
       if (top10.length) { html += '<div class="search-results-subheading"><span>🏆</span><span>Top Lectures</span></div>'; html += renderList(top10); }
       if (rest.length) { html += '<div class="search-results-subheading"><span>📚</span><span>All Shiurim</span></div>'; html += renderList(rest); }
-      if (currentDidYouMean && currentDidYouMean.length) html += renderDidYouMeanStrip(currentDidYouMean);
       grid.innerHTML = html;
       grid.classList.toggle('explain-matches-active', showMatchReasons);
       try { if (typeof devUpgradeCards === 'function') devUpgradeCards(grid); } catch(e){}
@@ -9001,10 +9016,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       html += renderList(currentSearchDocs);
     }
 
-    // Weak-hit "Did you mean …?" strip goes BELOW the results (§5.4);
-    // the zero-hit case is rendered above the empty message by the caller.
+    // Did-you-mean strip goes ON TOP whenever suggestions exist —
+    // zero hits or thin result sets alike.
     if (currentDidYouMean && currentDidYouMean.length > 0) {
-      html += renderDidYouMeanStrip(currentDidYouMean);
+      const strip = renderDidYouMeanStrip(currentDidYouMean);
+      const firstSection = html.indexOf('<div class="search-results-subheading"');
+      html = firstSection >= 0
+        ? html.slice(0, firstSection) + strip + html.slice(firstSection)
+        : strip + html;
     }
 
     grid.innerHTML = html;
@@ -9441,8 +9460,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       phonToggle.checked = activeAdvancedFilters.enablePhonetics !== false;
       const phonLabel = document.getElementById('advPhoneticsToggleLabel');
       if (phonLabel) {
-        phonLabel.textContent = phonToggle.checked ? 'Enhanced' : 'Classic';
-        phonLabel.style.color = phonToggle.checked ? 'var(--text)' : 'var(--text-muted)';
+        phonLabel.textContent = phonToggle.checked ? 'On' : 'Off';
       }
     }
 
@@ -9696,16 +9714,31 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         }, { passive: true });
       }
     } catch (e) {}
-    // Direct-link /<id> loads: hydrate the upload-date line (card plays
-    // do this inside playShiurById).
+    // Direct-link /<id> loads: fetch lecture data so the metadata box
+    // (incl. the Uploaded row) hydrates without a card click.
     try {
-      const mm = document.getElementById('shiurMeta');
-      if (typeof currentShiurId !== 'undefined' && currentShiurId && mm && mm.textContent) {
-        const parts = mm.textContent.split('·');
-        const gdate = parts.length > 1 ? parts[parts.length - 1].trim() : '';
-        if (gdate) fetchUploadDate(String(currentShiurId), gdate);
+      if (typeof currentShiurId !== 'undefined' && currentShiurId &&
+          document.getElementById('shiurMetadataBox')) {
+        fetch('/sidebar/lecturedata?shiurID=' + encodeURIComponent(String(currentShiurId))).then(r => {
+          if (!r.ok) return null;
+          return r.json();
+        }).then(data => {
+          if (!data || String(currentShiurId) !== String(data.shiurID || '')) return;
+          lastLectureData = data;
+          renderMetadataBox(data);
+          const rawD = data.shiurDateFormatted || data.shiurDate || '';
+          fetchUploadDate(String(currentShiurId), rawD ? formatShiurDate(rawD) : '');
+        }).catch(() => {});
+      } else {
+        const mm = document.getElementById('shiurMeta');
+        if (typeof currentShiurId !== 'undefined' && currentShiurId && mm && mm.textContent) {
+          const parts = mm.textContent.split('·');
+          const gdate = parts.length > 1 ? parts[parts.length - 1].trim() : '';
+          if (gdate) fetchUploadDate(String(currentShiurId), gdate);
+        }
       }
     } catch (e) {}
+    try { if (typeof renderSaveIconPicker === 'function') renderSaveIconPicker(); } catch (e) {}
     // Restore cards/rows view (mobile forced to cards, desktop to stored-or-rows).
     try {
       setCardView(defaultCardView(), false);
@@ -9815,10 +9848,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (phonToggle) {
       phonToggle.checked = true;
       const phonLabel = document.getElementById('advPhoneticsToggleLabel');
-      if (phonLabel) {
-        phonLabel.textContent = 'Enhanced';
-        phonLabel.style.color = 'var(--text)';
-      }
+      if (phonLabel) phonLabel.textContent = 'On';
     }
     modalTempFilters.teachers = [];
     modalTempFilters.categories = [];
@@ -10689,7 +10719,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   // Instant Play by Shiur ID (in-page without reload)
   // Shared upload-date lookup for card plays AND direct-link loads.
+  // Feeds the metadata box Uploaded row (between Date and Topics).
+  var currentUploadDateStr = '';
+  var currentUploadShiurId = '';
+  var lastLectureData = null;
   function fetchUploadDate(id, givenDate) {
+    currentUploadDateStr = '';
+    currentUploadShiurId = String(id);
     try {
       fetch('/api/search?q=' + encodeURIComponent(id) + '&start=1&rows=1').then(r => {
         if (!r.ok) return null;
@@ -10704,10 +10740,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         const upRaw = hit.shiurdatesubmittedformatted || hit.shiurdatesubmitted || '';
         const upFmt = upRaw ? formatShiurDate(upRaw) : '';
         if (upFmt && upFmt !== givenDate && String(currentShiurId) === String(id)) {
-          const uEl = document.getElementById('shiurUploadDate');
-          if (uEl) {
-            uEl.textContent = 'Uploaded ' + upFmt;
-            uEl.style.display = 'block';
+          currentUploadDateStr = upFmt;
+          currentUploadShiurId = String(id);
+          if (lastLectureData && String(lastLectureData.shiurID || '') === String(id)) {
+            renderMetadataBox(lastLectureData);
           }
         }
       }).catch(() => {});
@@ -10716,6 +10752,20 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   async function playShiurById(e, id, stayMini) {
     if (e) e.preventDefault();
+
+    // Same track already loaded: never restart — resume if paused,
+    // otherwise drop to the mini player and keep the position.
+    if (String(id) === String(currentShiurId) && hasAudio && audio) {
+      try {
+        if (audio.paused) {
+          await audio.play();
+        } else {
+          minimizePlayer();
+          flashToast('▶ Already playing — kept your place', false, false);
+        }
+      } catch (err) {}
+      return;
+    }
 
     isManuallyMinimized = false;
     if (stayMini) {
@@ -10791,10 +10841,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         uploadEl.style.display = 'none';
         uploadEl.textContent = '';
       }
+      lastLectureData = data;
 
-      // Upload date on its own line under the metadata: lightweight Solr
-      // id-lookup, applied progressively without delaying playback.
-      // Shown only when different from the given date.
+      // Upload date feeds the metadata box (between Date and Topics):
+      // lightweight Solr id-lookup, applied progressively.
       fetchUploadDate(id, date);
 
       const img = document.getElementById('speakerImg');
@@ -10954,6 +11004,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
     if (date) {
       html += '<div class="meta-row"><span class="meta-label">📅 Date</span><span style="font-size:13px; color:var(--text);">' + escapeHtml(date) + '</span></div>';
+    }
+
+    // Uploaded row (between Date and Topics/Venue) — only when the lookup
+    // resolved for THIS shiur and the date differs from the given date.
+    if (currentUploadDateStr && String(currentUploadShiurId) === String(data.shiurID || '') &&
+        currentUploadDateStr !== date) {
+      html += '<div class="meta-row"><span class="meta-label">📤 Uploaded</span><span style="font-size:13px; color:var(--text);">' + escapeHtml(currentUploadDateStr) + '</span></div>';
     }
 
     if (locations.length > 0) {
@@ -11257,9 +11314,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   function devRefreshCardButtons() {
+    const saveIc = getSaveIcon();
     document.querySelectorAll('[data-dev-save]').forEach(el => {
       const on = devInPlaylist('save_for_later', el.getAttribute('data-dev-save'));
       el.classList.toggle('active-save', on);
+      if (el.textContent !== saveIc) el.textContent = saveIc;
       el.title = on ? 'Saved for later' : 'Save for later';
     });
     document.querySelectorAll('[data-dev-fav]').forEach(el => {
@@ -11446,6 +11505,33 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       ' · ' + cur + '/' + tot + ' min through (' + pct + '%)</div></div>';
   }
 
+  // Save-for-later button icon (dev-pickable from 5 clocks in settings).
+  const DEV_SAVE_ICONS = ['🕒', '⏰', '⏳', '⌛', '🕰️'];
+  function getSaveIcon() {
+    try {
+      const v = localStorage.getItem('yutorah_save_icon');
+      if (DEV_SAVE_ICONS.includes(v)) return v;
+    } catch (e) {}
+    return DEV_SAVE_ICONS[0];
+  }
+  function setSaveIcon(icon) {
+    if (!DEV_SAVE_ICONS.includes(icon)) return;
+    try { localStorage.setItem('yutorah_save_icon', icon); } catch (e) {}
+    devRefreshCardButtons();
+    const ps = document.getElementById('devPlayerSaveBtn');
+    if (ps) ps.textContent = icon;
+    renderSaveIconPicker();
+  }
+  function renderSaveIconPicker() {
+    const wrap = document.getElementById('saveIconPicker');
+    if (!wrap) return;
+    const cur = getSaveIcon();
+    wrap.innerHTML = DEV_SAVE_ICONS.map(ic =>
+      '<button type="button" class="card-mini-btn icon-btn' + (ic === cur ? ' active-save' : '') + '"' +
+      ' onclick="setSaveIcon(\\'' + ic + '\\')" title="Use ' + ic + ' for Save for Later">' + ic + '</button>'
+    ).join('');
+  }
+
   // Spotify-style circular queue icon: list lines + plus.
   function devQueueIconSvg() {
     return '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">' +
@@ -11467,7 +11553,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     return '<div class="card-mini-actions dev-only">' +
       '<span role="button" tabindex="0" class="card-mini-btn icon-btn' + (inSave ? ' active-save' : '') + '" data-dev-save="' + id + '"' +
       ' title="Save for later" aria-label="Save for later"' +
-      ' onclick="event.stopPropagation(); event.preventDefault(); toggleDevSave(\\\'' + id + '\\\')">🕒</span>' +
+      ' onclick="event.stopPropagation(); event.preventDefault(); toggleDevSave(\\\'' + id + '\\\')">' + getSaveIcon() + '</span>' +
       '<span role="button" tabindex="0" class="card-mini-btn icon-btn' + (inFav ? ' active-fav' : '') + '" data-dev-fav="' + id + '"' +
       ' title="Add to favorites" aria-label="Add to favorites"' +
       ' onclick="event.stopPropagation(); event.preventDefault(); toggleDevFav(\\\'' + id + '\\\')">' + (inFav ? '⭐' : '☆') + '</span>' +
@@ -12040,7 +12126,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   function devPlayNextFromQueue() {
-    const next = devQueuePopNext();
+    // Skip entries matching the currently playing track (never "advance"
+    // to the same spot or burn a queue item on it).
+    let next = devQueuePopNext();
+    let guard = 0;
+    while (next && String(next.id) === String(currentShiurId) && guard < 10) {
+      guard++;
+      next = devQueuePopNext();
+    }
     if (!next) return false;
     devRefreshCardButtons();
     try {

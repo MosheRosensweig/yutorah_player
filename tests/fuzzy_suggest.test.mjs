@@ -67,11 +67,10 @@ const teachers = new Set((body.response.docs || []).map(d => d.teacherfullname |
 assert.ok(teachers.size > 1 || (body.response.docs || []).length === 0, 'rosensweig shabbos spans multiple speakers, got: ' + JSON.stringify([...teachers]));
 res = await worker.fetch(new Request('https://x/api/search?q=weiderblank&start=1'), {}, mockCtx);
 body = await res.json();
-assert.ok(body.queryResolution && body.queryResolution.original === 'weiderblank' &&
-  body.queryResolution.display.includes('Wiederblank'),
-  'typo auto-corrects with you-searched disclaimer, got: ' + JSON.stringify(body.queryResolution));
-assert.ok((body.response.docs || []).length > 0, 'auto-corrected query returns results');
-console.log('  ✅ resolution rules (no narrow / multi-word resolve / typo correct) correct.');
+assert.equal(body.queryResolution, null, 'no auto-rewrites: typo shows own matches');
+assert.ok((body.didYouMean || []).some(s => s.text.includes('Wiederblank')),
+  'typo offers Wiederblank strip, got: ' + JSON.stringify(body.didYouMean));
+console.log('  ✅ resolution rules (no narrow / no rewrite / strip on top) correct.');
 
 // 6. sort=date window is reverse-chronological
 res = await worker.fetch(new Request('https://x/api/search?q=shabbos&sort=date&start=1&rows=5'), {}, mockCtx);
