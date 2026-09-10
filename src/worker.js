@@ -4980,7 +4980,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       position: relative;
       border-radius: 14px;
       overflow: hidden;
-      margin-bottom: 18px;
+      margin: 0 auto 18px;
+      max-width: 980px;
       background: var(--card, #fff);
       border: 1px solid var(--border-light);
     }
@@ -4999,16 +5000,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     .hero-slide img {
       width: 100%;
-      aspect-ratio: 16 / 10;
-      max-height: 340px;
+      aspect-ratio: 682 / 369;
+      max-height: 360px;
       object-fit: cover;
       object-position: center;
       display: block;
     }
     @media (max-width: 640px) {
       .hero-slide img {
-        -webkit-mask-image: linear-gradient(to right, transparent 0, #000 28%);
-        mask-image: linear-gradient(to right, transparent 0, #000 28%);
+        object-position: center;
+        -webkit-mask-image: linear-gradient(to right, transparent 0, #000 38%);
+        mask-image: linear-gradient(to right, transparent 0, #000 38%);
       }
     }
     .hero-caption {
@@ -5027,12 +5029,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       text-shadow: 0 1px 6px rgba(0, 0, 0, 0.55);
     }
     .hero-title {
-      font-size: 26px;
+      font-size: 28px;
       font-weight: 800;
       line-height: 1.2;
     }
     .hero-desc {
-      font-size: 14px;
+      font-size: 15px;
       opacity: 0.94;
       display: -webkit-box;
       -webkit-line-clamp: 4;
