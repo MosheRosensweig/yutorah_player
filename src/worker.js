@@ -1115,7 +1115,11 @@ export default {
     let initialQueryResolution = null;
     let initialDidYouMean = [];
 
-    if (!shiurData && searchQuery) {
+    // Prefetch whenever ANY search criteria are present (keywords OR bare
+    // filter params like ?subCategoryId= from hero slides), not just ?search=.
+    const hasFilterParams = ['teacherId', 'subCategoryId', 'locationId', 'seriesId', 'year', 'fromDate', 'toDate', 'minDuration', 'maxDuration', 'mediaType', 'sort']
+      .some(k => url.searchParams.get(k));
+    if (!shiurData && (searchQuery || hasFilterParams)) {
       try {
         const searchPayload = await executeSearchInternal(url.searchParams);
         initialSearchResults = searchPayload?.response?.docs || [];
@@ -1480,8 +1484,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       const qs = out.toString();
       if (qs) return { href: '/?' + qs, external: false };
     }
+    // To-Go issues link back to yutorah.org by default (article downloads
+    // live there); search-style slides are translated above.
     const togo = inner.match(/^\/togo(\/.*)?$/i);
-    if (togo) return { href: '/?search=Torah To Go', external: false };
+    if (togo) return { href: 'https://www.yutorah.org' + inner, external: true };
     const catPage = inner.match(/^\/categories\/(.+)$/i);
     if (catPage) {
       const slug = catPage[1].split('/').filter(Boolean).pop() || '';
@@ -4932,7 +4938,30 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       bottom: auto;
     }
     .rows-view .quick-card-link {
-      padding-right: 52px;
+      padding-right: 76px;
+    }
+    /* Rows view applies to EVERY card grid: featured series cards go
+    full-width horizontal, one per line, like shiur cards. */
+    .rows-view .series-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .rows-view .series-card {
+      flex-direction: row;
+      align-items: center;
+    }
+    .rows-view .series-card-img {
+      width: 120px;
+      min-width: 120px;
+      height: 84px;
+    }
+    .rows-view .series-card-body {
+      padding: 10px 14px;
+    }
+    .rows-view .series-card-desc {
+      -webkit-line-clamp: 1;
+      margin-bottom: 4px;
     }
     .rows-view .quick-card-bottom {
       border-top: none;
@@ -12997,6 +13026,20 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   function setCardView(view, persist) {
     let v = view === 'rows' ? 'rows' : 'cards';
     if (v === 'rows' && isMobileView()) v = 'cards';
+    // Fix visible grids' inline display so the view takes effect immediately
+    // (stale inline grid/flex from tab switches would otherwise win).
+    try {
+      document.querySelectorAll('.shiur-cards-grid, .series-grid').forEach(g => {
+        if (g.id === 'grid-trending') return;
+        if (g.style.display && g.style.display !== 'none') {
+          g.style.display = (v === 'rows') ? 'flex' : 'grid';
+        }
+      });
+      const sg = document.getElementById('searchResultsGrid');
+      if (sg && sg.style.display && sg.style.display !== 'none') {
+        sg.style.display = (v === 'rows') ? 'flex' : 'grid';
+      }
+    } catch (e) {}
     document.body.classList.toggle('rows-view', v === 'rows');
     if (document.documentElement) document.documentElement.classList.toggle('rows-view', v === 'rows');
     if (persist !== false) {
@@ -13058,13 +13101,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }, 6000);
   }
   function switchCollection(activeName) {
+    // Respect the cards/rows view: inline display must match the active
+    // view or it would override the rows-view stylesheet after switching.
+    const rowsOn = document.body.classList.contains('rows-view') ||
+      (document.documentElement && document.documentElement.classList.contains('rows-view'));
     collections.forEach(name => {
       const tab = document.getElementById('tab-' + name);
       const grid = document.getElementById('grid-' + name);
       if (tab) tab.classList.toggle('active', name === activeName);
       if (grid) {
         if (name === activeName) {
-          grid.style.display = (name === 'trending' ? 'block' : 'grid');
+          grid.style.display = (name === 'trending' ? 'block' : (rowsOn ? 'flex' : 'grid'));
         } else {
           grid.style.display = 'none';
         }
