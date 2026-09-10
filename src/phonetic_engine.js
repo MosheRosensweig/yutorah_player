@@ -913,6 +913,11 @@ export const SYNSETS = [
     canonical: "vezot haberachah",
     hebrew: ["וזאת הברכה","פרשת וזאת הברכה"],
     variants: ["vezot haberachah","vezos haberacha","v'zot haberachah","vezos habracha"]
+  },
+  {
+    canonical: "rosensweig",
+    hebrew: ["רוזנצווייג"],
+    variants: ["rosensweig"]
   }
 ];
 
@@ -1313,6 +1318,17 @@ export function expandQueryWithPhonetics(rawQuery, enableDynamicHebrew = true) {
 
   for (const word of words) {
     const cleanWord = word.replace(/^[^\wא-ת]+|[^\wא-ת]+$/g, '').toLowerCase();
+    // Community acronyms expand to their full phrases (yije → "Young
+    // Israel of Jamaica Estates"). Previously these were highlight-only.
+    const acronymExpansions = COMMUNITY_ACRONYM_PHRASES[cleanWord];
+    if (acronymExpansions) {
+      hasExpansion = true;
+      const terms = Array.from(new Set([cleanWord, ...acronymExpansions]));
+      const formatted = terms.map(t => t.includes(' ') ? `"${t}"` : t);
+      expandedWordGroups.push(`(${formatted.join(' OR ')})`);
+      allAliases.push(...terms);
+      continue;
+    }
     const wordSynset = SYNSET_LOOKUP.get(cleanWord);
     if (wordSynset) {
       hasExpansion = true;

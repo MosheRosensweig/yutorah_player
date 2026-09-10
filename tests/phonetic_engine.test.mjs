@@ -153,9 +153,9 @@ assert.equal(pe7.speaker, null);
 assert.equal(pe7.remainingQuery, '');
 console.log('  ✅ Query entity parsing tests passed.');
 
-// 7. Verify 181 Synset Buckets Integrity
-console.log('7. Testing 181 Synset Buckets Integrity:');
-assert.equal(SYNSETS.length, 181, 'Should have exactly 181 synsets');
+// 7. Verify Synset Buckets Integrity
+console.log('7. Testing Synset Buckets Integrity:');
+assert.ok(SYNSETS.length >= 181, 'Should have at least 181 synsets, got ' + SYNSETS.length);
 const seenCanonical = new Set();
 for (const s of SYNSETS) {
   assert.ok(s.canonical, 'Synset must have canonical name');

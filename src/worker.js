@@ -535,6 +535,31 @@ async function executeSearchInternal(searchParams) {
       return [];
     }
   }
+  // Zero literal matches + a distance-1 correction: surface the notice
+  // even when phonetic expansion filled the page (no rewrite — the strip
+  // click runs the corrected search). This is the weiderblank case.
+  function zeroLiteralNotice(docs, teacherIdsEmpty) {
+    if (start !== 1 || rawWordCount !== 1 || disablePhonetics || !teacherIdsEmpty) return [];
+    const ql = rawQ.toLowerCase();
+    const docText = d => [
+      d.shiurtitle, d.shiurTitle, d.title, d.teacherfullname,
+      ((d.shiurTeachers || []).map(t => t.teacherFullName || '').join(' ')),
+      d.shiurdescription, d.description, d.seriesname, d.seriesName,
+      d.subcategoryname, d.categoryname,
+      (Array.isArray(d.shiurkeywords) ? d.shiurkeywords.join(' ') : d.shiurkeywords)
+    ].join(' ').toLowerCase();
+    if ([...docs].some(d => docText(d).includes(ql))) return [];
+    try {
+      const sug = suggestDidYouMean(rawQ, {
+        teacher: AUTOCOMPLETE_META.teachers || [],
+        topic: AUTOCOMPLETE_META.categories || [],
+        venue: AUTOCOMPLETE_META.venues || []
+      }, { limit: 3 });
+      return sug.filter(s => s.distance <= 1 && s.text.toLowerCase() !== ql);
+    } catch (e) {
+      return [];
+    }
+  }
 
   if (!isMultiTarget && !hasPostFilter) {
     const tId = teacherIds[0] || '';
@@ -566,31 +591,9 @@ async function executeSearchInternal(searchParams) {
     const recentDocs = (start === 1 && isRelevanceSort) ? globalRecent : [];
     const totalHits = undupedHitCount(filteredDocs, recentDocs);
     let didYouMean = didYouMeanIfWeak(totalHits);
-    // Zero literal matches + a distance-1 correction: surface the notice
-    // even when phonetic expansion filled the page (no rewrite — the strip
-    // click runs the corrected search). This is the weiderblank case.
-    if ((!didYouMean || didYouMean.length === 0) && start === 1 &&
-        rawWordCount === 1 && !disablePhonetics && teacherIds.length === 0) {
-      const ql = rawQ.toLowerCase();
-      const docText = d => [
-        d.shiurtitle, d.shiurTitle, d.title, d.teacherfullname,
-        ((d.shiurTeachers || []).map(t => t.teacherFullName || '').join(' ')),
-        d.shiurdescription, d.description, d.seriesname, d.seriesName,
-        d.subcategoryname, d.categoryname,
-        (Array.isArray(d.shiurkeywords) ? d.shiurkeywords.join(' ') : d.shiurkeywords)
-      ].join(' ').toLowerCase();
-      const literalHit = [...filteredDocs, ...recentDocs].some(d => docText(d).includes(ql));
-      if (!literalHit) {
-        try {
-          const sug = suggestDidYouMean(rawQ, {
-            teacher: AUTOCOMPLETE_META.teachers || [],
-            topic: AUTOCOMPLETE_META.categories || [],
-            venue: AUTOCOMPLETE_META.venues || []
-          }, { limit: 3 });
-          const top = sug.filter(s => s.distance <= 1 && s.text.toLowerCase() !== ql);
-          if (top.length > 0) didYouMean = top;
-        } catch (e) {}
-      }
+    if ((!didYouMean || didYouMean.length === 0) && teacherIds.length === 0) {
+      const extra = zeroLiteralNotice([...filteredDocs, ...recentDocs], true);
+      if (extra.length > 0) didYouMean = extra;
     }
     return {
       response: {
@@ -693,6 +696,11 @@ async function executeSearchInternal(searchParams) {
     ? (partedFinal.docs.length + partedFinal.recentDocs.length)
     : partedFinal.recentNumFound;
   const weakTotal = undupedHitCount(partedFinal.docs, partedFinal.recentDocs);
+  let multiDidYouMean = didYouMeanIfWeak(weakTotal);
+  if ((!multiDidYouMean || multiDidYouMean.length === 0) && teacherIds.length === 0) {
+    const extraMulti = zeroLiteralNotice([...partedFinal.docs, ...partedFinal.recentDocs], true);
+    if (extraMulti.length > 0) multiDidYouMean = extraMulti;
+  }
   return {
     response: {
       docs: partedFinal.docs,
@@ -707,7 +715,7 @@ async function executeSearchInternal(searchParams) {
       tokens: expandedInfo.expandedTokens,
       synset: expandedInfo.matchedSynset
     } : null,
-    didYouMean: didYouMeanIfWeak(weakTotal),
+    didYouMean: multiDidYouMean,
     queryResolution: resolvedDisplay ? { original: rawQ, display: resolvedDisplay } : null
   };
 }
@@ -5113,6 +5121,19 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       .hero-dots {
         bottom: 8px;
         right: 10px;
+        left: auto;
+      }
+      .hero-dots .hero-dot::after {
+        background: rgba(30, 37, 48, 0.35);
+      }
+      .hero-dots .hero-dot.active::after {
+        background: var(--primary);
+      }
+      [data-theme="dark"] .hero-dots .hero-dot::after {
+        background: rgba(255, 255, 255, 0.45);
+      }
+      [data-theme="dark"] .hero-dots .hero-dot.active::after {
+        background: #fff;
       }
       .hero-next {
         right: 10px;
@@ -7389,7 +7410,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     const settingsMenu = document.getElementById('settingsMenu');
     if (settingsMenu) {
-      settingsMenu.querySelectorAll('[style*="display: none !important"]').forEach(el => {
+      // Scope to .dev-only: never resurrect controls marked DEAD.
+      settingsMenu.querySelectorAll('.dev-only[style*="display"]').forEach(el => {
         el.style.removeProperty('display');
         devRevealedSettings.push(el);
       });
