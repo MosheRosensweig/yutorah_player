@@ -5006,10 +5006,25 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       display: block;
     }
     @media (max-width: 640px) {
+      .hero-slide {
+        background-size: cover;
+        background-position: center;
+      }
+      .hero-slide::before {
+        content: "";
+        position: absolute;
+        inset: -24px;
+        background: inherit;
+        background-size: cover;
+        background-position: center;
+        filter: blur(22px) brightness(0.62);
+      }
       .hero-slide img {
+        position: relative;
+        z-index: 1;
         object-fit: contain;
         object-position: center;
-        background: #0b1220;
+        background: transparent;
         -webkit-mask-image: none;
         mask-image: none;
       }
@@ -6836,9 +6851,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
             ${s.description ? `<div class="hero-desc">${escapeHtml(s.description)}</div>` : ''}
             <span class="hero-cta">${escapeHtml(s.urlTitle)} →</span>
           </div>`;
+          const bgStyle = ` style="background-image:url('${escapeHtml(s.imageURL)}')"`;
           return s.href === '#'
-            ? `<div class="hero-slide${i === 0 ? ' active' : ''}"${i === 0 ? '' : ' inert'}>${inner}</div>`
-            : `<a class="hero-slide${i === 0 ? ' active' : ''}" href="${escapeHtml(s.href)}"${s.external ? ' target="_blank" rel="noopener noreferrer"' : ''} aria-hidden="${i === 0 ? 'false' : 'true'}"${i === 0 ? '' : ' tabindex="-1" inert'}>${inner}</a>`;
+            ? `<div class="hero-slide${i === 0 ? ' active' : ''}"${i === 0 ? '' : ' inert'}${bgStyle}>${inner}</div>`
+            : `<a class="hero-slide${i === 0 ? ' active' : ''}" href="${escapeHtml(s.href)}"${s.external ? ' target="_blank" rel="noopener noreferrer"' : ''} aria-hidden="${i === 0 ? 'false' : 'true'}"${i === 0 ? '' : ' tabindex="-1" inert'}${bgStyle}>${inner}</a>`;
         }).join('')}
       </div>
       <button type="button" class="hero-arrow hero-prev" onclick="heroGo(-1)" aria-label="Previous">‹</button>
