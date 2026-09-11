@@ -442,6 +442,35 @@ async function testHeroSizingAndPlaylistTagAutocomplete() {
   console.log('  ✅ Hero slideshow typography/buffer and playlist tag autocomplete dropdown verified.');
 }
 
+async function testSearchResultsScrollAndHeroSlideClick() {
+  console.log('15. Testing Search Results Smooth Scroll & Hero Slideshow Click Integration...');
+  const req = new Request('https://yutorah-player.mrosensweig.workers.dev/', {
+    headers: { 'User-Agent': 'TestRunner' }
+  });
+  const res = await worker.fetch(req, mockEnv, mockCtx);
+  assert.equal(res.status, 200);
+  const html = await res.text();
+
+  // 1. CSS scroll-margin-top on #searchResultsSection to clear the 52px fixed header
+  assert.ok(html.includes('#searchResultsSection {'), 'CSS rule for #searchResultsSection must be present');
+  assert.ok(html.includes('scroll-margin-top: 70px;'), 'CSS scroll-margin-top: 70px must clear fixed header');
+
+  // 2. scrollToSearchResults helper defined and exposed on window
+  assert.ok(html.includes('function scrollToSearchResults()'), 'scrollToSearchResults function must be defined');
+  assert.ok(html.includes('window.scrollToSearchResults = scrollToSearchResults;'), 'scrollToSearchResults must be attached to window');
+
+  // 3. handleHeroSlideClick helper defined and exposed on window
+  assert.ok(html.includes('function handleHeroSlideClick(event, el)'), 'handleHeroSlideClick function must be defined');
+  assert.ok(html.includes('window.handleHeroSlideClick = handleHeroSlideClick;'), 'handleHeroSlideClick must be attached to window');
+
+  // 4. Hero slides contain data-slide-name, data-slide-href, and handleHeroSlideClick(event, this)
+  assert.ok(html.includes('handleHeroSlideClick(event, this)'), 'Hero slides must bind handleHeroSlideClick on click');
+  assert.ok(html.includes('data-slide-name='), 'Hero slides must supply data-slide-name attribute');
+  assert.ok(html.includes('data-slide-href='), 'Hero slides must supply data-slide-href attribute');
+
+  console.log('  ✅ Search results smooth scroll and hero slideshow click search verified.');
+}
+
 async function runAll() {
   try {
     await testHomepage();
@@ -458,6 +487,7 @@ async function runAll() {
     await testPublicPlaylistSubscriptionOptions();
     await testDevPersonasAndSecondTab();
     await testHeroSizingAndPlaylistTagAutocomplete();
+    await testSearchResultsScrollAndHeroSlideClick();
     console.log('\n🎉 ALL BASIC FUNCTIONALITY, ARTICLE READER & LIQUID MODE TESTS PASSED SUCCESSFULLY!');
   } catch (err) {
     console.error('\n❌ Test failed:', err);

@@ -6052,6 +6052,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       scroll-margin-top: 70px;
       ${isPlaying ? '' : 'display: none;'}
     }
+    #searchResultsSection {
+      scroll-margin-top: 70px;
+    }
     .player-nav-back {
       display: inline-flex;
       align-items: center;
@@ -8097,6 +8100,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       position: relative;
       text-decoration: none;
       color: inherit;
+      cursor: pointer;
     }
     .hero-slide.active {
       display: block;
@@ -10250,8 +10254,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
             <span class="hero-cta">${escapeHtml(s.urlTitle)} →</span>
           </div>`;
           return s.href === '#'
-            ? `<div class="hero-slide${i === 0 ? ' active' : ''}"${i === 0 ? '' : ' inert'}>${inner}</div>`
-            : `<a class="hero-slide${i === 0 ? ' active' : ''}" href="${escapeHtml(s.href)}"${s.external ? ' target="_blank" rel="noopener noreferrer"' : ''} aria-hidden="${i === 0 ? 'false' : 'true'}"${i === 0 ? '' : ' tabindex="-1" inert'}>${inner}</a>`;
+            ? `<div class="hero-slide${i === 0 ? ' active' : ''}" data-slide-name="${escapeHtml(s.name)}" data-slide-href="${escapeHtml(s.href)}" onclick="handleHeroSlideClick(event, this)" role="button" tabindex="${i === 0 ? '0' : '-1'}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();handleHeroSlideClick(event,this);}"${i === 0 ? '' : ' inert'}>${inner}</div>`
+            : `<a class="hero-slide${i === 0 ? ' active' : ''}" href="${escapeHtml(s.href)}" data-slide-name="${escapeHtml(s.name)}" data-slide-href="${escapeHtml(s.href)}" onclick="handleHeroSlideClick(event, this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();handleHeroSlideClick(event,this);}"${s.external ? ' target="_blank" rel="noopener noreferrer"' : ''} aria-hidden="${i === 0 ? 'false' : 'true'}"${i === 0 ? '' : ' tabindex="-1" inert'}>${inner}</a>`;
         }).join('')}
       </div>
       <button type="button" class="hero-arrow hero-prev" onclick="heroGo(-1)" aria-label="Previous">‹</button>
@@ -11833,6 +11837,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (rawBarValue === teacherDisplayNames || (!rawBarValue && activeAdvancedFilters.teachers.length > 0)) {
         effectiveKeywords = activeAdvancedFilters.keywords || '';
         executeLiveSearch(effectiveKeywords, { ...activeAdvancedFilters });
+        scrollToSearchResults();
         return;
       } else {
         // User typed a new search query into the search bar:
@@ -11840,6 +11845,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         activeAdvancedFilters.teachers = [];
         activeAdvancedFilters.keywords = rawBarValue;
         executeLiveSearch(rawBarValue, { ...activeAdvancedFilters });
+        scrollToSearchResults();
         return;
       }
     }
@@ -11878,6 +11884,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
 
     executeLiveSearch(rawBarValue);
+    scrollToSearchResults();
   }
 
   function handleSearchSubmit(e) {
@@ -12788,8 +12795,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     searchInput.value = term;
     clearSearchBtn.style.display = 'block';
     executeLiveSearch(term);
-    const resSection = document.getElementById('searchResultsSection');
-    if (resSection) resSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    scrollToSearchResults();
   }
 
   function filterByTeacher(teacherId, teacherName) {
@@ -12804,8 +12810,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       speakerView: true,
       label: 'Shiurim by ' + teacherName
     });
-    const resSection = document.getElementById('searchResultsSection');
-    if (resSection) resSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    scrollToSearchResults();
   }
 
   function filterByLocation(locationId, locationName) {
@@ -12819,8 +12824,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       locationId: locationId,
       label: 'Shiurim at ' + locationName
     });
-    const resSection = document.getElementById('searchResultsSection');
-    if (resSection) resSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    scrollToSearchResults();
   }
 
   function filterByCategory(subCategoryId, categoryName) {
@@ -12835,8 +12839,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       subCategoryId: subCategoryId,
       label: 'Shiurim in ' + categoryName
     });
-    const resSection = document.getElementById('searchResultsSection');
-    if (resSection) resSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    scrollToSearchResults();
   }
 
   function filterBySeries(seriesId, seriesName) {
@@ -12851,8 +12854,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       seriesId: seriesId,
       label: 'Series: ' + seriesName
     });
-    const resSection = document.getElementById('searchResultsSection');
-    if (resSection) resSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    scrollToSearchResults();
   }
 
   function isPlayerCardInViewport() {
@@ -13806,6 +13808,109 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     executeLiveSearch(searchInput.value.trim(), {});
   }
 
+  function scrollToSearchResults() {
+    const resSection = document.getElementById('searchResultsSection');
+    if (!resSection) return;
+    if (resSection.style.display === 'none') {
+      resSection.style.display = 'block';
+    }
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const header = document.getElementById('mainHeader');
+        const headerHeight = header ? header.offsetHeight : 52;
+        const rect = resSection.getBoundingClientRect();
+        const currentScrollY = window.scrollY || window.pageYOffset || document.documentElement.scrollTop || 0;
+        const targetY = currentScrollY + rect.top - headerHeight - 10;
+        window.scrollTo({
+          top: Math.max(0, Math.round(targetY)),
+          behavior: 'smooth'
+        });
+      });
+    });
+  }
+  window.scrollToSearchResults = scrollToSearchResults;
+
+  function handleHeroSlideClick(event, el) {
+    if (event) {
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.button === 1) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    if (!el) return;
+
+    if (hasAudio) {
+      minimizePlayer();
+    }
+    const bioBanner = document.getElementById('bioBanner');
+    if (bioBanner) bioBanner.style.display = 'none';
+
+    const slideHref = el.getAttribute('data-slide-href') || el.getAttribute('href') || '';
+    const slideName = (el.getAttribute('data-slide-name') || '').trim();
+
+    let query = '';
+    const extra = {};
+
+    if (slideHref && slideHref !== '#') {
+      try {
+        const parsedUrl = new URL(slideHref, window.location.origin);
+        const sParam = parsedUrl.searchParams.get('search') || parsedUrl.searchParams.get('s') || '';
+        const catParam = parsedUrl.searchParams.get('subCategoryId') || parsedUrl.searchParams.get('category') || '';
+        const teacherParam = parsedUrl.searchParams.get('teacherId') || parsedUrl.searchParams.get('teacher') || '';
+        const seriesParam = parsedUrl.searchParams.get('seriesId') || parsedUrl.searchParams.get('series') || '';
+        const sortParam = parsedUrl.searchParams.get('sort');
+
+        if (catParam) {
+          extra.subCategoryId = catParam.replace(/^0,/, '');
+        }
+        if (teacherParam) {
+          extra.teacherId = teacherParam;
+        }
+        if (seriesParam) {
+          extra.seriesId = seriesParam;
+        }
+        if (sortParam) {
+          extra.sort = sortParam;
+        }
+
+        if (sParam) {
+          query = sParam;
+        } else if (!extra.subCategoryId && !extra.teacherId && !extra.seriesId) {
+          const pathSegments = parsedUrl.pathname.split('/').filter(Boolean);
+          if (pathSegments.length === 1 && /^[0-9]+$/.test(pathSegments[0])) {
+            query = slideName || pathSegments[0];
+          } else {
+            query = slideName;
+          }
+        }
+      } catch (e) {
+        query = slideName;
+      }
+    } else {
+      query = slideName;
+    }
+
+    if (!query && !extra.subCategoryId && !extra.teacherId && !extra.seriesId) {
+      query = slideName;
+    }
+
+    if (slideName) {
+      extra.label = slideName;
+    }
+
+    if (searchInput) {
+      searchInput.value = query || slideName || '';
+    }
+    if (clearSearchBtn) {
+      clearSearchBtn.style.display = searchInput && searchInput.value ? 'block' : 'none';
+    }
+
+    executeLiveSearch(query, extra);
+    scrollToSearchResults();
+  }
+  window.handleHeroSlideClick = handleHeroSlideClick;
+
   async function executeLiveSearch(query, extraParams = {}) {
     currentSearchQuery = query;
     currentFilterParams = extraParams;
@@ -13832,6 +13937,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     document.getElementById('collectionsSection').style.display = 'none';
     const resSection = document.getElementById('searchResultsSection');
     resSection.style.display = 'block';
+    if (!extraParams.skipScroll) {
+      scrollToSearchResults();
+    }
 
     const spinner = document.getElementById('searchSpinner');
     const grid = document.getElementById('searchResultsGrid');
@@ -18092,8 +18200,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           s.setAttribute('inert', '');
         }
       } else {
-        if (on) s.removeAttribute('inert');
-        else s.setAttribute('inert', '');
+        s.setAttribute('aria-hidden', on ? 'false' : 'true');
+        if (on) {
+          s.setAttribute('tabindex', '0');
+          s.removeAttribute('inert');
+        } else {
+          s.setAttribute('tabindex', '-1');
+          s.setAttribute('inert', '');
+        }
       }
     });
     dots.forEach((d, k) => d.classList.toggle('active', k === heroIdx));
