@@ -1,10 +1,10 @@
 # Currently Working On — Living Status & Activity Log
 
 Living status doc & audit log — updated on every milestone and user request.  
-Last updated: **2026-09-11, 15:45 ET**  
+Last updated: **2026-09-11, 15:52 ET**  
 Current branch: `feat/auth-d1` (synchronized with `main`)  
-Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev) (`6122bbf2`)  
-Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://yutorah-player.mrosensweig.workers.dev) (`f8b08d53`)  
+Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev) (`f5991dfa`)  
+Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://yutorah-player.mrosensweig.workers.dev) (`483533b5`)  
 Tests: **5/5 test suites passing (100% green, 20/20 basic functionality checks)**  
 Production status: **DEPLOYED & VERIFIED (HTTP 200 on both Dev & Prod)**
 
@@ -15,7 +15,7 @@ Production status: **DEPLOYED & VERIFIED (HTTP 200 on both Dev & Prod)**
    - Only **AFTER** Dev is fully deployed, validated, and approved may the version be promoted to **Production** (`https://yutorah-player.mrosensweig.workers.dev` via `npx wrangler deploy`).
    - Dev and Prod must always remain strictly synchronized. Never push directly to Prod without the preceding Dev deployment.
 
-## 🎯 Active Task: Settings Menu Icon & Calendar Date Vertical Alignment
+## 🎯 Completed Task: Settings Menu Icon & Calendar Date Vertical Alignment
 - **User Request**: In the settings menu, all the icons are aligned one on top of the other on the left-hand side except for the calendar date which was not aligned. Make the calendar date come into alignment with all the icons and push to both Dev and Production.
 - **Root Cause**:
   - The calendar date in the mobile dropdown was rendered using `<div class="settings-menu-label auth-cal-mobile">` which had `padding: 8px 10px 2px;` (10px left padding) and `font-size: 11px;`, causing the `📅` icon to sit 4px to the left of the button icons which have `padding: 10px 14px;`.
@@ -25,7 +25,7 @@ Production status: **DEPLOYED & VERIFIED (HTTP 200 on both Dev & Prod)**
   - Wrapped all menu icons (`👤`, `📋`, `🎧`, `✏️`, `☀️`/`🌙`, `📅`, `🚪`, `🔑`) in `<span class="menu-item-icon">` containers so that all icons are centered within an identical 20px column and all text labels start at `42px` from the left edge.
   - Updated `.auth-cal-mobile` media query to `display: flex;` on screens $\le 640\text{px}$.
   - Added assertion in `tests/basic_functionality.test.mjs` Test #20. All 5 test suites pass 100% green.
-- **Dual Review Verdict**: In progress.
+- **Dual Review Verdict**: **PASS** (Correctness QA: PASS, 0 Blockers; Style & Theme: PASS, 0 Blockers). Deployed to Dev (`f5991dfa`) and Prod (`483533b5`).
 
 ## 🎯 Completed Task: Logged-Out Header Theme Toggle on Right-Hand Side & Cut-off Suppression
 - **User Request**: On the non-logged-in (guest) version of the website, have the light/dark mode button be in the header on the right-hand side, BUT if it would get cut off or overflow on any screens, do NOT put it in the header since theme toggling already exists inside the settings dropdown even when not logged in.
