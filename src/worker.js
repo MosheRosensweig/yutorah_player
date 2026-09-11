@@ -470,15 +470,22 @@ async function handleSyncRoutes(request, env, url) {
       const sort = (url.searchParams.get('sort') || 'recent').toLowerCase();
       const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') || '30', 10) || 30, 1), 100);
       const offset = Math.max(parseInt(url.searchParams.get('offset') || '0', 10) || 0, 0);
+      const scopeTitle = url.searchParams.get('scopeTitle') !== '0';
+      const scopeDesc = url.searchParams.get('scopeDesc') !== '0';
+      const scopeShiurim = url.searchParams.get('scopeShiurim') === '1';
       const orderBy = sort === 'saves' ? 'saves DESC, updated_at DESC' : 'updated_at DESC';
       let rows;
       try {
         // No SQL offset: tag/text filters run in JS, so paginate AFTER
         // filtering (total = full match count, slice = one true window).
+        const itemsSql = scopeShiurim
+          ? ', (SELECT GROUP_CONCAT(COALESCE(i.title, "") || " " || COALESCE(i.speaker, "") || " " || COALESCE(i.series_title, ""), " ") FROM public_playlist_items i WHERE i.playlist_id = p.id) AS itemsText '
+          : ' ';
         rows = await env.yutorah_db.prepare(
           'SELECT p.id, p.owner_name AS ownerName, p.title, p.description, p.tags_json AS tagsJson, ' +
           'p.saves, p.created_at AS createdAt, p.updated_at AS updatedAt, ' +
-          '(SELECT COUNT(*) FROM public_playlist_items i WHERE i.playlist_id = p.id) AS itemCount ' +
+          '(SELECT COUNT(*) FROM public_playlist_items i WHERE i.playlist_id = p.id) AS itemCount' +
+          itemsSql +
           'FROM public_playlists p WHERE p.is_public = 1 ORDER BY ' + orderBy + ' LIMIT 1000')
           .bind().all();
       } catch (e) {
@@ -500,7 +507,22 @@ async function handleSyncRoutes(request, env, url) {
       for (const r of (rows.results || [])) {
         const tags = matchTags(r.tagsJson);
         if (!tags) continue;
-        const hay = (String(r.title || '') + ' ' + String(r.description || '') + ' ' + String(r.ownerName || '')).toLowerCase();
+        const hayParts = [];
+        if (scopeTitle) {
+          hayParts.push(r.title || '');
+          if (tags) {
+            (tags.teachers || []).forEach(x => hayParts.push(x.name || x));
+            (tags.venues || []).forEach(x => hayParts.push(x.name || x));
+            (tags.topics || []).forEach(x => hayParts.push(x.name || x));
+          }
+        }
+        if (scopeDesc) {
+          hayParts.push(r.description || '');
+        }
+        if (scopeShiurim && r.itemsText) {
+          hayParts.push(r.itemsText);
+        }
+        const hay = hayParts.join(' ').toLowerCase();
         if (q && !q.split(/\s+/).every(w => hay.includes(w))) continue;
         list.push({
           id: r.id, ownerName: r.ownerName, title: r.title, description: r.description,
@@ -15912,6 +15934,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   // =========================================================================
   let plBrowseMode = 'mine';
   let plPublicQuery = '';
+  let plPublicScope = { title: true, desc: true, shiurim: false };
   let plPublicFilterTags = { teachers: [], venues: [], topics: [] };
   let plPublicTags = { teacher: null, venue: null, topic: null };
   let plPublicSort = 'recent';
@@ -16139,6 +16162,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       '<option value="saves"' + (plPublicSort === 'saves' ? ' selected' : '') + '>Most saved</option></select>' +
       '<button type="button" class="card-mini-btn active-save" onclick="plPublicSearch()" style="padding:8px 14px; font-size:14px;">🔍 Search</button></div>';
 
+    qhtml += '<div style="grid-column:1/-1; display:flex; gap:16px; align-items:center; flex-wrap:wrap; margin:-4px 0 12px; font-size:12.5px; color:var(--text);">' +
+      '<span style="font-weight:700; color:var(--text-muted);">Search in:</span>' +
+      '<label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; font-weight:600;">' +
+      '<input type="checkbox" id="plScopeTitle"' + (plPublicScope.title ? ' checked' : '') + ' style="accent-color:var(--primary); cursor:pointer;"> Title &amp; Tags</label>' +
+      '<label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; font-weight:600;">' +
+      '<input type="checkbox" id="plScopeDesc"' + (plPublicScope.desc ? ' checked' : '') + ' style="accent-color:var(--primary); cursor:pointer;"> Description</label>' +
+      '<label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; font-weight:600;">' +
+      '<input type="checkbox" id="plScopeShiurim"' + (plPublicScope.shiurim ? ' checked' : '') + ' style="accent-color:var(--primary); cursor:pointer;"> Shiurim therein</label>' +
+      '</div>';
+
     const activeFilterCards = [];
     (plPublicFilterTags.teachers || []).forEach((t, idx) => {
       activeFilterCards.push('<span class="active-filter-pill">👤 ' + escapeHtml(t.name) + ' <button type="button" onclick="plRemoveFilterTag(&quot;teachers&quot;, ' + idx + ')" title="Remove filter">✕</button></span>');
@@ -16239,6 +16272,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     bindSel('plPubTeacher', 'teachers');
     bindSel('plPubVenue', 'venues');
     bindSel('plPubTopic', 'topics');
+    const chkTitle = container.querySelector('#plScopeTitle');
+    if (chkTitle) chkTitle.addEventListener('change', () => { plPublicScope.title = chkTitle.checked; plPublicSearch(); });
+    const chkDesc = container.querySelector('#plScopeDesc');
+    if (chkDesc) chkDesc.addEventListener('change', () => { plPublicScope.desc = chkDesc.checked; plPublicSearch(); });
+    const chkShiurim = container.querySelector('#plScopeShiurim');
+    if (chkShiurim) chkShiurim.addEventListener('change', () => { plPublicScope.shiurim = chkShiurim.checked; plPublicSearch(); });
     const sortEl = container.querySelector('#plPubSort');
     if (sortEl) sortEl.addEventListener('change', () => { plPublicSort = sortEl.value; plPublicSearch(); });
     if (plPublicExpanded) plPublicRenderItems(plPublicExpanded);
@@ -16825,6 +16864,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (plPublicTags.topic && !(plPublicFilterTags.topics || []).some(tp => tp.name === plPublicTags.topic.name)) {
       q.append('topics', plPublicTags.topic.name);
     }
+    q.set('scopeTitle', plPublicScope.title ? '1' : '0');
+    q.set('scopeDesc', plPublicScope.desc ? '1' : '0');
+    q.set('scopeShiurim', plPublicScope.shiurim ? '1' : '0');
     q.set('sort', plPublicSort === 'saves' ? 'saves' : 'recent');
     q.set('limit', String(PL_PUBLIC_PAGE));
     q.set('offset', String(offset || 0));

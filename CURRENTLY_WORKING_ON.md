@@ -16,10 +16,10 @@ Production status: **Untouched** (strictly protected by standing rules)
 - [x] **Task 2: Multi-Select Category Filter Cards in Playlist Search** *(COMPLETED)*
   - Support selecting multiple teachers, venues, and topics like Advanced Search.
   - Selected filters render as dismissible cards/chips with `✕` remove button and "Clear All" action.
-- [ ] **Task 3: Playlist Search Scope Checkboxes (Title & Tags, Description, Shiurim Therein)** *(IN PROGRESS)*
+- [x] **Task 3: Playlist Search Scope Checkboxes (Title & Tags, Description, Shiurim Therein)** *(COMPLETED)*
   - 3 checkboxes: "Title & Tags" (default checked), "Description" (default checked), and "Shiurim therein" (default unchecked).
-  - When 3rd checkbox is checked, match search queries against lectures inside playlists.
-- [ ] **Task 4: Playlist Reordering Experience Parity with Queue** *(PENDING)*
+  - When 3rd checkbox is checked, matches search queries against lectures inside playlists (`public_playlist_items`).
+- [ ] **Task 4: Playlist Reordering Experience Parity with Queue** *(IN PROGRESS)*
   - Provide direct, intuitive reordering of shiurim in playlists with grab handles and move actions matching the queue.
 - [ ] **Task 5: Shuffle Play Option for Playlists** *(PENDING)*
   - Add option to play playlist in sequential order (default) or randomized order via `🔀 Shuffle` button on playlists.
@@ -36,6 +36,15 @@ Production status: **Untouched** (strictly protected by standing rules)
 ---
 
 ## 🕒 Chronological Activity Log
+
+### [2026-09-11 10:46 ET] — Commit `feat/auth-d1` (Task 3: Playlist Search Scope Checkboxes)
+- `[DONE]` **Tri-Checkbox Search Scope (Title & Tags, Description, Shiurim Therein)**:
+  - Added checkboxes row: `Title & Tags` (checked by default), `Description` (checked by default), and `Shiurim therein` (unchecked by default).
+  - Wired live change listeners persisting `plPublicScope` and immediately updating search results.
+- `[DONE]` **Database Subquery Aggregation for Shiurim Therein**:
+  - In `/api/playlists/public`, when `scopeShiurim=1`, SQL aggregates playlist lecture titles, speakers, and series titles via `GROUP_CONCAT`.
+  - Filter logic includes `itemsText` in search text search when `scopeShiurim` is active.
+- `[DONE]` **Automated Testing**: 100% green on all 5 test suites (17/17 basic functionality checks).
 
 ### [2026-09-11 10:44 ET] — Commit `feat/auth-d1` (Task 2: Multi-Select Category Filter Cards in Playlist Search)
 - `[DONE]` **Multi-Select Filter Tags**:

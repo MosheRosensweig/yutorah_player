@@ -588,7 +588,16 @@ async function testPlaylistsEnhancementsRound2() {
   assert.ok(html.includes('plRemoveFilterTag(&quot;teachers&quot;'), 'Teachers remove button must be present in filter cards');
   assert.ok(html.includes('plClearAllFilterTags()'), 'Clear All button must be present in filter bar');
 
-  console.log('  ✅ Save for later label, icon centering & multi-select category filter cards verified.');
+  // Task 3: Playlist Search Scope Checkboxes
+  assert.ok(html.includes('let plPublicScope = { title: true, desc: true, shiurim: false };'), 'plPublicScope must be initialized with title & desc checked, shiurim unchecked');
+  assert.ok(html.includes('id="plScopeTitle"'), 'plScopeTitle checkbox must be rendered');
+  assert.ok(html.includes('id="plScopeDesc"'), 'plScopeDesc checkbox must be rendered');
+  assert.ok(html.includes('id="plScopeShiurim"'), 'plScopeShiurim checkbox must be rendered');
+  assert.ok(html.includes("q.set('scopeTitle'"), 'plPublicParams must serialize scopeTitle');
+  assert.ok(html.includes("q.set('scopeDesc'"), 'plPublicParams must serialize scopeDesc');
+  assert.ok(html.includes("q.set('scopeShiurim'"), 'plPublicParams must serialize scopeShiurim');
+
+  console.log('  ✅ Save for later, multi-select filter cards & playlist search scope checkboxes verified.');
 }
 
 async function runAll() {
