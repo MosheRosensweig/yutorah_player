@@ -581,9 +581,9 @@ async function testPlaylistsEnhancementsRound2() {
   assert.ok(html.includes('function plAddFilterTag(kind, tag)'), 'plAddFilterTag must be defined');
   assert.ok(html.includes('function plRemoveFilterTag(kind, idx)'), 'plRemoveFilterTag must be defined');
   assert.ok(html.includes('function plClearAllFilterTags()'), 'plClearAllFilterTags must be defined');
-  assert.ok(html.includes("tagOpts('teachers')"), 'Teachers select uses tagOpts');
-  assert.ok(html.includes("tagOpts('venues')"), 'Venues select uses tagOpts');
-  assert.ok(html.includes("tagOpts('topics')"), 'Topics select uses tagOpts');
+  assert.ok(html.includes('list="plPubTeacherList"'), 'Teachers filter is typable with datalist');
+  assert.ok(html.includes('list="plPubVenueList"'), 'Venues filter is typable with datalist');
+  assert.ok(html.includes('list="plPubTopicList"'), 'Topics filter is typable with datalist');
   assert.ok(html.includes("+ Add ' + label"), '+ Add label option must be constructed');
   assert.ok(html.includes('plRemoveFilterTag(&quot;teachers&quot;'), 'Teachers remove button must be present in filter cards');
   assert.ok(html.includes('plClearAllFilterTags()'), 'Clear All button must be present in filter bar');
