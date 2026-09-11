@@ -10,8 +10,9 @@ Production status: **Untouched** (strictly protected by standing rules)
 ## 🎯 Active Batch: 3 User Fixes (One-at-a-Time, Dev Deploys)
 - [x] **Fix 1: Double calendar icon in account dropdown date** *(DEPLOYED 2026-09-11, `35b6fd6`, dev `2b296199`)*
   - Header badge `textContent` already starts with 📅; dropdown prepended a second one → stripped leading emoji, single prefix kept (both auth states).
-- [ ] **Fix 2: Playlist → top-of-queue button** *(NEXT)*
-- [ ] **Fix 3: Shiurim-inside scope additive-only (no zeroing on tag click)** *(QUEUED)*
+- [x] **Fix 2: Playlist → top-of-queue button** *(DEPLOYED 2026-09-11, `7c422f4`, dev `c0215d06`)*
+  - New `devQueuePlaylistToTop()` prepends current playlist (in order, deduped incl. series members) to top of queue via `saveDevQueue` (cloud-synced); `⏫ Queue to Top` button next to Play All/Shuffle on all playlist rows.
+- [ ] **Fix 3: Shiurim-inside scope additive-only (no zeroing on tag click)** *(NEXT)*
 
 ---
 
