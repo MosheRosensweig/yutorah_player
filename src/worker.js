@@ -16289,9 +16289,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         el.value = '';
       });
     };
-    bindSel('plPubTeacher', 'teachers');
-    bindSel('plPubVenue', 'venues');
-    bindSel('plPubTopic', 'topics');
+    // plPubTeacher/Venue/Topic are now typable datalist inputs handled by
+    // bindTypableFilter above (single-value plPublicTags).
     const chkTitle = container.querySelector('#plScopeTitle');
     const chkDesc = container.querySelector('#plScopeDesc');
     const chkShiurim = container.querySelector('#plScopeShiurim');
@@ -17774,6 +17773,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       const retUrl = encodeURIComponent(retPath);
       html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); window.location.href=&quot;/auth/google?return_to=' + retUrl + '&quot;;">🔑 Sign in with Google</button>';
       html += '<button type="button" class="settings-menu-item menu-theme-toggle-btn" onclick="toggleTheme();"><span class="menu-theme-icon">' + themeIcon + '</span> <span>Light / Dark Mode</span></button>';
+      try {
+        const calEl2 = document.getElementById('hebrewDateBadge');
+        const calText2 = calEl2 ? (calEl2.textContent || '').trim() : '';
+        if (calText2) html += '<div class="settings-menu-label auth-cal-mobile">📅 ' + escapeHtml(calText2) + '</div>';
+      } catch (e) {}
     }
     if (isDevMode) {
       html += '<div class="settings-menu-label">Dev settings</div>';
