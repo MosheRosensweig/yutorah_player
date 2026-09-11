@@ -597,7 +597,12 @@ async function testPlaylistsEnhancementsRound2() {
   assert.ok(html.includes("q.set('scopeDesc'"), 'plPublicParams must serialize scopeDesc');
   assert.ok(html.includes("q.set('scopeShiurim'"), 'plPublicParams must serialize scopeShiurim');
 
-  console.log('  ✅ Save for later, multi-select filter cards & playlist search scope checkboxes verified.');
+  // Task 4: Playlist Reordering Direct Parity with Queue
+  assert.ok(html.includes('const canReorder = !pl.isHistory && !pl.isSubscription;'), 'canReorder must allow direct reordering on all mutable user playlists');
+  assert.ok(html.includes('dragAttrs = canReorder'), 'dragAttrs must be unconditionally enabled for canReorder');
+  assert.ok(html.includes('pl.sortOrder = &apos;manual&apos;') || html.includes("pl.sortOrder = 'manual'"), 'devReorderPlaylistItem sets manual sortOrder');
+
+  console.log('  ✅ Save for later, multi-select filter cards, search scope checkboxes & direct reordering verified.');
 }
 
 async function runAll() {

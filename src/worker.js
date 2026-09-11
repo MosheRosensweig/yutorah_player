@@ -16329,6 +16329,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (store && store.custom && store.custom[pid]) {
         store.custom[pid].sortOrder = sort;
         saveDevStore(store);
+      } else if (store && store.system && store.system[pid]) {
+        store.system[pid].sortOrder = sort;
+        saveDevStore(store);
       }
     } catch (e) {}
     renderPlaylistsGrid();
@@ -16386,9 +16389,33 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   function devReorderPlaylistItem(pid, fromIdx, toIdx) {
     const store = getDevStore();
-    const pl = store.custom && store.custom[pid];
+    let pl = store.custom && store.custom[pid];
+    if (!pl && store.system && store.system[pid]) pl = store.system[pid];
     if (!pl || !pl.items || pl.isSubscription) return;
     if (fromIdx < 0 || fromIdx >= pl.items.length || toIdx < 0 || toIdx >= pl.items.length) return;
+
+    // Materialize current sort order into raw items before moving if non-manual
+    const sort = devGetPlaylistSort(pid);
+    if (sort !== 'manual') {
+      let sortedItems = [...pl.items];
+      if (sort === 'date_desc') {
+        sortedItems.sort((a, b) => {
+          const diff = devItemDateTimestamp(b) - devItemDateTimestamp(a);
+          return diff !== 0 ? diff : String(b.id || '').localeCompare(String(a.id || ''));
+        });
+      } else if (sort === 'date_asc') {
+        sortedItems.sort((a, b) => {
+          const diff = devItemDateTimestamp(a) - devItemDateTimestamp(b);
+          return diff !== 0 ? diff : String(a.id || '').localeCompare(String(b.id || ''));
+        });
+      } else if (sort === 'added') {
+        sortedItems.sort((a, b) => ((b.addedAt || 0) - (a.addedAt || 0)));
+      }
+      pl.items = sortedItems;
+    }
+
+    pl.sortOrder = 'manual';
+    try { localStorage.setItem('yutorah_pl_sort_' + pid, 'manual'); } catch (e) {}
     const moved = pl.items.splice(fromIdx, 1)[0];
     pl.items.splice(toIdx, 0, moved);
     saveDevStore(store);
@@ -16436,7 +16463,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const pl = getDevPlaylist(store, activeDevPlaylistId);
     let html = devPlaylistsHeaderHtml(store, activeDevPlaylistId);
     let items = (pl && pl.items) || [];
-    const canManual = !pl.isHistory && !store.system[pl.id] && !pl.isSubscription;
+    const canReorder = !pl.isHistory && !pl.isSubscription;
     const sort = devGetPlaylistSort(pl.id);
 
     // Apply sorting
@@ -16478,14 +16505,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         '<button type="button" class="card-mini-btn' + (sort === 'date_desc' || sort === 'shiurdate' ? ' active-save' : '') + '" onclick="devSetPlaylistSort(&quot;history&quot;, &quot;date_desc&quot;)">📅 Shiur Date (Newest)</button>' +
         '<button type="button" class="card-mini-btn' + (sort === 'date_asc' ? ' active-save' : '') + '" onclick="devSetPlaylistSort(&quot;history&quot;, &quot;date_asc&quot;)">📅 Shiur Date (Oldest)</button>';
     } else {
-      sortRowHtml += '<button type="button" class="card-mini-btn' + (sort === 'added' ? ' active-save' : '') + '" onclick="devSetPlaylistSort(&quot;' + escapeHtml(pl.id) + '&quot;, &quot;added&quot;)">🕒 Recently Added</button>' +
+      sortRowHtml += (canReorder ? '<button type="button" class="card-mini-btn' + (sort === 'manual' ? ' active-save' : '') + '" onclick="devSetPlaylistSort(&quot;' + escapeHtml(pl.id) + '&quot;, &quot;manual&quot;)" title="Manual / Drag-and-Drop">↕️ Custom Order</button>' : '') +
+        '<button type="button" class="card-mini-btn' + (sort === 'added' ? ' active-save' : '') + '" onclick="devSetPlaylistSort(&quot;' + escapeHtml(pl.id) + '&quot;, &quot;added&quot;)">🕒 Recently Added</button>' +
         '<button type="button" class="card-mini-btn' + (sort === 'date_desc' ? ' active-save' : '') + '" onclick="devSetPlaylistSort(&quot;' + escapeHtml(pl.id) + '&quot;, &quot;date_desc&quot;)">📅 Shiur Date (Newest)</button>' +
-        '<button type="button" class="card-mini-btn' + (sort === 'date_asc' ? ' active-save' : '') + '" onclick="devSetPlaylistSort(&quot;' + escapeHtml(pl.id) + '&quot;, &quot;date_asc&quot;)">📅 Shiur Date (Oldest)</button>' +
-        (canManual ? '<button type="button" class="card-mini-btn' + (sort === 'manual' ? ' active-save' : '') + '" onclick="devSetPlaylistSort(&quot;' + escapeHtml(pl.id) + '&quot;, &quot;manual&quot;)">↕️ Manual / Drag-and-Drop</button>' : '');
+        '<button type="button" class="card-mini-btn' + (sort === 'date_asc' ? ' active-save' : '') + '" onclick="devSetPlaylistSort(&quot;' + escapeHtml(pl.id) + '&quot;, &quot;date_asc&quot;)">📅 Shiur Date (Oldest)</button>';
     }
     sortRowHtml += '</div>';
-    if (canManual && sort === 'manual') {
-      sortRowHtml += '<div style="grid-column:1/-1; margin:-4px 0 10px; font-size:12px; color:var(--text-muted);">💡 <b>Manual Reorder</b>: Drag cards or use the ▲ / ▼ buttons below each card to position shiurim.</div>';
+    if (canReorder) {
+      sortRowHtml += '<div style="grid-column:1/-1; margin:-4px 0 10px; font-size:12px; color:var(--text-muted);">💡 <b>Reorder</b>: Drag cards or use the ▲ / ▼ buttons below each card to position shiurim.</div>';
     }
     html += sortRowHtml;
 
@@ -16546,11 +16573,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (items.length === 0) {
       html += '<div style="grid-column:1/-1; text-align:center; padding:30px; color:var(--text-muted);">Empty playlist — tap 🕒 Save for later, ☆ Fav or ➕ Playlist on any card to add shiurim.</div>';
     } else {
-      const isManualMode = canManual && sort === 'manual';
       html += items.map((item, idx) => {
         const iid = String(item.id);
         const canRemove = !pl.isSubscription;
-        const dragAttrs = isManualMode
+        const dragAttrs = canReorder
           ? ' draggable="true" ondragstart="devDragStart(event, &quot;' + escapeHtml(pl.id) + '&quot;, ' + idx + ')" ondragover="devDragOver(event)" ondragleave="devDragLeave(event)" ondrop="devDropItem(event, &quot;' + escapeHtml(pl.id) + '&quot;, ' + idx + ')" ondragend="devDragEnd(event)"'
           : '';
         return '<div class="playlist-item-wrap"' + dragAttrs + '>' +
@@ -16558,11 +16584,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           (canRemove ? '<div style="margin-top:6px; display:flex; gap:6px; align-items:center; flex-wrap:wrap;">' +
           '<button type="button" class="card-mini-btn" data-dev-remove="' + pl.id + ':' + iid + '"' +
           ' onclick="devAskRemove(&quot;' + escapeHtml(pl.id) + '&quot;, &quot;' + escapeHtml(iid) + '&quot;)">✕ Remove from Playlist</button>' +
-          (isManualMode ?
+          (canReorder ?
             '<span style="display:inline-flex; gap:4px; align-items:center; margin-left:auto;">' +
             '<button type="button" class="playlist-reorder-btn"' + (idx === 0 ? ' disabled' : '') + ' onclick="devMovePlaylistItem(&quot;' + escapeHtml(pl.id) + '&quot;, ' + idx + ', -1)" title="Move Up">▲</button>' +
             '<button type="button" class="playlist-reorder-btn"' + (idx === items.length - 1 ? ' disabled' : '') + ' onclick="devMovePlaylistItem(&quot;' + escapeHtml(pl.id) + '&quot;, ' + idx + ', 1)" title="Move Down">▼</button>' +
-            '<span style="cursor:grab; font-size:14px; opacity:0.7; padding:0 4px; user-select:none;" title="Drag to reorder">⠿</span>' +
+            '<span style="cursor:grab; font-size:16px; opacity:0.75; padding:0 4px; user-select:none;" title="Drag to reorder">⠿</span>' +
             '</span>' : '') +
           '</div>' : '') + '</div>';
       }).join('');
@@ -18522,8 +18548,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         '<div class="queue-main"><div class="queue-title">' + escapeHtml(title) + '</div>' +
         '<div class="queue-sub">' + escapeHtml(sub) + '</div></div>' +
         '<div class="queue-row-btns">' +
-        '<button type="button" class="card-mini-btn" onclick="devQueueMove(' + idx + ', -1)" title="Move up">▲</button>' +
-        '<button type="button" class="card-mini-btn" onclick="devQueueMove(' + idx + ', 1)" title="Move down">▼</button>' +
+        '<button type="button" class="card-mini-btn" ' + (idx===0?'disabled ':'') + 'onclick="devQueueMove(' + idx + ', -1)" title="Move up" aria-label="Move up">▲</button>' +
+        '<button type="button" class="card-mini-btn" ' + (idx===q.length-1?'disabled ':'') + 'onclick="devQueueMove(' + idx + ', 1)" title="Move down" aria-label="Move down">▼</button>' +
         '<button type="button" class="card-mini-btn" onclick="devQueueRemoveAt(' + idx + ')" title="Remove">✕</button>' +
         '</div></div>';
     }).join('');

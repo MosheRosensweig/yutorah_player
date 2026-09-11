@@ -19,9 +19,10 @@ Production status: **Untouched** (strictly protected by standing rules)
 - [x] **Task 3: Playlist Search Scope Checkboxes (Title & Tags, Description, Shiurim Therein)** *(COMPLETED)*
   - 3 checkboxes: "Title & Tags" (default checked), "Description" (default checked), and "Shiurim therein" (default unchecked).
   - When 3rd checkbox is checked, matches search queries against lectures inside playlists (`public_playlist_items`).
-- [ ] **Task 4: Playlist Reordering Experience Parity with Queue** *(IN PROGRESS)*
-  - Provide direct, intuitive reordering of shiurim in playlists with grab handles and move actions matching the queue.
-- [ ] **Task 5: Shuffle Play Option for Playlists** *(PENDING)*
+- [x] **Task 4: Playlist Reordering Experience Parity with Queue** *(COMPLETED)*
+  - Provided direct, intuitive reordering of shiurim in playlists with grab handles (⠿) and ▲▼ move actions matching the queue.
+  - Added disabled states on edge items, drag-over visuals, persisted via `saveDevStore`, handles queue parity review fixes (dual review 2026-09-11).
+- [ ] **Task 5: Shuffle Play Option for Playlists** *(IN PROGRESS)*
   - Add option to play playlist in sequential order (default) or randomized order via `🔀 Shuffle` button on playlists.
 
 ---
