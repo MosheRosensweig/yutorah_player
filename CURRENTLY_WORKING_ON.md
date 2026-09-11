@@ -1,7 +1,7 @@
 # Currently Working On — Living Status & Activity Log
 
 Living status doc & audit log — updated on every milestone and user request.  
-Last updated: **2026-09-11, 10:30 ET**  
+Last updated: **2026-09-11, 10:40 ET**  
 Current branch: `feat/auth-d1`  
 Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev)  
 Tests: **5/5 test suites passing (100% green, 16/16 basic functionality checks)**  
@@ -9,31 +9,41 @@ Production status: **Untouched** (strictly protected by standing rules)
 
 ---
 
-## 🎯 Active Task: Complete Playlists Suite (Step-by-Step)
-- [x] **Phase 1: Play Queue UX & Idempotent Modal Controls** *(COMPLETED)*
-  - Fix idempotent single-click close for `#queuePopup` (clicking Open Queue multiple times won't stack open states; single `✕` click unconditionally closes).
-  - Fix empty queue prompt icon and text (match circular queue icon `📋` / list icon with SVG).
-- [x] **Phase 2: Playlists Tab Restructuring & Sticky Controls** *(COMPLETED)*
-  - Segmented top control: `🎧 My Playlists` vs `🌍 Public Playlists`.
-  - Sticky / frozen top row in `My Playlists` (`🕒 History`, `🕒 Later`, `⭐ Favorites`, `📋 Queue`, `➕ New Playlist`).
-  - Subscribed / read-only border highlights in Light Mode and Dark Mode (`.playlist-subscribed-card`, `.subscription-pill`, `📡 Subscribed` badge, `🎧 Open in My Playlists` action).
-- [x] **Phase 3: Playlist Sorting & Ordering Controls** *(COMPLETED)*
-  - Sort selector per playlist: `Last Listened` (for History), `Recently Added`, `Shiur Date (Newest)`, `Shiur Date (Oldest)`, and `Manual / Drag-and-Drop`.
-  - Manual reordering with touch-friendly `▲` / `▼` buttons and HTML5 drag-and-drop handles (`⠿`).
-  - Sort preference persistence in `localStorage` (`yutorah_pl_sort_[id]`) and in `pl.sortOrder`.
-- [x] **Phase 4: Enhanced Playlist Creation Modal** *(COMPLETED)*
-  - Emoji / Icon picker for playlists with 16 selectable emojis and live preview.
-  - Multiline description textarea (`#newPlDesc`).
-  - Curated taxonomy tag selector with typeahead autocomplete (speakers, venues, topics; max 5).
-  - Per-user duplicate playlist name prevention with inline error feedback (`#newPlError`).
-- [x] **Phase 5: Add-to-Playlist Multi-Select Popup Enhancements** *(COMPLETED)*
-  - Live counter tick (`+1` / `-1`) on checkbox toggle with dynamic green/red indicators.
-  - Explicit `💾 Save Changes` commitment button staging modifications safely before committing.
-  - Self-saving guard: hides "Save" on public playlists authored by current user, presenting author badge and direct playlist navigation.
+## 🎯 Active Tasks: Playlists Enhancements Round 2 (Step-by-Step)
+- [x] **Task 1: Rename "Later" to "Save for later" & Vertical Icon Centering** *(COMPLETED)*
+  - Rename playlist pill and label from "Later" to "Save for later".
+  - Ensure icon is centered height-wise with text across all playlist pills (`display: inline-flex; align-items: center; gap: 6px; vertical-align: middle; line-height: 1.1;`).
+- [ ] **Task 2: Multi-Select Category Filter Cards in Playlist Search** *(IN PROGRESS)*
+  - Support selecting multiple teachers, venues, and topics like Advanced Search.
+  - Selected filters render as dismissible cards/chips with `✕` remove button.
+- [ ] **Task 3: Playlist Search Scope Checkboxes (Title & Tags, Description, Shiurim Therein)** *(PENDING)*
+  - 3 checkboxes: "Title & Tags" (default checked), "Description" (default checked), and "Shiurim therein" (default unchecked).
+  - When 3rd checkbox is checked, match search queries against lectures inside playlists.
+- [ ] **Task 4: Playlist Reordering Experience Parity with Queue** *(PENDING)*
+  - Provide direct, intuitive reordering of shiurim in playlists with grab handles and move actions matching the queue.
+- [ ] **Task 5: Shuffle Play Option for Playlists** *(PENDING)*
+  - Add option to play playlist in sequential order (default) or randomized order via `🔀 Shuffle` button on playlists.
+
+---
+
+## 📦 Previous Task: Complete Playlists Suite (Phases 1–5) — COMPLETED
+- [x] Phase 1: Play Queue UX & Idempotent Modal Controls
+- [x] Phase 2: Playlists Tab Restructuring & Sticky Controls
+- [x] Phase 3: Playlist Sorting & Ordering Controls
+- [x] Phase 4: Enhanced Playlist Creation Modal
+- [x] Phase 5: Add-to-Playlist Multi-Select Popup Enhancements & Dual Review Hardening
 
 ---
 
 ## 🕒 Chronological Activity Log
+
+### [2026-09-11 10:40 ET] — Commit `feat/auth-d1` (Task 1: Rename Later to Save for later & Center Icons)
+- `[DONE]` **Rename Later to "Save for later"**:
+  - Updated playlist system row pill label to `Save for later (N)` and empty state message to `tap 🕒 Save for later`.
+- `[DONE]` **Vertical Icon Centering**:
+  - Updated `.playlist-pill` with `display: inline-flex; align-items: center; gap: 6px; vertical-align: middle; line-height: 1.1;`.
+  - Added `.playlist-pill svg { vertical-align: middle; display: inline-block; flex-shrink: 0; }` and updated `devClockSvg` styles.
+- `[DONE]` **Automated Testing**: 100% green on all 5 test suites.
 
 ### [2026-09-11 10:30 ET] — Commit `feat/auth-d1` (Dual Review Polish: Contrast, Focus, Drag-End & A11y)
 - `[DONE]` **Contrast Compliance**:

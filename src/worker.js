@@ -8645,6 +8645,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       background: var(--card);
       color: var(--text);
       transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      vertical-align: middle;
+      line-height: 1.1;
+    }
+    .playlist-pill svg {
+      vertical-align: middle;
+      display: inline-block;
+      flex-shrink: 0;
     }
     .playlist-pill:hover {
       border-color: var(--primary);
@@ -15638,7 +15648,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       ? '<path d="M12 12 L12 6.5 L14 6.5 L14 12 L18 14 L17 15.8 Z" fill="currentColor" stroke="none"></path>'
       : '<line x1="12" y1="12" x2="12" y2="6.5"></line>' +
         '<line x1="12" y1="12" x2="17.5" y2="14.5"></line>';
-    return '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="' + rimW + '" aria-hidden="true">' +
+    return '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="' + rimW + '" aria-hidden="true" style="vertical-align:middle; display:inline-block; flex-shrink:0;">' +
       '<circle cx="12" cy="12" r="9"></circle>' +
       '<g stroke-width="' + handW + '" stroke-linecap="round">' + hands + '</g></svg>';
   }
@@ -16023,7 +16033,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
     h += '<div class="playlist-system-row">' +
       '<button type="button" class="playlist-pill' + (activePid === 'history' ? ' active' : '') + '" onclick="devSelectPlaylist(&quot;history&quot;)">🕒 History (' + histCount + ')</button>' +
-      '<button type="button" class="playlist-pill' + (activePid === 'save_for_later' ? ' active' : '') + '" onclick="devSelectPlaylist(&quot;save_for_later&quot;)">' + getSaveIcon() + ' Later (' + laterCount + ')</button>' +
+      '<button type="button" class="playlist-pill' + (activePid === 'save_for_later' ? ' active' : '') + '" onclick="devSelectPlaylist(&quot;save_for_later&quot;)">' + getSaveIcon() + ' Save for later (' + laterCount + ')</button>' +
       '<button type="button" class="playlist-pill' + (activePid === 'favorites' ? ' active' : '') + '" onclick="devSelectPlaylist(&quot;favorites&quot;)">⭐ Favorites (' + favCount + ')</button>' +
       '<button type="button" class="playlist-pill' + (activePid === 'queue' ? ' active' : '') + '" onclick="devSelectPlaylist(&quot;queue&quot;)">📋 Queue (' + qq.length + ')</button>' +
       '<button type="button" class="playlist-pill" onclick="devPromptNewPlaylist()">➕ New Playlist</button>' +
@@ -16434,7 +16444,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       html += '<div style="grid-column:1/-1; margin-bottom:8px;"><button type="button" class="card-mini-btn" onclick="playDevPlaylistAll()">▶ Play All</button></div>';
     }
     if (items.length === 0) {
-      html += '<div style="grid-column:1/-1; text-align:center; padding:30px; color:var(--text-muted);">Empty playlist — tap 🕒 Later, ☆ Fav or ➕ Playlist on any card to add shiurim.</div>';
+      html += '<div style="grid-column:1/-1; text-align:center; padding:30px; color:var(--text-muted);">Empty playlist — tap 🕒 Save for later, ☆ Fav or ➕ Playlist on any card to add shiurim.</div>';
     } else {
       const isManualMode = canManual && sort === 'manual';
       html += items.map((item, idx) => {
