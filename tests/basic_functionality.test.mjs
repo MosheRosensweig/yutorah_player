@@ -581,9 +581,14 @@ async function testPlaylistsEnhancementsRound2() {
   assert.ok(html.includes('function plAddFilterTag(kind, tag)'), 'plAddFilterTag must be defined');
   assert.ok(html.includes('function plRemoveFilterTag(kind, idx)'), 'plRemoveFilterTag must be defined');
   assert.ok(html.includes('function plClearAllFilterTags()'), 'plClearAllFilterTags must be defined');
-  assert.ok(html.includes('list="plPubTeacherList"'), 'Teachers filter is typable with datalist');
-  assert.ok(html.includes('list="plPubVenueList"'), 'Venues filter is typable with datalist');
-  assert.ok(html.includes('list="plPubTopicList"'), 'Topics filter is typable with datalist');
+  assert.ok(html.includes('id="plPubTeacherInput"'), 'Teachers filter is Advanced-style typable combobox input');
+  assert.ok(html.includes('id="plPubVenueInput"'), 'Venues filter is Advanced-style typable combobox input');
+  assert.ok(html.includes('id="plPubTopicInput"'), 'Topics filter is Advanced-style typable combobox input');
+  assert.ok(html.includes('id="plPubTeacherDropdown"'), 'Teachers live dropdown (Advanced-style) must be rendered');
+  assert.ok(html.includes('id="plPubVenueDropdown"'), 'Venues live dropdown (Advanced-style) must be rendered');
+  assert.ok(html.includes('id="plPubTopicDropdown"'), 'Topics live dropdown (Advanced-style) must be rendered');
+  assert.ok(html.includes('setupPlFilter('), 'setupPlFilter live-filter must be defined (Advanced-style)');
+  assert.ok(html.includes('renderPlFilterTokens'), 'renderPlFilterTokens multi-select tokens must be defined');
   assert.ok(html.includes("+ Add ' + label"), '+ Add label option must be constructed');
   assert.ok(html.includes('plRemoveFilterTag(&quot;teachers&quot;'), 'Teachers remove button must be present in filter cards');
   assert.ok(html.includes('plClearAllFilterTags()'), 'Clear All button must be present in filter bar');

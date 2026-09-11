@@ -16181,16 +16181,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (!isGuest) {
       qhtml += devPlaylistSegmentedBarHtml(true);
     }
-    const datalistOpts = (kind) => {
-      const list = plTagOptions(kind === 'teachers' ? 'teachers' : kind === 'venues' ? 'venues' : 'topics').slice(0, 400);
-      return list.map(o => '<option value="' + escapeHtml(o.name) + '">').join('');
-    };
     qhtml += '<div style="grid-column:1/-1; display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">' +
       '<input id="plPubQ" type="text" placeholder="Search public playlists…" value="' + escapeHtml(plPublicQuery) + '"' +
       ' autocomplete="off" style="flex:2; min-width:160px; padding:8px 12px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text);">' +
-      '<input id="plPubTeacher" list="plPubTeacherList" placeholder="Teacher (type to filter)…" autocomplete="off" style="flex:1; min-width:120px; padding:8px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text);"><datalist id="plPubTeacherList">' + datalistOpts('teachers') + '</datalist>' +
-      '<input id="plPubVenue" list="plPubVenueList" placeholder="Venue…" autocomplete="off" style="flex:1; min-width:120px; padding:8px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text);"><datalist id="plPubVenueList">' + datalistOpts('venues') + '</datalist>' +
-      '<input id="plPubTopic" list="plPubTopicList" placeholder="Topic…" autocomplete="off" style="flex:1; min-width:120px; padding:8px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text);"><datalist id="plPubTopicList">' + datalistOpts('topics') + '</datalist>' +
+      '<div class="autocomplete-combobox" style="flex:1; min-width:140px;"><div class="chips-container" id="plPubTeacherChips"><input id="plPubTeacherInput" class="combobox-input" placeholder="Teacher..." autocomplete="off" aria-label="Filter by teacher" style="flex:1; border:none; background:transparent; color:var(--text); min-width:80px;"></div><div class="autocomplete-dropdown" id="plPubTeacherDropdown"></div></div>' +
+      '<div class="autocomplete-combobox" style="flex:1; min-width:140px;"><div class="chips-container" id="plPubVenueChips"><input id="plPubVenueInput" class="combobox-input" placeholder="Venue..." autocomplete="off" aria-label="Filter by venue" style="flex:1; border:none; background:transparent; color:var(--text); min-width:80px;"></div><div class="autocomplete-dropdown" id="plPubVenueDropdown"></div></div>' +
+      '<div class="autocomplete-combobox" style="flex:1; min-width:140px;"><div class="chips-container" id="plPubTopicChips"><input id="plPubTopicInput" class="combobox-input" placeholder="Topic..." autocomplete="off" aria-label="Filter by topic" style="flex:1; border:none; background:transparent; color:var(--text); min-width:80px;"></div><div class="autocomplete-dropdown" id="plPubTopicDropdown"></div></div>' +
       '<select id=\"plPubSort\" style=\"padding:8px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text);\">' +
       '<option value=\"recent\"' + (plPublicSort !== 'saves' ? ' selected' : '') + '>Recent</option>' +
       '<option value=\"saves\"' + (plPublicSort === 'saves' ? ' selected' : '') + '>Most saved</option></select>' +
@@ -16271,51 +16267,129 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       }
     }
     const activeEl = document.activeElement;
-    const isInputActive = activeEl && activeEl.id === 'plPubQ';
-    const selStart = isInputActive ? activeEl.selectionStart : null;
-    const selEnd = isInputActive ? activeEl.selectionEnd : null;
+    const activeId = activeEl && activeEl.id ? activeEl.id : '';
+    const isPlPubFocus = activeId === 'plPubQ' || activeId === 'plPubTeacherInput' || activeId === 'plPubVenueInput' || activeId === 'plPubTopicInput';
+    const selStart = isPlPubFocus ? activeEl.selectionStart : null;
+    const selEnd = isPlPubFocus ? activeEl.selectionEnd : null;
 
     container.innerHTML = qhtml;
     const qq = container.querySelector('#plPubQ');
     if (qq) {
-      if (isInputActive) {
+      if (activeId === 'plPubQ') {
         qq.focus();
         if (selStart !== null && selEnd !== null) {
           try { qq.setSelectionRange(selStart, selEnd); } catch (e) {}
         }
       }
       qq.addEventListener('keydown', e => { if (e.key === 'Enter') plPublicSearch(); });
-      const bindTypableFilter = (id, kind) => {
-        const el = container.querySelector('#' + id);
-        if (!el) return;
-        const tryAdd = () => {
-          const v = (el.value || '').trim();
-          if (!v) return;
-          const match = plTagOptions(kind).find(o => String(o.name || '').toLowerCase() === v.toLowerCase());
-          if (match) {
-            plAddFilterTag(kind, match);
-            el.value = '';
-            // Ensure dropdown hidden and input remains usable
-            const dl = document.getElementById(id + 'List');
-            if (dl) dl.style.display = 'none';
-          }
-        };
-        el.addEventListener('change', tryAdd);
-        el.addEventListener('keydown', e => {
-          if (e.key === 'Enter') { e.preventDefault(); tryAdd(); }
-          if (e.key === 'Escape') { el.value = ''; el.blur(); }
-        });
-        // Also handle input to show dropdown like other places
-        el.addEventListener('input', () => {
-          // Trigger datalist dropdown by forcing input event
-          if (el.value.length >= 1) {
-            el.setAttribute('data-typed', el.value);
-          }
+      const renderPlFilterTokens = (kind, chipsId, inputId) => {
+        const chips = container.querySelector('#' + chipsId);
+        const input = container.querySelector('#' + inputId);
+        if (!chips || !input) return;
+        chips.querySelectorAll('.combobox-token').forEach(el => el.remove());
+        (plPublicFilterTags[kind] || []).forEach(t => {
+          const token = document.createElement('span');
+          token.className = 'combobox-token';
+          const label = document.createElement('span');
+          label.textContent = t.name || t.id || '';
+          token.appendChild(label);
+          const x = document.createElement('button');
+          x.type = 'button';
+          x.className = 'token-remove-btn';
+          x.textContent = '✕';
+          x.title = 'Remove filter';
+          x.setAttribute('aria-label', 'Remove ' + (t.name || t.id || '') + ' filter');
+          x.addEventListener('click', ev => {
+            ev.stopPropagation();
+            const arr = plPublicFilterTags[kind] || [];
+            const idx = arr.indexOf(t);
+            if (idx >= 0) plRemoveFilterTag(kind, idx);
+          });
+          token.appendChild(x);
+          chips.insertBefore(token, input);
         });
       };
-      bindTypableFilter('plPubTeacher', 'teachers');
-      bindTypableFilter('plPubVenue', 'venues');
-      bindTypableFilter('plPubTopic', 'topics');
+      const setupPlFilter = (inputId, chipsId, dropdownId, kind) => {
+        const input = container.querySelector('#' + inputId);
+        const chips = container.querySelector('#' + chipsId);
+        const dropdown = container.querySelector('#' + dropdownId);
+        if (!input || !chips || !dropdown) return;
+        renderPlFilterTokens(kind, chipsId, inputId);
+        chips.addEventListener('click', () => { try { input.focus(); } catch (e) {} });
+        let t = null;
+        input.addEventListener('input', () => {
+          clearTimeout(t);
+          t = setTimeout(() => {
+            const v = (input.value || '').trim().toLowerCase();
+            if (v.length < 1) { dropdown.style.display = 'none'; dropdown.innerHTML = ''; return; }
+            const selected = new Set((plPublicFilterTags[kind] || []).map(x => String(x.id || x.name).toLowerCase()));
+            const cleanV = (kind === 'teachers') ? v.replace(/^(rabbi|rav|dr|mrs|rebbetzin|r)\s+/i, '').trim() : v;
+            const useClean = (kind === 'teachers') && cleanV.length > 0;
+            const opts = plTagOptions(kind).filter(o => {
+              if (selected.has(String(o.id || o.name).toLowerCase())) return false;
+              const nm = String(o.name || '').toLowerCase();
+              if (nm.indexOf(v) >= 0) return true;
+              if (!useClean) return false;
+              const cleanNm = nm.replace(/^(rabbi|rav|dr|mrs|rebbetzin|r)\s+/i, '');
+              return cleanNm.indexOf(cleanV) >= 0;
+            }).slice(0, 12);
+            if (opts.length === 0) {
+              dropdown.innerHTML = '<div style="padding:10px 12px; font-size:12.5px; color:var(--text-muted); text-align:center;">No matching filters found</div>';
+              dropdown.style.display = 'block';
+              return;
+            }
+            dropdown.innerHTML = opts.map(o => '<div class="autocomplete-item" data-id="' + escapeHtml(o.id || o.name) + '" data-name="' + escapeHtml(o.name) + '"><span>' + escapeHtml(o.name) + '</span></div>').join('');
+            dropdown.style.display = 'block';
+          }, 120);
+        });
+        dropdown.addEventListener('click', e => {
+          const it = e.target.closest ? e.target.closest('.autocomplete-item') : null;
+          if (!it) return;
+          const id = it.getAttribute('data-id');
+          const name = it.getAttribute('data-name');
+          if (id && name) {
+            input.value = '';
+            dropdown.style.display = 'none';
+            dropdown.innerHTML = '';
+            plAddFilterTag(kind, { id: id, name: name });
+          }
+        });
+        input.addEventListener('keydown', e => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            const first = dropdown.querySelector('.autocomplete-item');
+            if (first) { first.click(); return; }
+            const v = (input.value || '').trim().toLowerCase();
+            if (!v) return;
+            const m = plTagOptions(kind).find(o => String(o.name || '').toLowerCase() === v);
+            if (m) {
+              input.value = '';
+              dropdown.style.display = 'none';
+              dropdown.innerHTML = '';
+              plAddFilterTag(kind, m);
+            }
+          } else if (e.key === 'Escape') {
+            dropdown.style.display = 'none';
+            dropdown.innerHTML = '';
+          } else if (e.key === 'Backspace' && input.value === '') {
+            const arr = plPublicFilterTags[kind] || [];
+            if (arr.length > 0) plRemoveFilterTag(kind, arr.length - 1);
+          }
+        });
+        input.addEventListener('blur', () => setTimeout(() => { dropdown.style.display = 'none'; }, 150));
+      };
+      setupPlFilter('plPubTeacherInput', 'plPubTeacherChips', 'plPubTeacherDropdown', 'teachers');
+      setupPlFilter('plPubVenueInput', 'plPubVenueChips', 'plPubVenueDropdown', 'venues');
+      setupPlFilter('plPubTopicInput', 'plPubTopicChips', 'plPubTopicDropdown', 'topics');
+      if (activeId === 'plPubTeacherInput' || activeId === 'plPubVenueInput' || activeId === 'plPubTopicInput') {
+        const refocus = container.querySelector('#' + activeId);
+        if (refocus) {
+          try {
+            refocus.focus();
+            if (selStart !== null && selEnd !== null && refocus.value) refocus.setSelectionRange(selStart, selEnd);
+          } catch (e) {}
+        }
+      }
       const deb = { t: null };
       qq.addEventListener('input', () => {
         clearTimeout(deb.t);
@@ -16334,8 +16408,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         el.value = '';
       });
     };
-    // plPubTeacher/Venue/Topic are now typable datalist inputs handled by
-    // bindTypableFilter above (single-value plPublicTags).
+    // plPubTeacher/Venue/Topic are Advanced-style comboboxes handled by
+    // setupPlFilter above (multi-select into plPublicFilterTags).
     const chkTitle = container.querySelector('#plScopeTitle');
     const chkDesc = container.querySelector('#plScopeDesc');
     const chkShiurim = container.querySelector('#plScopeShiurim');
