@@ -8119,51 +8119,47 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       width: 40%;
       max-width: 430px;
       z-index: 10;
-      padding: 24px 48px 34px 24px;
+      padding: 14px 44px 18px 22px;
       background: linear-gradient(to left, rgba(0, 0, 0, 0.94) 0%, rgba(0, 0, 0, 0.86) 65%, rgba(0, 0, 0, 0.4) 90%, transparent 100%);
       color: #ffffff;
       display: flex;
       flex-direction: column;
       justify-content: center;
-      gap: 10px;
+      gap: 8px;
       pointer-events: none;
     }
     .hero-caption > * {
       pointer-events: auto;
     }
     .hero-title {
-      font-size: clamp(30px, 3.6vw, 46px);
+      font-size: clamp(20px, 2.3vw, 28px);
       font-weight: 800;
-      line-height: 1.15;
-      letter-spacing: -0.02em;
+      line-height: 1.2;
+      letter-spacing: -0.01em;
       color: #ffffff !important;
       text-shadow: 0 2px 8px rgba(0, 0, 0, 0.95);
       max-width: 100%;
       word-wrap: break-word;
     }
     .hero-desc {
-      font-size: clamp(18px, 1.6vw, 24px);
-      line-height: 1.35;
+      font-size: clamp(13px, 1.2vw, 15px);
+      line-height: 1.4;
       color: rgba(255, 255, 255, 0.95) !important;
       text-shadow: 0 1px 5px rgba(0, 0, 0, 0.9);
       max-width: 100%;
-      display: -webkit-box;
-      -webkit-line-clamp: 3;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
       word-wrap: break-word;
     }
     .hero-cta {
       display: inline-block;
       align-self: flex-start;
-      margin-top: 8px;
-      font-size: 16px;
-      font-weight: 800;
+      margin-top: 4px;
+      font-size: 13.5px;
+      font-weight: 700;
       background: var(--primary, #2b4c7e);
       color: #ffffff !important;
-      border-radius: 24px;
-      padding: 9px 22px;
-      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+      border-radius: 20px;
+      padding: 6px 18px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
       transition: transform 0.15s ease, background-color 0.15s ease;
       text-shadow: none;
     }
@@ -8274,23 +8270,22 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       .hero-caption {
         width: 54%;
         max-width: 300px;
-        padding: 14px 28px 22px 14px;
-        gap: 5px;
+        padding: 10px 24px 12px 12px;
+        gap: 4px;
       }
       .hero-title {
-        font-size: 22px;
-        line-height: 1.18;
+        font-size: 15px;
+        line-height: 1.2;
       }
       .hero-desc {
-        font-size: 14px;
-        line-height: 1.3;
-        -webkit-line-clamp: 2;
+        font-size: 11.5px;
+        line-height: 1.35;
         margin-top: 1px;
       }
       .hero-cta {
-        font-size: 13px;
-        padding: 5px 14px;
-        margin-top: 4px;
+        font-size: 11px;
+        padding: 4px 12px;
+        margin-top: 2px;
       }
       .hero-arrow {
         width: 30px;

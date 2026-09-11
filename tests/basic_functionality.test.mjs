@@ -427,10 +427,11 @@ async function testHeroSizingAndPlaylistTagAutocomplete() {
   assert.equal(res.status, 200);
   const html = await res.text();
 
-  // Hero slideshow text sizing (~2x) and rightward positioning with buffer
+  // Hero slideshow text sizing, buffer, and expanded vertical range without ellipsis
   assert.ok(html.includes('width: 40%'), 'Hero caption positioned with 40% width for rightward buffer from center');
-  assert.ok(html.includes('clamp(30px, 3.6vw, 46px)'), 'Hero title text enlarged ~2x');
-  assert.ok(html.includes('clamp(18px, 1.6vw, 24px)'), 'Hero description text enlarged ~2x');
+  assert.ok(html.includes('clamp(20px, 2.3vw, 28px)'), 'Hero title text sized to fit without truncation');
+  assert.ok(html.includes('clamp(13px, 1.2vw, 15px)'), 'Hero description text sized to fit without truncation');
+  assert.ok(html.includes('padding: 14px 44px 18px 22px'), 'Hero caption starts higher and goes lower');
 
   // Playlist tag live autocomplete dropdown
   assert.ok(html.includes('.pld-suggest-dropdown'), 'Playlist tag suggest dropdown CSS defined');
