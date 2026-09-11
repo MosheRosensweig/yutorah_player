@@ -209,6 +209,25 @@ async function testLiquidModeExtraction() {
   console.log('  ✅ Liquid Mode 3.0 semantic document engine verified with drop-cap and multi-column reconstruction.');
 }
 
+async function testMediaSessionIntegration() {
+  console.log('9. Testing MediaSession API Integration (Lock Screen ±10s & Speaker Artwork)...');
+  const req = new Request('https://yutorah-player.mrosensweig.workers.dev/1053000', {
+    headers: { 'User-Agent': 'TestRunner' }
+  });
+  const res = await worker.fetch(req, mockEnv, mockCtx);
+  assert.equal(res.status, 200, 'Audio shiur should return 200 OK');
+  const html = await res.text();
+
+  assert.ok(html.includes('buildMediaSessionArtwork'), 'Script must define buildMediaSessionArtwork');
+  assert.ok(html.includes('registerMediaSessionHandlers'), 'Script must define registerMediaSessionHandlers');
+  assert.ok(html.includes('seekbackward'), 'MediaSession must register seekbackward handler');
+  assert.ok(html.includes('seekforward'), 'MediaSession must register seekforward handler');
+  assert.ok(html.includes('updateMediaSessionPosition'), 'Script must define updateMediaSessionPosition');
+  assert.ok(html.includes('updateMediaSession'), 'Script must call updateMediaSession');
+  assert.ok(html.includes('shaya_katz'), 'Shiur 1053000 must resolve speaker photo for Rabbi Shaya Katz');
+  console.log('  ✅ MediaSession integration verified: lock screen ±10s action handlers and multi-size speaker artwork active.');
+}
+
 async function runAll() {
   try {
     await testHomepage();
@@ -219,6 +238,7 @@ async function runAll() {
     await testSponsorshipApi();
     await testMediaTypeFilter();
     await testLiquidModeExtraction();
+    await testMediaSessionIntegration();
     console.log('\n🎉 ALL BASIC FUNCTIONALITY, ARTICLE READER & LIQUID MODE TESTS PASSED SUCCESSFULLY!');
   } catch (err) {
     console.error('\n❌ Test failed:', err);

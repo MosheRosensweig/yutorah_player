@@ -408,9 +408,106 @@ async function pullUserState(db, userId) {
 }
 
 async function handleSyncRoutes(request, env, url) {
-  if (url.pathname !== '/api/sync') return null;
+  // Profile + public-playlist routes live in this handler (after the guard).
+  if (url.pathname !== '/api/sync' && url.pathname !== '/api/profile' &&
+      !url.pathname.startsWith('/api/playlists/')) return null;
   const noDb = requireEnvJson(env);
   if (noDb) return noDb;
+  // ---- Public playlists: publish / browse / save ----
+  // Publishing snapshots items and stores the owner's DISPLAY NAME only.
+  if (url.pathname === '/api/playlists/public') {
+    if (request.method === 'GET') {
+      if (!env || !env.yutorah_db) {
+        return new Response(JSON.stringify({ playlists: [], total: 0 }), {
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+        });
+      }
+      const q = (url.searchParams.get('q') || '').trim().toLowerCase();
+      const fTeacher = (url.searchParams.get('teacher') || '').trim().toLowerCase();
+      const fVenue = (url.searchParams.get('venue') || '').trim().toLowerCase();
+      const fTopic = (url.searchParams.get('topic') || '').trim().toLowerCase();
+      const sort = (url.searchParams.get('sort') || 'recent').toLowerCase();
+      const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') || '30', 10) || 30, 1), 100);
+      const offset = Math.max(parseInt(url.searchParams.get('offset') || '0', 10) || 0, 0);
+      const orderBy = sort === 'saves' ? 'saves DESC, updated_at DESC' : 'updated_at DESC';
+      let rows;
+      try {
+        // No SQL offset: tag/text filters run in JS, so paginate AFTER
+        // filtering (total = full match count, slice = one true window).
+        rows = await env.yutorah_db.prepare(
+          'SELECT p.id, p.owner_name AS ownerName, p.title, p.description, p.tags_json AS tagsJson, ' +
+          'p.saves, p.created_at AS createdAt, p.updated_at AS updatedAt, ' +
+          '(SELECT COUNT(*) FROM public_playlist_items i WHERE i.playlist_id = p.id) AS itemCount ' +
+          'FROM public_playlists p WHERE p.is_public = 1 ORDER BY ' + orderBy + ' LIMIT 1000')
+          .bind().all();
+      } catch (e) {
+        rows = { results: [] };
+      }
+      const matchTags = (tagsJson) => {
+        let tags = null;
+        try { tags = JSON.parse(tagsJson || '[]'); } catch (e) { tags = null; }
+        const t = (tags && typeof tags === 'object' ? tags : {});
+        const teachers = ((t.teachers || []).map(x => String(x.name || x).toLowerCase()));
+        const venues = ((t.venues || []).map(x => String(x.name || x).toLowerCase()));
+        const topics = ((t.topics || []).map(x => String(x.name || x).toLowerCase()));
+        if (fTeacher && !teachers.some(n => n.includes(fTeacher))) return null;
+        if (fVenue && !venues.some(n => n.includes(fVenue))) return null;
+        if (fTopic && !topics.some(n => n.includes(fTopic))) return null;
+        return { teachers: t.teachers || [], venues: t.venues || [], topics: t.topics || [] };
+      };
+      let list = [];
+      for (const r of (rows.results || [])) {
+        const tags = matchTags(r.tagsJson);
+        if (!tags) continue;
+        const hay = (String(r.title || '') + ' ' + String(r.description || '') + ' ' + String(r.ownerName || '')).toLowerCase();
+        if (q && !q.split(/\s+/).every(w => hay.includes(w))) continue;
+        list.push({
+          id: r.id, ownerName: r.ownerName, title: r.title, description: r.description,
+          tags, saves: r.saves || 0, itemCount: r.itemCount || 0,
+          createdAt: r.createdAt, updatedAt: r.updatedAt
+        });
+      }
+      if (sort === 'saves') list.sort((a, b) => (b.saves - a.saves) || (b.updatedAt - a.updatedAt));
+      return new Response(JSON.stringify({ playlists: list.slice(offset, offset + limit), total: list.length }), {
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'public, max-age=60' }
+      });
+    }
+    return new Response(JSON.stringify({ error: 'method not allowed' }), {
+      status: 405, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+    });
+  }
+
+  if (url.pathname === '/api/playlists/items') {
+    if (!env || !env.yutorah_db) {
+      return new Response(JSON.stringify({ items: [] }), {
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+      });
+    }
+    const pid = url.searchParams.get('id') || '';
+    let items = [];
+    try {
+      const r = await env.yutorah_db.prepare(
+        'SELECT p.is_public AS isPublic, p.owner_id AS ownerId FROM public_playlists p WHERE p.id = ?')
+        .bind(pid).first();
+      if (r && (r.isPublic || (await getSessionUser(request, env) || {}).id === r.ownerId)) {
+        const rr = await env.yutorah_db.prepare(
+          'SELECT shiur_id AS id, title, speaker, photo, duration, kind, items_json AS itemsJson FROM public_playlist_items WHERE playlist_id = ? ORDER BY position')
+          .bind(pid).all();
+        items = (rr.results || []).map(it => {
+          if (it.kind === 'series') {
+            let kids = [];
+            try { kids = JSON.parse(it.itemsJson || '[]'); } catch (e) { kids = []; }
+            return { kind: 'series', seriesTitle: it.title, items: Array.isArray(kids) ? kids : [] };
+          }
+          return it;
+        });
+      }
+    } catch (e) {}
+    return new Response(JSON.stringify({ items }), {
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+    });
+  }
+
   const user = await getSessionUser(request, env);
   if (!user) {
     return new Response(JSON.stringify({ error: 'unauthorized' }), {
@@ -432,6 +529,223 @@ async function handleSyncRoutes(request, env, url) {
         'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*',
         'Cache-Control': 'no-store', 'Set-Cookie': refreshCookie
       }
+    });
+  }
+
+  // ---- GET|POST /api/profile: display name (shown on playlists, never email) ----
+  if (url.pathname === '/api/profile') {
+    const puser = await getSessionUser(request, env);
+    if (!puser) {
+      return new Response(JSON.stringify({ error: 'unauthorized' }), {
+        status: 401, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+      });
+    }
+    if (request.method === 'GET') {
+      return new Response(JSON.stringify({ user: puser }), {
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+      });
+    }
+    if (request.method === 'POST') {
+      let pbody = {};
+      try { pbody = await request.json(); } catch (e) { pbody = {}; }
+      const nm = String((pbody && pbody.name) || '').trim().slice(0, 40);
+      if (!nm) {
+        return new Response(JSON.stringify({ error: 'name required' }), {
+          status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+        });
+      }
+      const noDb = requireEnvJson(env);
+      if (noDb) return noDb;
+      await env.yutorah_db.prepare('UPDATE users SET name = ? WHERE id = ?').bind(nm, puser.id).run();
+      try {
+        const fresh = await env.yutorah_db.prepare('SELECT id, email, name, picture FROM users WHERE id = ?')
+          .bind(puser.id).first();
+        if (fresh) puser.name = fresh.name;
+      } catch (e) {}
+      return new Response(JSON.stringify({ user: puser }), {
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+      });
+    }
+    return new Response(JSON.stringify({ error: 'method not allowed' }), {
+      status: 405, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+    });
+  }
+
+  if (url.pathname === '/api/playlists/publish' || url.pathname === '/api/playlists/unpublish' ||
+      url.pathname === '/api/playlists/save' || url.pathname === '/api/playlists/unsave' ||
+      url.pathname === '/api/playlists/mine') {
+    const noDb = requireEnvJson(env);
+    if (noDb) return noDb;
+    const puser = await getSessionUser(request, env);
+    if (!puser) {
+      return new Response(JSON.stringify({ error: 'unauthorized' }), {
+        status: 401, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+      });
+    }
+    const db = env.yutorah_db;
+    const now = Date.now();
+
+    // GET /api/playlists/mine: my published lists (public + private).
+    if (url.pathname === '/api/playlists/mine' && request.method === 'GET') {
+      const r = await db.prepare(
+        'SELECT p.id, p.title, p.description, p.tags_json AS tagsJson, p.is_public AS isPublic, ' +
+        'p.saves, p.updated_at AS updatedAt, ' +
+        '(SELECT COUNT(*) FROM public_playlist_items i WHERE i.playlist_id = p.id) AS itemCount ' +
+        'FROM public_playlists p WHERE p.owner_id = ? ORDER BY p.updated_at DESC LIMIT 100')
+        .bind(puser.id).all();
+      return new Response(JSON.stringify({ playlists: r.results || [] }), {
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+      });
+    }
+
+    let pbody = {};
+    try { pbody = await request.json(); } catch (e) { pbody = {}; }
+
+    // POST /api/playlists/publish { playlist, title?, description?, tags?, public?, publicId? }
+    // playlist: { name, items: [...] } snapshot from the client library.
+    // Idempotent when publicId (owner-checked) is supplied: replaces items.
+    // shiur_ids are charset-validated (XSS-safe hrefs downstream).
+    const validShiurId = sid => /^[A-Za-z0-9_-]{1,32}$/.test(String(sid || ''));
+    if (url.pathname === '/api/playlists/publish' && request.method === 'POST') {
+      const pl = (pbody && pbody.playlist) || {};
+      const rawItems = Array.isArray(pl.items) ? pl.items.filter(x => x && x.id) : [];
+      if (rawItems.length === 0) {
+        return new Response(JSON.stringify({ error: 'empty playlist' }), {
+          status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+        });
+      }
+      if (rawItems.length > 500) {
+        return new Response(JSON.stringify({ error: 'too many items (max 500)' }), {
+          status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+        });
+      }
+      const cleanTags = { teachers: [], venues: [], topics: [] };
+      const tg = (pbody && pbody.tags) || {};
+      let tagTotal = 0;
+      for (const k of ['teachers', 'venues', 'topics']) {
+        if (Array.isArray(tg[k])) {
+          for (const t of tg[k]) {
+            if (tagTotal >= 20) break;
+            const nm = String((t && t.name) || '').slice(0, 80);
+            if (!nm) continue;
+            cleanTags[k].push({ id: String((t && t.id) || ''), name: nm });
+            tagTotal++;
+          }
+        }
+      }
+      const title = String(pbody.title || pl.name || 'Untitled').slice(0, 60);
+      const description = String(pbody.description || '').slice(0, 500);
+      const isPublic = pbody.public !== false;
+      let pid = String((pbody && pbody.publicId) || '');
+      if (pid) {
+        const owned = await db.prepare('SELECT owner_id FROM public_playlists WHERE id = ?').bind(pid).first();
+        if (!owned || owned.owner_id !== puser.id) {
+          return new Response(JSON.stringify({ error: 'not found' }), {
+            status: 404, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+          });
+        }
+        await db.prepare(
+          'UPDATE public_playlists SET title = ?, description = ?, tags_json = ?, is_public = ?, updated_at = ? WHERE id = ?')
+          .bind(title, description, JSON.stringify(cleanTags), isPublic ? 1 : 0, now, pid).run();
+        await db.prepare('DELETE FROM public_playlist_items WHERE playlist_id = ?').bind(pid).run();
+      } else {
+        pid = randomToken(12);
+        await db.prepare(
+          'INSERT INTO public_playlists (id, owner_id, owner_name, title, description, tags_json, is_public, saves, created_at, updated_at) ' +
+          'VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)')
+          .bind(pid, puser.id, String(puser.name || '').slice(0, 40),
+            title, description, JSON.stringify(cleanTags), isPublic ? 1 : 0, now, now).run();
+      }
+      const batch = [];
+      let pos = 0;
+      for (const it of rawItems) {
+        if (!validShiurId(it.id)) continue;
+        const isSeries = it.kind === 'series' && Array.isArray(it.items) && it.items.length > 0;
+        if (isSeries) {
+          batch.push(db.prepare(
+            'INSERT INTO public_playlist_items (playlist_id, shiur_id, position, title, speaker, photo, duration, kind, items_json) ' +
+            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            .bind(pid, 'series:' + pid + ':' + pos, pos++,
+              String(it.seriesTitle || it.title || 'Series').slice(0, 200),
+              String(it.speaker || '').slice(0, 120), '', '',
+              'series', JSON.stringify(it.items.filter(s => s && validShiurId(s.id)).slice(0, 200).map(s => ({
+                id: String(s.id), title: String(s.title || 'Untitled').slice(0, 200),
+                speaker: String(s.speaker || 'YUTorah').slice(0, 120),
+                photo: String(s.photo || '').slice(0, 300), duration: String(s.duration || '').slice(0, 40)
+              })))));
+        } else {
+          batch.push(db.prepare(
+            'INSERT INTO public_playlist_items (playlist_id, shiur_id, position, title, speaker, photo, duration, kind, items_json) ' +
+            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            .bind(pid, String(it.id), pos++,
+              String(it.title || 'Untitled').slice(0, 200), String(it.speaker || 'YUTorah').slice(0, 120),
+              String(it.photo || '').slice(0, 300), String(it.duration || '').slice(0, 40),
+              'shiur', '[]'));
+        }
+      }
+      await db.batch(batch);
+      return new Response(JSON.stringify({ id: pid }), {
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+      });
+    }
+
+    // POST /api/playlists/unpublish { id } (owner only; also drops saves).
+    if (url.pathname === '/api/playlists/unpublish' && request.method === 'POST') {
+      const pid = String((pbody && pbody.id) || '');
+      const row = await db.prepare('SELECT owner_id FROM public_playlists WHERE id = ?').bind(pid).first();
+      if (!row || row.owner_id !== puser.id) {
+        return new Response(JSON.stringify({ error: 'not found' }), {
+          status: 404, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+        });
+      }
+      await db.prepare('DELETE FROM playlist_saves WHERE playlist_id = ?').bind(pid).run();
+      await db.prepare('DELETE FROM public_playlist_items WHERE playlist_id = ?').bind(pid).run();
+      await db.prepare('DELETE FROM public_playlists WHERE id = ?').bind(pid).run();
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+      });
+    }
+
+    // POST /api/playlists/save { id } → returns snapshot for local import;
+    // POST /api/playlists/unsave { id } removes the save mark.
+    if ((url.pathname === '/api/playlists/save' || url.pathname === '/api/playlists/unsave') && request.method === 'POST') {
+      const pid = String((pbody && pbody.id) || '');
+      const row = await db.prepare(
+        'SELECT id, title, description FROM public_playlists WHERE id = ? AND is_public = 1').bind(pid).first();
+      if (!row) {
+        return new Response(JSON.stringify({ error: 'not found' }), {
+          status: 404, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+        });
+      }
+      if (url.pathname === '/api/playlists/save') {
+        await db.prepare('INSERT INTO playlist_saves (user_id, playlist_id, created_at) VALUES (?, ?, ?) ' +
+          'ON CONFLICT(user_id, playlist_id) DO NOTHING').bind(puser.id, pid, now).run();
+        await db.prepare('UPDATE public_playlists SET saves = (SELECT COUNT(*) FROM playlist_saves WHERE playlist_id = ?) WHERE id = ?')
+          .bind(pid, pid).run();
+        const items = await db.prepare(
+          'SELECT shiur_id AS id, title, speaker, photo, duration, kind, items_json AS itemsJson FROM public_playlist_items WHERE playlist_id = ? ORDER BY position')
+          .bind(pid).all();
+        for (const it of (items.results || [])) {
+          if (it.kind === 'series') {
+            try { it.items = JSON.parse(it.itemsJson || '[]'); } catch (e) { it.items = []; }
+            it.seriesTitle = it.title || 'Series';
+            delete it.itemsJson;
+          }
+        }
+        return new Response(JSON.stringify({
+          playlist: { name: row.title, description: row.description, items: items.results || [] }
+        }), { headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } });
+      }
+      await db.prepare('DELETE FROM playlist_saves WHERE user_id = ? AND playlist_id = ?').bind(puser.id, pid).run();
+      await db.prepare('UPDATE public_playlists SET saves = (SELECT COUNT(*) FROM playlist_saves WHERE playlist_id = ?) WHERE id = ?')
+        .bind(pid, pid).run();
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+      });
+    }
+
+    return new Response(JSON.stringify({ error: 'method not allowed' }), {
+      status: 405, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
     });
   }
 
@@ -1289,8 +1603,13 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    // Auth + cloud sync (Google OAuth, /api/me, /api/sync).
-    if (url.pathname === '/api/me' || url.pathname === '/api/sync' ||
+    // Auth + cloud sync (Google OAuth, /api/me, /api/profile, /api/sync,
+    // public playlists).
+    if (url.pathname === '/api/me' || url.pathname === '/api/sync' || url.pathname === '/api/profile' ||
+        url.pathname === '/api/playlists/public' || url.pathname === '/api/playlists/items' ||
+        url.pathname === '/api/playlists/publish' || url.pathname === '/api/playlists/unpublish' ||
+        url.pathname === '/api/playlists/save' || url.pathname === '/api/playlists/unsave' ||
+        url.pathname === '/api/playlists/mine' ||
         url.pathname === '/auth/google' || url.pathname === '/auth/callback' ||
         url.pathname === '/auth/logout') {
       const handled = await handleAuthRoutes(request, env, url) ||
@@ -1833,18 +2152,16 @@ function normalizeShiur(s) {
   const id = s.shiurID || s.shiurid || s.id;
   const title = s.shiurTitle || s.shiurtitle || s.title || 'Untitled Shiur';
 
-  let speaker = '';
+  let speaker = s.teacherfullname || (s.shiurTeachers && s.shiurTeachers[0] ? (s.shiurTeachers[0].teacherName || s.shiurTeachers[0].teacherFullName || '') : (s.speaker || ''));
   let photo = '';
-  if (s.teacherfullname) {
-    speaker = s.teacherfullname;
-  } else if (s.shiurTeachers && s.shiurTeachers[0]) {
-    speaker = s.shiurTeachers[0].teacherName || s.shiurTeachers[0].teacherFullName || '';
-    photo = s.shiurTeachers[0].teacherPhotoURL || s.shiurTeachers[0].teacherPhotoURL_lp || '';
-  } else if (s.speaker) {
-    speaker = s.speaker;
-    photo = s.speakerPhoto || s.photo || '';
+  if (s.shiurTeachers && s.shiurTeachers[0]) {
+    photo = s.shiurTeachers[0].teacherPhotoURL_lp || s.shiurTeachers[0].teacherPhotoURL_o || s.shiurTeachers[0].teacherPhotoURL || '';
   }
-
+  if (!photo && s.speakerPhoto) photo = s.speakerPhoto;
+  if (!photo && s.photo) photo = s.photo;
+  if (!photo && s.teacherPhotoURL_lp) photo = s.teacherPhotoURL_lp;
+  if (!photo && s.teacherPhotoURL_o) photo = s.teacherPhotoURL_o;
+  if (!photo && s.teacherPhotoURL) photo = s.teacherPhotoURL;
   if (!photo && s.PHOTO) {
     photo = s.PHOTO.startsWith('http') ? s.PHOTO : `https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/${s.PHOTO}`;
   }
@@ -1929,7 +2246,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   if (shiurData) {
     title = shiurData.shiurTitle || 'Untitled Shiur';
     speaker = shiurData.shiurTeacherFullName || (shiurData.shiurTeachers && shiurData.shiurTeachers[0] ? shiurData.shiurTeachers[0].teacherFullName : 'YUTorah');
-    photo = shiurData.teacherPhotoURL_lp || shiurData.teacherPhotoURL || (shiurData.shiurTeachers && shiurData.shiurTeachers[0] ? shiurData.shiurTeachers[0].teacherPhotoURL : '');
+    let teacherPhoto = '';
+    if (Array.isArray(shiurData.shiurTeachers) && shiurData.shiurTeachers.length > 0) {
+      const t = shiurData.shiurTeachers[0];
+      teacherPhoto = t.teacherPhotoURL_lp || t.teacherPhotoURL_o || t.teacherPhotoURL || '';
+    }
+    if (!teacherPhoto) {
+      teacherPhoto = shiurData.teacherPhotoURL_lp || shiurData.teacherPhotoURL_o || shiurData.teacherPhotoURL || '';
+    }
+    if (!teacherPhoto && shiurData.PHOTO) {
+      teacherPhoto = shiurData.PHOTO.startsWith('http') ? shiurData.PHOTO : `https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/${shiurData.PHOTO}`;
+    }
+    photo = teacherPhoto || 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/_default.jpg';
     duration = shiurData.shiurDuration || '';
     const rawDate = shiurData.shiurDateFormatted || shiurData.shiurDate || '';
     shiurDate = formatShiurDate(rawDate);
@@ -2225,7 +2553,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       --shadow-hover: 0 8px 24px rgba(0, 0, 0, 0.5);
     }
     [data-theme="dark"] input,
-    [data-theme="dark"] select {
+    [data-theme="dark"] select,
+    [data-theme="dark"] textarea {
       background: #131c2a;
       color: #e7edf7;
       border-color: #28364d;
@@ -2234,7 +2563,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       color-scheme: dark;
     }
     [data-theme="dark"] input:focus,
-    [data-theme="dark"] select:focus {
+    [data-theme="dark"] select:focus,
+    [data-theme="dark"] textarea:focus {
       background: #1a2638;
       color: #ffffff;
       border-color: #436ea8;
@@ -5988,6 +6318,33 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       color: #fff;
       font-size: 14px;
       font-weight: 800;
+      position: relative;
+    }
+    .auth-avatar .auth-gear {
+      font-size: 24px;
+      line-height: 1;
+      filter: grayscale(0.2);
+    }
+    .auth-avatar .auth-letter {
+      position: absolute;
+      font-size: 11px;
+      font-weight: 800;
+      color: #fff;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+      line-height: 1;
+    }
+    .auth-avatar.gear-ring {
+      background: transparent;
+      border: 2px solid #fff;
+    }
+    .auth-avatar.badge-letter {
+      border-radius: 8px;
+      background: #d97706;
+    }
+    .auth-avatar.minimal-letter {
+      background: transparent;
+      color: #fff;
+      font-size: 15px;
     }
     /* Desktop text selection: content selectable, chrome is not. */
     .quick-card-title,
@@ -6136,7 +6493,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     body:not(.dev-mode-active) .dev-only {
       display: none !important;
     }
-    .dev-playlist-tab {
+    /* Account features (playlists, queue, progress): visible in dev mode
+    OR when logged in. Hidden otherwise, even with JS guards bypassed. */
+    body:not(.dev-mode-active):not(.acct-on) .acct-only {
+      display: none !important;
+    }
+    body.dev-mode-active .dev-playlist-tab {
       border-style: dashed;
     }
     .playlist-pills {
@@ -7699,7 +8061,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       </div>
       <div class="tab-bar">
         <button class="tab-btn active" id="tab-editors" onclick="switchCollection('editors')">⭐ Editor's Picks</button>
-        <button class="tab-btn dev-playlist-tab dev-only" id="tab-playlists" aria-hidden="true" onclick="switchCollection('playlists')">🎧 Dev's Playlists</button>
+        <button class="tab-btn dev-playlist-tab" id="tab-playlists" onclick="switchCollection('playlists')">🎧 My Playlists</button>
         <button class="tab-btn" id="tab-series" onclick="switchCollection('series')">📚 Featured Series</button>
         <button class="tab-btn" id="tab-recent" onclick="switchCollection('recent')">⏱️ Recently Uploaded</button>
         <button class="tab-btn" id="tab-popular" onclick="switchCollection('popular')">🔥 Most Popular</button>
@@ -7813,13 +8175,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         </svg>
       </button>
       <button type="button" class="mini-btn expand-btn" onclick="expandPlayer(); event.stopPropagation();" title="Expand Full Player">⤢</button>
-      <button type="button" class="mini-btn queue-btn dev-only" onclick="toggleQueuePopup(); event.stopPropagation();" title="Play Queue (Dev)">☰</button>
+      <button type="button" class="mini-btn queue-btn acct-only" onclick="toggleQueuePopup(); event.stopPropagation();" title="Play Queue (Dev)">☰</button>
       <button type="button" class="mini-btn close-btn" onclick="closeMiniPlayer(); event.stopPropagation();" title="Stop & Close">✕</button>
     </div>
   </div>
 </div>
 
-<div id="queuePopup" class="queue-popup dev-only" style="display: none;" role="dialog" aria-label="Play Queue">
+<div id="queuePopup" class="queue-popup acct-only" style="display: none;" role="dialog" aria-label="Play Queue">
   <div class="queue-popup-header">
     <span>📋 Up Next</span>
     <span id="queueCount" class="queue-count"></span>
@@ -8283,13 +8645,28 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (plGrid) plGrid.removeAttribute('aria-hidden');
     } catch (e) {}
 
-    // ROADMAP §8.4: player-header quick actions — Later, Fav, Add to Playlist.
+    // ROADMAP §8.4: player-header quick actions — Later, Fav, Queue, Playlist.
+    try { if (typeof ensurePlayerActions === 'function') ensurePlayerActions(); } catch (e) {}
+
+    // Retrofit every card already on the page (server-rendered collections,
+    // SSR search grid): progress + buttons are fundamental in dev mode.
+    try { devUpgradeCards(); } catch (e) {}
+
+    try { if (typeof renderAccountMode === 'function') renderAccountMode(); } catch (e) {}
+
+    return true;
+  }
+
+  // Player-header quick actions, built once for account holders (dev or
+  // logged in) so card-driven playback can save/fav/queue from the player.
+  function ensurePlayerActions() {
+    if (!playlistsEnabled()) return;
     try {
       const details = document.querySelector('.shiur-details');
       if (details && !document.getElementById('devPlayerActions')) {
         const wrap = document.createElement('div');
         wrap.id = 'devPlayerActions';
-        wrap.className = 'card-mini-actions dev-only';
+        wrap.className = 'card-mini-actions acct-only';
         wrap.style.marginTop = '8px';
         const mkBtn = (bid, labelHtml, fn) => {
           const b = document.createElement('button');
@@ -8315,7 +8692,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         const pq = document.createElement('button');
         pq.type = 'button';
         pq.id = 'devPlayerQueueBtn';
-        pq.className = 'queue-circle-btn dev-only';
+        pq.className = 'queue-circle-btn acct-only';
         pq.title = 'Add to play queue';
         pq.setAttribute('aria-label', 'Add to play queue');
         pq.innerHTML = devQueueIconSvg();
@@ -8326,7 +8703,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         const pl = document.createElement('button');
         pl.type = 'button';
         pl.id = 'devPlayerAddBtn';
-        pl.className = 'card-mini-btn dev-only';
+        pl.className = 'card-mini-btn acct-only';
         pl.textContent = '➕ Playlist';
         pl.addEventListener('click', () => {
           if (currentShiurId) openPlaylistModal(String(currentShiurId));
@@ -8336,12 +8713,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         devRefreshCardButtons();
       }
     } catch (e) {}
-
-    // Retrofit every card already on the page (server-rendered collections,
-    // SSR search grid): progress + buttons are fundamental in dev mode.
-    try { devUpgradeCards(); } catch (e) {}
-
-    return true;
   }
 
   // Typing "exit dev mode" (case-insensitive) leaves Dev Mode: hide all dev
@@ -8381,6 +8752,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       }
       renderCurrentSearchResults();
     } catch (e) {}
+    try { if (typeof renderAccountMode === 'function') renderAccountMode(); } catch (e) {}
     return true;
   }
 
@@ -8512,6 +8884,102 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     };
   }
 
+  // MediaSession API helpers (Mobile Lock Screen & Notification Center)
+  function buildMediaSessionArtwork(photoUrl) {
+    const fallbackIcon = 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/_default.jpg';
+    let url = photoUrl;
+    if (!url || typeof url !== 'string' || url.trim() === '') {
+      url = fallbackIcon;
+    } else if (url.startsWith('//')) {
+      url = 'https:' + url;
+    } else if (url.startsWith('/')) {
+      url = 'https://cdnyutorah.cachefly.net' + url;
+    }
+    return [
+      { src: url, sizes: '96x96', type: 'image/jpeg' },
+      { src: url, sizes: '128x128', type: 'image/jpeg' },
+      { src: url, sizes: '192x192', type: 'image/jpeg' },
+      { src: url, sizes: '256x256', type: 'image/jpeg' },
+      { src: url, sizes: '384x384', type: 'image/jpeg' },
+      { src: url, sizes: '512x512', type: 'image/jpeg' }
+    ];
+  }
+
+  function registerMediaSessionHandlers() {
+    if (!('mediaSession' in navigator)) return;
+    const handlers = [
+      ['play', () => { audio.play(); }],
+      ['pause', () => { audio.pause(); }],
+      ['seekbackward', (details) => { skip(-(details && details.seekOffset ? details.seekOffset : 10)); }],
+      ['seekforward', (details) => { skip(details && details.seekOffset ? details.seekOffset : 10); }],
+      ['previoustrack', () => { skip(-10); }],
+      ['nexttrack', () => {
+        if (typeof devPlayNextFromQueue === 'function' && devPlayNextFromQueue()) return;
+        skip(10);
+      }],
+      ['seekto', (details) => {
+        if (details && details.seekTime !== undefined && audio && audio.duration) {
+          audio.currentTime = details.seekTime;
+          updateUrlTimestamp(true);
+        }
+      }],
+      ['stop', () => {
+        audio.pause();
+        audio.currentTime = 0;
+      }]
+    ];
+
+    for (const [action, handler] of handlers) {
+      try {
+        navigator.mediaSession.setActionHandler(action, handler);
+      } catch (e) {}
+    }
+  }
+
+  function cleanMediaText(s) {
+    if (!s || typeof s !== 'string') return '';
+    return s
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&apos;/g, "'")
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function updateMediaSession(title, speaker, photoUrl) {
+    if (!('mediaSession' in navigator)) return;
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: cleanMediaText(title) || 'YUTorah Shiur',
+        artist: cleanMediaText(speaker) || 'YUTorah',
+        album: 'YUTorah Online',
+        artwork: buildMediaSessionArtwork(photoUrl)
+      });
+      registerMediaSessionHandlers();
+      updateMediaSessionPosition();
+    } catch (e) {
+      console.warn('Error updating MediaSession metadata:', e);
+    }
+  }
+
+  function updateMediaSessionPosition() {
+    if (!('mediaSession' in navigator) || !('setPositionState' in navigator.mediaSession)) return;
+    try {
+      if (audio && audio.duration && !isNaN(audio.duration) && isFinite(audio.duration) && audio.duration > 0) {
+        navigator.mediaSession.setPositionState({
+          duration: audio.duration,
+          playbackRate: audio.playbackRate || 1,
+          position: Math.min(Math.max(0, audio.currentTime || 0), audio.duration)
+        });
+      }
+    } catch (e) {}
+  }
+
   function playSponsorPreRoll(shiurObj) {
     if (isPreRollDisabled() || !currentSponsorAudio) {
       startShiurPlayback(shiurObj);
@@ -8586,12 +9054,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (miniTime) miniTime.textContent = '0:00 / 0:10';
 
     if ('mediaSession' in navigator) {
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: shiurObj.title + " (Sponsorship)",
-        artist: (shiurObj.speaker ? shiurObj.speaker + " · " : "") + "Today's Dedication",
-        album: 'YUTorah Online',
-        artwork: shiurObj.photo ? [{ src: shiurObj.photo, sizes: '200x200', type: 'image/jpeg' }] : []
-      });
+      updateMediaSession(
+        shiurObj.title + " (Sponsorship)",
+        (shiurObj.speaker ? shiurObj.speaker + " · " : "") + "Today's Dedication",
+        shiurObj.photo
+      );
     }
 
     hasAudio = true;
@@ -8679,12 +9146,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (miniTime) miniTime.textContent = '0:00 / ' + (shiurObj.duration || '0:00');
 
     if ('mediaSession' in navigator) {
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: shiurObj.title,
-        artist: shiurObj.speaker,
-        album: 'YUTorah Online',
-        artwork: shiurObj.photo ? [{ src: shiurObj.photo, sizes: '300x300', type: 'image/jpeg' }] : []
-      });
+      updateMediaSession(shiurObj.title, shiurObj.speaker, shiurObj.photo);
     }
 
     hasAudio = true;
@@ -11409,6 +11871,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       closeAuthMenu();
       const qp = document.getElementById('queuePopup');
       if (qp) qp.style.display = 'none';
+      const npm = document.getElementById('newPlaylistModal');
+      if (npm) npm.remove();
+      const pld = document.getElementById('playlistDetailsModal');
+      if (pld) pld.remove();
+      const dnm = document.getElementById('displayNameModal');
+      if (dnm) dnm.remove();
     }
   });
 
@@ -11787,7 +12255,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
       const title = data.shiurTitle || 'Untitled Shiur';
       const speaker = data.shiurTeacherFullName || (data.shiurTeachers && data.shiurTeachers[0] ? data.shiurTeachers[0].teacherFullName : 'YUTorah');
-      const photo = data.teacherPhotoURL_lp || data.teacherPhotoURL || (data.shiurTeachers && data.shiurTeachers[0] ? data.shiurTeachers[0].teacherPhotoURL : '');
+      let teacherPhoto = '';
+      if (Array.isArray(data.shiurTeachers) && data.shiurTeachers.length > 0) {
+        const t = data.shiurTeachers[0];
+        teacherPhoto = t.teacherPhotoURL_lp || t.teacherPhotoURL_o || t.teacherPhotoURL || '';
+      }
+      if (!teacherPhoto) {
+        teacherPhoto = data.teacherPhotoURL_lp || data.teacherPhotoURL_o || data.teacherPhotoURL || '';
+      }
+      if (!teacherPhoto && data.PHOTO) {
+        teacherPhoto = data.PHOTO.startsWith('http') ? data.PHOTO : ('https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/' + data.PHOTO);
+      }
+      const photo = teacherPhoto || 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/_default.jpg';
       const duration = data.shiurDuration || '';
       const rawDate = data.shiurDateFormatted || data.shiurDate || '';
       const date = formatShiurDate(rawDate);
@@ -12380,7 +12859,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   function devUpgradeCards(root) {
-    if (!isDevMode) return;
+    if (!playlistsEnabled()) return;
     const scope = root || document;
     if (!scope.querySelectorAll) return;
     scope.querySelectorAll('a.quick-card-link[data-id], a.series-sub-card[data-id]').forEach(link => {
@@ -12484,13 +12963,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   function devProgressHtml(id) {
-    if (!isDevMode) return '';
+    if (!playlistsEnabled()) return '';
     const rec = getProgressRecord(id);
     if (!rec || !rec.durationSec) return '';
     const pct = Math.min(100, Math.round((rec.progressSec / rec.durationSec) * 100));
     const cur = Math.floor(rec.progressSec / 60);
     const tot = Math.floor(rec.durationSec / 60);
-    return '<div class="dev-only dev-progress-wrap"><div class="card-progress-track"><div class="card-progress-fill" style="width: ' + pct + '%;"></div></div>' +
+    return '<div class="acct-only dev-progress-wrap"><div class="card-progress-track"><div class="card-progress-fill" style="width: ' + pct + '%;"></div></div>' +
       '<div class="card-listen-meta">🕒 Last listened: ' + escapeHtml(devRelativeTime(rec.lastListened)) +
       ' · ' + cur + '/' + tot + ' min through (' + pct + '%)</div></div>';
   }
@@ -12557,13 +13036,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   function devCardActionsHtml(id, isCover) {
-    if (!isDevMode) return '';
+    if (!playlistsEnabled()) return '';
     const inSave = devInPlaylist('save_for_later', id);
     const inFav = devInPlaylist('favorites', id);
     const inQ = isCover ? devSeriesQueued(id) : devInQueue(id);
     const qLabel = isCover ? 'Queue series' : 'Add to play queue';
     const qCall = isCover ? 'devQueueToggle(\\\'' + id + '\\\', true, this)' : 'devQueueToggle(\\\'' + id + '\\\', false, this)';
-    return '<div class="card-mini-actions dev-only">' +
+    return '<div class="card-mini-actions acct-only">' +
       '<span role="button" tabindex="0" class="card-mini-btn icon-btn' + (inSave ? ' active-save' : '') + '" data-dev-save="' + id + '"' +
       ' title="Save for later" aria-label="Save for later"' +
       ' onclick="event.stopPropagation(); event.preventDefault(); toggleDevSave(\\\'' + id + '\\\')">' + getSaveIcon() + '</span>' +
@@ -12664,9 +13143,202 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     return id;
   }
 
+  function devSelectPlaylist(pid) {
+    activeDevPlaylistId = pid;
+    renderPlaylistsGrid();
+  }
+  window.devSelectPlaylist = devSelectPlaylist;
+
+  // Account features (playlists, queue, progress) are on in dev mode OR
+  // when logged in. Logged-out visitors get a login prompt instead.
+  function playlistsEnabled() {
+    try {
+      return Boolean(isDevMode) || Boolean(cloudUser);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function accountDisplayName() {
+    try {
+      const custom = localStorage.getItem('yutorah_display_name');
+      if (custom && custom.trim()) return custom.trim().slice(0, 40);
+    } catch (e) {}
+    if (typeof cloudUser !== 'undefined' && cloudUser && cloudUser.name) {
+      return String(cloudUser.name).split(' ')[0].slice(0, 40);
+    }
+    return '';
+  }
+
+  function renderAccountMode() {
+    const on = playlistsEnabled();
+    try { document.body.classList.toggle('acct-on', on); } catch (e) {}
+    try {
+      // Playlists tab is always visible (logged-out visitors get the login
+      // prompt + public browser); only the interactive extras need acct-on.
+      const tab = document.getElementById('tab-playlists');
+      if (tab) {
+        tab.style.display = '';
+        tab.removeAttribute('aria-hidden');
+        const nm = accountDisplayName();
+        tab.textContent = '🎧 ' + (on && nm ? nm + '’s Playlists' : 'My Playlists');
+      }
+      if (typeof collectionTitles !== 'undefined' && collectionTitles) {
+        const nm2 = accountDisplayName();
+        collectionTitles.playlists = '🎧 ' + (on && nm2 ? nm2 + '’s Playlists' : 'My Playlists');
+      }
+    } catch (e) {}
+    try { if (typeof ensurePlayerActions === 'function') ensurePlayerActions(); } catch (e) {}
+    try { if (typeof devUpgradeCards === 'function') devUpgradeCards(); } catch (e) {}
+  }
+
+  // =========================================================================
+  // Public playlists: publish / browse / save. Publishing snapshots the
+  // local list and shows the owner's DISPLAY NAME only (never email).
+  // Browsing (search + teacher/venue/topic tag filters + sort) is contained
+  // in the playlists tab; no login needed to browse, login to publish/save.
+  // =========================================================================
+  let plBrowseMode = 'mine';
+  let plPublicQuery = '';
+  let plPublicTags = { teacher: null, venue: null, topic: null };
+  let plPublicSort = 'recent';
+  let plPublicResults = [];
+  let plPublicTotal = 0;
+  let plPublicOffset = 0;
+  const PL_PUBLIC_PAGE = 30;
+  let plPublicExpanded = null;
+  let plMineCache = { at: 0, list: [] };
+  let plPublishing = false;
+  let plTagsWarmed = false;
+
+  function plTagOptions(kind) {
+    try {
+      const c = (typeof autocompleteCache !== 'undefined' && autocompleteCache) || null;
+      if (!c) return [];
+      if (kind === 'teacher') return (c.teachers || []).slice(0, 4000);
+      if (kind === 'venue') return (c.venues || []).slice(0, 1000);
+      return (c.categories || []).slice(0, 1500);
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function plTagLabel(kind, t) {
+    if (!t) return 'Any';
+    return (t.name || '').slice(0, 28);
+  }
+
+  function renderPlPublicInto(container, isGuest) {
+    if (!container) return;
+    try {
+      if (typeof loadAutocompleteMeta === 'function' && !plTagsWarmed) {
+        plTagsWarmed = true;
+        loadAutocompleteMeta().then(() => {
+          if (activeDevPlaylistId === 'public') renderPlaylistsGrid();
+        }).catch(() => {});
+      }
+    } catch (e) {}
+    const tagOpts = (kind, cur) => {
+      const list = plTagOptions(kind).slice(0, 300);
+      if (list.length === 0) return '<option value="">Loading filters…</option>';
+      return '<option value="">Any ' + kind + '</option>' + list.map(o =>
+        '<option value="' + escapeHtml(o.id || o.name) + '"' + (cur && String(cur.id || cur.name) === String(o.id || o.name) ? ' selected' : '') + '>' +
+        escapeHtml(o.name) + '</option>').join('');
+    };
+    let qhtml = '';
+    if (!isGuest) {
+      qhtml += '<div class="playlist-pills">' +
+        '<button type="button" class="playlist-pill" onclick="devSelectPlaylist(&quot;history&quot;)">📁 Mine</button>' +
+        '<button type="button" class="playlist-pill active">🌍 Public</button>' +
+        '<button type="button" class="playlist-pill" onclick="devPromptNewPlaylist()">➕ New Playlist</button></div>';
+    }
+    qhtml += '<div style="grid-column:1/-1; display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">' +
+      '<input id="plPubQ" type="text" placeholder="Search public playlists…" value="' + escapeHtml(plPublicQuery) + '"' +
+      ' autocomplete="off" style="flex:2; min-width:160px; padding:7px 10px; border-radius:8px; border:1px solid var(--border-light);">' +
+      '<select id="plPubTeacher" style="flex:1; min-width:120px; padding:7px; border-radius:8px; border:1px solid var(--border-light);">' + tagOpts('teacher', plPublicTags.teacher) + '</select>' +
+      '<select id="plPubVenue" style="flex:1; min-width:120px; padding:7px; border-radius:8px; border:1px solid var(--border-light);">' + tagOpts('venue', plPublicTags.venue) + '</select>' +
+      '<select id="plPubTopic" style="flex:1; min-width:120px; padding:7px; border-radius:8px; border:1px solid var(--border-light);">' + tagOpts('topic', plPublicTags.topic) + '</select>' +
+      '<select id="plPubSort" style="padding:7px; border-radius:8px; border:1px solid var(--border-light);">' +
+      '<option value="recent"' + (plPublicSort !== 'saves' ? ' selected' : '') + '>Recent</option>' +
+      '<option value="saves"' + (plPublicSort === 'saves' ? ' selected' : '') + '>Most saved</option></select>' +
+      '<button type="button" class="card-mini-btn" onclick="plPublicSearch()">🔍</button></div>';
+    qhtml += '<div class="search-results-subheading"><span>🌍</span><span>Public Playlists</span>' +
+      '<span class="sub-count">' + plPublicResults.length + ' of ' + plPublicTotal + ' shown</span></div>';
+    if (plPublicResults.length === 0) {
+      qhtml += '<div style="grid-column:1/-1; text-align:center; padding:24px; color:var(--text-muted);">No public playlists match — try a different search or be the first to publish one.</div>';
+    } else {
+      qhtml += plPublicResults.map(p => {
+        const open = plPublicExpanded === p.id;
+        const tagBits = []
+          .concat((p.tags && p.tags.teachers || []).map(t => '👤 ' + t.name))
+          .concat((p.tags && p.tags.venues || []).map(t => '📍 ' + t.name))
+          .concat((p.tags && p.tags.topics || []).map(t => '🏷️ ' + t.name));
+        return '<div style="grid-column:1/-1; border:1px solid var(--border-light); border-radius:12px; padding:12px 14px; margin-bottom:8px;">' +
+          '<div style="font-weight:800; font-size:15px;">' + escapeHtml(p.title || 'Untitled') + '</div>' +
+          '<div style="font-size:12px; color:var(--text-muted);">by ' + escapeHtml(p.ownerName || 'a listener') +
+          ' · ' + (p.itemCount || 0) + ' shiurim · ❤️ ' + (p.saves || 0) + ' saves</div>' +
+          (p.description ? '<div style="font-size:13px; margin-top:6px;">' + escapeHtml(p.description) + '</div>' : '') +
+          (tagBits.length ? '<div style="font-size:12px; color:var(--text-muted); margin-top:6px;">' + tagBits.map(escapeHtml).join(' · ') + '</div>' : '') +
+          '<div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">' +
+          '<button type="button" class="card-mini-btn" onclick="plPublicToggle(&quot;' + escapeHtml(p.id) + '&quot;)">' + (open ? 'Hide shiurim ▲' : 'Preview shiurim ▼') + '</button>' +
+          '<button type="button" class="card-mini-btn" onclick="plSavePublic(&quot;' + escapeHtml(p.id) + '&quot;)">💾 Save to my playlists</button>' +
+          '<button type="button" class="card-mini-btn" onclick="plUnsavePublic(&quot;' + escapeHtml(p.id) + '&quot;)">Remove save ♥</button>' +
+          '</div>' +
+          '<div id="plpub-' + p.id + '">' + (open ? '<div style="margin-top:8px;">Loading…</div>' : '') + '</div>' +
+          '</div>';
+      }).join('');
+      if (plPublicResults.length < plPublicTotal) {
+        qhtml += '<div style="grid-column:1/-1; text-align:center; margin:4px 0 12px;">' +
+          '<button type="button" class="load-more-btn" onclick="plPublicMore()">🔽 Load More Playlists</button></div>';
+      }
+    }
+    container.innerHTML = qhtml;
+    const qq = container.querySelector('#plPubQ');
+    if (qq) {
+      qq.addEventListener('keydown', e => { if (e.key === 'Enter') plPublicSearch(); });
+      const deb = { t: null };
+      qq.addEventListener('input', () => {
+        clearTimeout(deb.t);
+        deb.t = setTimeout(() => {
+          plPublicQuery = qq.value;
+          plPublicSearch();
+        }, 350);
+      });
+    }
+    const bindSel = (id, fn) => {
+      const el = container.querySelector('#' + id);
+      if (el) el.addEventListener('change', () => {
+        const opt = el.options[el.selectedIndex];
+        fn(el.value ? { id: el.value, name: opt ? opt.text : el.value } : null);
+        plPublicSearch();
+      });
+    };
+    bindSel('plPubTeacher', v => { plPublicTags.teacher = v; });
+    bindSel('plPubVenue', v => { plPublicTags.venue = v; });
+    bindSel('plPubTopic', v => { plPublicTags.topic = v; });
+    const sortEl = container.querySelector('#plPubSort');
+    if (sortEl) sortEl.addEventListener('change', () => { plPublicSort = sortEl.value; plPublicSearch(); });
+    if (plPublicExpanded) plPublicRenderItems(plPublicExpanded);
+    if (plPublicResults.length === 0 && !plPublicQuery && plPublicTotal === 0) {
+      plSearchPublic();
+    }
+  }
+
   function renderPlaylistsGrid() {
     const grid = document.getElementById('grid-playlists');
-    if (!grid || !isDevMode) return;
+    if (!grid) return;
+    if (!playlistsEnabled()) {
+      grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:34px 20px 10px; color:var(--text-muted);">' +
+        '<div style="font-size:34px; margin-bottom:10px;">🎧</div>' +
+        '<div style="font-weight:800; font-size:16px; margin-bottom:6px; color:var(--text);">Your Playlists Live Here</div>' +
+        '<div style="font-size:13px; max-width:420px; margin:0 auto 14px;">Log in to create playlists, save for later, pick favorites, and use the play queue — synced across all your devices.</div>' +
+        '<button type="button" class="card-mini-btn" onclick="handleAuthClick()">🔑 Log in with Google</button></div>' +
+        '<div id="plGuestPublic" style="grid-column:1/-1; display:contents;"></div>';
+      activeDevPlaylistId = 'public';
+      const host = document.getElementById('plGuestPublic');
+      if (host) renderPlPublicInto(host, true);
+      return;
+    }
     const store = getDevStore();
     // Queue pseudo-view ('queue' is not a stored playlist).
     if (activeDevPlaylistId === 'queue') {
@@ -12675,12 +13347,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         if (!p) return '';
         const n = (p.items || []).length;
         return '<button type="button" class="playlist-pill"' +
-      ' onclick="activeDevPlaylistId=\\'' + pid + '\\'; renderPlaylistsGrid();">' +
+          ' onclick="devSelectPlaylist(&quot;' + escapeHtml(pid) + '&quot;);">' +
           escapeHtml(p.icon || '📁') + ' ' + escapeHtml(p.name) + ' (' + n + ')</button>';
       }).join('');
       const qq = getDevQueue();
       let qhtml = '<div class="playlist-pills">' + qpills +
-        '<button type="button" class="playlist-pill active" onclick="activeDevPlaylistId=\\'queue\\'; renderPlaylistsGrid();">📋 Queue (' + qq.length + ')</button>' +
+        '<button type="button" class="playlist-pill active" onclick="devSelectPlaylist(&quot;queue&quot;)">📋 Queue (' + qq.length + ')</button>' +
         '<button type="button" class="playlist-pill" onclick="devPromptNewPlaylist()">➕ New Playlist</button></div>';
       qhtml += '<div class="search-results-subheading"><span>📋</span><span>Play Queue</span>' +
         '<span class="sub-count">' + qq.length + (qq.length === 1 ? ' item' : ' items') + ' · auto-plays next</span></div>';
@@ -12693,6 +13365,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       grid.innerHTML = qhtml;
       return;
     }
+    // Public browser pseudo-view (browse + save other people's lists).
+    if (activeDevPlaylistId === 'public') {
+      renderPlPublicInto(grid, false);
+      return;
+    }
     if (!getDevPlaylist(store, activeDevPlaylistId)) activeDevPlaylistId = 'history';
     const pl = getDevPlaylist(store, activeDevPlaylistId);
     const pills = devPlaylistIds(store).map(pid => {
@@ -12700,11 +13377,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (!p) return '';
       const n = (p.items || []).length;
       return '<button type="button" class="playlist-pill' + (pid === activeDevPlaylistId ? ' active' : '') + '"' +
-        ' onclick="activeDevPlaylistId=\\'' + pid + '\\'; renderPlaylistsGrid();">' +
+        ' onclick="devSelectPlaylist(&quot;' + escapeHtml(pid) + '&quot;);">' +
         escapeHtml(p.icon || '📁') + ' ' + escapeHtml(p.name) + ' (' + n + ')</button>';
     }).join('');
     let html = '<div class="playlist-pills">' + pills +
-      '<button type="button" class="playlist-pill" onclick="devPromptNewPlaylist()">➕ New Playlist</button></div>';
+      '<button type="button" class="playlist-pill" onclick="devPromptNewPlaylist()">➕ New Playlist</button>' +
+      '<button type="button" class="playlist-pill" onclick="activeDevPlaylistId=&quot;public&quot;; plSearchPublic();">🌍 Public</button></div>';
     let items = (pl && pl.items) || [];
     // History sort: last-listened (default, recency of play) vs shiur date.
     let historySort = 'listened';
@@ -12716,17 +13394,39 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       }
       html += '<div style="grid-column:1/-1; margin-bottom:8px; display:flex; gap:6px; align-items:center; flex-wrap:wrap;">' +
         '<span style="font-size:12px; font-weight:700; color:var(--text-muted);">Order:</span>' +
-        '<button type="button" class="card-mini-btn' + (historySort === 'listened' ? ' active-save' : '') + '" onclick="setHistorySort(\\'listened\\')">🕒 Last Listened</button>' +
-        '<button type="button" class="card-mini-btn' + (historySort === 'shiurdate' ? ' active-save' : '') + '" onclick="setHistorySort(\\'shiurdate\\')">📅 Shiur Date</button></div>';
+        '<button type="button" class="card-mini-btn' + (historySort === 'listened' ? ' active-save' : '') + '" onclick="setHistorySort(&quot;listened&quot;)">🕒 Last Listened</button>' +
+        '<button type="button" class="card-mini-btn' + (historySort === 'shiurdate' ? ' active-save' : '') + '" onclick="setHistorySort(&quot;shiurdate&quot;)">📅 Shiur Date</button></div>';
     }
     html += '<div class="search-results-subheading"><span>' + escapeHtml((pl && pl.icon) || '📁') + '</span>' +
       '<span>' + escapeHtml((pl && pl.name) || '') + '</span>' +
       '<span class="sub-count">' + items.length + ' Shiurim • ' + escapeHtml(devTotalDuration(items)) + '</span></div>';
     if (!pl.isHistory && !store.system[pl.id]) {
-      html += '<div style="grid-column:1/-1; margin-bottom:8px; display:flex; gap:8px;">' +
+      const visTag = pl.publicId
+        ? '<span class="active-filter-pill">🌍 Public</span>'
+        : '<span class="active-filter-pill">🔒 Private</span>';
+      html += '<div style="grid-column:1/-1; margin-bottom:4px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">' + visTag;
+      const pTags = pl.tags && typeof pl.tags === 'object' ? pl.tags : null;
+      const tagBits = pTags ? []
+        .concat((pTags.teachers || []).map(t => '👤 ' + t.name))
+        .concat((pTags.venues || []).map(t => '📍 ' + t.name))
+        .concat((pTags.topics || []).map(t => '🏷️ ' + t.name)) : [];
+      if (tagBits.length > 0) {
+        html += '<span style="font-size:12px; color:var(--text-muted);">' + tagBits.map(escapeHtml).join(' · ') + '</span>';
+      }
+      html += '</div>';
+      if (pl.description) {
+        html += '<div style="grid-column:1/-1; margin-bottom:8px; font-size:13px; color:var(--text-muted);">' + escapeHtml(pl.description) + '</div>';
+      }
+      html += '<div style="grid-column:1/-1; margin-bottom:8px; display:flex; gap:8px; flex-wrap:wrap;">' +
         '<button type="button" class="card-mini-btn" onclick="playDevPlaylistAll()">▶ Play All</button>' +
         '<button type="button" class="card-mini-btn" onclick="devExportPlaylist()">Export JSON</button>' +
-        '<button type="button" class="card-mini-btn" onclick="devDeletePlaylist()">Delete Playlist</button></div>';
+        '<button type="button" class="card-mini-btn" onclick="openPlaylistDetailsModal()">📝 Details & Tags</button>';
+      if (pl.publicId) {
+        html += '<button type="button" class="card-mini-btn" onclick="plUnpublishCurrent()">Unpublish</button>';
+      } else {
+        html += '<button type="button" class="card-mini-btn" onclick="plPublishCurrent(true)">🌍 Publish</button>';
+      }
+      html += '<button type="button" class="card-mini-btn" onclick="devDeletePlaylist()">Delete Playlist</button></div>';
     } else if (items.length > 0) {
       html += '<div style="grid-column:1/-1; margin-bottom:8px;"><button type="button" class="card-mini-btn" onclick="playDevPlaylistAll()">▶ Play All</button></div>';
     }
@@ -12794,6 +13494,320 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     renderPlaylistsGrid();
   }
 
+
+  async function plFetchMine() {
+    if (!cloudEnabled()) return [];
+    try {
+      if (Date.now() - plMineCache.at < 60000 && plMineCache.list) return plMineCache.list;
+      const res = await fetch('/api/playlists/mine');
+      if (!res.ok) return [];
+      const data = await res.json();
+      plMineCache = { at: Date.now(), list: data.playlists || [] };
+      return plMineCache.list;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function plFindMine(customName) {
+    return (plMineCache.list || []).filter(p =>
+      String(p.title || '') === String(customName || ''));
+  }
+
+  function plPublicSearch() {
+    const qq = document.getElementById('plPubQ');
+    if (qq) plPublicQuery = qq.value;
+    plSearchPublic();
+  }
+
+  async function plPublicToggle(id) {
+    plPublicExpanded = (plPublicExpanded === id) ? null : id;
+    renderPlaylistsGrid();
+    if (plPublicExpanded) plPublicRenderItems(plPublicExpanded);
+  }
+
+  async function plPublicRenderItems(id) {
+    const host = document.getElementById('plpub-' + id);
+    if (!host) return;
+    try {
+      const res = await fetch('/api/playlists/items?id=' + encodeURIComponent(id));
+      const data = await res.json();
+      const items = (data && data.items) || [];
+      if (items.length === 0) {
+        host.innerHTML = '<div style="color:var(--text-muted); font-size:13px;">No previews available.</div>';
+        return;
+      }
+      host.innerHTML = items.slice(0, 8).map(s => {
+        if (s.kind === 'series') {
+          const sTitle = s.seriesTitle || s.title || 'Series';
+          const count = Array.isArray(s.items) ? s.items.length : 0;
+          const firstId = (s.items && s.items[0] && (s.items[0].id || s.items[0].shiurID)) || '';
+          return '<div style="font-size:13px; padding:3px 0; border-bottom:1px solid var(--border-light);">' +
+            (firstId ? '<a href="/' + String(firstId) + '" style="font-weight:700;">📚 ' + escapeHtml(sTitle) + '</a>' : '<span style="font-weight:700;">📚 ' + escapeHtml(sTitle) + '</span>') +
+            '<div style="font-size:11px; color:var(--text-muted);">' + count + ' lectures in series</div></div>';
+        }
+        return '<div style="font-size:13px; padding:3px 0; border-bottom:1px solid var(--border-light);">' +
+          '<a href="/' + String(s.id || '') + '" style="font-weight:700;">' + escapeHtml(s.title || 'Untitled') + '</a>' +
+          '<div style="font-size:11px; color:var(--text-muted);">' + escapeHtml(s.speaker || '') + '</div></div>';
+      }).join('') + (items.length > 8 ? '<div style="font-size:12px; color:var(--text-muted);">+' + (items.length - 8) + ' more after saving</div>' : '');
+    } catch (e) {
+      host.innerHTML = '<div style="color:var(--text-muted); font-size:13px;">Could not load preview.</div>';
+    }
+  }
+
+  function plPublicParams(offset) {
+    const q = new URLSearchParams();
+    if (plPublicQuery.trim()) q.set('q', plPublicQuery.trim());
+    if (plPublicTags.teacher) q.set('teacher', plPublicTags.teacher.name);
+    if (plPublicTags.venue) q.set('venue', plPublicTags.venue.name);
+    if (plPublicTags.topic) q.set('topic', plPublicTags.topic.name);
+    q.set('sort', plPublicSort === 'saves' ? 'saves' : 'recent');
+    q.set('limit', String(PL_PUBLIC_PAGE));
+    q.set('offset', String(offset || 0));
+    return q.toString();
+  }
+
+  async function plSearchPublic() {
+    const grid = document.getElementById('grid-playlists');
+    plPublicOffset = 0;
+    plPublicExpanded = null;
+    try {
+      const res = await fetch('/api/playlists/public?' + plPublicParams(0));
+      const data = await res.json();
+      plPublicResults = (data && data.playlists) || [];
+      plPublicTotal = (data && typeof data.total === 'number') ? data.total : plPublicResults.length;
+    } catch (e) {
+      plPublicResults = [];
+      plPublicTotal = 0;
+    }
+    if (grid && activeDevPlaylistId !== 'queue') renderPlaylistsGrid();
+  }
+
+  async function plPublicMore() {
+    const next = plPublicOffset + PL_PUBLIC_PAGE;
+    try {
+      const res = await fetch('/api/playlists/public?' + plPublicParams(next));
+      const data = await res.json();
+      const more = (data && data.playlists) || [];
+      if (more.length > 0) {
+        plPublicOffset = next;
+        plPublicResults = plPublicResults.concat(more);
+        if (typeof data.total === 'number') plPublicTotal = data.total;
+      }
+    } catch (e) {}
+    renderPlaylistsGrid();
+    if (plPublicExpanded) plPublicRenderItems(plPublicExpanded);
+  }
+
+
+  // Edit description + controlled-vocab tags for a custom playlist.
+  function openPlaylistDetailsModal() {
+    const store = getDevStore();
+    const pl = store.custom[activeDevPlaylistId];
+    if (!pl) return;
+    closeConfirmModal();
+    const overlay = document.createElement('div');
+    overlay.id = 'playlistDetailsModal';
+    overlay.style.cssText = 'position:fixed; inset:0; z-index:10000; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; padding:16px;';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', 'Playlist details');
+    const box = document.createElement('div');
+    box.style.cssText = 'background:var(--card,#fff); color:var(--text,#111); border-radius:14px; max-width:440px; width:100%; max-height:84vh; overflow:auto; padding:18px; border:1px solid var(--border-light);';
+    const tags = pl.tags && typeof pl.tags === 'object' ? pl.tags : { teachers: [], venues: [], topics: [] };
+    const chipRow = (kind, list) => (list || []).map((t, i) =>
+      '<span class="active-filter-pill">🏷️ ' + escapeHtml(t.name || '') +
+      ' <button type="button" data-pld-kind="' + kind + '" data-pld-idx="' + i + '" title="Remove">✕</button></span>'
+    ).join('');
+    const datalist = (kind, listId) => '<datalist id="' + listId + '">' +
+      plTagOptions(kind).map(o => '<option value="' + escapeHtml(o.name || '') + '">').join('') + '</datalist>';
+    box.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">' +
+      '<div style="font-weight:800;">📝 ' + escapeHtml(pl.name || '') + '</div>' +
+      '<button type="button" class="card-mini-btn" id="pldClose">Close ×</button></div>' +
+      '<label style="font-size:12px; font-weight:700; color:var(--text-muted);">Description (optional, free text)</label>' +
+      '<textarea id="pldDesc" rows="3" maxlength="500" placeholder="What is this playlist about?"' +
+      ' style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-light); margin:4px 0 10px;">' +
+      escapeHtml(pl.description || '') + '</textarea>' +
+      '<div style="font-size:12px; font-weight:700; color:var(--text-muted);">Tags — pick from teachers, venues, topics (no free text)</div>' +
+      '<div id="pldChips" style="display:flex; flex-wrap:wrap; gap:6px; margin:6px 0;">' +
+      chipRow('teachers', tags.teachers) + chipRow('venues', tags.venues) + chipRow('topics', tags.topics) + '</div>' +
+      ['teachers', 'venues', 'topics'].map(kind =>
+        '<div style="display:flex; gap:6px; margin-bottom:6px;">' +
+        '<input id="pldIn-' + kind + '" list="pldList-' + kind + '" placeholder="Add ' + kind + '…" autocomplete="off"' +
+        ' style="flex:1; padding:7px 10px; border-radius:8px; border:1px solid var(--border-light);">' +
+        datalist(kind, 'pldList-' + kind) +
+        '<button type="button" class="card-mini-btn" data-pld-add="' + kind + '">Add</button></div>'
+      ).join('') +
+      '<div style="display:flex; gap:8px; justify-content:flex-end; margin-top:10px;">' +
+      '<button type="button" class="card-mini-btn active-save" id="pldSave">Save</button></div>';
+    overlay.appendChild(box);
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+    const working = {
+      description: pl.description || '',
+      teachers: [...(tags.teachers || [])],
+      venues: [...(tags.venues || [])],
+      topics: [...(tags.topics || [])]
+    };
+    const paintChips = () => {
+      const host = box.querySelector('#pldChips');
+      if (host) {
+        host.innerHTML = chipRow('teachers', working.teachers) + chipRow('venues', working.venues) + chipRow('topics', working.topics);
+      }
+    };
+    box.addEventListener('click', e => {
+      const add = e.target.closest ? e.target.closest('[data-pld-add]') : null;
+      if (add) {
+        const kind = add.getAttribute('data-pld-add');
+        const inp = box.querySelector('#pldIn-' + kind);
+        const typed = ((inp && inp.value) || '').trim().toLowerCase();
+        if (!typed) return;
+        const match = plTagOptions(kind).find(o => String(o.name || '').toLowerCase() === typed) ||
+          plTagOptions(kind).find(o => String(o.name || '').toLowerCase().includes(typed));
+        if (!match) {
+          flashToast('⚠️ Pick from the list — free text goes in the description', true, false);
+          return;
+        }
+        if (!working[kind].some(t => String(t.id) === String(match.id))) {
+          working[kind].push({ id: String(match.id), name: match.name });
+        }
+        if (inp) inp.value = '';
+        paintChips();
+        return;
+      }
+      const rm = e.target.closest ? e.target.closest('[data-pld-kind]') : null;
+      if (rm) {
+        const kind = rm.getAttribute('data-pld-kind');
+        const idx = parseInt(rm.getAttribute('data-pld-idx'), 10);
+        if (Array.isArray(working[kind]) && idx >= 0) working[kind].splice(idx, 1);
+        paintChips();
+      }
+    });
+    box.querySelector('#pldClose').addEventListener('click', () => overlay.remove());
+    box.querySelector('#pldSave').addEventListener('click', () => {
+      const st = getDevStore();
+      const target = st.custom[activeDevPlaylistId];
+      if (!target) {
+        overlay.remove();
+        return;
+      }
+      target.description = (box.querySelector('#pldDesc').value || '').slice(0, 500);
+      target.tags = { teachers: working.teachers, venues: working.venues, topics: working.topics };
+      saveDevStore(st);
+      overlay.remove();
+      renderPlaylistsGrid();
+      flashToast('✅ Playlist details saved', false, false);
+    });
+  }
+
+  async function plPublishCurrent(makePublic) {
+    if (!cloudEnabled()) {
+      flashToast('🔑 Log in to publish playlists', true, false);
+      return;
+    }
+    const store = getDevStore();
+    const pl = store.custom[activeDevPlaylistId];
+    if (!pl) return;
+    try {
+      const res = await fetch('/api/playlists/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          public: makePublic !== false,
+          title: pl.name,
+          description: pl.description || '',
+          tags: pl.tags || { teachers: [], venues: [], topics: [] },
+          playlist: { name: pl.name, items: pl.items || [] }
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.id) {
+        flashToast('⚠️ Publish failed', true, false);
+        return;
+      }
+      pl.publicId = data.id;
+      pl.isPublic = makePublic !== false;
+      saveDevStore(store);
+      plMineCache.at = 0;
+      renderPlaylistsGrid();
+      flashToast(makePublic !== false ? '🌍 Published' : '🔒 Saved as private', false, false);
+    } catch (e) {
+      flashToast('⚠️ Publish failed', true, false);
+    }
+  }
+
+  async function plUnpublishCurrent() {
+    const store = getDevStore();
+    const pl = store.custom[activeDevPlaylistId];
+    if (!pl || !pl.publicId) return;
+    openConfirmModal({
+      title: 'Unpublish',
+      body: 'Remove "' + pl.name + '" from public listings? Your local copy stays.',
+      confirmLabel: 'Unpublish',
+      onConfirm: async () => {
+        try {
+          await fetch('/api/playlists/unpublish', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: pl.publicId })
+          });
+        } catch (e) {}
+        delete pl.publicId;
+        pl.isPublic = false;
+        saveDevStore(store);
+        plMineCache.at = 0;
+        renderPlaylistsGrid();
+      }
+    });
+  }
+
+  async function plSavePublic(id) {
+    if (!cloudEnabled()) {
+      flashToast('🔑 Log in to save public playlists', true, false);
+      return;
+    }
+    try {
+      const res = await fetch('/api/playlists/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.playlist) {
+        flashToast('⚠️ Save failed', true, false);
+        return;
+      }
+      const store = getDevStore();
+      const baseName = String(data.playlist.name || 'Shared playlist').slice(0, 60);
+      let name = baseName;
+      let n = 2;
+      const taken = new Set(Object.values(store.custom || {}).map(p => p.name));
+      while (taken.has(name)) name = baseName.slice(0, 54) + ' (' + (n++) + ')';
+      const nid = devCreatePlaylist(name);
+      if (nid && store.custom[nid]) {
+        store.custom[nid].items = data.playlist.items || [];
+        store.custom[nid].description = String(data.playlist.description || '').slice(0, 500);
+        saveDevStore(store);
+        activeDevPlaylistId = nid;
+        renderPlaylistsGrid();
+        flashToast('✅ Saved to your playlists', false, false);
+      }
+    } catch (e) {
+      flashToast('⚠️ Save failed', true, false);
+    }
+  }
+
+  async function plUnsavePublic(id) {
+    try {
+      await fetch('/api/playlists/unsave', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+      });
+    } catch (e) {}
+    renderPlaylistsGrid();
+  }
+
   // =========================================================================
   // Cloud sync (Google login + D1). Local-first: localStorage stays the
   // source of truth offline; when logged in, mutations schedule a debounced
@@ -12831,12 +13845,61 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           } catch (e) {}
           cloudUser = null;
           renderAuthBtn();
+          try { if (typeof renderAccountMode === 'function') renderAccountMode(); } catch (e) {}
           flashToast('👋 Signed out (local copy kept)', false, false);
         }
       });
     } else {
+      // Remember exactly where we left (shiur + timestamp included) so the
+      // login round-trip returns here instead of the homepage.
+      try {
+        const here = window.location.pathname + window.location.search;
+        if (here && here.startsWith('/') && !here.startsWith('//')) {
+          localStorage.setItem('yutorah_post_login_return', here);
+        }
+      } catch (e) {}
       window.location.href = '/auth/google';
     }
+  }
+
+  // Logged-in icon: gear with the account letter on top (5 dev-pickable styles).
+  const AVATAR_VARIANTS = ['gear-letter', 'circle-letter', 'gear-ring', 'badge-letter', 'minimal-letter'];
+  function getAvatarStyle() {
+    try {
+      const v = localStorage.getItem('yutorah_avatar_style');
+      if (AVATAR_VARIANTS.includes(v)) return v;
+    } catch (e) {}
+    return 'gear-letter';
+  }
+  function setAvatarStyle(v) {
+    if (!AVATAR_VARIANTS.includes(v)) return;
+    try { localStorage.setItem('yutorah_avatar_style', v); } catch (e) {}
+    renderAuthBtn();
+    try { renderAvatarPicker(); } catch (e) {}
+  }
+  function authAvatarHtml(variant, name, email) {
+    const initial = escapeHtml((((name || email) || '?').trim()[0] || '?').toUpperCase());
+    const v = AVATAR_VARIANTS.includes(variant) ? variant : 'gear-letter';
+    if (v === 'circle-letter') return '<span class="auth-avatar">' + initial + '</span>';
+    if (v === 'gear-ring') return '<span class="auth-avatar gear-ring"><span class="auth-gear">⚙️</span><span class="auth-letter">' + initial + '</span></span>';
+    if (v === 'badge-letter') return '<span class="auth-avatar badge-letter">' + initial + '</span>';
+    if (v === 'minimal-letter') return '<span class="auth-avatar minimal-letter">' + initial + '</span>';
+    return '<span class="auth-avatar gear-letter"><span class="auth-gear">⚙️</span><span class="auth-letter">' + initial + '</span></span>';
+  }
+  function avatarPickerHtml() {
+    const cur = getAvatarStyle();
+    const nm = (cloudUser && (cloudUser.name || cloudUser.email)) || '?';
+    const em = (cloudUser && cloudUser.email) || '';
+    return AVATAR_VARIANTS.map(function(v) {
+      return '<button type="button" class="card-mini-btn icon-btn' + (v === cur ? ' active-save' : '') + '"' +
+        ' data-av="' + v + '" onclick="setAvatarStyle(this.getAttribute(&quot;data-av&quot;))" title="' + v + '">' +
+        authAvatarHtml(v, nm, em) + '</button>';
+    }).join('');
+  }
+  function renderAvatarPicker() {
+    if (!cloudUser) return;
+    const wrap = document.getElementById('avatarPickerAuth');
+    if (wrap) wrap.innerHTML = avatarPickerHtml();
   }
 
   function renderAuthBtn() {
@@ -12845,8 +13908,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (cloudUser) {
       btn.classList.add('logged-in');
       btn.title = cloudUser.email || 'Signed in';
-      const initial = escapeHtml(((cloudUser.name || cloudUser.email || '?').trim()[0] || '?').toUpperCase());
-      btn.innerHTML = '<span class="auth-avatar">' + initial + '</span>';
+      btn.innerHTML = authAvatarHtml(getAvatarStyle(), cloudUser.name, cloudUser.email);
     } else {
       btn.classList.remove('logged-in');
       btn.title = 'Account';
@@ -12869,9 +13931,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     let html = '';
     if (cloudUser) {
       html += '<div class="auth-menu-email">' + escapeHtml(cloudUser.email || '') + '</div>';
+      html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); openDisplayNameModal();">✏️ Display name</button>';
       html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); handleAuthClick();">🚪 Sign out</button>';
     } else {
       html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); window.location.href=&quot;/auth/google&quot;;">🔑 Sign in with Google</button>';
+    }
+    if (cloudUser) {
+      html += '<div class="settings-menu-label">Logged-in icon</div>';
+      html += '<div id="avatarPickerAuth" style="display:flex; gap:6px; padding:4px 10px 8px; flex-wrap:wrap;"></div>';
     }
     if (isDevMode) {
       html += '<div class="settings-menu-label">Dev settings</div>';
@@ -12882,6 +13949,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     menu.innerHTML = html;
     menu.style.display = 'block';
     positionAuthMenu();
+    try { renderAvatarPicker(); } catch (e) {}
     if (isDevMode) {
       const wrap = document.getElementById('saveIconPickerAuth');
       if (wrap) {
@@ -12918,6 +13986,61 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   function closeAuthMenu() {
     const menu = document.getElementById('authMenu');
     if (menu) menu.style.display = 'none';
+  }
+
+  // Display-name dialog: the name shown on playlists + public shares.
+  // Stored server-side (users.name); falls back to localStorage offline.
+  function openDisplayNameModal() {
+    closeConfirmModal();
+    let current = '';
+    try { current = localStorage.getItem('yutorah_display_name') || ''; } catch (e) {}
+    if (!current && cloudUser && cloudUser.name) current = cloudUser.name;
+    const overlay = document.createElement('div');
+    overlay.id = 'displayNameModal';
+    overlay.style.cssText = 'position:fixed; inset:0; z-index:10000; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; padding:16px;';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', 'Display name');
+    const box = document.createElement('div');
+    box.style.cssText = 'background:var(--card,#fff); color:var(--text,#111); border-radius:14px; max-width:360px; width:100%; padding:18px; border:1px solid var(--border-light);';
+    box.innerHTML = '<div style="font-weight:800; margin-bottom:6px;">✏️ Display name</div>' +
+      '<div style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">Shown on your playlists and public shares. Your email stays private.</div>' +
+      '<input id="displayNameInput" type="text" maxlength="40" placeholder="e.g. Moshe" autocomplete="off"' +
+      ' style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-light);">' +
+      '<div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">' +
+      '<button type="button" class="card-mini-btn" id="displayNameCancel">Cancel</button>' +
+      '<button type="button" class="card-mini-btn active-save" id="displayNameOk">Save</button></div>';
+    overlay.appendChild(box);
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+    const input = box.querySelector('#displayNameInput');
+    input.value = current;
+    const save = async () => {
+      const v = (input.value || '').trim().slice(0, 40);
+      if (!v) return;
+      try { localStorage.setItem('yutorah_display_name', v); } catch (e) {}
+      if (cloudUser) {
+        cloudUser.name = v;
+        try {
+          await fetch('/api/profile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: v })
+          });
+        } catch (e) {}
+        renderAuthBtn();
+      }
+      try { if (typeof renderAccountMode === 'function') renderAccountMode(); } catch (e) {}
+      overlay.remove();
+      flashToast('✅ Display name saved', false, false);
+    };
+    box.querySelector('#displayNameCancel').addEventListener('click', () => overlay.remove());
+    box.querySelector('#displayNameOk').addEventListener('click', save);
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') save();
+      if (e.key === 'Escape') overlay.remove();
+    });
+    setTimeout(() => input.focus(), 50);
   }
 
   document.addEventListener('click', (e) => {
@@ -13145,6 +14268,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   async function bootAuth() {
     renderAuthBtn();
+    try { if (typeof renderAccountMode === 'function') renderAccountMode(); } catch (e) {}
     try {
       const params = new URLSearchParams(window.location.search);
       const authStatus = params.get('auth');
@@ -13169,12 +14293,23 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (data && data.user) {
         cloudUser = data.user;
         renderAuthBtn();
+        try { if (typeof renderAccountMode === 'function') renderAccountMode(); } catch (e) {}
         if (authStatus === 'ok') {
           const isFirst = params.get('new') === '1';
           params.delete('auth');
           params.delete('new');
           const clean = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
           history.replaceState(history.state || {}, '', clean);
+          // Return to the exact pre-login URL (shiur + timestamp intact).
+          try {
+            const ret = localStorage.getItem('yutorah_post_login_return') || '';
+            localStorage.removeItem('yutorah_post_login_return');
+            if (ret && ret.startsWith('/') && !ret.startsWith('//') && ret !== clean &&
+                ret !== window.location.pathname + window.location.search) {
+              window.location.replace(ret);
+              return;
+            }
+          } catch (e) {}
           if (isFirst) {
             // Brand-new account: migrate this browser's library up.
             markCloudAllDirty();
@@ -13520,7 +14655,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   // Shift the next playable shiur, expanding series entries in place.
   // Returns { id, title } or null when the queue is empty (or dev is off).
   function devQueuePopNext() {
-    if (!isDevMode) return null;
+    if (!playlistsEnabled()) return null;
     let q = getDevQueue();
     while (q.length > 0) {
       const head = q[0];
@@ -13563,7 +14698,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   // Queue popup (mini-player ☰ + playlists tab share this renderer).
   let devDragIdx = -1;
   function toggleQueuePopup() {
-    if (!isDevMode) return;
+    if (!playlistsEnabled()) return;
     const pop = document.getElementById('queuePopup');
     if (!pop) return;
     if (pop.style.display === 'none') {
@@ -13639,7 +14774,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   function openPlaylistModal(id) {
-    if (!isDevMode) return;
+    if (!playlistsEnabled()) return;
     closePlaylistModal();
     const snap = devSnapshot(id);
     if (!snap) return;
@@ -13739,7 +14874,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   const collections = ['editors', 'playlists', 'series', 'recent', 'popular', 'viewed', 'parsha', 'daily', 'trending'];
   const collectionTitles = {
     editors: "⭐ Editor's Picks",
-    playlists: "🎧 Dev's Playlists",
+    playlists: "🎧 My Playlists",
     series: "📚 Featured Series",
     recent: "⏱️ Recently Uploaded",
     popular: "🔥 Most Popular",
@@ -14205,6 +15340,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }, 6000);
   }
   function switchCollection(activeName) {
+    // Playlists tab stays open for everyone (logged-out sees the login
+    // prompt + public browser); only interactive extras need an account.
     // Respect the cards/rows view: inline display must match the active
     // view or it would override the rows-view stylesheet after switching.
     const rowsOn = document.body.classList.contains('rows-view') ||
@@ -14416,8 +15553,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   // Audio Events
+  let lastMediaSessionPosUpdate = 0;
   audio.addEventListener('play', () => {
     updatePlayPauseIcons(true);
+    if ('mediaSession' in navigator) {
+      try { navigator.mediaSession.playbackState = 'playing'; } catch (e) {}
+      updateMediaSessionPosition();
+    }
     if (isSponsorPlaying) {
       resetSponsorWatchdog();
       startSponsorRaf();
@@ -14426,6 +15568,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   audio.addEventListener('pause', () => {
     updatePlayPauseIcons(false);
     updateUrlTimestamp(true);
+    if ('mediaSession' in navigator) {
+      try { navigator.mediaSession.playbackState = 'paused'; } catch (e) {}
+      updateMediaSessionPosition();
+    }
     if (typeof devRecordHeartbeat === 'function') devRecordHeartbeat(true);
     try {
       if (typeof markCloudDirty === 'function') markCloudDirty('history');
@@ -14487,6 +15633,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
     updateUrlTimestamp(false);
     if (typeof devRecordHeartbeat === 'function') devRecordHeartbeat(false);
+    const now = Date.now();
+    if (now - lastMediaSessionPosUpdate > 1000) {
+      lastMediaSessionPosUpdate = now;
+      updateMediaSessionPosition();
+    }
   });
   audio.addEventListener('loadedmetadata', () => {
     if (currentPlaybackRate) {
@@ -14566,20 +15717,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
   });
 
-  // Mobile Lock Screen (MediaSession)
-  if ('mediaSession' in navigator && hasAudio) {
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: ${jsEmbed(title)},
-      artist: ${jsEmbed(speaker)},
-      album: 'YUTorah Online',
-      artwork: ${jsEmbed(photo ? [{ src: photo, sizes: '300x300', type: 'image/jpeg' }] : [])}
-    });
-    try {
-      navigator.mediaSession.setActionHandler('play', () => audio.play());
-      navigator.mediaSession.setActionHandler('pause', () => audio.pause());
-      navigator.mediaSession.setActionHandler('seekbackward', (details) => skip(-(details.seekOffset || 10)));
-      navigator.mediaSession.setActionHandler('seekforward', (details) => skip(details.seekOffset || 10));
-    } catch(e) {}
+  // Mobile Lock Screen & Notification Center (MediaSession API)
+  if ('mediaSession' in navigator) {
+    registerMediaSessionHandlers();
+    if (hasAudio) {
+      updateMediaSession(${jsEmbed(title)}, ${jsEmbed(speaker)}, ${jsEmbed(photo)});
+    }
   }
 
   // Keyboard Shortcuts
@@ -16225,7 +17368,7 @@ function renderShiurCardHtml(s, searchTerms = [], options = {}) {
   let photo = '';
   if (s.shiurTeachers && s.shiurTeachers[0]) {
     speaker = s.shiurTeachers[0].teacherName || s.shiurTeachers[0].teacherFullName || speaker;
-    photo = s.shiurTeachers[0].teacherPhotoURL || s.shiurTeachers[0].teacherPhotoURL_lp || '';
+    photo = s.shiurTeachers[0].teacherPhotoURL_lp || s.shiurTeachers[0].teacherPhotoURL_o || s.shiurTeachers[0].teacherPhotoURL || '';
   } else if (s.speaker) {
     speaker = s.speaker;
     photo = s.speakerPhoto || s.photo || '';
