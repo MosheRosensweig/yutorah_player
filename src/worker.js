@@ -3312,11 +3312,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       .support-yutorah-btn {
         display: none !important;
       }
-      /* Mobile: Hebrew date collapses to icon; tap expands briefly. */
+      /* Mobile: Hebrew date stays fully expanded; swipe the header to reach it. */
       .hebrew-date-badge .hebrew-date-text {
-        display: none;
-      }
-      .hebrew-date-badge.expanded .hebrew-date-text {
         display: inline;
       }
       .hebrew-date-badge:focus-visible {
