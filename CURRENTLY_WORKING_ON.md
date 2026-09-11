@@ -1,12 +1,19 @@
 # Currently Working On — Living Status & Activity Log
 
 Living status doc & audit log — updated on every milestone and user request.  
-Last updated: **2026-09-11, 14:45 ET**  
+Last updated: **2026-09-11, 14:58 ET**  
 Current branch: `feat/auth-d1` (synchronized with `main`)  
-Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev) (`b5a428ea`)  
-Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://yutorah-player.mrosensweig.workers.dev) (`df656c57`)  
+Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev) (`cd5ce653`)  
+Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://yutorah-player.mrosensweig.workers.dev) (`fd6ae624`)  
 Tests: **5/5 test suites passing (100% green, 20/20 basic functionality checks)**  
-Production status: **READY FOR DEPLOYMENT (Dual Review PASS)**
+Production status: **DEPLOYED & VERIFIED (HTTP 200 on both Dev & Prod)**
+
+## 🔒 Standing Deployment & QA Invariants (Permanent Rule)
+1. **Dev-First Deployment Rule (MANDATORY)**:
+   - Every single feature, tweak, or bugfix **MUST ALWAYS be deployed to the Dev Worker** (`https://yutorah-player-dev.mrosensweig.workers.dev` via `npx wrangler deploy --env dev`) **FIRST**.
+   - Dev deployment must be verified (HTTP 200, automated test suites 100% green, dual-review passed).
+   - Only **AFTER** Dev is fully deployed, validated, and approved may the version be promoted to **Production** (`https://yutorah-player.mrosensweig.workers.dev` via `npx wrangler deploy`).
+   - Dev and Prod must always remain strictly synchronized. Never push directly to Prod without the preceding Dev deployment.
 
 ## 🎯 Active Task: Logged-Out Header Theme Toggle on Right-Hand Side
 - **User Request**: On the non-logged-in (guest) version of the website, have the light/dark mode button be in the header (accessible without requiring account settings) and positioned on the right-hand side.
