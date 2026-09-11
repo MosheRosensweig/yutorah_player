@@ -478,16 +478,26 @@ async function handleSyncRoutes(request, env, url) {
       try {
         // No SQL offset: tag/text filters run in JS, so paginate AFTER
         // filtering (total = full match count, slice = one true window).
+        // NOTE: public_playlist_items has NO series_title column (see
+        // 0003/0004 migrations); series titles live in i.title and bundled
+        // lecture titles/speakers in i.items_json. Referencing a missing
+        // column would throw and zero all results whenever scopeShiurim=1,
+        // so the shiurim scope must stay strictly additive.
         const itemsSql = scopeShiurim
-          ? ', (SELECT GROUP_CONCAT(COALESCE(i.title, "") || " " || COALESCE(i.speaker, "") || " " || COALESCE(i.series_title, ""), " ") FROM public_playlist_items i WHERE i.playlist_id = p.id) AS itemsText '
+          ? ', (SELECT GROUP_CONCAT(COALESCE(i.title, "") || " " || COALESCE(i.speaker, "") || " " || COALESCE(i.items_json, ""), " ") FROM public_playlist_items i WHERE i.playlist_id = p.id) AS itemsText '
           : ' ';
-        rows = await env.yutorah_db.prepare(
+        const baseSql =
           'SELECT p.id, p.owner_name AS ownerName, p.title, p.description, p.tags_json AS tagsJson, ' +
           'p.saves, p.created_at AS createdAt, p.updated_at AS updatedAt, ' +
-          '(SELECT COUNT(*) FROM public_playlist_items i WHERE i.playlist_id = p.id) AS itemCount' +
-          itemsSql +
-          'FROM public_playlists p WHERE p.is_public = 1 ORDER BY ' + orderBy + ' LIMIT 1000')
-          .bind().all();
+          '(SELECT COUNT(*) FROM public_playlist_items i WHERE i.playlist_id = p.id) AS itemCount';
+        const tailSql = 'FROM public_playlists p WHERE p.is_public = 1 ORDER BY ' + orderBy + ' LIMIT 1000';
+        try {
+          rows = await env.yutorah_db.prepare(baseSql + itemsSql + tailSql).bind().all();
+        } catch (e) {
+          // Additive-only guarantee: if the items subquery ever fails,
+          // fall back to the title/desc baseline instead of zeroing results.
+          rows = await env.yutorah_db.prepare(baseSql + ' ' + tailSql).bind().all();
+        }
       } catch (e) {
         rows = { results: [] };
       }
