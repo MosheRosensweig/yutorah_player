@@ -2952,6 +2952,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       overflow-x: auto;
       scrollbar-width: none;
       max-width: 100%;
+      touch-action: pan-x pan-y;
     }
     .header-right::-webkit-scrollbar {
       display: none;
@@ -5922,6 +5923,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       color: #1e2530;
       border: 1px solid rgba(255, 255, 255, 0.9);
     }
+    .auth-btn .auth-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 0 0 1.5px rgba(30, 37, 48, 0.55);
+      font-size: 14px;
+    }
     .auth-btn:hover {
       background: #fff;
     }
@@ -5965,6 +5977,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       height: 26px;
       border-radius: 50%;
       display: block;
+    }
+    .auth-btn .auth-avatar {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: #2b4c7e;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 800;
     }
     /* Desktop text selection: content selectable, chrome is not. */
     .quick-card-title,
@@ -8241,19 +8265,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     try { localStorage.setItem('yutorah_dev_mode', 'true'); } catch (e) {}
     document.body.classList.add('dev-mode-active');
 
-    // Reveal hidden settings wrapper and advanced search button
+    // Gear retired: dev settings now live in the account dropdown.
+    // The settings button/menu code stays (hidden) for the spin animation.
     devRevealedSettings = [];
-    const settingsWrap = document.querySelector('.settings-wrapper');
-    if (settingsWrap) {
-      settingsWrap.style.setProperty('display', 'block', 'important');
-      settingsWrap.removeAttribute('aria-hidden');
-      devRevealedSettings.push(settingsWrap);
-    }
-    const settingsBtn = document.getElementById('settingsBtn');
-    if (settingsBtn) {
-      settingsBtn.style.setProperty('display', 'inline-flex', 'important');
-      devRevealedSettings.push(settingsBtn);
-    }
     const settingsMenu = document.getElementById('settingsMenu');
     if (settingsMenu) {
       // Scope to .dev-only: never resurrect controls marked DEAD.
@@ -12832,9 +12846,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (cloudUser) {
       btn.classList.add('logged-in');
       btn.title = cloudUser.email || 'Signed in';
-      btn.innerHTML = cloudUser.picture
-        ? '<img src="' + escapeHtml(cloudUser.picture) + '" alt="" referrerpolicy="no-referrer">'
-        : '<span class="auth-icon">👤</span>';
+      const initial = escapeHtml(((cloudUser.name || cloudUser.email || '?').trim()[0] || '?').toUpperCase());
+      btn.innerHTML = '<span class="auth-avatar">' + initial + '</span>';
     } else {
       btn.classList.remove('logged-in');
       btn.title = 'Account';
@@ -14674,7 +14687,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (!badge || !header) return;
 
     // Small screens keep the icon-only badge (tap expands via pulseHebrewDate);
-    // never fully hide it — the media query collapses the text instead.
+    // never fully hide it — the icon is tiny.
+    if (window.innerWidth <= 640) {
+      badge.style.display = 'inline-flex';
+      return;
+    }
     badge.style.display = 'inline-flex';
     var bRect = badge.getBoundingClientRect();
     var hRect = header.getBoundingClientRect();
