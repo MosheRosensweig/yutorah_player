@@ -8655,6 +8655,103 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       color: #fff;
       border-color: var(--primary);
     }
+    .playlist-segmented-bar {
+      grid-column: 1 / -1;
+      display: flex;
+      gap: 10px;
+      margin-bottom: 16px;
+      border-bottom: 1.5px solid var(--border);
+      padding-bottom: 12px;
+      align-items: center;
+    }
+    .playlist-seg-btn {
+      cursor: pointer;
+      border-radius: 10px;
+      padding: 8px 18px;
+      font-size: 13.5px;
+      font-weight: 700;
+      border: 1.5px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .playlist-seg-btn:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+    .playlist-seg-btn.active {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+      box-shadow: 0 2px 6px rgba(43, 76, 126, 0.25);
+    }
+    .playlist-system-row {
+      grid-column: 1 / -1;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 10px;
+      padding-bottom: 10px;
+      border-bottom: 1px dashed var(--border);
+      align-items: center;
+      position: sticky;
+      top: 52px;
+      z-index: 10;
+      background: var(--bg);
+      padding-top: 6px;
+    }
+    .playlist-custom-row {
+      grid-column: 1 / -1;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 14px;
+      align-items: center;
+    }
+    .playlist-row-caption {
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      width: 100%;
+      margin: 2px 0 4px;
+    }
+    .playlist-pill.subscription-pill {
+      border-color: #38bdf8;
+      background: rgba(56, 189, 248, 0.08);
+      color: #0369a1;
+    }
+    .playlist-pill.subscription-pill:hover {
+      border-color: #0284c7;
+      color: #0284c7;
+    }
+    .playlist-pill.subscription-pill.active {
+      background: #0284c7;
+      color: #fff;
+      border-color: #0284c7;
+    }
+    [data-theme="dark"] .playlist-pill.subscription-pill {
+      border-color: #0284c7;
+      background: rgba(2, 132, 199, 0.18);
+      color: #7dd3fc;
+    }
+    [data-theme="dark"] .playlist-pill.subscription-pill.active {
+      background: #0284c7;
+      color: #fff;
+      border-color: #38bdf8;
+    }
+    .playlist-subscribed-card {
+      border: 2px solid #38bdf8 !important;
+      box-shadow: 0 0 0 1px #bae6fd, 0 4px 14px rgba(56, 189, 248, 0.15) !important;
+    }
+    [data-theme="dark"] .playlist-subscribed-card {
+      border: 2px solid #0284c7 !important;
+      box-shadow: 0 0 0 1px #0369a1, 0 4px 14px rgba(2, 132, 199, 0.3) !important;
+    }
     .playlist-public-card {
       grid-column: 1 / -1;
       background: var(--card);
@@ -15680,6 +15777,106 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     return (t.name || '').slice(0, 28);
   }
 
+  function devIsSubscribedToPublicId(publicId) {
+    try {
+      const store = getDevStore();
+      if (!store || !store.custom) return false;
+      return Object.values(store.custom).some(p => p && p.isSubscription && (p.subscribedPublicId === publicId || p.id === publicId));
+    } catch (e) {
+      return false;
+    }
+  }
+  window.devIsSubscribedToPublicId = devIsSubscribedToPublicId;
+
+  function devGetSubscribedCustomId(publicId) {
+    try {
+      const store = getDevStore();
+      if (!store || !store.custom) return null;
+      const found = Object.values(store.custom).find(p => p && p.isSubscription && (p.subscribedPublicId === publicId || p.id === publicId));
+      return found ? found.id : null;
+    } catch (e) {
+      return null;
+    }
+  }
+  window.devGetSubscribedCustomId = devGetSubscribedCustomId;
+
+  function devOpenSubscribedPlaylist(publicId) {
+    const subId = devGetSubscribedCustomId(publicId);
+    if (subId) {
+      activeDevPlaylistId = subId;
+    } else {
+      activeDevPlaylistId = 'history';
+    }
+    renderPlaylistsGrid();
+  }
+  window.devOpenSubscribedPlaylist = devOpenSubscribedPlaylist;
+
+  function devPlaylistSegmentedBarHtml(isPublic) {
+    return '<div class="playlist-segmented-bar">' +
+      '<button type="button" class="playlist-seg-btn' + (!isPublic ? ' active' : '') + '" onclick="devSwitchPlaylistSubView(&quot;my&quot;)">🎧 My Playlists</button>' +
+      '<button type="button" class="playlist-seg-btn' + (isPublic ? ' active' : '') + '" onclick="devSwitchPlaylistSubView(&quot;public&quot;)">🌍 Public Playlists</button>' +
+      '</div>';
+  }
+  window.devPlaylistSegmentedBarHtml = devPlaylistSegmentedBarHtml;
+
+  function devSwitchPlaylistSubView(sub) {
+    if (sub === 'public') {
+      activeDevPlaylistId = 'public';
+      renderPlaylistsGrid();
+      if (plPublicResults.length === 0 && !plPublicQuery) plSearchPublic();
+    } else {
+      if (activeDevPlaylistId === 'public') {
+        activeDevPlaylistId = 'history';
+      }
+      renderPlaylistsGrid();
+    }
+  }
+  window.devSwitchPlaylistSubView = devSwitchPlaylistSubView;
+
+  function devPlaylistsHeaderHtml(store, activePid) {
+    let h = devPlaylistSegmentedBarHtml(false);
+
+    // Row 1: System Playlists (frozen top row)
+    const histCount = getRecentHistory().length;
+    const laterCount = (store.system && store.system.save_for_later && store.system.save_for_later.items || []).length;
+    const favCount = (store.system && store.system.favorites && store.system.favorites.items || []).length;
+    const qq = getDevQueue();
+
+    h += '<div class="playlist-system-row">' +
+      '<button type="button" class="playlist-pill' + (activePid === 'history' ? ' active' : '') + '" onclick="devSelectPlaylist(&quot;history&quot;)">🕒 History (' + histCount + ')</button>' +
+      '<button type="button" class="playlist-pill' + (activePid === 'save_for_later' ? ' active' : '') + '" onclick="devSelectPlaylist(&quot;save_for_later&quot;)">' + getSaveIcon() + ' Later (' + laterCount + ')</button>' +
+      '<button type="button" class="playlist-pill' + (activePid === 'favorites' ? ' active' : '') + '" onclick="devSelectPlaylist(&quot;favorites&quot;)">⭐ Favorites (' + favCount + ')</button>' +
+      '<button type="button" class="playlist-pill' + (activePid === 'queue' ? ' active' : '') + '" onclick="devSelectPlaylist(&quot;queue&quot;)">📋 Queue (' + qq.length + ')</button>' +
+      '<button type="button" class="playlist-pill" onclick="devPromptNewPlaylist()">➕ New Playlist</button>' +
+      '</div>';
+
+    // Row 2: Custom Playlists & Subscriptions
+    const customKeys = Object.keys(store.custom || {});
+    let customPills = '';
+    if (customKeys.length === 0) {
+      customPills = '<span style="font-size:12px; color:var(--text-muted); padding:4px 0;">No custom playlists yet. Tap &ldquo;➕ New Playlist&rdquo; to create one, or browse Public Playlists.</span>';
+    } else {
+      customPills = customKeys.map(pid => {
+        const p = store.custom[pid];
+        if (!p) return '';
+        const n = (p.items || []).length;
+        const isSub = !!p.isSubscription;
+        const icon = isSub ? '📡' : (p.icon || '📁');
+        const cls = 'playlist-pill' + (isSub ? ' subscription-pill' : '') + (pid === activePid ? ' active' : '');
+        return '<button type="button" class="' + cls + '" onclick="devSelectPlaylist(&quot;' + escapeHtml(pid) + '&quot;);">' +
+          escapeHtml(icon) + ' ' + escapeHtml(p.name) + ' (' + n + ')</button>';
+      }).join('');
+    }
+
+    h += '<div class="playlist-custom-row">' +
+      '<div class="playlist-row-caption">My Playlists &amp; Subscriptions</div>' +
+      customPills +
+      '</div>';
+
+    return h;
+  }
+  window.devPlaylistsHeaderHtml = devPlaylistsHeaderHtml;
+
   function renderPlPublicInto(container, isGuest) {
     if (!container) return;
     try {
@@ -15699,10 +15896,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     };
     let qhtml = '';
     if (!isGuest) {
-      qhtml += '<div class="playlist-pills">' +
-        '<button type="button" class="playlist-pill" onclick="devSelectPlaylist(&quot;history&quot;)">📁 Mine</button>' +
-        '<button type="button" class="playlist-pill active">🌍 Public</button>' +
-        '<button type="button" class="playlist-pill" onclick="devPromptNewPlaylist()">➕ New Playlist</button></div>';
+      qhtml += devPlaylistSegmentedBarHtml(true);
     }
     qhtml += '<div style="grid-column:1/-1; display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">' +
       '<input id="plPubQ" type="text" placeholder="Search public playlists…" value="' + escapeHtml(plPublicQuery) + '"' +
@@ -15721,19 +15915,26 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     } else {
       qhtml += plPublicResults.map(p => {
         const open = plPublicExpanded === p.id;
+        const isSub = devIsSubscribedToPublicId(p.id);
         const tagBits = []
           .concat((p.tags && p.tags.teachers || []).map(t => '👤 ' + t.name))
           .concat((p.tags && p.tags.venues || []).map(t => '📍 ' + t.name))
           .concat((p.tags && p.tags.topics || []).map(t => '🏷️ ' + t.name));
-        return '<div class="playlist-public-card">' +
+        return '<div class="playlist-public-card' + (isSub ? ' playlist-subscribed-card' : '') + '">' +
+          '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">' +
           '<div class="playlist-card-title">' + escapeHtml(p.title || 'Untitled') + '</div>' +
+          (isSub ? '<span class="active-filter-pill" style="background:rgba(56, 189, 248, 0.15); color:#0369a1; border-color:#38bdf8; font-weight:700; white-space:nowrap; flex-shrink:0;">📡 Subscribed</span>' : '') +
+          '</div>' +
           '<div class="playlist-card-meta">by ' + escapeHtml(p.ownerName || 'a listener') +
           ' · ' + (p.itemCount || 0) + ' shiurim · ❤️ ' + (p.saves || 0) + ' saves</div>' +
           (p.description ? '<div class="playlist-card-desc">' + escapeHtml(p.description) + '</div>' : '') +
           (tagBits.length ? '<div class="playlist-card-tags">' + tagBits.map(t => '<span class="playlist-tag-chip">' + escapeHtml(t) + '</span>').join('') + '</div>' : '') +
           '<div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap;">' +
           '<button type="button" class="card-mini-btn" onclick="plPublicToggle(&quot;' + escapeHtml(p.id) + '&quot;)">' + (open ? 'Hide shiurim ▲' : 'Preview shiurim ▼') + '</button>' +
-          '<button type="button" class="card-mini-btn" onclick="plPromptSavePublic(&quot;' + escapeHtml(p.id) + '&quot;, &quot;' + escapeHtml((p.title || 'Shared playlist').replace(/"/g, '&quot;')) + '&quot;)">💾 Save to my playlists</button>' +
+          (isSub
+            ? '<button type="button" class="card-mini-btn active-save" onclick="devOpenSubscribedPlaylist(&quot;' + escapeHtml(p.id) + '&quot;)">🎧 Open in My Playlists</button>'
+            : '<button type="button" class="card-mini-btn" onclick="plPromptSavePublic(&quot;' + escapeHtml(p.id) + '&quot;, &quot;' + escapeHtml((p.title || 'Shared playlist').replace(/"/g, '&quot;')) + '&quot;)">💾 Save to my playlists</button>'
+          ) +
           '<button type="button" class="card-mini-btn" onclick="plUnsavePublic(&quot;' + escapeHtml(p.id) + '&quot;)">Remove save ♥</button>' +
           (typeof isDevMode !== 'undefined' && isDevMode ? '<button type="button" class="card-mini-btn active-save" onclick="devEditPublicPlaylist(&quot;' + escapeHtml(p.id) + '&quot;)">✏️ Edit (Dev)</button>' : '') +
           '</div>' +
@@ -15804,20 +16005,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       return;
     }
     const store = getDevStore();
+    // Public browser pseudo-view (browse + save other people's lists).
+    if (activeDevPlaylistId === 'public') {
+      renderPlPublicInto(grid, false);
+      return;
+    }
     // Queue pseudo-view ('queue' is not a stored playlist).
     if (activeDevPlaylistId === 'queue') {
-      const qpills = devPlaylistIds(store).map(pid => {
-        const p = getDevPlaylist(store, pid);
-        if (!p) return '';
-        const n = (p.items || []).length;
-        return '<button type="button" class="playlist-pill"' +
-          ' onclick="devSelectPlaylist(&quot;' + escapeHtml(pid) + '&quot;);">' +
-          escapeHtml(p.icon || '📁') + ' ' + escapeHtml(p.name) + ' (' + n + ')</button>';
-      }).join('');
       const qq = getDevQueue();
-      let qhtml = '<div class="playlist-pills">' + qpills +
-        '<button type="button" class="playlist-pill active" onclick="devSelectPlaylist(&quot;queue&quot;)">📋 Queue (' + qq.length + ')</button>' +
-        '<button type="button" class="playlist-pill" onclick="devPromptNewPlaylist()">➕ New Playlist</button></div>';
+      let qhtml = devPlaylistsHeaderHtml(store, 'queue');
       qhtml += '<div class="search-results-subheading"><span>📋</span><span>Play Queue</span>' +
         '<span class="sub-count">' + qq.length + (qq.length === 1 ? ' item' : ' items') + ' · auto-plays next</span></div>';
       if (qq.length > 0) {
@@ -15829,25 +16025,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       grid.innerHTML = qhtml;
       return;
     }
-    // Public browser pseudo-view (browse + save other people's lists).
-    if (activeDevPlaylistId === 'public') {
-      renderPlPublicInto(grid, false);
-      return;
-    }
     if (!getDevPlaylist(store, activeDevPlaylistId)) activeDevPlaylistId = 'history';
     const pl = getDevPlaylist(store, activeDevPlaylistId);
-    const pills = devPlaylistIds(store).map(pid => {
-      const p = getDevPlaylist(store, pid);
-      if (!p) return '';
-      const n = (p.items || []).length;
-      const icon = p.isSubscription ? '📡' : (p.icon || '📁');
-      return '<button type="button" class="playlist-pill' + (pid === activeDevPlaylistId ? ' active' : '') + '"' +
-        ' onclick="devSelectPlaylist(&quot;' + escapeHtml(pid) + '&quot;);">' +
-        escapeHtml(icon) + ' ' + escapeHtml(p.name) + ' (' + n + ')</button>';
-    }).join('');
-    let html = '<div class="playlist-pills">' + pills +
-      '<button type="button" class="playlist-pill" onclick="devPromptNewPlaylist()">➕ New Playlist</button>' +
-      '<button type="button" class="playlist-pill" onclick="activeDevPlaylistId=&quot;public&quot;; plSearchPublic();">🌍 Public</button></div>';
+    let html = devPlaylistsHeaderHtml(store, activeDevPlaylistId);
     let items = (pl && pl.items) || [];
     // History sort: last-listened (default, recency of play) vs shiur date.
     let historySort = 'listened';

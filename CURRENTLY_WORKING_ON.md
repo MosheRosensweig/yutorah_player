@@ -13,11 +13,11 @@ Production status: **Untouched** (strictly protected by standing rules)
 - [x] **Phase 1: Play Queue UX & Idempotent Modal Controls** *(COMPLETED)*
   - Fix idempotent single-click close for `#queuePopup` (clicking Open Queue multiple times won't stack open states; single `✕` click unconditionally closes).
   - Fix empty queue prompt icon and text (match circular queue icon `📋` / list icon with SVG).
-- [ ] **Phase 2: Playlists Tab Restructuring & Sticky Controls** *(IN PROGRESS)*
-  - Segmented top control: `My Playlists` vs `Public Playlists`.
-  - Sticky / frozen top row in `My Playlists` (`History`, `Save for Later`, `+ New Playlist`).
-  - Subscribed / read-only border highlights in Light Mode and Dark Mode.
-- [ ] **Phase 3: Playlist Sorting & Ordering Controls** *(PENDING)*
+- [x] **Phase 2: Playlists Tab Restructuring & Sticky Controls** *(COMPLETED)*
+  - Segmented top control: `🎧 My Playlists` vs `🌍 Public Playlists`.
+  - Sticky / frozen top row in `My Playlists` (`🕒 History`, `🕒 Later`, `⭐ Favorites`, `📋 Queue`, `➕ New Playlist`).
+  - Subscribed / read-only border highlights in Light Mode and Dark Mode (`.playlist-subscribed-card`, `.subscription-pill`, `📡 Subscribed` badge, `🎧 Open in My Playlists` action).
+- [ ] **Phase 3: Playlist Sorting & Ordering Controls** *(IN PROGRESS)*
   - Sort selector per playlist: `Last Listened`, `Shiur Date`, `Manual / Drag-and-Drop`.
 - [ ] **Phase 4: Enhanced Playlist Creation Modal** *(PENDING)*
   - Emoji / Icon picker for playlists.
@@ -31,6 +31,19 @@ Production status: **Untouched** (strictly protected by standing rules)
 ---
 
 ## 🕒 Chronological Activity Log
+
+### [2026-09-11 10:18 ET] — Commit `feat/auth-d1` (Phase 2: Playlists Tab Restructuring & Sticky Controls)
+- `[DONE]` **Segmented Top Control Bar**:
+  - Implemented `.playlist-segmented-bar` with `🎧 My Playlists` and `🌍 Public Playlists` buttons switching between views via `devSwitchPlaylistSubView(sub)`.
+  - Replaced legacy inline `📁 Mine` and `🌍 Public` pills with modern segmented control.
+- `[DONE]` **Sticky Frozen Top Row for System Lists & Actions**:
+  - Partitioned playlist navigation into `.playlist-system-row` (anchored with `position: sticky; top: 52px; z-index: 10; background: var(--bg);`) containing `🕒 History`, `Later`, `⭐ Favorites`, `📋 Queue`, and `➕ New Playlist`.
+  - Dedicated `.playlist-custom-row` displays user custom playlists and live subscriptions with clear section caption.
+- `[DONE]` **Subscribed / Read-Only Visual Highlighting**:
+  - Implemented `devIsSubscribedToPublicId`, `devGetSubscribedCustomId`, and `devOpenSubscribedPlaylist`.
+  - Public playlists that the user is subscribed to receive `.playlist-subscribed-card` with glowing sky-blue border, `📡 Subscribed` pill badge, and `🎧 Open in My Playlists` button.
+  - Subscribed playlists in custom row display `.playlist-pill.subscription-pill` styling.
+- `[DONE]` **Automated Testing**: Updated `tests/basic_functionality.test.mjs` with Phase 2 assertions. All 5 test suites passed 100% green.
 
 ### [2026-09-11 10:12 ET] — Commit `feat/auth-d1` (Play Queue UX: Idempotent Single-Click Close & Circular Icon Prompt)
 - `[DONE]` **Idempotent Single-Click Close**:

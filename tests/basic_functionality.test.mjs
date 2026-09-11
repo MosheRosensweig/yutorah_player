@@ -331,9 +331,20 @@ async function testPublicPlaylistSubscriptionOptions() {
   assert.ok(html.includes('devCloneSubscriptionToCopy'), 'devCloneSubscriptionToCopy defined');
   assert.ok(html.includes('Subscribed · Live Sync'), 'Subscribed playlist header badge defined');
   assert.ok(html.includes('const canRemove = !pl.isSubscription'), 'Subscribed playlist suppresses remove buttons');
-  assert.ok(html.includes('Subscribed playlists are read-only'), 'devDoRemove guards against mutating subscribed playlists');
+  // 4. Phase 2 Restructuring: Segmented Bar, Sticky Controls & Subscription Badges
+  assert.ok(html.includes('.playlist-segmented-bar'), 'playlist-segmented-bar CSS defined');
+  assert.ok(html.includes('.playlist-seg-btn'), 'playlist-seg-btn CSS defined');
+  assert.ok(html.includes('.playlist-system-row'), 'playlist-system-row CSS defined');
+  assert.ok(html.includes('.playlist-custom-row'), 'playlist-custom-row CSS defined');
+  assert.ok(html.includes('.playlist-subscribed-card'), 'playlist-subscribed-card CSS defined');
+  assert.ok(html.includes('devPlaylistSegmentedBarHtml'), 'devPlaylistSegmentedBarHtml defined');
+  assert.ok(html.includes('devPlaylistsHeaderHtml'), 'devPlaylistsHeaderHtml defined');
+  assert.ok(html.includes('devSwitchPlaylistSubView'), 'devSwitchPlaylistSubView defined');
+  assert.ok(html.includes('devIsSubscribedToPublicId'), 'devIsSubscribedToPublicId defined');
+  assert.ok(html.includes('devOpenSubscribedPlaylist'), 'devOpenSubscribedPlaylist defined');
+  assert.ok(html.includes('Open in My Playlists'), 'Subscribed public playlist cards render Open in My Playlists');
 
-  console.log('  ✅ Public playlist save choice modal and live-sync subscription verified.');
+  console.log('  ✅ Public playlist save choice modal, live-sync subscription & Phase 2 segmented controls verified.');
 }
 
 async function testDevPersonasAndSecondTab() {
