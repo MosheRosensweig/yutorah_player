@@ -16804,6 +16804,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         html += '<div style="grid-column:1/-1; margin-bottom:8px; display:flex; gap:8px; flex-wrap:wrap;">' +
           '<button type="button" class="card-mini-btn" onclick="playDevPlaylistAll()">▶ Play All</button>' +
           '<button type="button" class="card-mini-btn" onclick="playDevPlaylistShuffled()">🔀 Shuffle</button>' +
+          '<button type="button" class="card-mini-btn" onclick="devQueuePlaylistToTop()" title="Add playlist to top of queue">⏫ Queue to Top</button>' +
           '<button type="button" class="card-mini-btn" onclick="devSyncSubscribedPlaylist(&quot;' + escapeHtml(pl.id) + '&quot;, true)">🔄 Check for Updates</button>' +
           '<button type="button" class="card-mini-btn" onclick="devCloneSubscriptionToCopy(&quot;' + escapeHtml(pl.id) + '&quot;)">📋 Make Editable Copy</button>' +
           '<button type="button" class="card-mini-btn" onclick="devExportPlaylist()">Export JSON</button>' +
@@ -16832,6 +16833,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         html += '<div style="grid-column:1/-1; margin-bottom:8px; display:flex; gap:8px; flex-wrap:wrap;">' +
           '<button type="button" class="card-mini-btn" onclick="playDevPlaylistAll()">▶ Play All</button>' +
           '<button type="button" class="card-mini-btn" onclick="playDevPlaylistShuffled()">🔀 Shuffle</button>' +
+          '<button type="button" class="card-mini-btn" onclick="devQueuePlaylistToTop()" title="Add playlist to top of queue">⏫ Queue to Top</button>' +
           '<button type="button" class="card-mini-btn" onclick="devExportPlaylist()">Export JSON</button>' +
           '<button type="button" class="card-mini-btn" onclick="openPlaylistDetailsModal()">📝 Details & Tags</button>';
         if (pl.publicId) {
@@ -16842,7 +16844,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         html += '<button type="button" class="card-mini-btn" onclick="devDeletePlaylist()">Delete Playlist</button></div>';
       }
     } else if (items.length > 0) {
-      html += '<div style="grid-column:1/-1; margin-bottom:8px; display:flex; gap:6px;"><button type="button" class="card-mini-btn" onclick="playDevPlaylistAll()">▶ Play All</button><button type="button" class="card-mini-btn"' + (items.length<2 ? ' disabled aria-disabled="true" title="Add at least 2 items to shuffle"' : ' aria-label="Shuffle playlist" title="Play in random order"') + ' onclick="playDevPlaylistShuffled()">🔀 Shuffle</button></div>';
+      html += '<div style="grid-column:1/-1; margin-bottom:8px; display:flex; gap:6px; flex-wrap:wrap;"><button type="button" class="card-mini-btn" onclick="playDevPlaylistAll()">▶ Play All</button><button type="button" class="card-mini-btn"' + (items.length<2 ? ' disabled aria-disabled="true" title="Add at least 2 items to shuffle"' : ' aria-label="Shuffle playlist" title="Play in random order"') + ' onclick="playDevPlaylistShuffled()">🔀 Shuffle</button><button type="button" class="card-mini-btn" onclick="devQueuePlaylistToTop()" title="Add playlist to top of queue">⏫ Queue to Top</button></div>';
     }
     if (items.length === 0) {
       html += '<div style="grid-column:1/-1; text-align:center; padding:30px; color:var(--text-muted);">Empty playlist — tap 🕒 Save for later, ☆ Fav or ➕ Playlist on any card to add shiurim.</div>';
@@ -17068,6 +17070,42 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       playShiurById(null, String(pl.items[0].id));
     }
   }
+  function devQueuePlaylistToTop() {
+    const store = getDevStore();
+    const pl = getDevPlaylist(store, activeDevPlaylistId);
+    if (!pl || !pl.items || pl.items.length === 0) {
+      try { flashToast('Queue is unchanged — this playlist is empty', true, false); } catch (e) {}
+      return;
+    }
+    const seen = new Set();
+    try {
+      for (const it of getDevQueue()) {
+        if (it && it.kind === 'series' && Array.isArray(it.items)) it.items.forEach(s => { if (s && s.id) seen.add(String(s.id)); });
+        else if (it && it.id) seen.add(String(it.id));
+      }
+    } catch (e) {}
+    const fresh = [];
+    for (const s of pl.items) {
+      const sid = String((s && s.id) || '');
+      if (!sid || seen.has(sid)) continue;
+      seen.add(sid);
+      fresh.push({
+        id: sid, title: s.title, speaker: s.speaker, photo: s.photo,
+        duration: s.duration, date: s.date, category: s.category,
+        isArticle: Boolean(s.isArticle), queuedAt: Date.now()
+      });
+    }
+    if (fresh.length === 0) {
+      try { flashToast('Already in queue — nothing new to add', true, false); } catch (e) {}
+      return;
+    }
+    try {
+      saveDevQueue(fresh.concat(getDevQueue()));
+    } catch (e) {}
+    try { flashToast('⏫ Added ' + fresh.length + ' to top of queue', false, false); } catch (e) {}
+  }
+  window.devQueuePlaylistToTop = devQueuePlaylistToTop;
+
   function playDevPlaylistShuffled() {
     const store = getDevStore();
     const pl = getDevPlaylist(store, activeDevPlaylistId);
