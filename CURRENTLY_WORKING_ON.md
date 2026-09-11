@@ -1,15 +1,32 @@
 # Currently Working On — Living Status & Activity Log
 
 Living status doc & audit log — updated on every milestone and user request.  
-Last updated: **2026-09-10, 23:35 ET**  
+Last updated: **2026-09-10, 23:55 ET**  
 Current branch: `feat/auth-d1`  
 Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev)  
-Tests: **5/5 test suites passing (100% green, 11/11 basic functionality checks)**  
+Tests: **5/5 test suites passing (100% green, 12/12 basic functionality checks)**  
 Production status: **Untouched** (strictly protected by standing rules)
 
 ---
 
 ## 🕒 Chronological Activity Log
+
+### [2026-09-10 23:55 ET] — Commit `feat/auth-d1` (Public Playlist Save Choice: Subscribe Live Sync vs Editable Copy + D1 Backup Guide)
+- `[DONE]` **Public Playlist Save Choice Modal**:
+  - When clicking `💾 Save to my playlists` on any public playlist, users are presented with a clean choice modal:
+    1. **📡 Subscribe / Follow (Live Sync)**: Adds the playlist to their collection as a read-only live subscription. It automatically stays in sync whenever the author adds, removes, or modifies shiurim. Item removal is locked to maintain author integrity. Includes dedicated `🔄 Check for Updates` and `📋 Make Editable Copy` buttons.
+    2. **📋 Make an Editable Copy**: Creates an independent clone in "My Playlists" that the user owns and can freely edit, rename, and add or remove shiurim from.
+- `[DONE]` **Live Sync & Subscription Management**:
+  - Implemented `devSyncSubscribedPlaylist(pid, notify)` which pulls the latest items from `/api/playlists/items?id=${publicId}` and updates the playlist. Auto-sync triggers in the background when viewed (30s cache TTL).
+  - Added `devCloneSubscriptionToCopy(pid)` to easily convert any followed playlist into an independent editable copy.
+  - Added `devUnfollowPlaylist(pid)` to unfollow and remove the subscription cleanly with confirmation.
+- `[DONE]` **D1 Database Backup & Disaster Recovery Documentation**:
+  - Created [docs/BACKUP_AND_RESTORE.md](file:///Users/mosherosensweig/git/yutorah_player/docs/BACKUP_AND_RESTORE.md) detailing:
+    - Overview of stored data (`users`, `listening_history`, `playlist_items`, `public_playlists`, `playlist_saves`).
+    - Single-command manual export ("For Dummies" step-by-step).
+    - Disaster recovery restoration instructions.
+    - 100% free automated GitHub Actions cron workflow running weekly database exports with artifact retention.
+- `[DONE]` **Automated Testing**: Added Test #12 (`testPublicPlaylistSubscriptionOptions`) to `tests/basic_functionality.test.mjs`. All 5 test suites passed 100% green.
 
 ### [2026-09-10 23:35 ET] — Commit `feat/auth-d1` (Plain Gear Avatar Default + Dropdown Navigation Fixes + Light Mode Playlists Contrast + Theme-Adaptive Hero Scrim)
 - `[DONE]` **Plain Gear Replacement for Login Icon**:

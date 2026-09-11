@@ -295,6 +295,38 @@ async function testDropdownNavAndThemeAesthetics() {
   console.log('  ✅ Plain gear default avatar, dropdown actions, and theme-adaptive hero contrast verified.');
 }
 
+async function testPublicPlaylistSubscriptionOptions() {
+  console.log('12. Testing Public Playlist Save Choice Modal & Live-Sync Subscription...');
+  const req = new Request('https://yutorah-player.mrosensweig.workers.dev/', {
+    headers: { 'User-Agent': 'TestRunner' }
+  });
+  const res = await worker.fetch(req, mockEnv, mockCtx);
+  assert.equal(res.status, 200);
+  const html = await res.text();
+
+  // 1. Modal & Choice Buttons
+  assert.ok(html.includes('openSaveChoiceModal'), 'openSaveChoiceModal defined in client script');
+  assert.ok(html.includes('choiceSubscribe'), 'Subscribe live sync choice button defined');
+  assert.ok(html.includes('choiceCopy'), 'Make editable copy choice button defined');
+  assert.ok(html.includes('.save-choice-card'), 'save-choice-card CSS class defined');
+
+  // 2. Execution functions
+  assert.ok(html.includes('plExecuteSave'), 'plExecuteSave defined');
+  assert.ok(html.includes("mode === 'subscribe'"), 'plExecuteSave handles subscribe mode');
+  assert.ok(html.includes('isSubscription: true'), 'plExecuteSave sets isSubscription: true');
+  assert.ok(html.includes('subscribedPublicId: id'), 'plExecuteSave binds subscribedPublicId');
+
+  // 3. Live Sync & Read-Only Guards
+  assert.ok(html.includes('devSyncSubscribedPlaylist'), 'devSyncSubscribedPlaylist defined');
+  assert.ok(html.includes('devUnfollowPlaylist'), 'devUnfollowPlaylist defined');
+  assert.ok(html.includes('devCloneSubscriptionToCopy'), 'devCloneSubscriptionToCopy defined');
+  assert.ok(html.includes('Subscribed · Live Sync'), 'Subscribed playlist header badge defined');
+  assert.ok(html.includes('const canRemove = !pl.isSubscription'), 'Subscribed playlist suppresses remove buttons');
+  assert.ok(html.includes('Subscribed playlists are read-only'), 'devDoRemove guards against mutating subscribed playlists');
+
+  console.log('  ✅ Public playlist save choice modal and live-sync subscription verified.');
+}
+
 async function runAll() {
   try {
     await testHomepage();
@@ -308,6 +340,7 @@ async function runAll() {
     await testMediaSessionIntegration();
     await testDevModeAndAvatarVariants();
     await testDropdownNavAndThemeAesthetics();
+    await testPublicPlaylistSubscriptionOptions();
     console.log('\n🎉 ALL BASIC FUNCTIONALITY, ARTICLE READER & LIQUID MODE TESTS PASSED SUCCESSFULLY!');
   } catch (err) {
     console.error('\n❌ Test failed:', err);

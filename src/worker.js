@@ -501,23 +501,32 @@ async function handleSyncRoutes(request, env, url) {
       const r = await env.yutorah_db.prepare(
         'SELECT p.is_public AS isPublic, p.owner_id AS ownerId FROM public_playlists p WHERE p.id = ?')
         .bind(pid).first();
-      if (r && (r.isPublic || (await getSessionUser(request, env) || {}).id === r.ownerId)) {
-        const rr = await env.yutorah_db.prepare(
-          'SELECT shiur_id AS id, title, speaker, photo, duration, kind, items_json AS itemsJson FROM public_playlist_items WHERE playlist_id = ? ORDER BY position')
-          .bind(pid).all();
-        items = (rr.results || []).map(it => {
-          if (it.kind === 'series') {
-            let kids = [];
-            try { kids = JSON.parse(it.itemsJson || '[]'); } catch (e) { kids = []; }
-            return { kind: 'series', seriesTitle: it.title, items: Array.isArray(kids) ? kids : [] };
-          }
-          return it;
+      if (!r || (!r.isPublic && (await getSessionUser(request, env) || {}).id !== r.ownerId)) {
+        return new Response(JSON.stringify({ error: 'Playlist not found' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
         });
       }
-    } catch (e) {}
-    return new Response(JSON.stringify({ items }), {
-      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
-    });
+      const rr = await env.yutorah_db.prepare(
+        'SELECT shiur_id AS id, title, speaker, photo, duration, kind, items_json AS itemsJson FROM public_playlist_items WHERE playlist_id = ? ORDER BY position')
+        .bind(pid).all();
+      items = (rr.results || []).map(it => {
+        if (it.kind === 'series') {
+          let kids = [];
+          try { kids = JSON.parse(it.itemsJson || '[]'); } catch (e) { kids = []; }
+          return { kind: 'series', seriesTitle: it.title, items: Array.isArray(kids) ? kids : [] };
+        }
+        return it;
+      });
+      return new Response(JSON.stringify({ items }), {
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+      });
+    } catch (e) {
+      return new Response(JSON.stringify({ error: 'Database error' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+      });
+    }
   }
 
   const user = await getSessionUser(request, env);
@@ -727,7 +736,7 @@ async function handleSyncRoutes(request, env, url) {
     if ((url.pathname === '/api/playlists/save' || url.pathname === '/api/playlists/unsave') && request.method === 'POST') {
       const pid = String((pbody && pbody.id) || '');
       const row = await db.prepare(
-        'SELECT id, title, description FROM public_playlists WHERE id = ? AND is_public = 1').bind(pid).first();
+        'SELECT id, title, description, owner_name AS ownerName FROM public_playlists WHERE id = ? AND is_public = 1').bind(pid).first();
       if (!row) {
         return new Response(JSON.stringify({ error: 'not found' }), {
           status: 404, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
@@ -749,7 +758,7 @@ async function handleSyncRoutes(request, env, url) {
           }
         }
         return new Response(JSON.stringify({
-          playlist: { name: row.title, description: row.description, items: items.results || [] }
+          playlist: { name: row.title, description: row.description, ownerName: row.ownerName || '', items: items.results || [] }
         }), { headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } });
       }
       await db.prepare('DELETE FROM playlist_saves WHERE user_id = ? AND playlist_id = ?').bind(puser.id, pid).run();
@@ -6701,6 +6710,34 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       font-weight: 500;
       color: var(--text);
     }
+    .save-choice-card {
+      background: var(--card);
+      border: 1.5px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      width: 100%;
+      text-align: left;
+    }
+    .save-choice-card:hover {
+      border-color: var(--primary);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    }
+    .save-choice-card:focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: 2px;
+    }
+    [data-theme="dark"] .save-choice-card {
+      background: #182232;
+      border-color: #28364d;
+    }
+    [data-theme="dark"] .save-choice-card:hover {
+      border-color: #5c8ecc;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      background: #1f2b3e;
+    }
     .card-progress-track {
       height: 4px;
       background: #e4e8ef;
@@ -12061,6 +12098,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (pld) pld.remove();
       const dnm = document.getElementById('displayNameModal');
       if (dnm) dnm.remove();
+      const scm = document.getElementById('saveChoiceModal');
+      if (scm) scm.remove();
     }
   });
 
@@ -13045,7 +13084,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (pid === 'history') return false;
     const store = getDevStore();
     const pl = store.system[pid] || store.custom[pid];
-    if (!pl) return false;
+    if (!pl || pl.isSubscription) return false;
     const has = pl.items.some(item => String(item.id) === String(id));
     if (want && !has) {
       const snap = devSnapshot(id);
@@ -13427,6 +13466,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     } else {
       const store = getDevStore();
       const pl = store.system[pid] || store.custom[pid];
+      if (pl && pl.isSubscription) {
+        flashToast('🔒 Subscribed playlists are read-only', true, false);
+        return;
+      }
       if (pl) {
         pl.items = pl.items.filter(item => String(item.id) !== String(id));
         saveDevStore(store);
@@ -13586,7 +13629,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           (tagBits.length ? '<div class="playlist-card-tags">' + tagBits.map(t => '<span class="playlist-tag-chip">' + escapeHtml(t) + '</span>').join('') + '</div>' : '') +
           '<div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap;">' +
           '<button type="button" class="card-mini-btn" onclick="plPublicToggle(&quot;' + escapeHtml(p.id) + '&quot;)">' + (open ? 'Hide shiurim ▲' : 'Preview shiurim ▼') + '</button>' +
-          '<button type="button" class="card-mini-btn" onclick="plSavePublic(&quot;' + escapeHtml(p.id) + '&quot;)">💾 Save to my playlists</button>' +
+          '<button type="button" class="card-mini-btn" onclick="plPromptSavePublic(&quot;' + escapeHtml(p.id) + '&quot;, &quot;' + escapeHtml((p.title || 'Shared playlist').replace(/"/g, '&quot;')) + '&quot;)">💾 Save to my playlists</button>' +
           '<button type="button" class="card-mini-btn" onclick="plUnsavePublic(&quot;' + escapeHtml(p.id) + '&quot;)">Remove save ♥</button>' +
           (typeof isDevMode !== 'undefined' && isDevMode && (p.ownerName === 'Dev' || (p.id && p.id.startsWith('pl_dev_'))) ? '<button type="button" class="card-mini-btn active-save" onclick="devEditPublicPlaylist(&quot;' + escapeHtml(p.id) + '&quot;)">✏️ Edit (Dev)</button>' : '') +
           '</div>' +
@@ -13693,9 +13736,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       const p = getDevPlaylist(store, pid);
       if (!p) return '';
       const n = (p.items || []).length;
+      const icon = p.isSubscription ? '📡' : (p.icon || '📁');
       return '<button type="button" class="playlist-pill' + (pid === activeDevPlaylistId ? ' active' : '') + '"' +
         ' onclick="devSelectPlaylist(&quot;' + escapeHtml(pid) + '&quot;);">' +
-        escapeHtml(p.icon || '📁') + ' ' + escapeHtml(p.name) + ' (' + n + ')</button>';
+        escapeHtml(icon) + ' ' + escapeHtml(p.name) + ' (' + n + ')</button>';
     }).join('');
     let html = '<div class="playlist-pills">' + pills +
       '<button type="button" class="playlist-pill" onclick="devPromptNewPlaylist()">➕ New Playlist</button>' +
@@ -13714,36 +13758,57 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         '<button type="button" class="card-mini-btn' + (historySort === 'listened' ? ' active-save' : '') + '" onclick="setHistorySort(&quot;listened&quot;)">🕒 Last Listened</button>' +
         '<button type="button" class="card-mini-btn' + (historySort === 'shiurdate' ? ' active-save' : '') + '" onclick="setHistorySort(&quot;shiurdate&quot;)">📅 Shiur Date</button></div>';
     }
-    html += '<div class="search-results-subheading"><span>' + escapeHtml((pl && pl.icon) || '📁') + '</span>' +
+    html += '<div class="search-results-subheading"><span>' + escapeHtml((pl && pl.isSubscription ? '📡' : ((pl && pl.icon) || '📁'))) + '</span>' +
       '<span>' + escapeHtml((pl && pl.name) || '') + '</span>' +
       '<span class="sub-count">' + items.length + ' Shiurim • ' + escapeHtml(devTotalDuration(items)) + '</span></div>';
     if (!pl.isHistory && !store.system[pl.id]) {
-      const visTag = pl.publicId
-        ? '<span class="active-filter-pill">🌍 Public</span>'
-        : '<span class="active-filter-pill">🔒 Private</span>';
-      html += '<div style="grid-column:1/-1; margin-bottom:4px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">' + visTag;
-      const pTags = pl.tags && typeof pl.tags === 'object' ? pl.tags : null;
-      const tagBits = pTags ? []
-        .concat((pTags.teachers || []).map(t => '👤 ' + t.name))
-        .concat((pTags.venues || []).map(t => '📍 ' + t.name))
-        .concat((pTags.topics || []).map(t => '🏷️ ' + t.name)) : [];
-      if (tagBits.length > 0) {
-        html += '<span style="font-size:12px; color:var(--text-muted);">' + tagBits.map(escapeHtml).join(' · ') + '</span>';
-      }
-      html += '</div>';
-      if (pl.description) {
-        html += '<div style="grid-column:1/-1; margin-bottom:8px; font-size:13px; color:var(--text-muted);">' + escapeHtml(pl.description) + '</div>';
-      }
-      html += '<div style="grid-column:1/-1; margin-bottom:8px; display:flex; gap:8px; flex-wrap:wrap;">' +
-        '<button type="button" class="card-mini-btn" onclick="playDevPlaylistAll()">▶ Play All</button>' +
-        '<button type="button" class="card-mini-btn" onclick="devExportPlaylist()">Export JSON</button>' +
-        '<button type="button" class="card-mini-btn" onclick="openPlaylistDetailsModal()">📝 Details & Tags</button>';
-      if (pl.publicId) {
-        html += '<button type="button" class="card-mini-btn" onclick="plUnpublishCurrent()">Unpublish</button>';
+      if (pl.isSubscription) {
+        html += '<div style="grid-column:1/-1; margin-bottom:4px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">' +
+          '<span class="active-filter-pill" style="background:#e0f2fe; color:#0369a1; border-color:#7dd3fc;">📡 Subscribed · Live Sync</span>' +
+          '<span class="active-filter-pill" style="background:#fef3c7; color:#92400e; border-color:#fcd34d;">🔒 Read-Only</span>' +
+          (pl.ownerName ? '<span style="font-size:12px; color:var(--text-muted);">by ' + escapeHtml(pl.ownerName) + '</span>' : '') +
+          '</div>';
+        if (pl.description) {
+          html += '<div style="grid-column:1/-1; margin-bottom:8px; font-size:13px; color:var(--text-muted);">' + escapeHtml(pl.description) + '</div>';
+        }
+        html += '<div style="grid-column:1/-1; margin-bottom:8px; display:flex; gap:8px; flex-wrap:wrap;">' +
+          '<button type="button" class="card-mini-btn" onclick="playDevPlaylistAll()">▶ Play All</button>' +
+          '<button type="button" class="card-mini-btn" onclick="devSyncSubscribedPlaylist(&quot;' + escapeHtml(pl.id) + '&quot;, true)">🔄 Check for Updates</button>' +
+          '<button type="button" class="card-mini-btn" onclick="devCloneSubscriptionToCopy(&quot;' + escapeHtml(pl.id) + '&quot;)">📋 Make Editable Copy</button>' +
+          '<button type="button" class="card-mini-btn" onclick="devExportPlaylist()">Export JSON</button>' +
+          '<button type="button" class="card-mini-btn" onclick="devUnfollowPlaylist(&quot;' + escapeHtml(pl.id) + '&quot;)">Unfollow Playlist</button></div>';
+
+        if (!pl._syncing && (Date.now() - (pl.lastSyncedAt || 0) > 30000)) {
+          setTimeout(() => devSyncSubscribedPlaylist(pl.id, false), 100);
+        }
       } else {
-        html += '<button type="button" class="card-mini-btn" onclick="plPublishCurrent(true)">🌍 Publish</button>';
+        const visTag = pl.publicId
+          ? '<span class="active-filter-pill">🌍 Public</span>'
+          : '<span class="active-filter-pill">🔒 Private</span>';
+        html += '<div style="grid-column:1/-1; margin-bottom:4px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">' + visTag;
+        const pTags = pl.tags && typeof pl.tags === 'object' ? pl.tags : null;
+        const tagBits = pTags ? []
+          .concat((pTags.teachers || []).map(t => '👤 ' + t.name))
+          .concat((pTags.venues || []).map(t => '📍 ' + t.name))
+          .concat((pTags.topics || []).map(t => '🏷️ ' + t.name)) : [];
+        if (tagBits.length > 0) {
+          html += '<span style="font-size:12px; color:var(--text-muted);">' + tagBits.map(escapeHtml).join(' · ') + '</span>';
+        }
+        html += '</div>';
+        if (pl.description) {
+          html += '<div style="grid-column:1/-1; margin-bottom:8px; font-size:13px; color:var(--text-muted);">' + escapeHtml(pl.description) + '</div>';
+        }
+        html += '<div style="grid-column:1/-1; margin-bottom:8px; display:flex; gap:8px; flex-wrap:wrap;">' +
+          '<button type="button" class="card-mini-btn" onclick="playDevPlaylistAll()">▶ Play All</button>' +
+          '<button type="button" class="card-mini-btn" onclick="devExportPlaylist()">Export JSON</button>' +
+          '<button type="button" class="card-mini-btn" onclick="openPlaylistDetailsModal()">📝 Details & Tags</button>';
+        if (pl.publicId) {
+          html += '<button type="button" class="card-mini-btn" onclick="plUnpublishCurrent()">Unpublish</button>';
+        } else {
+          html += '<button type="button" class="card-mini-btn" onclick="plPublishCurrent(true)">🌍 Publish</button>';
+        }
+        html += '<button type="button" class="card-mini-btn" onclick="devDeletePlaylist()">Delete Playlist</button></div>';
       }
-      html += '<button type="button" class="card-mini-btn" onclick="devDeletePlaylist()">Delete Playlist</button></div>';
     } else if (items.length > 0) {
       html += '<div style="grid-column:1/-1; margin-bottom:8px;"><button type="button" class="card-mini-btn" onclick="playDevPlaylistAll()">▶ Play All</button></div>';
     }
@@ -13752,11 +13817,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     } else {
       html += items.map(item => {
         const iid = String(item.id);
+        const canRemove = !pl.isSubscription;
         return '<div>' + renderDocToCard(item) +
-          '<div style="margin-top:6px; display:flex; gap:6px; align-items:center;">' +
+          (canRemove ? '<div style="margin-top:6px; display:flex; gap:6px; align-items:center;">' +
           '<button type="button" class="card-mini-btn" data-dev-remove="' + pl.id + ':' + iid + '"' +
-          ' onclick="devAskRemove(\\'' + pl.id + '\\', \\'' + iid + '\\')">✕ Remove from Playlist</button>' +
-          '</div></div>';
+          ' onclick="devAskRemove(&quot;' + escapeHtml(pl.id) + '&quot;, &quot;' + escapeHtml(iid) + '&quot;)">✕ Remove from Playlist</button>' +
+          '</div>' : '') + '</div>';
       }).join('');
     }
     grid.innerHTML = html;
@@ -14110,8 +14176,72 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     });
   }
 
-  async function plSavePublic(id) {
-    if (!cloudEnabled() && !isDevMode) {
+  function closeSaveChoiceModal() {
+    const m = document.getElementById('saveChoiceModal');
+    if (m) m.remove();
+  }
+  window.closeSaveChoiceModal = closeSaveChoiceModal;
+
+  function openSaveChoiceModal(id, title) {
+    closeSaveChoiceModal();
+    const overlay = document.createElement('div');
+    overlay.id = 'saveChoiceModal';
+    overlay.style.cssText = 'position:fixed; inset:0; z-index:10000; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; padding:16px;';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', 'Save Public Playlist');
+    const box = document.createElement('div');
+    box.style.cssText = 'background:var(--card,#fff); color:var(--text,#111); border-radius:14px; max-width:440px; width:100%; padding:20px; border:1px solid var(--border-light); box-shadow:var(--shadow-hover);';
+    box.innerHTML = '<div style="font-weight:800; font-size:17px; margin-bottom:6px; color:var(--text);">Save Public Playlist</div>' +
+      '<div style="font-size:13px; color:var(--text-muted); margin-bottom:16px; line-height:1.4;">' +
+      'How would you like to save <strong>' + escapeHtml(title || 'this playlist') + '</strong> to your collection?</div>' +
+      '<div style="display:flex; flex-direction:column; gap:10px; margin-bottom:18px;">' +
+      '<button type="button" class="save-choice-card" id="choiceSubscribe">' +
+      '<div style="display:flex; gap:12px; align-items:flex-start; text-align:left;">' +
+      '<span style="font-size:24px; line-height:1;">📡</span>' +
+      '<div><div style="font-weight:700; font-size:14px; color:var(--text);">Subscribe / Follow (Live Sync)</div>' +
+      '<div style="font-size:12px; color:var(--text-muted); margin-top:3px; line-height:1.35;">Read-only in your collection. Stays in sync automatically when the author adds, removes, or modifies shiurim.</div>' +
+      '</div></div></button>' +
+      '<button type="button" class="save-choice-card" id="choiceCopy">' +
+      '<div style="display:flex; gap:12px; align-items:flex-start; text-align:left;">' +
+      '<span style="font-size:24px; line-height:1;">📋</span>' +
+      '<div><div style="font-weight:700; font-size:14px; color:var(--text);">Make an Editable Copy</div>' +
+      '<div style="font-size:12px; color:var(--text-muted); margin-top:3px; line-height:1.35;">Creates an independent clone that you own and can freely edit, rename, and add or remove shiurim from.</div>' +
+      '</div></div></button>' +
+      '</div>' +
+      '<div style="display:flex; justify-content:flex-end;">' +
+      '<button type="button" class="card-mini-btn" id="choiceCancel">Cancel</button></div>';
+    overlay.appendChild(box);
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeSaveChoiceModal(); });
+    document.body.appendChild(overlay);
+
+    box.querySelector('#choiceCancel').addEventListener('click', closeSaveChoiceModal);
+    box.querySelector('#choiceSubscribe').addEventListener('click', () => {
+      closeSaveChoiceModal();
+      plExecuteSave(id, 'subscribe');
+    });
+    box.querySelector('#choiceCopy').addEventListener('click', () => {
+      closeSaveChoiceModal();
+      plExecuteSave(id, 'copy');
+    });
+    setTimeout(() => {
+      const btn = box.querySelector('#choiceSubscribe');
+      if (btn) btn.focus();
+    }, 50);
+  }
+
+  function plPromptSavePublic(id, title) {
+    if (!playlistsEnabled()) {
+      flashToast('🔑 Log in to save public playlists', true, false);
+      return;
+    }
+    openSaveChoiceModal(id, title);
+  }
+  window.plPromptSavePublic = plPromptSavePublic;
+  window.plSavePublic = plPromptSavePublic;
+
+  async function plExecuteSave(id, mode) {
+    if (!playlistsEnabled()) {
       flashToast('🔑 Log in to save public playlists', true, false);
       return;
     }
@@ -14130,23 +14260,122 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       }
       const store = getDevStore();
       const baseName = String(data.playlist.name || 'Shared playlist').slice(0, 60);
-      let name = baseName;
-      let n = 2;
-      const taken = new Set(Object.values(store.custom || {}).map(p => p.name));
-      while (taken.has(name)) name = baseName.slice(0, 54) + ' (' + (n++) + ')';
-      const nid = devCreatePlaylist(name);
-      if (nid && store.custom[nid]) {
-        store.custom[nid].items = data.playlist.items || [];
-        store.custom[nid].description = String(data.playlist.description || '').slice(0, 500);
+
+      if (mode === 'subscribe') {
+        const subId = 'sub_' + id;
+        store.custom[subId] = {
+          id: subId,
+          name: baseName,
+          icon: '📡',
+          description: String(data.playlist.description || '').slice(0, 500),
+          items: data.playlist.items || [],
+          isSubscription: true,
+          subscribedPublicId: id,
+          ownerName: data.playlist.ownerName || '',
+          lastSyncedAt: Date.now()
+        };
         saveDevStore(store);
-        activeDevPlaylistId = nid;
+        activeDevPlaylistId = subId;
         renderPlaylistsGrid();
-        flashToast('✅ Saved to your playlists', false, false);
+        const el = document.getElementById('collectionsSection');
+        if (el) el.scrollIntoView({ behavior: 'smooth' });
+        flashToast('📡 Subscribed! Stays in sync with public playlist', false, false);
+      } else {
+        let name = baseName;
+        let n = 2;
+        const taken = new Set(Object.values(store.custom || {}).map(p => p.name));
+        while (taken.has(name)) name = baseName.slice(0, 54) + ' (' + (n++) + ')';
+        const nid = devCreatePlaylist(name);
+        if (nid && store.custom[nid]) {
+          store.custom[nid].items = data.playlist.items || [];
+          store.custom[nid].description = String(data.playlist.description || '').slice(0, 500);
+          store.custom[nid].isSubscription = false;
+          saveDevStore(store);
+          activeDevPlaylistId = nid;
+          renderPlaylistsGrid();
+          const el = document.getElementById('collectionsSection');
+          if (el) el.scrollIntoView({ behavior: 'smooth' });
+          flashToast('📋 Editable copy saved to your playlists', false, false);
+        }
       }
     } catch (e) {
       flashToast('⚠️ Save failed', true, false);
     }
   }
+  window.plExecuteSave = plExecuteSave;
+
+  async function devSyncSubscribedPlaylist(pid, notify) {
+    const store = getDevStore();
+    const pl = store.custom[pid];
+    if (!pl || !pl.isSubscription || !pl.subscribedPublicId) return;
+    try {
+      pl._syncing = true;
+      const res = await fetch('/api/playlists/items?id=' + encodeURIComponent(pl.subscribedPublicId));
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data.items)) {
+        const oldLen = (pl.items || []).length;
+        pl.items = data.items;
+        pl.lastSyncedAt = Date.now();
+        saveDevStore(store);
+        if (activeDevPlaylistId === pid) renderPlaylistsGrid();
+        if (notify) {
+          const diff = data.items.length - oldLen;
+          flashToast(diff !== 0 ? ('🔄 Synced: ' + data.items.length + ' items (' + (diff > 0 ? '+' + diff : diff) + ')') : '✅ Playlist is up to date', false, false);
+        }
+      }
+    } catch (e) {
+      // Ignore network errors during sync
+    } finally {
+      pl._syncing = false;
+    }
+  }
+  window.devSyncSubscribedPlaylist = devSyncSubscribedPlaylist;
+
+  function devUnfollowPlaylist(pid) {
+    const store = getDevStore();
+    const pl = store.custom[pid];
+    if (!pl) return;
+    openConfirmModal({
+      title: 'Unfollow Playlist',
+      body: 'Remove "' + (pl.name || 'this playlist') + '" from your collection? You can always follow it again from the Public tab.',
+      confirmLabel: 'Unfollow',
+      onConfirm: async () => {
+        if (pl.subscribedPublicId) {
+          try { plUnsavePublic(pl.subscribedPublicId); } catch (e) {}
+        }
+        delete store.custom[pid];
+        saveDevStore(store);
+        activeDevPlaylistId = 'history';
+        renderPlaylistsGrid();
+        flashToast('👋 Unfollowed playlist', false, false);
+      }
+    });
+  }
+  window.devUnfollowPlaylist = devUnfollowPlaylist;
+
+  function devCloneSubscriptionToCopy(pid) {
+    const store = getDevStore();
+    const pl = store.custom[pid];
+    if (!pl) return;
+    const trimmedBase = (pl.name || 'Playlist').slice(0, 52);
+    const baseName = trimmedBase + ' (Copy)';
+    let name = baseName;
+    let n = 2;
+    const taken = new Set(Object.values(store.custom || {}).map(p => p.name));
+    while (taken.has(name)) name = trimmedBase + ' (Copy ' + (n++) + ')';
+    const nid = devCreatePlaylist(name);
+    if (nid && store.custom[nid]) {
+      store.custom[nid].items = Array.isArray(pl.items) ? JSON.parse(JSON.stringify(pl.items)) : [];
+      store.custom[nid].description = pl.description || '';
+      store.custom[nid].isSubscription = false;
+      saveDevStore(store);
+      activeDevPlaylistId = nid;
+      renderPlaylistsGrid();
+      flashToast('📋 Created editable copy: ' + name, false, false);
+    }
+  }
+  window.devCloneSubscriptionToCopy = devCloneSubscriptionToCopy;
 
   async function plUnsavePublic(id) {
     try {
@@ -14529,7 +14758,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         playlists.save_for_later = store.system.save_for_later ? (store.system.save_for_later.items || []) : [];
         playlists.favorites = store.system.favorites ? (store.system.favorites.items || []) : [];
         for (const [pid, pl] of Object.entries(store.custom || {})) {
-          if (pl && pl.name) playlists.custom[pl.name] = pl.items || [];
+          if (pl && pl.name && !pl.isSubscription) playlists.custom[pl.name] = pl.items || [];
         }
       }
       body.playlists = playlists;
@@ -14593,6 +14822,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         }
         for (const [name, items] of Object.entries(s.playlists.custom || {})) {
           const pid = byName.get(name) || slugPid(name);
+          const existing = store.custom[pid];
+          if (existing && existing.isSubscription) continue;
           const prev = (store.custom[pid] && store.custom[pid].items) || [];
           store.custom[pid] = {
             id: pid, name, icon: icons[name] || '📁',
@@ -15220,10 +15451,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     overlay.style.cssText = 'position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; padding:16px;';
     const box = document.createElement('div');
     box.style.cssText = 'background:var(--card,#fff); color:var(--text,#111); border-radius:14px; max-width:440px; width:100%; max-height:80vh; overflow:auto; padding:18px; border:1px solid var(--border-light);';
-    function rowHtml(pid, name, icon, count, checked) {
-      return '<label style="display:flex; align-items:center; gap:8px; padding:7px 4px; cursor:pointer;" data-pl-row="' + escapeHtml(name.toLowerCase()) + '">' +
-        '<input type="checkbox" data-pl-check="' + pid + '"' + (checked ? ' checked' : '') + (pid === 'history' ? ' disabled' : '') + '>' +
-        '<span>' + escapeHtml(icon) + ' ' + escapeHtml(name) + ' (' + count + ')</span></label>';
+    function rowHtml(pid, name, icon, count, checked, isReadOnly) {
+      return '<label style="display:flex; align-items:center; gap:8px; padding:7px 4px; cursor:' + (isReadOnly ? 'not-allowed; opacity:0.6;' : 'pointer;') + '" data-pl-row="' + escapeHtml(name.toLowerCase()) + '">' +
+        '<input type="checkbox" data-pl-check="' + pid + '"' + (checked ? ' checked' : '') + (pid === 'history' || isReadOnly ? ' disabled' : '') + '>' +
+        '<span>' + escapeHtml(icon) + ' ' + escapeHtml(name) + ' (' + count + ')' + (isReadOnly ? ' <em style="font-size:11px; color:var(--text-muted);">(Read-Only)</em>' : '') + '</span></label>';
     }
     function listHtml(filter) {
       const s = getDevStore();
@@ -15233,7 +15464,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         const p = getDevPlaylist(s, pid);
         if (!p) return;
         if (f && p.name.toLowerCase().indexOf(f) === -1) return;
-        h += rowHtml(pid, p.name, p.icon || '📁', (p.items || []).length, devInPlaylist(pid, id));
+        const isRo = !!(p.isSubscription);
+        h += rowHtml(pid, p.name, p.icon || '📁', (p.items || []).length, devInPlaylist(pid, id), isRo);
       });
       return h || '<div style="padding:8px; color:var(--text-muted);">No playlists match.</div>';
     }
