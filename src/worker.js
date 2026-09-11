@@ -270,17 +270,34 @@ async function handleAuthRoutes(request, env, url) {
         .bind(String(ui.sub)).first();
       let uid;
       let isNew = false;
+      const RESERVED_DEV_NAMES = ['andrew ohiliote', 'moshe mendelwitz', 'moshe medelwitz', 'rachel sternbach'];
       if (user) {
         uid = user.id;
+        const currentName = user.name || String(ui.name || '');
         await env.yutorah_db.prepare(
           'UPDATE users SET email = ?, name = ?, picture = ?, last_seen_at = ? WHERE id = ?')
-          .bind(String(ui.email), String(ui.name || ''), String(ui.picture || ''), now, uid).run();
+          .bind(String(ui.email), currentName, String(ui.picture || ''), now, uid).run();
       } else {
         uid = randomToken(12);
         isNew = true;
+        let finalName = String(ui.name || '').trim();
+        try {
+          if (finalName) {
+            let conflict = RESERVED_DEV_NAMES.includes(finalName.toLowerCase());
+            if (!conflict) {
+              const row = await env.yutorah_db.prepare(
+                'SELECT id FROM users WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))'
+              ).bind(finalName).first();
+              if (row) conflict = true;
+            }
+            if (conflict) {
+              finalName = (finalName || 'User') + ' ' + Math.floor(100 + Math.random() * 900);
+            }
+          }
+        } catch (e) {}
         await env.yutorah_db.prepare(
           'INSERT INTO users (id, google_sub, email, name, picture, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-          .bind(uid, String(ui.sub), String(ui.email), String(ui.name || ''), String(ui.picture || ''), now, now).run();
+          .bind(uid, String(ui.sub), String(ui.email), finalName, String(ui.picture || ''), now, now).run();
       }
       const session = await makeSessionJWT(env.SESSION_SECRET, {
         uid, exp: now + 365 * 24 * 3600 * 1000, iat: now
@@ -555,7 +572,8 @@ async function handleSyncRoutes(request, env, url) {
 
   // ---- GET|POST /api/profile: display name (shown on playlists, never email) ----
   if (url.pathname === '/api/profile') {
-    const puser = await getSessionUser(request, env);
+    const isDev = request.headers.get('x-dev-mode') === '1';
+    const puser = (await getSessionUser(request, env)) || (isDev ? { id: 'dev', name: 'Dev', email: 'dev@local' } : null);
     if (!puser) {
       return new Response(JSON.stringify({ error: 'unauthorized' }), {
         status: 401, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
@@ -571,12 +589,38 @@ async function handleSyncRoutes(request, env, url) {
       try { pbody = await request.json(); } catch (e) { pbody = {}; }
       const nm = String((pbody && pbody.name) || '').trim().slice(0, 40);
       if (!nm) {
-        return new Response(JSON.stringify({ error: 'name required' }), {
+        return new Response(JSON.stringify({ error: 'name required', message: 'Name cannot be empty.' }), {
           status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
         });
       }
       const noDb = requireEnvJson(env);
       if (noDb) return noDb;
+
+      const RESERVED_DEV_NAMES = ['andrew ohiliote', 'moshe mendelwitz', 'moshe medelwitz', 'rachel sternbach'];
+      const isDev = (puser.id === 'dev' || request.headers.get('x-dev-mode') === '1');
+      if (!isDev && RESERVED_DEV_NAMES.includes(nm.toLowerCase())) {
+        return new Response(JSON.stringify({
+          error: 'name_reserved',
+          message: 'That display name is reserved. Please choose a different name.'
+        }), {
+          status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+        });
+      }
+
+      try {
+        const conflict = await env.yutorah_db.prepare(
+          'SELECT id FROM users WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) AND id != ?'
+        ).bind(nm, puser.id).first();
+        if (conflict) {
+          return new Response(JSON.stringify({
+            error: 'name_taken',
+            message: 'That display name is already taken. Please choose a different name.'
+          }), {
+            status: 409, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+          });
+        }
+      } catch (e) {}
+
       await env.yutorah_db.prepare('UPDATE users SET name = ? WHERE id = ?').bind(nm, puser.id).run();
       try {
         const fresh = await env.yutorah_db.prepare('SELECT id, email, name, picture FROM users WHERE id = ?')
@@ -661,24 +705,33 @@ async function handleSyncRoutes(request, env, url) {
       const title = String(pbody.title || pl.name || 'Untitled').slice(0, 60);
       const description = String(pbody.description || '').slice(0, 500);
       const isPublic = pbody.public !== false;
+      const isDev = (puser.id === 'dev' || request.headers.get('x-dev-mode') === '1');
+      const authorPseudonym = (isDev && pbody.author) ? String(pbody.author).trim().slice(0, 40) : null;
+      const ownerName = authorPseudonym || String(puser.name || 'Anonymous').slice(0, 40);
       let pid = String((pbody && pbody.publicId) || '');
       if (pid) {
         const owned = await db.prepare('SELECT owner_id FROM public_playlists WHERE id = ?').bind(pid).first();
-        if (!owned || owned.owner_id !== puser.id) {
+        if (!owned || (owned.owner_id !== puser.id && !isDev)) {
           return new Response(JSON.stringify({ error: 'not found' }), {
             status: 404, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
           });
         }
-        await db.prepare(
-          'UPDATE public_playlists SET title = ?, description = ?, tags_json = ?, is_public = ?, updated_at = ? WHERE id = ?')
-          .bind(title, description, JSON.stringify(cleanTags), isPublic ? 1 : 0, now, pid).run();
+        if (isDev && authorPseudonym) {
+          await db.prepare(
+            'UPDATE public_playlists SET title = ?, description = ?, tags_json = ?, is_public = ?, owner_name = ?, updated_at = ? WHERE id = ?')
+            .bind(title, description, JSON.stringify(cleanTags), isPublic ? 1 : 0, authorPseudonym, now, pid).run();
+        } else {
+          await db.prepare(
+            'UPDATE public_playlists SET title = ?, description = ?, tags_json = ?, is_public = ?, updated_at = ? WHERE id = ?')
+            .bind(title, description, JSON.stringify(cleanTags), isPublic ? 1 : 0, now, pid).run();
+        }
         await db.prepare('DELETE FROM public_playlist_items WHERE playlist_id = ?').bind(pid).run();
       } else {
         pid = randomToken(12);
         await db.prepare(
           'INSERT INTO public_playlists (id, owner_id, owner_name, title, description, tags_json, is_public, saves, created_at, updated_at) ' +
           'VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)')
-          .bind(pid, puser.id, String(puser.name || '').slice(0, 40),
+          .bind(pid, puser.id, ownerName,
             title, description, JSON.stringify(cleanTags), isPublic ? 1 : 0, now, now).run();
       }
       const batch = [];
@@ -2223,6 +2276,373 @@ function normalizeShiur(s) {
 
   return { id, title, speaker, photo, duration, date, category, isNew, description, keywords, series, location };
 }
+
+const DEV_PUBLIC_SEEDS = [    // 10 Playlists for Andrew Ohiliote
+    {
+      id: 'pl_ao_elul',
+      ownerName: 'Andrew Ohiliote',
+      title: 'Elul & Teshuvah Essentials',
+      description: 'Foundational shiurim on teshuvah, Selichos, and preparing the heart for the Yamim Noraim.',
+      tags: { teachers: [{ name: 'Rabbi Shaya Katz' }, { name: 'Rabbi Hershel Schachter' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Elul & Teshuvah' }] },
+      items: [
+        { id: '1053000', title: 'The Power of Teshuvah in Elul', speaker: 'Rabbi Shaya Katz', duration: '42:15' },
+        { id: '1052980', title: 'Hilchos Selichos and Viduy', speaker: 'Rabbi Hershel Schachter', duration: '38:40' },
+        { id: '979218', title: 'Preparing the Soul for Rosh Hashanah', speaker: 'Rabbi Michael Rosensweig', duration: '51:10' }
+      ]
+    },
+    {
+      id: 'pl_ao_shabbos',
+      ownerName: 'Andrew Ohiliote',
+      title: 'Foundations of Shabbos & Muktzah',
+      description: 'Deep halachic analysis of Hilchos Shabbos, Muktzah categories, and contemporary melacha applications.',
+      tags: { teachers: [{ name: 'Rabbi Michael Rosensweig' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Shabbat' }] },
+      items: [
+        { id: '979218', title: "Foundations of Muktzah: Kli SheMelachto L'Issur", speaker: 'Rabbi Michael Rosensweig', duration: '55:20' },
+        { id: '979219', title: 'Gramada and Electricity on Shabbat', speaker: 'Rabbi Michael Rosensweig', duration: '48:30' },
+        { id: '1052980', title: 'Borer in Modern Food Preparation', speaker: 'Rabbi Hershel Schachter', duration: '36:15' }
+      ]
+    },
+    {
+      id: 'pl_ao_medical',
+      ownerName: 'Andrew Ohiliote',
+      title: 'Contemporary Halacha & Medical Ethics',
+      description: 'End-of-life decision making, triage ethics, fertility halacha, and hospital Shabbos protocols.',
+      tags: { teachers: [{ name: 'Rabbi Aryeh Lebowitz' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Medical Ethics' }] },
+      items: [
+        { id: '1052980', title: 'Medical Triage and Resource Allocation in Halacha', speaker: 'Rabbi Aryeh Lebowitz', duration: '50:15' },
+        { id: '1052990', title: 'Pikuach Nefesh on Shabbat in Hospitals', speaker: 'Rabbi Aryeh Lebowitz', duration: '46:40' },
+        { id: '1053000', title: 'Halachic Issues in Organ Donation', speaker: 'Rabbi Hershel Schachter', duration: '54:10' }
+      ]
+    },
+    {
+      id: 'pl_ao_tefillah',
+      ownerName: 'Andrew Ohiliote',
+      title: 'Tefillah: Meaning, Structure & Kavana',
+      description: 'A deep journey through Shacharis, Shemoneh Esrei, and the theology of Jewish prayer.',
+      tags: { teachers: [{ name: 'Rabbi Yaakov Neuburger' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Tefillah' }] },
+      items: [
+        { id: '1052980', title: 'Structure and Flow of the Shemoneh Esrei', speaker: 'Rabbi Yaakov Neuburger', duration: '39:50' },
+        { id: '1053000', title: 'Kavana in Birchot Krias Shema', speaker: 'Rabbi Yaakov Neuburger', duration: '43:15' },
+        { id: '979218', title: "The Rav's Philosophy of Prayer", speaker: 'Rabbi Michael Rosensweig', duration: '49:25' }
+      ]
+    },
+    {
+      id: 'pl_ao_kashrus',
+      ownerName: 'Andrew Ohiliote',
+      title: 'Kashrus in the Modern Kitchen',
+      description: 'Practical halachos of meat and milk, tevilas keilim, dishwasher kashering, and contemporary food production.',
+      tags: { teachers: [{ name: 'Rabbi Hershel Schachter' }, { name: 'Rabbi Aryeh Lebowitz' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Kashrus' }] },
+      items: [
+        { id: '1052980', title: 'Modern Food Ingredients and Kashering Appliances', speaker: 'Rabbi Hershel Schachter', duration: '44:30' },
+        { id: '1052990', title: 'Bishul Akum and Commercial Food Preparation', speaker: 'Rabbi Aryeh Lebowitz', duration: '37:50' },
+        { id: '1053000', title: "Basar B'Chalav: Complex Modern Scenarios", speaker: 'Rabbi Hershel Schachter', duration: '52:15' }
+      ]
+    },
+    {
+      id: 'pl_ao_business',
+      ownerName: 'Andrew Ohiliote',
+      title: 'Business Ethics & Choshen Mishpat',
+      description: 'Halachic principles of contracts, copyright, competition, dina d\'malchuta, and fair workplace practices.',
+      tags: { teachers: [{ name: 'Rabbi Michael Rosensweig' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Business Ethics' }] },
+      items: [
+        { id: '979218', title: "Ona'ah and Price Disclosure in Contemporary Commerce", speaker: 'Rabbi Michael Rosensweig', duration: '50:40' },
+        { id: '979219', title: "Intellectual Property and Hasagas G'vul in Halacha", speaker: 'Rabbi Michael Rosensweig', duration: '47:15' },
+        { id: '1053000', title: "Dina D'Malchuta Dina and Corporate Ethics", speaker: 'Rabbi Hershel Schachter', duration: '41:20' }
+      ]
+    },
+    {
+      id: 'pl_ao_berachos',
+      ownerName: 'Andrew Ohiliote',
+      title: 'Hilchos Berachos & Daily Living',
+      description: 'Comprehensive review of Birkas HaNehenin, Ikar v\'Tafel, Shinui Makom, and Tefillas HaDerech.',
+      tags: { teachers: [{ name: 'Rabbi Aryeh Lebowitz' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Berachot' }] },
+      items: [
+        { id: '1052980', title: 'Birkas HaMazon: Chiyuv and Shiurim', speaker: 'Rabbi Aryeh Lebowitz', duration: '38:15' },
+        { id: '1053000', title: "Ikar v'Tafel in Granola and Breakfast Cereals", speaker: 'Rabbi Aryeh Lebowitz', duration: '42:30' },
+        { id: '1052990', title: "Birchos HaRe'ach and Special Occasions", speaker: 'Rabbi Yaakov Neuburger', duration: '35:45' }
+      ]
+    },
+    {
+      id: 'pl_ao_talmud',
+      ownerName: 'Andrew Ohiliote',
+      title: 'Talmudic Methodology: The Brisker Derech',
+      description: 'Conceptual analysis of Chafetz vs Gavra, Pesak vs Limud, and the classic analytical frameworks of Reb Chaim.',
+      tags: { teachers: [{ name: 'Rabbi Michael Rosensweig' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Talmud' }] },
+      items: [
+        { id: '979218', title: 'Brisker Methodology: Defining Cheftza vs Gavra', speaker: 'Rabbi Michael Rosensweig', duration: '58:10' },
+        { id: '979219', title: 'Two Dinim in Sukkah and Mitzvos Aseh', speaker: 'Rabbi Michael Rosensweig', duration: '53:40' },
+        { id: '1053000', title: "Reb Chaim on Rambam: Hilchos Chometz U'Matzah", speaker: 'Rabbi Mayer Twersky', duration: '51:00' }
+      ]
+    },
+    {
+      id: 'pl_ao_devarim',
+      ownerName: 'Andrew Ohiliote',
+      title: 'Sefer Devarim: Covenant and Memory',
+      description: 'Moshe Rabbeinu\'s farewell address, the theology of Teshuva in the plains of Moav, and historical destiny.',
+      tags: { teachers: [{ name: 'Rabbi Moshe Taragin' }], venues: [{ name: 'Yeshivat Har Etzion' }], topics: [{ name: 'Tanach' }] },
+      items: [
+        { id: '1053000', title: "Ha'azinu: The Song of History and Destiny", speaker: 'Rabbi Moshe Taragin', duration: '45:30' },
+        { id: '1052990', title: 'Nitzavim: Teshuvah and Free Will in Devarim', speaker: 'Rabbi Moshe Taragin', duration: '40:20' },
+        { id: '979218', title: 'Eikev: Tefillah and Eretz Yisrael in Devarim', speaker: 'Rabbi Michael Rosensweig', duration: '48:15' }
+      ]
+    },
+    {
+      id: 'pl_ao_aveilus',
+      ownerName: 'Andrew Ohiliote',
+      title: 'Hilchos Aveilus & Consolation',
+      description: 'The halachic progression of mourning from Aninus through Shloshim, Nichum Aveilim, and Kaddish.',
+      tags: { teachers: [{ name: 'Rabbi Hershel Schachter' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Halacha' }] },
+      items: [
+        { id: '1052980', title: 'The Stages of Mourning: Aninus and Shiva', speaker: 'Rabbi Hershel Schachter', duration: '46:20' },
+        { id: '1052990', title: 'Nichum Aveilim: Meaning and Protocol', speaker: 'Rabbi Hershel Schachter', duration: '39:15' },
+        { id: '979218', title: 'Kaddish and Yahrtzeit: Spiritual Dimensions', speaker: 'Rabbi Michael Rosensweig', duration: '44:50' }
+      ]
+    },
+
+    // 10 Playlists for Moshe Mendelwitz
+    {
+      id: 'pl_mm_roshhashanah',
+      ownerName: 'Moshe Mendelwitz',
+      title: 'Rosh Hashanah Machzor Insights',
+      description: 'Tefillos of Malchiyos, Zichronos, Shofros, and halachos of Shofar blowing.',
+      tags: { teachers: [{ name: 'Rabbi Mayer Twersky' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Rosh Hashanah' }] },
+      items: [
+        { id: '1053000', title: 'The Philosophy of Malchiyos', speaker: 'Rabbi Mayer Twersky', duration: '44:00' },
+        { id: '1052990', title: 'Hearing the Shofar: Kavana and Halacha', speaker: 'Rabbi Hershel Schachter', duration: '41:10' },
+        { id: '979218', title: 'Zichronos and Shofros: Divine Remembrances', speaker: 'Rabbi Michael Rosensweig', duration: '49:30' }
+      ]
+    },
+    {
+      id: 'pl_mm_dafyomi',
+      ownerName: 'Moshe Mendelwitz',
+      title: 'Daf Yomi: Sukkah & Pesachim In-Depth',
+      description: 'Lomdus, machshava, and practical halachic takeaways from Maseches Sukkah and Pesachim.',
+      tags: { teachers: [{ name: 'Rabbi Moshe Taragin' }], venues: [{ name: 'Yeshivat Har Etzion' }], topics: [{ name: 'Daf Yomi' }] },
+      items: [
+        { id: '1053000', title: "Shiur Klali: Sukkah Taaseh V'Lo Min Ha'Asui", speaker: 'Rabbi Moshe Taragin', duration: '47:25' },
+        { id: '979218', title: 'Lomdus of Bedikas Chametz and Bitul', speaker: 'Rabbi Michael Rosensweig', duration: '53:10' },
+        { id: '1052980', title: "Pesachim: Kol Sha'ah and Issur Hana'ah", speaker: 'Rabbi Hershel Schachter', duration: '45:15' }
+      ]
+    },
+    {
+      id: 'pl_mm_parsha',
+      ownerName: 'Moshe Mendelwitz',
+      title: 'Parshas Hashavua Masterclasses',
+      description: 'Literary, Midrashic, and Halachic analyses of the weekly Torah portions across Sefer Bereishis and Devarim.',
+      tags: { teachers: [{ name: 'Rabbi Moshe Taragin' }], venues: [{ name: 'Yeshivat Har Etzion' }], topics: [{ name: 'Parsha' }] },
+      items: [
+        { id: '1053000', title: 'Bereishis: Creation and Human Consciousness', speaker: 'Rabbi Moshe Taragin', duration: '42:15' },
+        { id: '1052990', title: 'Noach: Covenant with Humanity and Earth', speaker: 'Rabbi Moshe Taragin', duration: '39:50' },
+        { id: '979218', title: 'Lech Lecha: The Call and Journey of Avraham', speaker: 'Rabbi Michael Rosensweig', duration: '52:00' }
+      ]
+    },
+    {
+      id: 'pl_mm_ravsoloveitchik',
+      ownerName: 'Moshe Mendelwitz',
+      title: 'Meshel HaRav: Soloveitchik Legacy Shiurim',
+      description: 'Analyzing the thought, theology, and Brisker halachic methodology of Rabbi Joseph B. Soloveitchik zt"l.',
+      tags: { teachers: [{ name: 'Rabbi Hershel Schachter' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Jewish Thought' }] },
+      items: [
+        { id: '979218', title: "The Rav's Methodology in Hilchos Tefillah", speaker: 'Rabbi Hershel Schachter', duration: '58:00' },
+        { id: '979219', title: 'Halakhic Man and Lonely Man of Faith Compared', speaker: 'Rabbi Michael Rosensweig', duration: '52:45' },
+        { id: '1052980', title: 'Kol Dodi Dofek and Historical Providence', speaker: 'Rabbi Mayer Twersky', duration: '46:30' }
+      ]
+    },
+    {
+      id: 'pl_mm_moadim',
+      ownerName: 'Moshe Mendelwitz',
+      title: 'Moadim: Sukkos & Simchas Torah',
+      description: "The Arba Minim, Sukkah dimensions, Simchas Beis HaSho'evah, and the joy of Torah.",
+      tags: { teachers: [{ name: 'Rabbi Mayer Twersky' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Sukkot' }] },
+      items: [
+        { id: '1053000', title: 'Halachos of Daled Minim Selection and Care', speaker: 'Rabbi Hershel Schachter', duration: '48:15' },
+        { id: '1052990', title: 'The Nature of Simchah on Sukkos and Shemini Atzeres', speaker: 'Rabbi Mayer Twersky', duration: '41:30' },
+        { id: '979218', title: 'Hakafos and the Simchah of Siyum HaTorah', speaker: 'Rabbi Michael Rosensweig', duration: '45:10' }
+      ]
+    },
+    {
+      id: 'pl_mm_chanukah',
+      ownerName: 'Moshe Mendelwitz',
+      title: 'Chanukah: Light, Miracles & Sovereignty',
+      description: 'Halachos of Ner Ish U\'Beiso, Pirsumei Nisa, Hadlaka Oseh Mitzvah, and the hashkafa of Al HaNissim.',
+      tags: { teachers: [{ name: 'Rabbi Michael Rosensweig' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Chanukah' }] },
+      items: [
+        { id: '979218', title: 'Mehadrin Min HaMehadrin: Lomdus of Lighting', speaker: 'Rabbi Michael Rosensweig', duration: '51:20' },
+        { id: '1052980', title: 'Oil vs Wax Candles and Electric Menorahs', speaker: 'Rabbi Hershel Schachter', duration: '43:45' },
+        { id: '1053000', title: 'Hallel on Chanukah: Shiur and Nature', speaker: 'Rabbi Mayer Twersky', duration: '40:15' }
+      ]
+    },
+    {
+      id: 'pl_mm_purim',
+      ownerName: 'Moshe Mendelwitz',
+      title: 'Purim: Megillat Esther & Hidden Providence',
+      description: 'In-depth study of the four Mitzvos of Purim, Seudas Purim, and the theology of Hester Panim.',
+      tags: { teachers: [{ name: 'Rabbi Yaakov Neuburger' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Purim' }] },
+      items: [
+        { id: '1052980', title: 'Mishloach Manot and Matanot LaEvyonim Halachot', speaker: 'Rabbi Yaakov Neuburger', duration: '38:50' },
+        { id: '1053000', title: 'Krias HaMegillah: Hearing and Reading Nuances', speaker: 'Rabbi Hershel Schachter', duration: '46:10' },
+        { id: '1052990', title: "Ad D'Lo Yada: Hashkafic Perspectives", speaker: 'Rabbi Moshe Taragin', duration: '42:25' }
+      ]
+    },
+    {
+      id: 'pl_mm_pesach',
+      ownerName: 'Moshe Mendelwitz',
+      title: 'Pesach Seder: Halacha & Haggadah Insights',
+      description: 'The Shiurim of Matzah, Arba Kosos, Maggid structure, and Bedikas Chametz lomdus.',
+      tags: { teachers: [{ name: 'Rabbi Hershel Schachter' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Pesach' }] },
+      items: [
+        { id: '979218', title: 'The Mitzvah of Sippur Yetzias Mitzrayim', speaker: 'Rabbi Michael Rosensweig', duration: '56:30' },
+        { id: '979219', title: "Shiur Kezayis and K'dei Achilas Pras for Matzah", speaker: 'Rabbi Michael Rosensweig', duration: '49:15' },
+        { id: '1052980', title: 'Kitniyos and Modern Derivatives', speaker: 'Rabbi Hershel Schachter', duration: '44:00' }
+      ]
+    },
+    {
+      id: 'pl_mm_omer',
+      ownerName: 'Moshe Mendelwitz',
+      title: 'Sefiras HaOmer & Personal Growth',
+      description: 'The halachic nature of Temimos, counting milestones, and spiritual self-refinement towards Shavuos.',
+      tags: { teachers: [{ name: 'Rabbi Mayer Twersky' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Sefirat HaOmer' }] },
+      items: [
+        { id: '1053000', title: 'Sefirah: One Long Mitzvah or 49 Independent Mitzvos?', speaker: 'Rabbi Mayer Twersky', duration: '45:20' },
+        { id: '1052990', title: 'Mourning the Talmidei Rabbi Akiva: Lessons in Kavod', speaker: 'Rabbi Moshe Taragin', duration: '39:40' },
+        { id: '979218', title: 'Spiritual Preparation for Receiving the Torah', speaker: 'Rabbi Michael Rosensweig', duration: '48:10' }
+      ]
+    },
+    {
+      id: 'pl_mm_shavuos',
+      ownerName: 'Moshe Mendelwitz',
+      title: 'Shavuos: Matan Torah & Revelation',
+      description: 'The cosmic impact of Ma\'amad Har Sinai, Torah Sheba\'al Peh transmission, and Tikkun Leil Shavuos.',
+      tags: { teachers: [{ name: 'Rabbi Michael Rosensweig' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Shavuot' }] },
+      items: [
+        { id: '979218', title: "Kabalas HaTorah: B'Ones or B'Ratzon?", speaker: 'Rabbi Michael Rosensweig', duration: '54:15' },
+        { id: '1052980', title: 'Akdamus and Minhagim of Shavuos', speaker: 'Rabbi Hershel Schachter', duration: '37:50' },
+        { id: '1053000', title: 'Ruth and Shavuos: The Power of Torah Loyalty', speaker: 'Rabbi Mayer Twersky', duration: '43:35' }
+      ]
+    },
+
+    // 10 Playlists for Rachel Sternbach
+    {
+      id: 'pl_rs_semichas',
+      ownerName: 'Rachel Sternbach',
+      title: 'Semichas Chaver Program Highlights',
+      description: 'Practical halachos of Mezuzah, Kashrus, and Bishul Akum explained clearly for daily living.',
+      tags: { teachers: [{ name: 'Rabbi Aryeh Lebowitz' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Halacha' }] },
+      items: [
+        { id: '1052980', title: 'Semichas Chaver: Hilchos Mezuzah Practical Overview', speaker: 'Rabbi Aryeh Lebowitz', duration: '49:10' },
+        { id: '1053000', title: 'Semichas Chaver: Bishul Akum and Microwaves', speaker: 'Rabbi Aryeh Lebowitz', duration: '43:50' },
+        { id: '1052990', title: 'Semichas Chaver: Tevilas Keilim in Modern Times', speaker: 'Rabbi Aryeh Lebowitz', duration: '41:20' }
+      ]
+    },
+    {
+      id: 'pl_rs_women',
+      ownerName: 'Rachel Sternbach',
+      title: 'Women in Jewish Law & Leadership',
+      description: 'Halachic sources, historical evolution, and modern perspectives on women\'s mitzvos, learning, and leadership.',
+      tags: { teachers: [{ name: 'Dr. Smadar Rosensweig' }, { name: 'Rabbi Michael Rosensweig' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Jewish Law' }] },
+      items: [
+        { id: '979218', title: 'Torah Study for Women: Historical Perspectives', speaker: 'Rabbi Michael Rosensweig', duration: '52:10' },
+        { id: '1053000', title: 'Women and Mitzvos Aseh SheHazman Grama', speaker: 'Rabbi Mayer Twersky', duration: '47:45' },
+        { id: '1052980', title: 'Women in Communal Leadership Roles', speaker: 'Rabbi Hershel Schachter', duration: '44:30' }
+      ]
+    },
+    {
+      id: 'pl_rs_rambam',
+      ownerName: 'Rachel Sternbach',
+      title: 'Jewish Philosophy: Rambam\'s Moreh Nevukhim',
+      description: 'Classical Jewish rationalism, prophecy, divine providence, and the reasons for the commandments (Ta\'amei HaMitzvos).',
+      tags: { teachers: [{ name: 'Rabbi Mayer Twersky' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Philosophy' }] },
+      items: [
+        { id: '1053000', title: 'Rambam on Free Will and Divine Foreknowledge', speaker: 'Rabbi Mayer Twersky', duration: '48:30' },
+        { id: '979218', title: 'The Purpose of Creation in Moreh Nevukhim', speaker: 'Rabbi Michael Rosensweig', duration: '53:15' },
+        { id: '979219', title: "Ta'amei HaMitzvos: The Rationality of Commandments", speaker: 'Rabbi Michael Rosensweig', duration: '49:40' }
+      ]
+    },
+    {
+      id: 'pl_rs_matriarchs',
+      ownerName: 'Rachel Sternbach',
+      title: 'Biblical Narrative: The Matriarchs of Genesis',
+      description: 'Literary and theological analysis of Sarah, Rivka, Rachel, and Leah as moral anchors of the Jewish covenant.',
+      tags: { teachers: [{ name: 'Dr. Smadar Rosensweig' }, { name: 'Rabbi Moshe Taragin' }], venues: [{ name: 'Yeshivat Har Etzion' }], topics: [{ name: 'Tanach' }] },
+      items: [
+        { id: '1053000', title: 'Sarah Imeinu: The Crucible of Faith and Hospitality', speaker: 'Rabbi Moshe Taragin', duration: '42:00' },
+        { id: '1052990', title: 'Rivka and the Strategic Blessing', speaker: 'Rabbi Moshe Taragin', duration: '40:15' },
+        { id: '979218', title: 'Rachel and Leah: Two Paths in Building the House of Israel', speaker: 'Rabbi Michael Rosensweig', duration: '50:30' }
+      ]
+    },
+    {
+      id: 'pl_rs_ruth',
+      ownerName: 'Rachel Sternbach',
+      title: 'Megillat Ruth: Chesed and Kingship',
+      description: 'The interplay of halachic conversion, gleaning laws, Levirate marriage, and the emergence of the Davidic dynasty.',
+      tags: { teachers: [{ name: 'Dr. Smadar Rosensweig' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Tanach' }] },
+      items: [
+        { id: '1052980', title: 'Megillat Ruth: Hesed as the Foundation of Torah', speaker: 'Rabbi Michael Rosensweig', duration: '46:40' },
+        { id: '1053000', title: "Boaz and the Redemption of Naomi's Heritage", speaker: 'Rabbi Mayer Twersky', duration: '41:15' },
+        { id: '979218', title: "The Legal and Spiritual Dimensions of Ruth's Conversion", speaker: 'Rabbi Michael Rosensweig', duration: '48:50' }
+      ]
+    },
+    {
+      id: 'pl_rs_tishabav',
+      ownerName: 'Rachel Sternbach',
+      title: 'Kinot of Tisha B\'Av: History and Grief',
+      description: 'The poetics of mourning, Eleh Ezkera, the destruction of the Batei Mikdash, and the yearning for Nechama.',
+      tags: { teachers: [{ name: 'Rabbi Yaakov Neuburger' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: "Tisha B'Av" }] },
+      items: [
+        { id: '979218', title: 'Understanding the Destruction: Kamtza and Bar Kamtza', speaker: 'Rabbi Michael Rosensweig', duration: '52:45' },
+        { id: '1052980', title: 'Halachos of the Nine Days and Tisha B\'Av', speaker: 'Rabbi Hershel Schachter', duration: '44:10' },
+        { id: '1053000', title: 'The Themes of Lamentations: From Churban to Hope', speaker: 'Rabbi Yaakov Neuburger', duration: '40:30' }
+      ]
+    },
+    {
+      id: 'pl_rs_bioethics',
+      ownerName: 'Rachel Sternbach',
+      title: 'Jewish Bioethics: Genetics and Halacha',
+      description: 'Genetic screening, CRISPR gene editing, stem cell research, and organ donation in contemporary halachic literature.',
+      tags: { teachers: [{ name: 'Rabbi Aryeh Lebowitz' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Medical Ethics' }] },
+      items: [
+        { id: '1052980', title: 'Genetic Screening and Tay-Sachs Prevention in Halacha', speaker: 'Rabbi Aryeh Lebowitz', duration: '48:20' },
+        { id: '1052990', title: 'End of Life Issues and Palliative Care', speaker: 'Rabbi Aryeh Lebowitz', duration: '51:15' },
+        { id: '1053000', title: 'Organ Donation: Brain Death vs Cardiac Cessation', speaker: 'Rabbi Hershel Schachter', duration: '55:00' }
+      ]
+    },
+    {
+      id: 'pl_rs_chinuch',
+      ownerName: 'Rachel Sternbach',
+      title: 'Parenting & Chinuch in Contemporary Times',
+      description: 'Guiding youth in faith, digital age boundaries, building emotional resilience, and transmitting the mesorah with love.',
+      tags: { teachers: [{ name: 'Rabbi Yaakov Neuburger' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Education' }] },
+      items: [
+        { id: '1052980', title: "Educating with Sensitivity: Chanoch LaNa'ar", speaker: 'Rabbi Yaakov Neuburger', duration: '43:40' },
+        { id: '1053000', title: 'Navigating Modern Technology and Jewish Youth', speaker: 'Rabbi Yaakov Neuburger', duration: '46:15' },
+        { id: '979218', title: 'Building Emunah and Resilience in Our Children', speaker: 'Rabbi Michael Rosensweig', duration: '49:30' }
+      ]
+    },
+    {
+      id: 'pl_rs_mesillas',
+      ownerName: 'Rachel Sternbach',
+      title: 'Musar & Character Development: Mesillas Yesharim',
+      description: 'Step-by-step ascent from Zehirus and Zerizus through Taharah and Chassidus as charted by the Ramchal.',
+      tags: { teachers: [{ name: 'Rabbi Mayer Twersky' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Mussar' }] },
+      items: [
+        { id: '1053000', title: 'Introduction to Mesillas Yesharim: The Duty of Man', speaker: 'Rabbi Mayer Twersky', duration: '47:10' },
+        { id: '1052990', title: 'Midat HaZehirus: Watchfulness in Modern Life', speaker: 'Rabbi Moshe Taragin', duration: '41:50' },
+        { id: '979218', title: 'Zerizus: Alacrity in Mitzvah Performance', speaker: 'Rabbi Michael Rosensweig', duration: '48:00' }
+      ]
+    },
+    {
+      id: 'pl_rs_israel',
+      ownerName: 'Rachel Sternbach',
+      title: 'The Land of Israel: Halachic and Historical Dimensions',
+      description: 'Mitzvas Yishuv Eretz Yisrael, Terumos and Ma\'asros, Shemittah observance, and the spiritual significance of the Land.',
+      tags: { teachers: [{ name: 'Rabbi Hershel Schachter' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Israel' }] },
+      items: [
+        { id: '1052980', title: 'Mitzvat Yishuv Eretz Yisrael in Contemporary Halacha', speaker: 'Rabbi Hershel Schachter', duration: '52:30' },
+        { id: '1053000', title: 'The Holiness of the Land and Shemittah Observance', speaker: 'Rabbi Moshe Taragin', duration: '44:40' },
+        { id: '979218', title: 'Eretz Hemdah: The Spiritual Connection to Zion', speaker: 'Rabbi Michael Rosensweig', duration: '50:15' }
+      ]
+    }
+  ];
 
 function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpeed = '', themeMode = '', homepageData, sponsorshipText = '', sponsorshipPlainText = '', sponsorshipAudioUrl = '', searchQuery, initialSearchResults, initialNumFound = 0, initialPhoneticExpansion = null, initialRecentDocs = [], initialRecentNumFound = 0, initialQueryResolution = null, initialDidYouMean = [], isClassicSearch = false }) {
   const isPlaying = Boolean(shiurData || directAudio);
@@ -6118,39 +6538,45 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     .hero-caption {
       position: absolute;
-      left: 0;
       right: 0;
+      top: 0;
       bottom: 0;
+      left: auto;
+      width: 50%;
+      max-width: 480px;
       z-index: 10;
-      padding: 48px 24px 18px;
-      background: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.45) 25%, rgba(0, 0, 0, 0.82) 65%, rgba(0, 0, 0, 0.94) 100%);
+      padding: 24px 56px 24px 28px;
+      background: linear-gradient(to left, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.82) 50%, rgba(0, 0, 0, 0.45) 80%, transparent 100%);
       color: #ffffff;
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      justify-content: center;
+      gap: 8px;
       pointer-events: none;
     }
     .hero-caption > * {
       pointer-events: auto;
     }
     .hero-title {
-      font-size: clamp(19px, 2.6vw, 28px);
+      font-size: clamp(18px, 2.4vw, 26px);
       font-weight: 800;
       line-height: 1.25;
       color: #ffffff !important;
       text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9);
-      max-width: 820px;
+      max-width: 100%;
+      word-wrap: break-word;
     }
     .hero-desc {
-      font-size: clamp(13px, 1.2vw, 15px);
+      font-size: clamp(12.5px, 1.15vw, 14.5px);
       line-height: 1.45;
       color: rgba(255, 255, 255, 0.94) !important;
       text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
-      max-width: 760px;
+      max-width: 100%;
       display: -webkit-box;
-      -webkit-line-clamp: 2;
+      -webkit-line-clamp: 3;
       -webkit-box-orient: vertical;
       overflow: hidden;
+      word-wrap: break-word;
     }
     .hero-cta {
       display: inline-block;
@@ -6175,7 +6601,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       border-color: var(--border);
     }
     [data-theme="dark"] .hero-caption {
-      background: linear-gradient(to bottom, transparent 0%, rgba(10, 15, 24, 0.5) 25%, rgba(10, 15, 24, 0.88) 65%, rgba(10, 15, 24, 0.98) 100%);
+      background: linear-gradient(to left, rgba(10, 15, 24, 0.96) 0%, rgba(10, 15, 24, 0.88) 50%, rgba(10, 15, 24, 0.5) 80%, transparent 100%);
     }
     [data-theme="dark"] .hero-title {
       color: #ffffff !important;
@@ -6270,21 +6696,23 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         max-height: 240px;
       }
       .hero-caption {
-        padding: 32px 14px 12px;
+        width: 62%;
+        padding: 12px 36px 12px 14px;
+        gap: 4px;
       }
       .hero-title {
-        font-size: 16px;
+        font-size: 15px;
         line-height: 1.25;
       }
       .hero-desc {
-        font-size: 12.5px;
+        font-size: 12px;
         -webkit-line-clamp: 2;
-        margin-top: 2px;
+        margin-top: 1px;
       }
       .hero-cta {
-        font-size: 12px;
-        padding: 5px 14px;
-        margin-top: 4px;
+        font-size: 11.5px;
+        padding: 4px 12px;
+        margin-top: 3px;
       }
       .hero-arrow {
         width: 30px;
@@ -8222,6 +8650,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       <div class="tab-bar">
         <button class="tab-btn active" id="tab-editors" onclick="switchCollection('editors')">⭐ Editor's Picks</button>
         <button class="tab-btn dev-playlist-tab" id="tab-playlists" onclick="switchCollection('playlists')">🎧 My Playlists</button>
+        <button class="tab-btn dev-curated-tab" id="tab-dev-playlists" onclick="switchCollection('dev-playlists')" style="display: none;" aria-hidden="true">🛠️ Dev Playlists</button>
         <button class="tab-btn" id="tab-series" onclick="switchCollection('series')">📚 Featured Series</button>
         <button class="tab-btn" id="tab-recent" onclick="switchCollection('recent')">⏱️ Recently Uploaded</button>
         <button class="tab-btn" id="tab-popular" onclick="switchCollection('popular')">🔥 Most Popular</button>
@@ -8239,6 +8668,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
     <div class="shiur-cards-grid" id="grid-playlists" style="display: none;" aria-hidden="true">
       <!-- Populated client-side by the Dev Playlists engine (ROADMAP §8) -->
+    </div>
+
+    <div class="shiur-cards-grid" id="grid-dev-playlists" style="display: none;" aria-hidden="true">
+      <!-- Populated client-side with the 30 Curated Playlists across Dev Personas -->
     </div>
 
     <div class="series-grid" id="grid-series" style="display: none;">
@@ -8891,6 +9324,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         plGrid.setAttribute('aria-hidden', 'true');
         plGrid.style.display = 'none';
       }
+      const devTab = document.getElementById('tab-dev-playlists');
+      if (devTab) {
+        devTab.setAttribute('aria-hidden', 'true');
+        devTab.style.display = 'none';
+      }
+      const devGrid = document.getElementById('grid-dev-playlists');
+      if (devGrid) {
+        devGrid.setAttribute('aria-hidden', 'true');
+        devGrid.style.display = 'none';
+      }
       // Re-hide exactly what activateDevMode revealed (tracked list).
       try {
         (devRevealedSettings || []).forEach(el => {
@@ -8907,7 +9350,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       const qp = document.getElementById('queuePopup');
       if (qp) qp.style.display = 'none';
       const activeTab = document.querySelector('.tab-btn.active');
-      if (activeTab && activeTab.id === 'tab-playlists') {
+      if (activeTab && (activeTab.id === 'tab-playlists' || activeTab.id === 'tab-dev-playlists')) {
         switchCollection('editors');
       }
       renderCurrentSearchResults();
@@ -12783,110 +13226,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   var devStoreCache = null;
   var devProgressCache = null;
 
-  var DEV_PUBLIC_SEEDS = [
-    {
-      id: 'pl_dev_elul',
-      title: 'Elul & Teshuvah Essentials',
-      description: 'Foundational shiurim on teshuvah, Selichos, and preparing the heart for the Yamim Noraim.',
-      tags: { teachers: [{ name: 'Rabbi Hershel Schachter' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Elul & Teshuvah' }] },
-      items: [
-        { id: '1053000', title: 'The Power of Teshuvah in Elul', speaker: 'Rabbi Shaya Katz', duration: '42:15' },
-        { id: '1052980', title: 'Hilchos Selichos and Viduy', speaker: 'Rabbi Hershel Schachter', duration: '38:40' },
-        { id: '979218', title: 'Preparing the Soul for Rosh Hashanah', speaker: 'Rabbi Michael Rosensweig', duration: '51:10' }
-      ]
-    },
-    {
-      id: 'pl_dev_shabbos',
-      title: 'Foundations of Shabbos & Muktzah',
-      description: 'Deep halachic analysis of Hilchos Shabbos, Muktzah categories, and contemporary melacha applications.',
-      tags: { teachers: [{ name: 'Rabbi Michael Rosensweig' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Shabbat' }] },
-      items: [
-        { id: '979218', title: "Foundations of Muktzah: Kli SheMelachto L'Issur", speaker: 'Rabbi Michael Rosensweig', duration: '55:20' },
-        { id: '979219', title: 'Gramada and Electricity on Shabbat', speaker: 'Rabbi Michael Rosensweig', duration: '48:30' },
-        { id: '1052980', title: 'Borer in Modern Food Preparation', speaker: 'Rabbi Hershel Schachter', duration: '36:15' }
-      ]
-    },
-    {
-      id: 'pl_dev_roshhashanah',
-      title: 'Rosh Hashanah Machzor Insights',
-      description: 'Tefillos of Malchiyos, Zichronos, Shofros, and halachos of Shofar blowing.',
-      tags: { teachers: [{ name: 'Rabbi Mayer Twersky' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Rosh Hashanah' }] },
-      items: [
-        { id: '1053000', title: 'The Philosophy of Malchiyos', speaker: 'Rabbi Mayer Twersky', duration: '44:00' },
-        { id: '1052990', title: 'Hearing the Shofar: Kavana and Halacha', speaker: 'Rabbi Hershel Schachter', duration: '41:10' }
-      ]
-    },
-    {
-      id: 'pl_dev_medical',
-      title: 'Contemporary Halacha & Medical Ethics',
-      description: 'End-of-life decision making, triage ethics, fertility halacha, and hospital Shabbos protocols.',
-      tags: { teachers: [{ name: 'Rabbi Aryeh Lebowitz' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Medical Ethics' }] },
-      items: [
-        { id: '1052980', title: 'Medical Triage and Resource Allocation in Halacha', speaker: 'Rabbi Aryeh Lebowitz', duration: '50:15' },
-        { id: '1052990', title: 'Pikuach Nefesh on Shabbat in Hospitals', speaker: 'Rabbi Aryeh Lebowitz', duration: '46:40' }
-      ]
-    },
-    {
-      id: 'pl_dev_dafyomi',
-      title: 'Daf Yomi: Sukkah & Pesachim In-Depth',
-      description: 'Lomdus, machshava, and practical halachic takeaways from Maseches Sukkah and Pesachim.',
-      tags: { teachers: [{ name: 'Rabbi Moshe Taragin' }], venues: [{ name: 'Yeshivat Har Etzion' }], topics: [{ name: 'Daf Yomi' }] },
-      items: [
-        { id: '1053000', title: "Shiur Klali: Sukkah Taaseh V'Lo Min Ha'Asui", speaker: 'Rabbi Moshe Taragin', duration: '47:25' },
-        { id: '979218', title: 'Lomdus of Bedikas Chametz and Bitul', speaker: 'Rabbi Michael Rosensweig', duration: '53:10' }
-      ]
-    },
-    {
-      id: 'pl_dev_tefillah',
-      title: 'Tefillah: Meaning, Structure & Kavana',
-      description: 'A deep journey through Shacharis, Shemoneh Esrei, and the theology of Jewish prayer.',
-      tags: { teachers: [{ name: 'Rabbi Yaakov Neuburger' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Tefillah' }] },
-      items: [
-        { id: '1052980', title: 'Structure and Flow of the Shemoneh Esrei', speaker: 'Rabbi Yaakov Neuburger', duration: '39:50' },
-        { id: '1053000', title: 'Kavana in Birchot Krias Shema', speaker: 'Rabbi Yaakov Neuburger', duration: '43:15' }
-      ]
-    },
-    {
-      id: 'pl_dev_parsha',
-      title: 'Parshas Hashavua Masterclasses',
-      description: 'Literary, Midrashic, and Halachic analyses of the weekly Torah portions across Sefer Bereishis and Devarim.',
-      tags: { teachers: [{ name: 'Rabbi Moshe Taragin' }], venues: [{ name: 'Yeshivat Har Etzion' }], topics: [{ name: 'Parsha' }] },
-      items: [
-        { id: '1053000', title: "Ha'azinu: The Song of History and Destiny", speaker: 'Rabbi Moshe Taragin', duration: '45:30' },
-        { id: '1052990', title: 'Nitzavim: Teshuvah and Free Will in Devarim', speaker: 'Rabbi Moshe Taragin', duration: '40:20' }
-      ]
-    },
-    {
-      id: 'pl_dev_ravsoloveitchik',
-      title: 'Meshel HaRav: Soloveitchik Legacy Shiurim',
-      description: 'Analyzing the thought, theology, and Brisker halachic methodology of Rabbi Joseph B. Soloveitchik zt"l.',
-      tags: { teachers: [{ name: 'Rabbi Hershel Schachter' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Jewish Thought' }] },
-      items: [
-        { id: '979218', title: "The Rav's Methodology in Hilchos Tefillah", speaker: 'Rabbi Hershel Schachter', duration: '58:00' },
-        { id: '979219', title: 'Halakhic Man and Lonely Man of Faith Compared', speaker: 'Rabbi Michael Rosensweig', duration: '52:45' }
-      ]
-    },
-    {
-      id: 'pl_dev_semichas',
-      title: 'Semichas Chaver Program Highlights',
-      description: 'Practical halachos of Mezuzah, Kashrus, and Bishul Akum explained clearly for daily living.',
-      tags: { teachers: [{ name: 'Rabbi Aryeh Lebowitz' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Halacha' }] },
-      items: [
-        { id: '1052980', title: 'Semichas Chaver: Hilchos Mezuzah Practical Overview', speaker: 'Rabbi Aryeh Lebowitz', duration: '49:10' },
-        { id: '1053000', title: 'Semichas Chaver: Bishul Akum and Microwaves', speaker: 'Rabbi Aryeh Lebowitz', duration: '43:50' }
-      ]
-    },
-    {
-      id: 'pl_dev_moadim',
-      title: 'Moadim: Sukkos & Simchas Torah',
-      description: "The Arba Minim, Sukkah dimensions, Simchas Beis HaSho'evah, and the joy of Torah.",
-      tags: { teachers: [{ name: 'Rabbi Mayer Twersky' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Sukkot' }] },
-      items: [
-        { id: '1053000', title: 'Halachos of Daled Minim Selection and Care', speaker: 'Rabbi Hershel Schachter', duration: '48:15' },
-        { id: '1052990', title: 'The Nature of Simchah on Sukkos and Shemini Atzeres', speaker: 'Rabbi Mayer Twersky', duration: '41:30' }
-      ]
-    }
-  ];
+  var DEV_PUBLIC_SEEDS = ${JSON.stringify(DEV_PUBLIC_SEEDS).replace(/</g, "\\u003c")};
 
   function devDefaultStore() {
     return {
@@ -12914,12 +13254,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (!s.system.favorites) s.system.favorites = { id: 'favorites', name: 'Favorites', icon: '⭐', items: [] };
       if (!s.custom) s.custom = {};
       if (typeof isDevMode !== 'undefined' && isDevMode) {
+        // Purge legacy pl_dev_ entries so they don't linger in localStorage
+        for (const k of Object.keys(s.custom)) {
+          if (k.startsWith('pl_dev_')) delete s.custom[k];
+        }
         for (let i = 0; i < DEV_PUBLIC_SEEDS.length; i++) {
           const p = DEV_PUBLIC_SEEDS[i];
           if (!s.custom[p.id]) {
             s.custom[p.id] = {
               id: p.id,
               name: p.title,
+              ownerName: p.ownerName,
               description: p.description,
               tags: p.tags,
               publicId: p.id,
@@ -12928,6 +13273,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
               icon: '📁',
               items: p.items || []
             };
+          } else if (s.custom[p.id].isDevOwned && (!s.custom[p.id].ownerName || s.custom[p.id].ownerName === 'Dev')) {
+            s.custom[p.id].ownerName = p.ownerName;
           }
         }
       }
@@ -13473,6 +13820,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         const nm2 = accountDisplayName();
         collectionTitles.playlists = '🎧 ' + (on && nm2 ? nm2 + '’s Playlists' : 'My Playlists');
       }
+      const devTab = document.getElementById('tab-dev-playlists');
+      if (devTab) {
+        if (typeof isDevMode !== 'undefined' && isDevMode) {
+          devTab.style.display = '';
+          devTab.removeAttribute('aria-hidden');
+        } else {
+          devTab.style.display = 'none';
+          devTab.setAttribute('aria-hidden', 'true');
+        }
+      }
     } catch (e) {}
     try { if (typeof ensurePlayerActions === 'function') ensurePlayerActions(); } catch (e) {}
     try { if (typeof devUpgradeCards === 'function') devUpgradeCards(); } catch (e) {}
@@ -13569,7 +13926,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           '<button type="button" class="card-mini-btn" onclick="plPublicToggle(&quot;' + escapeHtml(p.id) + '&quot;)">' + (open ? 'Hide shiurim ▲' : 'Preview shiurim ▼') + '</button>' +
           '<button type="button" class="card-mini-btn" onclick="plPromptSavePublic(&quot;' + escapeHtml(p.id) + '&quot;, &quot;' + escapeHtml((p.title || 'Shared playlist').replace(/"/g, '&quot;')) + '&quot;)">💾 Save to my playlists</button>' +
           '<button type="button" class="card-mini-btn" onclick="plUnsavePublic(&quot;' + escapeHtml(p.id) + '&quot;)">Remove save ♥</button>' +
-          (typeof isDevMode !== 'undefined' && isDevMode && (p.ownerName === 'Dev' || (p.id && p.id.startsWith('pl_dev_'))) ? '<button type="button" class="card-mini-btn active-save" onclick="devEditPublicPlaylist(&quot;' + escapeHtml(p.id) + '&quot;)">✏️ Edit (Dev)</button>' : '') +
+          (typeof isDevMode !== 'undefined' && isDevMode ? '<button type="button" class="card-mini-btn active-save" onclick="devEditPublicPlaylist(&quot;' + escapeHtml(p.id) + '&quot;)">✏️ Edit (Dev)</button>' : '') +
           '</div>' +
           '<div id="plpub-' + p.id + '">' + (open ? '<div style="margin-top:8px;">Loading…</div>' : '') + '</div>' +
           '</div>';
@@ -13944,8 +14301,22 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const datalist = (kind, listId) => '<datalist id="' + listId + '">' +
       plTagOptions(kind).map(o => '<option value="' + escapeHtml(o.name || '') + '">').join('') + '</datalist>';
     box.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">' +
-      '<div style="font-weight:800;">📝 ' + escapeHtml(pl.name || '') + '</div>' +
+      '<div style="font-weight:800;">📝 Edit Playlist Details</div>' +
       '<button type="button" class="card-mini-btn" id="pldClose">Close ×</button></div>' +
+      '<label style="font-size:12px; font-weight:700; color:var(--text-muted); display:block; margin-bottom:2px;">Playlist Title</label>' +
+      '<input id="pldTitle" type="text" maxlength="60" value="' + escapeHtml(pl.name || '') + '" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-light); margin:2px 0 10px;">' +
+      (typeof isDevMode !== 'undefined' && isDevMode ? (
+        '<label style="font-size:12px; font-weight:700; color:var(--text-muted); display:block; margin-bottom:2px;">👤 Author / Attribution (Dev Mode)</label>' +
+        '<div style="display:flex; gap:6px; margin:2px 0 10px;">' +
+          '<select id="pldAuthorSelect" style="flex:1; padding:7px 10px; border-radius:8px; border:1px solid var(--border-light); background:var(--card,#fff); color:var(--text,#111);">' +
+            '<option value="Andrew Ohiliote">Andrew Ohiliote</option>' +
+            '<option value="Moshe Mendelwitz">Moshe Mendelwitz</option>' +
+            '<option value="Rachel Sternbach">Rachel Sternbach</option>' +
+            '<option value="custom">Custom Pseudonym...</option>' +
+          '</select>' +
+          '<input id="pldAuthorCustom" type="text" placeholder="Custom pseudonym" maxlength="40" style="flex:1; padding:7px 10px; border-radius:8px; border:1px solid var(--border-light); display:none;">' +
+        '</div>'
+      ) : '') +
       '<label style="font-size:12px; font-weight:700; color:var(--text-muted);">Description (optional, free text)</label>' +
       '<textarea id="pldDesc" rows="3" maxlength="500" placeholder="What is this playlist about?"' +
       ' style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-light); margin:4px 0 10px;">' +
@@ -13965,6 +14336,27 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     overlay.appendChild(box);
     overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
     document.body.appendChild(overlay);
+
+    if (typeof isDevMode !== 'undefined' && isDevMode) {
+      const authSel = box.querySelector('#pldAuthorSelect');
+      const authCust = box.querySelector('#pldAuthorCustom');
+      const currentAuthor = pl.ownerName || 'Andrew Ohiliote';
+      if (['Andrew Ohiliote', 'Moshe Mendelwitz', 'Rachel Sternbach'].includes(currentAuthor)) {
+        if (authSel) authSel.value = currentAuthor;
+      } else {
+        if (authSel) authSel.value = 'custom';
+        if (authCust) {
+          authCust.style.display = 'block';
+          authCust.value = currentAuthor;
+        }
+      }
+      if (authSel) {
+        authSel.addEventListener('change', () => {
+          if (authCust) authCust.style.display = (authSel.value === 'custom' ? 'block' : 'none');
+        });
+      }
+    }
+
     const working = {
       description: pl.description || '',
       teachers: [...(tags.teachers || [])],
@@ -14013,11 +14405,30 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         overlay.remove();
         return;
       }
+      const titleInput = box.querySelector('#pldTitle');
+      if (titleInput && titleInput.value.trim()) {
+        target.name = titleInput.value.trim().slice(0, 60);
+      }
+      if (typeof isDevMode !== 'undefined' && isDevMode) {
+        const authSel = box.querySelector('#pldAuthorSelect');
+        const authCust = box.querySelector('#pldAuthorCustom');
+        let chosenAuthor = authSel ? authSel.value : '';
+        if (chosenAuthor === 'custom' && authCust) {
+          chosenAuthor = authCust.value.trim() || 'Andrew Ohiliote';
+        }
+        if (chosenAuthor) {
+          target.ownerName = chosenAuthor;
+        }
+      }
       target.description = (box.querySelector('#pldDesc').value || '').slice(0, 500);
       target.tags = { teachers: working.teachers, venues: working.venues, topics: working.topics };
       saveDevStore(st);
+      if (target.publicId || target.isPublic) {
+        plPublishCurrent(true);
+      }
       overlay.remove();
       renderPlaylistsGrid();
+      if (typeof renderDevCuratedGrid === 'function') renderDevCuratedGrid();
       flashToast('✅ Playlist details saved', false, false);
     });
   }
@@ -14568,18 +14979,35 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const save = async () => {
       const v = (input.value || '').trim().slice(0, 40);
       if (!v) return;
-      try { localStorage.setItem('yutorah_display_name', v); } catch (e) {}
+      let errEl = box.querySelector('#displayNameError');
+      if (errEl) errEl.textContent = '';
+      input.style.borderColor = 'var(--border-light)';
       if (cloudUser) {
-        cloudUser.name = v;
         try {
-          await fetch('/api/profile', {
+          const res = await fetch('/api/profile', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name: v })
           });
+          const data = await res.json();
+          if (!res.ok || data.error) {
+            const msg = data.message || 'That display name is already taken. Please choose a different name.';
+            if (!errEl) {
+              errEl = document.createElement('div');
+              errEl.id = 'displayNameError';
+              errEl.style.cssText = 'color:#ef4444; font-size:12px; margin-top:6px; font-weight:600;';
+              input.parentNode.insertBefore(errEl, input.nextSibling);
+            }
+            errEl.textContent = '❌ ' + msg;
+            input.style.borderColor = '#ef4444';
+            input.focus();
+            return;
+          }
+          cloudUser.name = (data.user && data.user.name) || v;
         } catch (e) {}
         renderAuthBtn();
       }
+      try { localStorage.setItem('yutorah_display_name', v); } catch (e) {}
       try { if (typeof renderAccountMode === 'function') renderAccountMode(); } catch (e) {}
       overlay.remove();
       flashToast('✅ Display name saved', false, false);
@@ -15424,10 +15852,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   // Switch Collection Tabs
-  const collections = ['editors', 'playlists', 'series', 'recent', 'popular', 'viewed', 'parsha', 'daily', 'trending'];
+  const collections = ['editors', 'playlists', 'dev-playlists', 'series', 'recent', 'popular', 'viewed', 'parsha', 'daily', 'trending'];
   const collectionTitles = {
     editors: "⭐ Editor's Picks",
     playlists: "🎧 My Playlists",
+    'dev-playlists': "🛠️ Dev Playlists",
     series: "📚 Featured Series",
     recent: "⏱️ Recently Uploaded",
     popular: "🔥 Most Popular",
@@ -15921,9 +16350,116 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       loadParshaShiurimGrid();
     } else if (activeName === 'playlists') {
       renderPlaylistsGrid();
+    } else if (activeName === 'dev-playlists') {
+      renderDevCuratedGrid();
     }
     try { if (typeof devUpgradeCards === 'function') devUpgradeCards(); } catch (e) {}
   }
+
+  let activeDevPersonaFilter = 'all';
+
+  function renderDevCuratedGrid() {
+    const grid = document.getElementById('grid-dev-playlists');
+    if (!grid) return;
+    const store = getDevStore();
+    const rowsOn = document.body.classList.contains('rows-view') ||
+      (document.documentElement && document.documentElement.classList.contains('rows-view'));
+    grid.style.display = rowsOn ? 'flex' : 'grid';
+
+    // Merge seeds with any local overrides in store.custom
+    const allPlaylists = (typeof DEV_PUBLIC_SEEDS !== 'undefined' ? DEV_PUBLIC_SEEDS : []).map(seed => {
+      const custom = store.custom && store.custom[seed.id];
+      if (custom) {
+        return {
+          id: seed.id,
+          title: custom.name || seed.title,
+          ownerName: custom.ownerName || seed.ownerName,
+          description: custom.description !== undefined ? custom.description : seed.description,
+          tags: custom.tags || seed.tags,
+          items: custom.items || seed.items || []
+        };
+      }
+      return seed;
+    });
+
+    const filtered = (activeDevPersonaFilter === 'all')
+      ? allPlaylists
+      : allPlaylists.filter(p => p.ownerName === activeDevPersonaFilter);
+
+    let html = '<div style="grid-column:1/-1; margin-bottom:12px;">' +
+      '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">' +
+        '<div>' +
+          '<h3 style="margin:0 0 4px; font-size:18px; font-weight:800; color:var(--text,#111);">🛠️ Dev Curated Playlists</h3>' +
+          '<div style="font-size:13px; color:var(--text-muted,#666);">30 Curated Playlists across 3 distinct personas (10 each). Click ✏️ Edit to modify attribution, title, tags, or description.</div>' +
+        '</div>' +
+        '<div style="display:flex; gap:6px; flex-wrap:wrap;">' +
+          ['all', 'Andrew Ohiliote', 'Moshe Mendelwitz', 'Rachel Sternbach'].map(p => {
+            const label = p === 'all' ? 'All (30)' : p + ' (10)';
+            const active = activeDevPersonaFilter === p;
+            return '<button type="button" class="card-mini-btn' + (active ? ' active-save' : '') + '" onclick="setDevPersonaFilter(&quot;' + escapeHtml(p) + '&quot;)">' + escapeHtml(label) + '</button>';
+          }).join('') +
+        '</div>' +
+      '</div>' +
+    '</div>';
+
+    html += filtered.map(p => {
+      const tagBits = []
+        .concat((p.tags && p.tags.teachers || []).map(t => '👤 ' + t.name))
+        .concat((p.tags && p.tags.venues || []).map(t => '📍 ' + t.name))
+        .concat((p.tags && p.tags.topics || []).map(t => '🏷️ ' + t.name));
+      const itemCount = (p.items || []).length;
+      return '<div class="playlist-public-card">' +
+        '<div class="playlist-card-title">' + escapeHtml(p.title || 'Untitled') + '</div>' +
+        '<div class="playlist-card-meta">by <strong>' + escapeHtml(p.ownerName || 'Unknown') + '</strong> · ' + itemCount + ' shiurim</div>' +
+        (p.description ? '<div class="playlist-card-desc">' + escapeHtml(p.description) + '</div>' : '') +
+        (tagBits.length ? '<div class="playlist-card-tags">' + tagBits.map(t => '<span class="playlist-tag-chip">' + escapeHtml(t) + '</span>').join('') + '</div>' : '') +
+        '<div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap;">' +
+          '<button type="button" class="card-mini-btn" onclick="devPlayCuratedAll(&quot;' + escapeHtml(p.id) + '&quot;)">▶ Play All</button>' +
+          '<button type="button" class="card-mini-btn active-save" onclick="devEditPublicPlaylist(&quot;' + escapeHtml(p.id) + '&quot;)">✏️ Edit (Dev)</button>' +
+          '<button type="button" class="card-mini-btn" onclick="devOpenInMyPlaylists(&quot;' + escapeHtml(p.id) + '&quot;)">📋 View in My Playlists</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    grid.innerHTML = html;
+  }
+  window.renderDevCuratedGrid = renderDevCuratedGrid;
+  window.setDevPersonaFilter = function(filter) {
+    activeDevPersonaFilter = filter;
+    renderDevCuratedGrid();
+  };
+  window.devPlayCuratedAll = function(id) {
+    const store = getDevStore();
+    if (!store.custom[id]) {
+      devEditPublicPlaylist(id);
+    }
+    activeDevPlaylistId = id;
+    switchCollection('playlists');
+    playDevPlaylistAll();
+  };
+  window.devOpenInMyPlaylists = function(id) {
+    const store = getDevStore();
+    if (!store.custom[id]) {
+      const found = (typeof DEV_PUBLIC_SEEDS !== 'undefined' && DEV_PUBLIC_SEEDS.find(p => p.id === id));
+      if (found) {
+        store.custom[id] = {
+          id: found.id,
+          name: found.title || found.name,
+          ownerName: found.ownerName,
+          description: found.description || '',
+          tags: found.tags || { teachers: [], venues: [], topics: [] },
+          publicId: found.id,
+          isPublic: true,
+          isDevOwned: true,
+          icon: '📁',
+          items: found.items || []
+        };
+        saveDevStore(store);
+      }
+    }
+    activeDevPlaylistId = id;
+    switchCollection('playlists');
+  };
 
   // Audio Controls
   function togglePlay() {

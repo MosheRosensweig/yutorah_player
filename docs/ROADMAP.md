@@ -1,8 +1,62 @@
 # 🗺️ Master Product Roadmap & Technical Architecture Specification
 **YUTorah Enhanced Player**  
-**Version:** 4.0.0  
+**Version:** 4.1.0  
 **Status:** Comprehensive Architecture & Implementation Roadmap  
 **Target Environment:** Cloudflare Workers (Edge V8 Runtime), Cloudflare D1 (Serverless SQLite), Cloudflare R2 (Zero-Egress Object Storage), Cloudflare KV (Read-Heavy Cache), Groq LPU Whisper API  
+
+---
+
+## 🎯 Immediate Priority Backlog (Top of Queue)
+
+Below are the immediate prioritized enhancements requested, categorized and specified in detail:
+
+### 1. Playlist Identity & Name Uniqueness Rules
+- **Multi-Creator Same Name Allowed**: Two different creators can each have a playlist with the exact same name (e.g., both User A and User B can have "Shabbos Prep").
+- **Single-User Duplicate Prevention**: A specific user cannot create two custom playlists with the identical name. Playlist names must be validated upon creation and renaming.
+- **Read-Only Coexistence**: A user can save a read-only subscription to someone else's playlist even if it shares a name with one of their own playlists.
+- **Reserved Dev Personas**: Names `Andrew Ohiliote`, `Moshe Mendelwitz`, and `Rachel Sternbach` are reserved exclusively for Dev playlists and cannot be claimed by regular user accounts.
+
+### 2. Play Queue UX & Idempotent Modal Controls
+- **Empty Queue Prompt Icon Fix**: When the play queue is empty, the hint currently says *"tap <queue> icon..."* but renders the incorrect icon. Replace with the actual circular queue icon (`📋` / list icon).
+- **Idempotent Single-Click Close**: Currently, clicking "Open Queue" from the account/settings menu multiple times while it is already open stacks internal open states, requiring multiple clicks on the `✕` close button. Fix: Opening the queue must be idempotent, and the `✕` button must unconditionally close the queue on the very first click.
+
+### 3. Playlists Tab Restructuring & Sticky Controls
+- **Dual-Tab Hierarchy**: Inside the user's playlists view (e.g. *"Moshe's Playlists"*), provide a clear top segmented control:
+  - **Left Tab**: `My Playlists`
+  - **Right Tab**: `Public Playlists`
+- **Sticky / Frozen Top Controls**: When `My Playlists` is selected:
+  - Top row is always frozen: `History`, `Save for Later`, and `+ New Playlist`.
+  - The remainder of custom/saved playlists render cleanly below.
+- **Read-Only Saved Border Highlighting**: Playlists saved from others in read-only / subscription mode display a distinct border color tailored for Light Mode (`#38bdf8` / `#bae6fd`) and Dark Mode (`#0284c7` / `#0369a1`).
+
+### 4. Playlist Sorting & Ordering
+- **Sort Dropdown on Playlists**: For whichever playlist is currently selected or viewed, provide instant ordering controls:
+  - `Last Listened` (most recently played to least recently played).
+  - `Shiur Date` (reverse chronological by date delivered/uploaded).
+  - `Manual / Drag-and-Drop` (custom curation order).
+
+### 5. Enhanced Playlist Creation Modal
+- **Icon Selector**: Choose an icon/emoji for the playlist (e.g., 📁, 🎧, 📚, 🕯️, 📜, ⭐, 💎, 🕊️, 🕍).
+- **Description Field**: Optional multiline description.
+- **Curated Searchable Tag Selector**:
+  - Tags are picked from a searchable dropdown of established keywords (speakers, venues, topics, categories) from the YUTorah taxonomy.
+  - **No freeform text entry** — strictly structured tags.
+  - Maximum of 5 tags selectable.
+- **Unique Name Validation**: Real-time client-side and server-side check ensuring the user doesn't already own a playlist with that name.
+
+### 6. Public Playlists Browser: Dynamic Keyword Filters
+- Fix the `"loading filters..."` placeholder state by populating working filter dropdowns based on actual indexed categories, speakers, topics, and venues from public playlists.
+
+### 7. Public Playlist Cards & Preview Mode
+- **No Self-Saving**: Users cannot see a "Save" button on public playlists that they themselves authored.
+- **Preview Shiurim Modal / Drawer**:
+  - Displays lecture title and speaker.
+  - Adds a 3rd metadata row to each preview item: **Lecture Length / Duration**, or the explicit tag **`📄 Article`** if the item is a PDF/text publication.
+- **Mutually Exclusive Action Buttons**: Replace confusing dual buttons with a single toggle button that cleanly flips between `➕ Add to My Shiurim` and `➖ Remove from My Shiurim`.
+
+### 8. Add-to-Playlist Multi-Select Popup
+- **Live Counter Tick**: When clicking "Add to Playlist" on any shiur card, checking a playlist immediately increments its displayed shiur count (`+1`), and unchecking decrements it (`-1`).
+- **Explicit Save Commitment**: Changes are only committed when the user clicks an explicit `💾 Save` button in the dialog.
 
 ---
 

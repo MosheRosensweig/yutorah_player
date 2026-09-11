@@ -327,6 +327,97 @@ async function testPublicPlaylistSubscriptionOptions() {
   console.log('  ✅ Public playlist save choice modal and live-sync subscription verified.');
 }
 
+async function testDevPersonasAndSecondTab() {
+  console.log('13. Testing Second Dev Playlist Tab, 30 Curated Playlists & Author Attribution...');
+  const req = new Request('https://yutorah-player.mrosensweig.workers.dev/', {
+    headers: { 'User-Agent': 'TestRunner' }
+  });
+  const res = await worker.fetch(req, mockEnv, mockCtx);
+  assert.equal(res.status, 200);
+  const html = await res.text();
+
+  // 1. Second Dev Tab & Grid
+  assert.ok(html.includes('id="tab-dev-playlists"'), 'Second Dev Playlists tab button present');
+  assert.ok(html.includes('id="grid-dev-playlists"'), 'Second Dev Playlists grid container present');
+  assert.ok(html.includes('renderDevCuratedGrid'), 'renderDevCuratedGrid function defined');
+  assert.ok(html.includes('setDevPersonaFilter'), 'setDevPersonaFilter function defined');
+  assert.ok(html.includes('devPlayCuratedAll'), 'devPlayCuratedAll function defined');
+  assert.ok(html.includes('devOpenInMyPlaylists'), 'devOpenInMyPlaylists function defined');
+
+  // 2. 30 Curated Playlists across 3 Personas
+  assert.ok(html.includes('Andrew Ohiliote'), 'Andrew Ohiliote persona present');
+  assert.ok(html.includes('Moshe Mendelwitz'), 'Moshe Mendelwitz persona present');
+  assert.ok(html.includes('Rachel Sternbach'), 'Rachel Sternbach persona present');
+  assert.ok(!html.includes('ownerName: "Dev"') && !html.includes("ownerName: 'Dev'"), 'Zero curated playlists named Dev');
+
+  // 3. Author Attribution in Details Modal
+  assert.ok(html.includes('pldAuthorSelect'), 'Author attribution select defined in details modal');
+  assert.ok(html.includes('pldAuthorCustom'), 'Author attribution custom input defined');
+
+  // 4. Name collision & Reserved Dev Names in /api/profile
+  const mockDb = {
+    prepare: (sql) => ({
+      bind: (...args) => ({
+        first: async () => {
+          if (sql.includes('SELECT id, email, name, picture FROM users WHERE id = ?')) {
+            return { id: 'u_regular', email: 'user@test.com', name: 'Regular User' };
+          }
+          if (sql.includes('SELECT id FROM users WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))')) {
+            const requestedName = args[0];
+            if (requestedName.toLowerCase() === 'existinguser') {
+              return { id: 'u_other_123' };
+            }
+            return null;
+          }
+          return null;
+        },
+        run: async () => ({})
+      })
+    })
+  };
+
+  async function generateTestJwt(secret, payload) {
+    const enc = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url');
+    const header = enc({ alg: 'HS256', typ: 'JWT' });
+    const body = enc(payload);
+    const key = await crypto.subtle.importKey(
+      'raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    const sig = Buffer.from(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(header + '.' + body))).toString('base64url');
+    return `${header}.${body}.${sig}`;
+  }
+
+  const testSecret = 'test_secret_12345';
+  const testToken = await generateTestJwt(testSecret, { uid: 'u_regular', exp: Date.now() + 3600000 });
+  const mockUserEnv = {
+    yutorah_db: mockDb,
+    SESSION_SECRET: testSecret
+  };
+
+  // Test reserved name rejection
+  const reservedReq = new Request('https://yutorah-player.mrosensweig.workers.dev/api/profile', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Cookie': `yutorah_session=${testToken}` },
+    body: JSON.stringify({ name: 'Andrew Ohiliote' })
+  });
+  const reservedRes = await worker.fetch(reservedReq, mockUserEnv, mockCtx);
+  assert.equal(reservedRes.status, 400, 'Reserved dev name should return 400');
+  const reservedJson = await reservedRes.json();
+  assert.equal(reservedJson.error, 'name_reserved', 'Error should be name_reserved');
+
+  // Test existing name collision rejection
+  const clashReq = new Request('https://yutorah-player.mrosensweig.workers.dev/api/profile', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Cookie': `yutorah_session=${testToken}` },
+    body: JSON.stringify({ name: 'ExistingUser' })
+  });
+  const clashRes = await worker.fetch(clashReq, mockUserEnv, mockCtx);
+  assert.equal(clashRes.status, 409, 'Taken name should return 409 Conflict');
+  const clashJson = await clashRes.json();
+  assert.equal(clashJson.error, 'name_taken', 'Error should be name_taken');
+
+  console.log('  ✅ Second Dev Playlists tab, 30 curated playlists, author attribution & name uniqueness verified.');
+}
+
 async function runAll() {
   try {
     await testHomepage();
@@ -341,6 +432,7 @@ async function runAll() {
     await testDevModeAndAvatarVariants();
     await testDropdownNavAndThemeAesthetics();
     await testPublicPlaylistSubscriptionOptions();
+    await testDevPersonasAndSecondTab();
     console.log('\n🎉 ALL BASIC FUNCTIONALITY, ARTICLE READER & LIQUID MODE TESTS PASSED SUCCESSFULLY!');
   } catch (err) {
     console.error('\n❌ Test failed:', err);
