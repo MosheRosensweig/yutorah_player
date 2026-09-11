@@ -418,6 +418,29 @@ async function testDevPersonasAndSecondTab() {
   console.log('  ✅ Second Dev Playlists tab, 30 curated playlists, author attribution & name uniqueness verified.');
 }
 
+async function testHeroSizingAndPlaylistTagAutocomplete() {
+  console.log('14. Testing Hero Slideshow Typography/Positioning & Playlist Tag Dropdown...');
+  const req = new Request('https://yutorah-player.mrosensweig.workers.dev/', {
+    headers: { 'User-Agent': 'TestRunner' }
+  });
+  const res = await worker.fetch(req, mockEnv, mockCtx);
+  assert.equal(res.status, 200);
+  const html = await res.text();
+
+  // Hero slideshow text sizing (~2x) and rightward positioning with buffer
+  assert.ok(html.includes('width: 40%'), 'Hero caption positioned with 40% width for rightward buffer from center');
+  assert.ok(html.includes('clamp(30px, 3.6vw, 46px)'), 'Hero title text enlarged ~2x');
+  assert.ok(html.includes('clamp(18px, 1.6vw, 24px)'), 'Hero description text enlarged ~2x');
+
+  // Playlist tag live autocomplete dropdown
+  assert.ok(html.includes('.pld-suggest-dropdown'), 'Playlist tag suggest dropdown CSS defined');
+  assert.ok(html.includes('.pld-suggest-item'), 'Playlist tag suggest item CSS defined');
+  assert.ok(html.includes('pldSuggest-'), 'Playlist details modal dynamically renders suggestion dropdown containers');
+  assert.ok(html.includes('data-pld-pick'), 'Playlist details modal binds tag picking action');
+
+  console.log('  ✅ Hero slideshow typography/buffer and playlist tag autocomplete dropdown verified.');
+}
+
 async function runAll() {
   try {
     await testHomepage();
@@ -433,6 +456,7 @@ async function runAll() {
     await testDropdownNavAndThemeAesthetics();
     await testPublicPlaylistSubscriptionOptions();
     await testDevPersonasAndSecondTab();
+    await testHeroSizingAndPlaylistTagAutocomplete();
     console.log('\n🎉 ALL BASIC FUNCTIONALITY, ARTICLE READER & LIQUID MODE TESTS PASSED SUCCESSFULLY!');
   } catch (err) {
     console.error('\n❌ Test failed:', err);

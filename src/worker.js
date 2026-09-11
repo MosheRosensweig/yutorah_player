@@ -8105,7 +8105,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     .hero-slide img {
       width: 100%;
       aspect-ratio: 16 / 9;
-      max-height: 380px;
+      max-height: 420px;
       object-fit: cover;
       object-position: center;
       display: block;
@@ -8116,35 +8116,36 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       top: 0;
       bottom: 0;
       left: auto;
-      width: 50%;
-      max-width: 480px;
+      width: 40%;
+      max-width: 430px;
       z-index: 10;
-      padding: 24px 56px 24px 28px;
-      background: linear-gradient(to left, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.82) 50%, rgba(0, 0, 0, 0.45) 80%, transparent 100%);
+      padding: 24px 48px 34px 24px;
+      background: linear-gradient(to left, rgba(0, 0, 0, 0.94) 0%, rgba(0, 0, 0, 0.86) 65%, rgba(0, 0, 0, 0.4) 90%, transparent 100%);
       color: #ffffff;
       display: flex;
       flex-direction: column;
       justify-content: center;
-      gap: 8px;
+      gap: 10px;
       pointer-events: none;
     }
     .hero-caption > * {
       pointer-events: auto;
     }
     .hero-title {
-      font-size: clamp(18px, 2.4vw, 26px);
+      font-size: clamp(30px, 3.6vw, 46px);
       font-weight: 800;
-      line-height: 1.25;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
       color: #ffffff !important;
-      text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9);
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.95);
       max-width: 100%;
       word-wrap: break-word;
     }
     .hero-desc {
-      font-size: clamp(12.5px, 1.15vw, 14.5px);
-      line-height: 1.45;
-      color: rgba(255, 255, 255, 0.94) !important;
-      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
+      font-size: clamp(18px, 1.6vw, 24px);
+      line-height: 1.35;
+      color: rgba(255, 255, 255, 0.95) !important;
+      text-shadow: 0 1px 5px rgba(0, 0, 0, 0.9);
       max-width: 100%;
       display: -webkit-box;
       -webkit-line-clamp: 3;
@@ -8155,14 +8156,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     .hero-cta {
       display: inline-block;
       align-self: flex-start;
-      margin-top: 6px;
-      font-size: 13.5px;
-      font-weight: 700;
+      margin-top: 8px;
+      font-size: 16px;
+      font-weight: 800;
       background: var(--primary, #2b4c7e);
       color: #ffffff !important;
-      border-radius: 20px;
-      padding: 6px 18px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+      border-radius: 24px;
+      padding: 9px 22px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
       transition: transform 0.15s ease, background-color 0.15s ease;
       text-shadow: none;
     }
@@ -8175,21 +8176,21 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       border-color: var(--border);
     }
     [data-theme="dark"] .hero-caption {
-      background: linear-gradient(to left, rgba(10, 15, 24, 0.96) 0%, rgba(10, 15, 24, 0.88) 50%, rgba(10, 15, 24, 0.5) 80%, transparent 100%);
+      background: linear-gradient(to left, rgba(10, 15, 24, 0.96) 0%, rgba(10, 15, 24, 0.9) 65%, rgba(10, 15, 24, 0.45) 90%, transparent 100%);
     }
     [data-theme="dark"] .hero-title {
       color: #ffffff !important;
-      text-shadow: 0 2px 6px rgba(0, 0, 0, 0.95);
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.98);
     }
     [data-theme="dark"] .hero-desc {
       color: #e2e8f0 !important;
-      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+      text-shadow: 0 1px 5px rgba(0, 0, 0, 0.95);
     }
     [data-theme="dark"] .hero-cta {
       background: #5c8ecc;
       color: #0f172a !important;
       font-weight: 800;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
     }
     [data-theme="dark"] .hero-cta:hover {
       background: #7ca5de;
@@ -8267,26 +8268,29 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     @media (max-width: 640px) {
       .hero-slide img {
         aspect-ratio: 16 / 10;
-        max-height: 240px;
+        max-height: 280px;
+        min-height: 220px;
       }
       .hero-caption {
-        width: 62%;
-        padding: 12px 36px 12px 14px;
-        gap: 4px;
+        width: 54%;
+        max-width: 300px;
+        padding: 14px 28px 22px 14px;
+        gap: 5px;
       }
       .hero-title {
-        font-size: 15px;
-        line-height: 1.25;
+        font-size: 22px;
+        line-height: 1.18;
       }
       .hero-desc {
-        font-size: 12px;
+        font-size: 14px;
+        line-height: 1.3;
         -webkit-line-clamp: 2;
         margin-top: 1px;
       }
       .hero-cta {
-        font-size: 11.5px;
-        padding: 4px 12px;
-        margin-top: 3px;
+        font-size: 13px;
+        padding: 5px 14px;
+        margin-top: 4px;
       }
       .hero-arrow {
         width: 30px;
@@ -8300,6 +8304,52 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         bottom: 8px;
         right: 10px;
       }
+    }
+    .pld-suggest-dropdown {
+      display: none;
+      position: absolute;
+      top: calc(100% + 2px);
+      left: 0;
+      right: 0;
+      max-height: 180px;
+      overflow-y: auto;
+      background: var(--card, #fff);
+      border: 1.5px solid var(--primary, #2b4c7e);
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+      z-index: 10005;
+    }
+    .pld-suggest-item {
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--text, #111);
+      border-bottom: 1px solid var(--border-light, #e2e8f0);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: background-color 0.1s ease;
+      user-select: none;
+    }
+    .pld-suggest-item:last-child {
+      border-bottom: none;
+    }
+    .pld-suggest-item:hover,
+    .pld-suggest-item.active {
+      background: rgba(43, 76, 126, 0.12);
+    }
+    [data-theme="dark"] .pld-suggest-dropdown {
+      background: #1e293b;
+      border-color: #5c8ecc;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+    }
+    [data-theme="dark"] .pld-suggest-item {
+      color: #f1f5f9;
+      border-bottom-color: rgba(255, 255, 255, 0.1);
+    }
+    [data-theme="dark"] .pld-suggest-item:hover,
+    [data-theme="dark"] .pld-suggest-item.active {
+      background: rgba(92, 142, 204, 0.25);
     }
     .card-mini-btn.icon-btn {
       padding: 3px 8px;
@@ -10566,6 +10616,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#039;');
   }
+
+  let autocompleteCache = null;
+  let autocompleteData = null;
 
   function getNowInNewYork() {
     try {
@@ -12929,10 +12982,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   // Autocomplete Metadata Cache
-  let autocompleteData = null;
   let isFetchingAutocomplete = false;
 
   async function loadAutocompleteMeta() {
+    if (autocompleteCache) return autocompleteCache;
     if (autocompleteData) return autocompleteData;
     if (isFetchingAutocomplete) return null;
     isFetchingAutocomplete = true;
@@ -12940,6 +12993,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       const res = await fetch('/api/autocomplete-meta');
       if (res.ok) {
         autocompleteData = await res.json();
+        autocompleteCache = autocompleteData;
+        try { window.autocompleteCache = autocompleteData; } catch (e) {}
       }
     } catch(e) {
       console.error('Failed to load autocomplete metadata:', e);
@@ -14039,6 +14094,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   // Keyboard shortcut: Escape closes modal and search preview
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
+      const openPldDropdown = document.querySelector('.pld-suggest-dropdown[style*="display: block"]');
+      if (openPldDropdown) {
+        openPldDropdown.style.display = 'none';
+        openPldDropdown.innerHTML = '';
+        return;
+      }
       closeAdvancedModal();
       closeSearchPreview();
       closeConfirmModal();
@@ -15430,10 +15491,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   function plTagOptions(kind) {
     try {
-      const c = (typeof autocompleteCache !== 'undefined' && autocompleteCache) || null;
+      const c = (typeof autocompleteCache !== 'undefined' && autocompleteCache) || (typeof autocompleteData !== 'undefined' && autocompleteData) || null;
       if (!c) return [];
-      if (kind === 'teacher') return (c.teachers || []).slice(0, 4000);
-      if (kind === 'venue') return (c.venues || []).slice(0, 1000);
+      const k = String(kind || '').toLowerCase();
+      if (k.startsWith('teacher')) return (c.teachers || []).slice(0, 4000);
+      if (k.startsWith('venue')) return (c.venues || []).slice(0, 1000);
       return (c.categories || []).slice(0, 1500);
     } catch (e) {
       return [];
@@ -15859,6 +15921,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const pl = store.custom[activeDevPlaylistId];
     if (!pl) return;
     closeConfirmModal();
+
+    // Ensure autocomplete metadata is warmed for tag options
+    if (typeof loadAutocompleteMeta === 'function' && (!autocompleteCache || !autocompleteData)) {
+      loadAutocompleteMeta().catch(() => {});
+    }
+
     const overlay = document.createElement('div');
     overlay.id = 'playlistDetailsModal';
     overlay.style.cssText = 'position:fixed; inset:0; z-index:10000; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; padding:16px;';
@@ -15872,8 +15940,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       '<span class="active-filter-pill">🏷️ ' + escapeHtml(t.name || '') +
       ' <button type="button" data-pld-kind="' + kind + '" data-pld-idx="' + i + '" title="Remove">✕</button></span>'
     ).join('');
-    const datalist = (kind, listId) => '<datalist id="' + listId + '">' +
-      plTagOptions(kind).map(o => '<option value="' + escapeHtml(o.name || '') + '">').join('') + '</datalist>';
+
     box.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">' +
       '<div style="font-weight:800;">📝 Edit Playlist Details</div>' +
       '<button type="button" class="card-mini-btn" id="pldClose">Close ×</button></div>' +
@@ -15895,20 +15962,35 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       '<textarea id="pldDesc" rows="3" maxlength="500" placeholder="What is this playlist about?"' +
       ' style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-light); margin:4px 0 10px;">' +
       escapeHtml(pl.description || '') + '</textarea>' +
-      '<div style="font-size:12px; font-weight:700; color:var(--text-muted);">Tags — pick from teachers, venues, topics (no free text)</div>' +
+      '<div style="font-size:12px; font-weight:700; color:var(--text-muted);">Tags — pick from teachers, venues, topics (as you type, choose from dropdown)</div>' +
       '<div id="pldChips" style="display:flex; flex-wrap:wrap; gap:6px; margin:6px 0;">' +
       chipRow('teachers', tags.teachers) + chipRow('venues', tags.venues) + chipRow('topics', tags.topics) + '</div>' +
-      ['teachers', 'venues', 'topics'].map(kind =>
-        '<div style="display:flex; gap:6px; margin-bottom:6px;">' +
-        '<input id="pldIn-' + kind + '" list="pldList-' + kind + '" placeholder="Add ' + kind + '…" autocomplete="off"' +
-        ' style="flex:1; padding:7px 10px; border-radius:8px; border:1px solid var(--border-light);">' +
-        datalist(kind, 'pldList-' + kind) +
-        '<button type="button" class="card-mini-btn" data-pld-add="' + kind + '">Add</button></div>'
-      ).join('') +
+      ['teachers', 'venues', 'topics'].map(kind => {
+        const singular = (kind === 'teachers' ? 'teacher' : kind === 'venues' ? 'venue' : 'topic');
+        return '<div class="pld-tag-field" style="position:relative; margin-bottom:8px;">' +
+          '<div style="display:flex; gap:6px;">' +
+            '<input id="pldIn-' + kind + '" placeholder="Add ' + singular + '…" autocomplete="off"' +
+            ' style="flex:1; padding:7px 10px; border-radius:8px; border:1px solid var(--border-light); background:var(--card,#fff); color:var(--text,#111);">' +
+            '<button type="button" class="card-mini-btn" data-pld-add="' + kind + '">Add</button>' +
+          '</div>' +
+          '<div id="pldSuggest-' + kind + '" class="pld-suggest-dropdown"></div>' +
+        '</div>';
+      }).join('') +
       '<div style="display:flex; gap:8px; justify-content:flex-end; margin-top:10px;">' +
       '<button type="button" class="card-mini-btn active-save" id="pldSave">Save</button></div>';
     overlay.appendChild(box);
-    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) {
+        overlay.remove();
+        return;
+      }
+      if (!e.target.closest || !e.target.closest('.pld-tag-field')) {
+        box.querySelectorAll('.pld-suggest-dropdown').forEach(d => {
+          d.style.display = 'none';
+          d.innerHTML = '';
+        });
+      }
+    });
     document.body.appendChild(overlay);
 
     if (typeof isDevMode !== 'undefined' && isDevMode) {
@@ -15943,24 +16025,167 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         host.innerHTML = chipRow('teachers', working.teachers) + chipRow('venues', working.venues) + chipRow('topics', working.topics);
       }
     };
+
+    const addTagItem = (kind, item) => {
+      if (!item || !item.name) return;
+      const itemId = String(item.id != null ? item.id : item.name);
+      if (!working[kind].some(t => String(t.id) === itemId)) {
+        working[kind].push({ id: itemId, name: item.name });
+      }
+      const inp = box.querySelector('#pldIn-' + kind);
+      if (inp) {
+        inp.value = '';
+        inp.focus();
+      }
+      const suggest = box.querySelector('#pldSuggest-' + kind);
+      if (suggest) {
+        suggest.style.display = 'none';
+        suggest.innerHTML = '';
+      }
+      paintChips();
+    };
+
+    // Wire up live autocomplete dropdowns for each tag input
+    ['teachers', 'venues', 'topics'].forEach(kind => {
+      const inp = box.querySelector('#pldIn-' + kind);
+      const suggest = box.querySelector('#pldSuggest-' + kind);
+      if (!inp || !suggest) return;
+
+      let highlightedIdx = -1;
+
+      const closeDropdown = () => {
+        suggest.style.display = 'none';
+        suggest.innerHTML = '';
+        highlightedIdx = -1;
+      };
+
+      const renderSuggestions = (query) => {
+        const q = (query || '').trim().toLowerCase();
+        if (!q) {
+          closeDropdown();
+          return;
+        }
+        // Ensure options exist
+        const all = plTagOptions(kind);
+        if (all.length === 0 && typeof loadAutocompleteMeta === 'function') {
+          loadAutocompleteMeta().then(() => {
+            renderSuggestions(inp.value);
+          }).catch(() => {});
+          suggest.innerHTML = '<div style="padding:8px 12px; font-size:12px; color:var(--text-muted);">Loading options…</div>';
+          suggest.style.display = 'block';
+          return;
+        }
+        const matches = all.filter(o => String(o.name || '').toLowerCase().includes(q));
+        matches.sort((a, b) => {
+          const an = String(a.name || '').toLowerCase();
+          const bn = String(b.name || '').toLowerCase();
+          if (an === q) return -1;
+          if (bn === q) return 1;
+          const aStarts = an.startsWith(q);
+          const bStarts = bn.startsWith(q);
+          if (aStarts && !bStarts) return -1;
+          if (!aStarts && bStarts) return 1;
+          return 0;
+        });
+        const top = matches.slice(0, 20);
+        highlightedIdx = -1;
+        if (top.length === 0) {
+          suggest.innerHTML = '<div style="padding:8px 12px; font-size:12px; color:var(--text-muted);">No matching ' + escapeHtml(kind) + ' found</div>';
+          suggest.style.display = 'block';
+        } else {
+          suggest.innerHTML = top.map((item, idx) => {
+            const isAdded = working[kind].some(t => String(t.id) === String(item.id != null ? item.id : item.name));
+            return '<div class="pld-suggest-item" data-pld-pick="' + kind + '" data-pld-id="' + escapeHtml(item.id != null ? item.id : item.name) + '" data-pld-name="' + escapeHtml(item.name) + '" data-idx="' + idx + '">' +
+              '<span>' + escapeHtml(item.name) + '</span>' +
+              (isAdded ? '<span style="font-size:11px; color:var(--text-muted); font-weight:600;">✓ added</span>' : '') +
+            '</div>';
+          }).join('');
+          suggest.style.display = 'block';
+        }
+      };
+
+      inp.addEventListener('input', () => {
+        renderSuggestions(inp.value);
+      });
+
+      inp.addEventListener('focus', () => {
+        if (inp.value.trim()) renderSuggestions(inp.value);
+      });
+
+      inp.addEventListener('keydown', e => {
+        if (suggest.style.display === 'block') {
+          const items = suggest.querySelectorAll('.pld-suggest-item');
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            if (items.length > 0) {
+              highlightedIdx = (highlightedIdx + 1) % items.length;
+              items.forEach((it, i) => it.classList.toggle('active', i === highlightedIdx));
+              items[highlightedIdx]?.scrollIntoView({ block: 'nearest' });
+            }
+            return;
+          }
+          if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (items.length > 0) {
+              highlightedIdx = (highlightedIdx - 1 + items.length) % items.length;
+              items.forEach((it, i) => it.classList.toggle('active', i === highlightedIdx));
+              items[highlightedIdx]?.scrollIntoView({ block: 'nearest' });
+            }
+            return;
+          }
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            closeDropdown();
+            return;
+          }
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            if (highlightedIdx >= 0 && items[highlightedIdx]) {
+              const id = items[highlightedIdx].getAttribute('data-pld-id');
+              const name = items[highlightedIdx].getAttribute('data-pld-name');
+              addTagItem(kind, { id, name });
+            } else if (items.length > 0) {
+              const id = items[0].getAttribute('data-pld-id');
+              const name = items[0].getAttribute('data-pld-name');
+              addTagItem(kind, { id, name });
+            } else {
+              const addBtn = box.querySelector('[data-pld-add="' + kind + '"]');
+              if (addBtn) addBtn.click();
+            }
+            return;
+          }
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          const addBtn = box.querySelector('[data-pld-add="' + kind + '"]');
+          if (addBtn) addBtn.click();
+        }
+      });
+    });
+
     box.addEventListener('click', e => {
+      const pick = e.target.closest ? e.target.closest('[data-pld-pick]') : null;
+      if (pick) {
+        const kind = pick.getAttribute('data-pld-pick');
+        const id = pick.getAttribute('data-pld-id');
+        const name = pick.getAttribute('data-pld-name');
+        addTagItem(kind, { id, name });
+        return;
+      }
       const add = e.target.closest ? e.target.closest('[data-pld-add]') : null;
       if (add) {
         const kind = add.getAttribute('data-pld-add');
         const inp = box.querySelector('#pldIn-' + kind);
         const typed = ((inp && inp.value) || '').trim().toLowerCase();
         if (!typed) return;
-        const match = plTagOptions(kind).find(o => String(o.name || '').toLowerCase() === typed) ||
-          plTagOptions(kind).find(o => String(o.name || '').toLowerCase().includes(typed));
+        const allOpts = plTagOptions(kind);
+        const match = allOpts.find(o => String(o.name || '').toLowerCase() === typed) ||
+          allOpts.find(o => String(o.name || '').toLowerCase().includes(typed));
         if (!match) {
           flashToast('⚠️ Pick from the list — free text goes in the description', true, false);
           return;
         }
-        if (!working[kind].some(t => String(t.id) === String(match.id))) {
-          working[kind].push({ id: String(match.id), name: match.name });
-        }
-        if (inp) inp.value = '';
-        paintChips();
+        addTagItem(kind, match);
         return;
       }
       const rm = e.target.closest ? e.target.closest('[data-pld-kind]') : null;
@@ -15971,6 +16196,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         paintChips();
       }
     });
+
     box.querySelector('#pldClose').addEventListener('click', () => overlay.remove());
     box.querySelector('#pldSave').addEventListener('click', () => {
       const st = getDevStore();
