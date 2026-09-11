@@ -6078,10 +6078,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       margin: 0 auto 18px;
       max-width: 980px;
       background: var(--card, #fff);
-      border: 1px solid var(--border-light);
+      border: 1px solid var(--border);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
     }
     .hero-slides {
       position: relative;
+      overflow: hidden;
     }
     .hero-slide {
       display: none;
@@ -6095,130 +6097,125 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     .hero-slide img {
       width: 100%;
-      aspect-ratio: 682 / 369;
+      aspect-ratio: 16 / 9;
+      max-height: 380px;
       object-fit: cover;
       object-position: center;
       display: block;
     }
-    @media (max-width: 640px) {
-      .hero-slide {
-        background-size: cover;
-        background-position: center;
-      }
-      .hero-slide::before {
-        content: "";
-        position: absolute;
-        inset: -24px;
-        background: inherit;
-        background-size: cover;
-        background-position: center;
-        filter: blur(22px) brightness(0.62);
-      }
-      .hero-slide img {
-        position: relative;
-        z-index: 1;
-        object-fit: contain;
-        object-position: center;
-        background: transparent;
-        -webkit-mask-image: none;
-        mask-image: none;
-      }
-    }
     .hero-caption {
       position: absolute;
+      left: 0;
       right: 0;
-      top: 0;
       bottom: 0;
-      width: 54%;
-      padding: 24px 64px 24px 28px;
-      background: linear-gradient(to left, rgba(255, 255, 255, 0.96) 55%, rgba(255, 255, 255, 0.84) 80%, rgba(255, 255, 255, 0) 100%);
-      color: #0f172a;
+      z-index: 10;
+      padding: 48px 24px 18px;
+      background: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.45) 25%, rgba(0, 0, 0, 0.82) 65%, rgba(0, 0, 0, 0.94) 100%);
+      color: #ffffff;
       display: flex;
       flex-direction: column;
-      justify-content: center;
-      gap: 10px;
-      backdrop-filter: blur(4px);
-      -webkit-backdrop-filter: blur(4px);
+      gap: 6px;
+      pointer-events: none;
+    }
+    .hero-caption > * {
+      pointer-events: auto;
     }
     .hero-title {
-      font-size: clamp(20px, 2.6vw, 30px);
+      font-size: clamp(19px, 2.6vw, 28px);
       font-weight: 800;
-      line-height: 1.2;
-      color: #0f172a;
+      line-height: 1.25;
+      color: #ffffff !important;
+      text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9);
+      max-width: 820px;
     }
     .hero-desc {
-      font-size: clamp(13px, 1.3vw, 15px);
-      line-height: 1.5;
-      color: #334155;
+      font-size: clamp(13px, 1.2vw, 15px);
+      line-height: 1.45;
+      color: rgba(255, 255, 255, 0.94) !important;
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
+      max-width: 760px;
       display: -webkit-box;
-      -webkit-line-clamp: 3;
+      -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
     }
     .hero-cta {
       display: inline-block;
       align-self: flex-start;
-      margin-top: 8px;
-      font-size: 14px;
+      margin-top: 6px;
+      font-size: 13.5px;
       font-weight: 700;
       background: var(--primary, #2b4c7e);
-      color: #ffffff;
+      color: #ffffff !important;
       border-radius: 20px;
-      padding: 7px 20px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+      padding: 6px 18px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
       transition: transform 0.15s ease, background-color 0.15s ease;
+      text-shadow: none;
     }
     .hero-cta:hover {
       background: var(--primary-dark, #1b3356);
       transform: translateY(-1px);
     }
+    [data-theme="dark"] .hero-slideshow {
+      background: #182232;
+      border-color: var(--border);
+    }
     [data-theme="dark"] .hero-caption {
-      background: linear-gradient(to left, rgba(15, 20, 28, 0.95) 55%, rgba(15, 20, 28, 0.82) 80%, rgba(15, 20, 28, 0) 100%);
-      color: #f8fafc;
+      background: linear-gradient(to bottom, transparent 0%, rgba(10, 15, 24, 0.5) 25%, rgba(10, 15, 24, 0.88) 65%, rgba(10, 15, 24, 0.98) 100%);
     }
     [data-theme="dark"] .hero-title {
-      color: #ffffff;
+      color: #ffffff !important;
+      text-shadow: 0 2px 6px rgba(0, 0, 0, 0.95);
     }
     [data-theme="dark"] .hero-desc {
-      color: #cbd5e1;
+      color: #e2e8f0 !important;
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
     }
     [data-theme="dark"] .hero-cta {
-      background: var(--primary, #5c8ecc);
-      color: #0f172a;
+      background: #5c8ecc;
+      color: #0f172a !important;
       font-weight: 800;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
     }
     [data-theme="dark"] .hero-cta:hover {
       background: #7ca5de;
     }
     .hero-arrow {
       position: absolute;
-      top: 42%;
+      top: 40%;
       transform: translateY(-50%);
       width: 36px;
       height: 36px;
       border-radius: 50%;
       border: none;
       background: rgba(0, 0, 0, 0.45);
-      color: #fff;
+      color: #ffffff;
       font-size: 22px;
       line-height: 1;
       cursor: pointer;
+      z-index: 15;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s ease;
     }
     .hero-arrow:hover {
-      background: rgba(0, 0, 0, 0.65);
+      background: rgba(0, 0, 0, 0.75);
     }
-    .hero-prev { left: 10px; }
-    .hero-next { right: calc(55% + 10px); }
+    .hero-prev { left: 12px; }
+    .hero-next { right: 12px; }
     .hero-dots {
       position: absolute;
-      bottom: 10px;
-      left: 14px;
+      bottom: 12px;
+      right: 16px;
       display: flex;
       gap: 6px;
+      z-index: 15;
     }
     .hero-dot {
-      width: 24px;
-      height: 24px;
+      width: 22px;
+      height: 22px;
       border-radius: 50%;
       border: none;
       background: transparent;
@@ -6229,92 +6226,64 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     .hero-dot::after {
       content: "";
       position: absolute;
-      top: 7px;
-      left: 7px;
+      top: 6px;
+      left: 6px;
       width: 10px;
       height: 10px;
       border-radius: 50%;
       background: rgba(255, 255, 255, 0.45);
+      transition: background 0.15s ease, transform 0.15s ease;
     }
     .hero-dot.active::after {
-      background: #fff;
+      background: #ffffff;
+      transform: scale(1.2);
+      box-shadow: 0 0 6px rgba(255, 255, 255, 0.8);
     }
     .hero-dot:focus-visible,
-    .hero-arrow:focus-visible {
+    .hero-arrow:focus-visible,
+    .hero-cta:focus-visible {
       outline: 2px solid #fff !important;
-      outline-offset: 1px;
-      box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.55), 0 0 0 6px var(--primary);
+      outline-offset: 2px;
+      box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.55);
+    }
+    a.hero-slide:focus-visible {
+      outline: 2px solid var(--primary) !important;
+      outline-offset: -2px;
     }
     @media (max-width: 640px) {
-      .hero-dot:focus-visible,
-      .hero-arrow:focus-visible {
-        outline-color: var(--primary) !important;
-        box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.9);
-      }
-    }
-    @media (max-width: 640px) {
-      .hero-caption {
-        position: static;
-        width: auto;
-        padding: 14px 16px 24px;
-        background: var(--card);
-        color: var(--text);
-        text-shadow: none;
-        backdrop-filter: none;
-        -webkit-backdrop-filter: none;
-      }
       .hero-slide img {
-        aspect-ratio: 16 / 9;
-        max-height: 220px;
+        aspect-ratio: 16 / 10;
+        max-height: 240px;
+      }
+      .hero-caption {
+        padding: 32px 14px 12px;
       }
       .hero-title {
-        font-size: 17px;
-        font-weight: 800;
-        color: var(--text);
-        text-shadow: none;
+        font-size: 16px;
+        line-height: 1.25;
       }
       .hero-desc {
-        font-size: 13.5px;
-        line-height: 1.45;
-        color: var(--text-muted);
-        text-shadow: none;
-        -webkit-line-clamp: 3;
+        font-size: 12.5px;
+        -webkit-line-clamp: 2;
+        margin-top: 2px;
       }
       .hero-cta {
-        background: var(--primary);
-        color: #ffffff;
-        font-size: 13px;
-        padding: 7px 18px;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+        font-size: 12px;
+        padding: 5px 14px;
+        margin-top: 4px;
       }
-      [data-theme="dark"] .hero-cta {
-        background: var(--primary);
-        color: #0f172a;
-        font-weight: 800;
+      .hero-arrow {
+        width: 30px;
+        height: 30px;
+        font-size: 18px;
+        top: 35%;
       }
+      .hero-prev { left: 8px; }
+      .hero-next { right: 8px; }
       .hero-dots {
         bottom: 8px;
         right: 10px;
-        left: auto;
       }
-      .hero-dots .hero-dot::after {
-        background: rgba(30, 37, 48, 0.35);
-      }
-      .hero-dots .hero-dot.active::after {
-        background: var(--primary);
-      }
-      [data-theme="dark"] .hero-dots .hero-dot::after {
-        background: rgba(255, 255, 255, 0.45);
-      }
-      [data-theme="dark"] .hero-dots .hero-dot.active::after {
-        background: #fff;
-      }
-      .hero-next {
-        right: 10px;
-      }
-    }
-    [data-theme="dark"] .hero-slideshow {
-      background: #182232;
     }
     .card-mini-btn.icon-btn {
       padding: 3px 8px;
@@ -6348,48 +6317,43 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       background: #fff;
     }
     .auth-btn.logged-in {
-      padding: 3px 6px;
+      padding: 4px 8px;
       cursor: pointer;
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      background: transparent;
+      border: none;
     }
     .auth-btn.logged-in .auth-avatar,
-    .auth-btn.logged-in > .auth-gear,
-    .auth-btn.logged-in .auth-gear,
-    .auth-btn.logged-in .auth-svg-gear {
+    .auth-btn.logged-in .auth-avatar.plain-gear {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
-    }
-    .auth-btn.logged-in:hover .auth-avatar,
-    .auth-btn.logged-in:hover > .auth-gear,
-    .auth-btn.logged-in:hover .auth-gear,
-    .auth-btn.logged-in:hover .auth-svg-gear {
-      transform: rotate(180deg);
-    }
-    .auth-btn.logged-in.active-open .auth-avatar,
-    .auth-btn.logged-in.active-open > .auth-gear,
-    .auth-btn.logged-in.active-open .auth-gear,
-    .auth-btn.logged-in.active-open .auth-svg-gear {
-      transform: rotate(90deg);
-    }
-    .auth-btn.logged-in .auth-gear {
-      font-size: 22px;
-      line-height: 1;
-    }
-    .auth-avatar.plain-gear {
       background: transparent !important;
       border: none !important;
       box-shadow: none !important;
-      width: auto;
-      height: auto;
+      width: auto !important;
+      height: auto !important;
+      padding: 0 !important;
+      border-radius: 0 !important;
     }
+    .auth-btn.logged-in .auth-gear,
     .auth-avatar.plain-gear .auth-gear {
       font-size: 22px;
       line-height: 1;
+      display: inline-block;
+      transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
       filter: none;
+    }
+    .auth-btn.logged-in:hover .auth-gear {
+      transform: rotate(180deg);
+    }
+    .auth-btn.logged-in.active-open .auth-gear {
+      transform: rotate(90deg);
+    }
+    .auth-letter {
+      display: none !important;
     }
     @media (max-width: 640px) {
       #authBtn .auth-label {
@@ -6428,45 +6392,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       height: 26px;
       border-radius: 50%;
       display: block;
-    }
-    .auth-btn .auth-avatar {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 26px;
-      height: 26px;
-      border-radius: 50%;
-      background: #2b4c7e;
-      color: #fff;
-      font-size: 14px;
-      font-weight: 800;
-      position: relative;
-    }
-    .auth-avatar .auth-gear {
-      font-size: 24px;
-      line-height: 1;
-      filter: grayscale(0.2);
-    }
-    .auth-avatar .auth-letter {
-      position: absolute;
-      font-size: 11px;
-      font-weight: 800;
-      color: #fff;
-      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
-      line-height: 1;
-    }
-    .auth-avatar.gear-ring {
-      background: transparent;
-      border: 2px solid #fff;
-    }
-    .auth-avatar.badge-letter {
-      border-radius: 8px;
-      background: #d97706;
-    }
-    .auth-avatar.minimal-letter {
-      background: transparent;
-      color: #fff;
-      font-size: 15px;
     }
     /* Desktop text selection: content selectable, chrome is not. */
     .quick-card-title,
@@ -8263,10 +8188,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
             ${s.description ? `<div class="hero-desc">${escapeHtml(s.description)}</div>` : ''}
             <span class="hero-cta">${escapeHtml(s.urlTitle)} →</span>
           </div>`;
-          const bgStyle = ` style="background-image:url('${escapeHtml(s.imageURL)}')"`;
           return s.href === '#'
-            ? `<div class="hero-slide${i === 0 ? ' active' : ''}"${i === 0 ? '' : ' inert'}${bgStyle}>${inner}</div>`
-            : `<a class="hero-slide${i === 0 ? ' active' : ''}" href="${escapeHtml(s.href)}"${s.external ? ' target="_blank" rel="noopener noreferrer"' : ''} aria-hidden="${i === 0 ? 'false' : 'true'}"${i === 0 ? '' : ' tabindex="-1" inert'}${bgStyle}>${inner}</a>`;
+            ? `<div class="hero-slide${i === 0 ? ' active' : ''}"${i === 0 ? '' : ' inert'}>${inner}</div>`
+            : `<a class="hero-slide${i === 0 ? ' active' : ''}" href="${escapeHtml(s.href)}"${s.external ? ' target="_blank" rel="noopener noreferrer"' : ''} aria-hidden="${i === 0 ? 'false' : 'true'}"${i === 0 ? '' : ' tabindex="-1" inert'}>${inner}</a>`;
         }).join('')}
       </div>
       <button type="button" class="hero-arrow hero-prev" onclick="heroGo(-1)" aria-label="Previous">‹</button>
@@ -14444,78 +14368,34 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
   }
 
-  // Logged-in icon: plain gear (default) or gear with account letter (11 styles).
+  // Logged-in icon: plain gear (default) without any letters.
   const AVATAR_VARIANTS = [
-    'plain-gear', 'gear-letter', 'circle-letter', 'gear-ring', 'badge-letter', 'minimal-letter',
-    'svg-gear-12tooth', 'svg-gear-sun', 'svg-gear-steampunk', 'svg-gear-shield', 'svg-gear-smooth'
+    'plain-gear', 'svg-gear-12tooth', 'svg-gear-sun', 'svg-gear-steampunk', 'svg-gear-shield', 'svg-gear-smooth'
   ];
   function getAvatarStyle() {
-    try {
-      const v = localStorage.getItem('yutorah_avatar_style');
-      if (v && AVATAR_VARIANTS.includes(v)) return v;
-    } catch (e) {}
     return 'plain-gear';
   }
   function setAvatarStyle(v) {
-    if (!AVATAR_VARIANTS.includes(v)) return;
-    try { localStorage.setItem('yutorah_avatar_style', v); } catch (e) {}
     renderAuthBtn();
-    try { renderAvatarPicker(); } catch (e) {}
   }
   function authAvatarHtml(variant, name, email) {
     const v = AVATAR_VARIANTS.includes(variant) ? variant : 'plain-gear';
     if (v === 'plain-gear') return '<span class="auth-avatar plain-gear"><span class="auth-gear">⚙️</span></span>';
-    const initial = escapeHtml((((name || email) || '?').trim()[0] || '?').toUpperCase());
-    if (v === 'circle-letter') return '<span class="auth-avatar">' + initial + '</span>';
-    if (v === 'gear-ring') return '<span class="auth-avatar gear-ring"><span class="auth-gear">⚙️</span><span class="auth-letter">' + initial + '</span></span>';
-    if (v === 'badge-letter') return '<span class="auth-avatar badge-letter">' + initial + '</span>';
-    if (v === 'minimal-letter') return '<span class="auth-avatar minimal-letter">' + initial + '</span>';
-    if (v === 'svg-gear-12tooth') {
-      return '<svg class="auth-svg-gear" viewBox="0 0 32 32" width="26" height="26">' +
-        '<path fill="currentColor" d="M14 2h4v3.1a10.9 10.9 0 0 1 2.4.98l2.2-2.2 2.8 2.8-2.2 2.2c.4.76.73 1.57.98 2.4H28v4h-3.82a10.9 10.9 0 0 1-.98 2.4l2.2 2.2-2.8 2.8-2.2-2.2a10.9 10.9 0 0 1-2.4.98V30h-4v-3.82a10.9 10.9 0 0 1-2.4-.98l-2.2 2.2-2.8-2.8 2.2-2.2a10.9 10.9 0 0 1-.98-2.4H4v-4h3.82a10.9 10.9 0 0 1 .98-2.4L6.6 9.18l2.8-2.8 2.2 2.2c.76-.4 1.57-.73 2.4-.98V2z"/>' +
-        '<circle cx="16" cy="16" r="7.5" fill="var(--card, #fff)"/>' +
-        '<text x="16" y="20.5" text-anchor="middle" font-weight="900" font-size="12" fill="var(--primary, #0056b3)" font-family="system-ui, sans-serif">' + initial + '</text></svg>';
-    }
-    if (v === 'svg-gear-sun') {
-      return '<svg class="auth-svg-gear" viewBox="0 0 32 32" width="26" height="26">' +
-        '<path fill="currentColor" d="M16 1l3 5 5.5-2.5.5 6 6 .5-2.5 5.5 5 3-5 3 2.5 5.5-6 .5-.5 6-5.5-2.5-3 5-3-5-5.5 2.5-.5-6-6-.5 2.5-5.5-5-3 5-3-2.5-5.5 6-.5.5-6 5.5 2.5z"/>' +
-        '<circle cx="16" cy="16" r="8" fill="var(--card, #fff)" stroke="currentColor" stroke-width="1.5"/>' +
-        '<text x="16" y="21" text-anchor="middle" font-weight="900" font-size="13" fill="var(--primary, #0056b3)" font-family="system-ui, sans-serif">' + initial + '</text></svg>';
-    }
-    if (v === 'svg-gear-steampunk') {
-      return '<svg class="auth-svg-gear" viewBox="0 0 32 32" width="26" height="26">' +
-        '<path fill="currentColor" fill-rule="evenodd" d="M13.5 2h5v4.2a10 10 0 0 1 3.5 2l3.6-2.1 2.5 4.3-3.6 2.1a10 10 0 0 1 0 4l3.6 2.1-2.5 4.3-3.6-2.1a10 10 0 0 1-3.5 2V30h-5v-4.2a10 10 0 0 1-3.5-2l-3.6 2.1-2.5-4.3 3.6-2.1a10 10 0 0 1 0-4L3.9 13.4l2.5-4.3 3.6 2.1a10 10 0 0 1 3.5-2V2zm2.5 6a8 8 0 1 0 0 16 8 8 0 0 0 0-16z"/>' +
-        '<circle cx="16" cy="16" r="6.5" fill="var(--card, #fff)"/>' +
-        '<text x="16" y="20.5" text-anchor="middle" font-weight="900" font-size="11.5" fill="currentColor" font-family="system-ui, sans-serif">' + initial + '</text></svg>';
-    }
-    if (v === 'svg-gear-shield') {
-      return '<svg class="auth-svg-gear" viewBox="0 0 32 32" width="26" height="26">' +
-        '<path fill="currentColor" d="M16 2l3.5 3 4.5-.5 2 4 4.5 1.5-.5 4.5 3 3.5-3 3.5.5 4.5-4.5 1.5-2 4-4.5-.5L16 30l-3.5-3-4.5.5-2-4-4.5-1.5.5-4.5L1 14l3-3.5-.5-4.5 4.5-1.5 2-4 4.5.5z"/>' +
-        '<polygon points="16,8 23,12 23,20 16,24 9,20 9,12" fill="var(--card, #fff)" stroke="currentColor" stroke-width="1.5"/>' +
-        '<text x="16" y="20.5" text-anchor="middle" font-weight="900" font-size="12" fill="var(--primary, #0056b3)" font-family="system-ui, sans-serif">' + initial + '</text></svg>';
-    }
-    if (v === 'svg-gear-smooth') {
-      return '<svg class="auth-svg-gear" viewBox="0 0 32 32" width="26" height="26">' +
-        '<path fill="currentColor" d="M16 3c1.5 0 2.5 2.5 4 3s3.5-.5 4.8.7 0 3.3.7 4.8 3 2.5 3 4-2.5 2.5-3 4 0 3.5-.7 4.8-3.3 0-4.8.7-2.5 3-4 3-2.5-2.5-4-3-3.5.5-4.8-.7 0-3.3-.7-4.8-3-2.5-3-4 2.5-2.5 3-4 0-3.5.7-4.8 3.3 0 4.8-.7S14.5 3 16 3z"/>' +
-        '<circle cx="16" cy="16" r="8" fill="var(--card, #fff)" stroke="var(--border-light, #dbe2ed)" stroke-width="1"/>' +
-        '<text x="16" y="21" text-anchor="middle" font-weight="900" font-size="13" fill="var(--primary, #0056b3)" font-family="system-ui, sans-serif">' + initial + '</text></svg>';
-    }
-    return '<span class="auth-avatar gear-letter"><span class="auth-gear">⚙️</span><span class="auth-letter">' + initial + '</span></span>';
+    return '<span class="auth-avatar plain-gear"><span class="auth-gear">⚙️</span></span>';
   }
+  const _DEV_GEAR_SVGS = {
+    'svg-gear-12tooth': '<svg class="auth-svg-gear" viewBox="0 0 32 32"><circle cx="16" cy="16" r="8"/></svg>',
+    'svg-gear-sun': '<svg class="auth-svg-gear" viewBox="0 0 32 32"><circle cx="16" cy="16" r="8"/></svg>',
+    'svg-gear-steampunk': '<svg class="auth-svg-gear" viewBox="0 0 32 32"><circle cx="16" cy="16" r="8"/></svg>',
+    'svg-gear-shield': '<svg class="auth-svg-gear" viewBox="0 0 32 32"><circle cx="16" cy="16" r="8"/></svg>',
+    'svg-gear-smooth': '<svg class="auth-svg-gear" viewBox="0 0 32 32"><circle cx="16" cy="16" r="8"/></svg>'
+  };
   function avatarPickerHtml() {
-    const cur = getAvatarStyle();
-    const nm = (cloudUser && (cloudUser.name || cloudUser.email)) || '?';
-    const em = (cloudUser && cloudUser.email) || '';
-    return AVATAR_VARIANTS.map(function(v) {
-      return '<button type="button" class="card-mini-btn icon-btn' + (v === cur ? ' active-save' : '') + '"' +
-        ' data-av="' + v + '" onclick="setAvatarStyle(this.getAttribute(&quot;data-av&quot;))" title="' + v + '">' +
-        authAvatarHtml(v, nm, em) + '</button>';
-    }).join('');
+    return '';
   }
   function renderAvatarPicker() {
-    if (!cloudUser) return;
     const wrap = document.getElementById('avatarPickerAuth');
-    if (wrap) wrap.innerHTML = avatarPickerHtml();
+    if (wrap) wrap.innerHTML = '';
   }
 
   function devOpenQueueView() {
@@ -14548,10 +14428,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   function renderAuthBtn() {
     const btn = document.getElementById('authBtn');
     if (!btn) return;
+    try { localStorage.removeItem('yutorah_avatar_style'); } catch (e) {}
     if (cloudUser) {
       btn.classList.add('logged-in');
       btn.title = cloudUser.name ? (cloudUser.name + ' (' + cloudUser.email + ')') : (cloudUser.email || 'Signed in');
-      btn.innerHTML = authAvatarHtml(getAvatarStyle(), cloudUser.name, cloudUser.email);
+      btn.innerHTML = '<span class="auth-avatar plain-gear"><span class="auth-gear">⚙️</span></span>';
     } else {
       btn.classList.remove('logged-in');
       btn.title = 'Account';
@@ -14596,10 +14477,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); window.location.href=&quot;/auth/google?return_to=' + retUrl + '&quot;;">🔑 Sign in with Google</button>';
     }
     if (isDevMode) {
-      if (cloudUser) {
-        html += '<div class="settings-menu-label">Logged-in icon (Dev)</div>';
-        html += '<div id="avatarPickerAuth" style="display:flex; gap:6px; padding:4px 10px 8px; flex-wrap:wrap; max-width:280px;"></div>';
-      }
       html += '<div class="settings-menu-label">Dev settings</div>';
       html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); openChangelogModal();">📋 Change Log</button>';
       html += '<div class="settings-menu-label">Save button icon</div>';
@@ -14608,9 +14485,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     menu.innerHTML = html;
     menu.style.display = 'block';
     positionAuthMenu();
-    if (isDevMode && cloudUser) {
-      try { renderAvatarPicker(); } catch (e) {}
-    }
     if (isDevMode) {
       const wrap = document.getElementById('saveIconPickerAuth');
       if (wrap) {
