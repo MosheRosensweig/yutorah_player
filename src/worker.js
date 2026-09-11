@@ -6054,6 +6054,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     #searchResultsSection {
       scroll-margin-top: 70px;
+      min-height: 80vh;
     }
     .player-nav-back {
       display: inline-flex;
@@ -7795,6 +7796,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       flex-direction: column;
       gap: 8px;
       margin: 10px 0 6px;
+      scroll-margin-top: 60px;
     }
     .date-quick-subrow {
       display: flex;
@@ -9959,7 +9961,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         <button type="button" class="date-quick-chip" data-preset="month" onclick="setDateQuick('month', this)">This Month</button>
       </div>
       <div class="date-quick-subrow">
-        <span class="date-quick-caption">Sort:</span>
+        <span class="date-quick-caption">↕️ Sort:</span>
         <button type="button" class="date-quick-chip sort-chip selected" data-sort="relevance" onclick="setResultSort('relevance', this)">Relevance</button>
         <button type="button" class="date-quick-chip sort-chip" data-sort="newest" onclick="setResultSort('newest', this)">Newest</button>
         <button type="button" class="date-quick-chip sort-chip" data-sort="oldest" onclick="setResultSort('oldest', this)">Oldest</button>
@@ -13822,13 +13824,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (resSection.style.display === 'none') {
       resSection.style.display = 'block';
     }
+    const whenRow = document.getElementById('dateQuickRow');
+    const targetEl = whenRow || resSection;
+
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const header = document.getElementById('mainHeader');
         const headerHeight = header ? header.offsetHeight : 52;
-        const rect = resSection.getBoundingClientRect();
+        const rect = targetEl.getBoundingClientRect();
         const currentScrollY = window.scrollY || window.pageYOffset || document.documentElement.scrollTop || 0;
-        const targetY = currentScrollY + rect.top - headerHeight - 10;
+        // Align so the "When" line is the first thing visible at the top of the screen right below the fixed header
+        const targetY = currentScrollY + rect.top - headerHeight - 6;
         window.scrollTo({
           top: Math.max(0, Math.round(targetY)),
           behavior: 'smooth'
@@ -14073,6 +14079,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         }
         grid.innerHTML = emptyHtml;
         loadMoreBox.style.display = 'none';
+        if (!extraParams.skipScroll) {
+          scrollToSearchResults();
+        }
         return;
       }
       // Keep the server's weak-hit suggestions: renderCurrentSearchResults
@@ -14080,6 +14089,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
       currentSearchDocs = docs;
       renderCurrentSearchResults();
+      if (!extraParams.skipScroll) {
+        scrollToSearchResults();
+      }
 
       // Setup Load More button
       const totalInfo = document.getElementById('searchTotalInfo');

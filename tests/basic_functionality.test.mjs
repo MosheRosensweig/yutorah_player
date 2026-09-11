@@ -472,6 +472,9 @@ async function testSearchResultsScrollAndHeroSlideClick() {
   assert.ok(html.includes('.date-quick-subrow {'), 'CSS rule for .date-quick-subrow must be present');
   assert.ok(html.includes('class="date-quick-subrow"'), 'date-quick-subrow markup must be present');
 
+  // 6. Sort label includes icon (↕️ Sort:)
+  assert.ok(html.includes('↕️ Sort:'), 'Sort label must have an icon on its left');
+
   console.log('  ✅ Search results smooth scroll, hero slideshow click search & multi-line date/sort filters verified.');
 }
 
