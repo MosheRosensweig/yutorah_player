@@ -5331,19 +5331,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       display: flex;
       align-items: center;
       gap: 8px;
-      flex-shrink: 1;
-      min-width: 0;
-      overflow-x: auto;
-      scrollbar-width: none;
-      max-width: 100%;
-      touch-action: pan-x pan-y;
-      -webkit-overflow-scrolling: touch;
-    }
-    .header-right::-webkit-scrollbar {
-      display: none;
-    }
-    .header-right > * {
       flex-shrink: 0;
+    }
+    @media (max-width: 640px) {
+      #themeToggleBtn, #hebrewDateBadge {
+        display: none !important;
+      }
     }
     .support-yutorah-btn {
       display: inline-flex;
@@ -8500,6 +8493,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       padding: 8px 10px 2px;
       text-transform: uppercase;
       letter-spacing: 0.4px;
+    }
+    .auth-cal-mobile {
+      display: none;
+    }
+    @media (max-width: 640px) {
+      .auth-cal-mobile {
+        display: block;
+      }
     }
     .auth-btn img {
       width: 26px;
@@ -16151,16 +16152,20 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (!isGuest) {
       qhtml += devPlaylistSegmentedBarHtml(true);
     }
+    const datalistOpts = (kind) => {
+      const list = plTagOptions(kind === 'teachers' ? 'teachers' : kind === 'venues' ? 'venues' : 'topics').slice(0, 400);
+      return list.map(o => '<option value="' + escapeHtml(o.name) + '">').join('');
+    };
     qhtml += '<div style="grid-column:1/-1; display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">' +
       '<input id="plPubQ" type="text" placeholder="Search public playlists…" value="' + escapeHtml(plPublicQuery) + '"' +
       ' autocomplete="off" style="flex:2; min-width:160px; padding:8px 12px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text);">' +
-      '<select id="plPubTeacher" style="flex:1; min-width:120px; padding:8px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text);">' + tagOpts('teachers') + '</select>' +
-      '<select id="plPubVenue" style="flex:1; min-width:120px; padding:8px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text);">' + tagOpts('venues') + '</select>' +
-      '<select id="plPubTopic" style="flex:1; min-width:120px; padding:8px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text);">' + tagOpts('topics') + '</select>' +
-      '<select id="plPubSort" style="padding:8px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text);">' +
-      '<option value="recent"' + (plPublicSort !== 'saves' ? ' selected' : '') + '>Recent</option>' +
-      '<option value="saves"' + (plPublicSort === 'saves' ? ' selected' : '') + '>Most saved</option></select>' +
-      '<button type="button" class="card-mini-btn active-save" onclick="plPublicSearch()" style="padding:8px 14px; font-size:14px;">🔍 Search</button></div>';
+      '<input id="plPubTeacher" list="plPubTeacherList" placeholder="Teacher (type to filter)…" autocomplete="off" style="flex:1; min-width:120px; padding:8px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text);"><datalist id="plPubTeacherList">' + datalistOpts('teachers') + '</datalist>' +
+      '<input id="plPubVenue" list="plPubVenueList" placeholder="Venue…" autocomplete="off" style="flex:1; min-width:120px; padding:8px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text);\"><datalist id="plPubVenueList">' + datalistOpts('venues') + '</datalist>' +
+      '<input id=\"plPubTopic\" list=\"plPubTopicList\" placeholder=\"Topic…\" autocomplete=\"off\" style=\"flex:1; min-width:120px; padding:8px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text);\"><datalist id="plPubTopicList">' + datalistOpts('topics') + '</datalist>' +
+      '<select id=\"plPubSort\" style=\"padding:8px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text);\">' +
+      '<option value=\"recent\"' + (plPublicSort !== 'saves' ? ' selected' : '') + '>Recent</option>' +
+      '<option value=\"saves\"' + (plPublicSort === 'saves' ? ' selected' : '') + '>Most saved</option></select>' +
+      '<button type=\"button\" class=\"card-mini-btn active-save\" onclick=\"plPublicSearch()\" style=\"padding:8px 14px; font-size:14px;\">🔍 Search</button></div>';
 
     qhtml += '<div style="grid-column:1/-1; display:flex; gap:16px; align-items:center; flex-wrap:wrap; margin:-4px 0 12px; font-size:12.5px; color:var(--text);">' +
       '<span style="font-weight:700; color:var(--text-muted);">Search in:</span>' +
@@ -16251,6 +16256,21 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         }
       }
       qq.addEventListener('keydown', e => { if (e.key === 'Enter') plPublicSearch(); });
+      const bindTypableFilter = (id, kind) => {
+        const el = container.querySelector('#' + id);
+        if (!el) return;
+        const resolve = () => {
+          const v = (el.value || '').trim().toLowerCase();
+          if (!v) { plPublicTags[kind === 'teachers' ? 'teacher' : kind === 'venues' ? 'venue' : 'topic'] = null; return; }
+          const match = plTagOptions(kind).find(o => String(o.name || '').toLowerCase() === v);
+          plPublicTags[kind === 'teachers' ? 'teacher' : kind === 'venues' ? 'venue' : 'topic'] = match ? { id: match.id, name: match.name } : null;
+        };
+        el.addEventListener('change', () => { resolve(); plPublicSearch(); });
+        el.addEventListener('input', () => { if (!el.value) { resolve(); plPublicSearch(); } });
+      };
+      bindTypableFilter('plPubTeacher', 'teachers');
+      bindTypableFilter('plPubVenue', 'venues');
+      bindTypableFilter('plPubTopic', 'topics');
       const deb = { t: null };
       qq.addEventListener('input', () => {
         clearTimeout(deb.t);
@@ -17726,6 +17746,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); devScrollToPlaylists();">🎧 My Playlists</button>';
       html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); openDisplayNameModal();">✏️ Display name</button>';
       html += '<button type="button" class="settings-menu-item menu-theme-toggle-btn" onclick="toggleTheme();"><span class="menu-theme-icon">' + themeIcon + '</span> <span>Light / Dark Mode</span></button>';
+      try {
+        const calEl = document.getElementById('hebrewDateBadge');
+        const calText = calEl ? (calEl.textContent || '').trim() : '';
+        if (calText) html += '<div class="settings-menu-label auth-cal-mobile">📅 ' + escapeHtml(calText) + '</div>';
+      } catch (e) {}
       html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); handleAuthClick();">🚪 Sign out</button>';
     } else {
       let retPath = window.location.pathname;

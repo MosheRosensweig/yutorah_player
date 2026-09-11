@@ -25,12 +25,12 @@ Production status: **Untouched** (strictly protected by standing rules)
 - [x] **Task 5: Shuffle Play Option for Playlists** *(COMPLETED)*
   - Add option to play playlist in sequential order (default) or randomized order via `🔀 Shuffle` button on playlists.
   - Fisher-Yates shuffle, non-mutating, uses queue system with cloud sync, disabled when <2 items, dual-reviewed 2026-09-11.
-- [ ] **Task 6: Scope Checkbox Relabel** *(PENDING)*
-  - Relabel scope checkboxes with prefix: "Playlist title and tags", "Playlist description", "The shiurim inside the playlists metadata".
-- [ ] **Task 7: Typable Teacher/Topic/Venue Filters with Dropdown** *(PENDING)*
-  - Make Teacher, Topic, Venue filters typable inputs with dropdown suggestions (no freeform beyond controlled vocab).
-- [ ] **Task 8: Header Overflow — Settings in Dropdown vs Header** *(PENDING)*
-  - If light/dark and calendar don't fit, move them into the settings dropdown (where light/dark already lives); show in header only when space allows.
+- [x] **Task 6: Scope Checkbox Relabel** *(COMPLETED 2026-09-11)*
+  - Relabeled scope checkboxes with prefix: "Playlist title and tags", "Playlist description", "Shiurim inside the playlists".
+- [x] **Task 7: Typable Teacher/Topic/Venue Filters with Dropdown** *(COMPLETED 2026-09-11)*
+  - Made Teacher, Topic, Venue filters typable inputs with datalist dropdowns (controlled vocab, no freeform).
+- [x] **Task 8: Header Overflow — Settings in Dropdown vs Header** *(COMPLETED 2026-09-11)*
+  - Header hides light/dark + calendar on mobile (≤640px) and shows them in the account dropdown; desktop shows them in header when space allows.
 
 ---
 
