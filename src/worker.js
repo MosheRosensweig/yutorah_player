@@ -10422,7 +10422,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   <div class="queue-popup-header">
     <span>📋 Up Next</span>
     <span id="queueCount" class="queue-count"></span>
-    <button type="button" class="card-mini-btn" onclick="toggleQueuePopup()" aria-label="Close queue">×</button>
+    <button type="button" class="card-mini-btn" onclick="closeQueuePopup(); event.stopPropagation();" aria-label="Close queue">✕</button>
   </div>
   <div id="queueList" class="queue-list"></div>
   <div class="queue-popup-footer">
@@ -16802,11 +16802,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       switchCollection('playlists');
     }
     if (playlistsEnabled()) {
-      const pop = document.getElementById('queuePopup');
-      if (pop) {
-        renderQueuePopup();
-        pop.style.display = 'flex';
-      }
+      openQueuePopup();
     }
     const el = document.getElementById('collectionsSection');
     if (el) el.scrollIntoView({ behavior: 'smooth' });
@@ -17004,6 +17000,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (menu && menu.style.display === 'block' && btn &&
         !menu.contains(e.target) && !btn.contains(e.target)) {
       closeAuthMenu();
+    }
+    const pop = document.getElementById('queuePopup');
+    if (pop && pop.style.display === 'flex') {
+      if (!pop.contains(e.target) && !e.target.closest('.queue-btn') && !e.target.closest('[onclick*="devOpenQueueView"]') && !e.target.closest('[onclick*="toggleQueuePopup"]')) {
+        closeQueuePopup();
+      }
     }
   });
 
@@ -17654,22 +17656,40 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   // Queue popup (mini-player ☰ + playlists tab share this renderer).
   let devDragIdx = -1;
+
+  function closeQueuePopup() {
+    const pop = document.getElementById('queuePopup');
+    if (pop) {
+      pop.style.display = 'none';
+    }
+  }
+  window.closeQueuePopup = closeQueuePopup;
+
+  function openQueuePopup() {
+    if (!playlistsEnabled()) return;
+    const pop = document.getElementById('queuePopup');
+    if (!pop) return;
+    renderQueuePopup();
+    pop.style.display = 'flex';
+  }
+  window.openQueuePopup = openQueuePopup;
+
   function toggleQueuePopup() {
     if (!playlistsEnabled()) return;
     const pop = document.getElementById('queuePopup');
     if (!pop) return;
-    if (pop.style.display === 'none') {
-      renderQueuePopup();
-      pop.style.display = 'flex';
+    if (pop.style.display === 'none' || !pop.style.display) {
+      openQueuePopup();
     } else {
-      pop.style.display = 'none';
+      closeQueuePopup();
     }
   }
+  window.toggleQueuePopup = toggleQueuePopup;
 
   function devQueueListHtml() {
     const q = getDevQueue();
     if (q.length === 0) {
-      return '<div class="queue-empty">Queue is empty — tap ⏭ Queue on any card to line up what plays next.</div>';
+      return '<div class="queue-empty">Queue is empty — tap the circular queue icon (<span class="queue-circle-btn" style="width:20px; height:20px; display:inline-flex; vertical-align:middle; pointer-events:none; margin:0 3px;">' + devQueueIconSvg() + '</span>) on any card to line up what plays next.</div>';
     }
     return q.map((it, idx) => {
       const isSeries = it.kind === 'series';

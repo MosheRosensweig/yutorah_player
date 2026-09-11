@@ -277,9 +277,12 @@ async function testDropdownNavAndThemeAesthetics() {
   assert.ok(html.includes('.auth-btn.logged-in:hover .auth-gear') || html.includes('.auth-avatar.plain-gear'), 'Default gear must be targeted by hover animation');
 
 
-  // 2. Navigation fixes
+  // 2. Navigation & Queue Popup fixes
   assert.ok(html.includes("switchCollection('playlists')"), 'Dropdown actions must switch collection to playlists');
-  assert.ok(html.includes("pop.style.display = 'flex'"), 'devOpenQueueView displays queue popup');
+  assert.ok(html.includes("openQueuePopup()"), 'devOpenQueueView displays queue popup idempotently');
+  assert.ok(html.includes("closeQueuePopup()"), 'closeQueuePopup unconditionally closes play queue');
+  assert.ok(html.includes("closeQueuePopup(); event.stopPropagation();"), 'queuePopup close button calls closeQueuePopup');
+  assert.ok(html.includes("Queue is empty — tap the circular queue icon"), 'empty queue message describes and renders circular queue icon');
   assert.ok(html.includes("if (!playlistsEnabled())"), 'renderQueuePopup guards on playlistsEnabled() for non-dev auth users');
 
   // 3. Playlist styling and contrast

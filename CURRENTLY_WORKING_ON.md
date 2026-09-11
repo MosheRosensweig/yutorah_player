@@ -1,15 +1,46 @@
 # Currently Working On — Living Status & Activity Log
 
 Living status doc & audit log — updated on every milestone and user request.  
-Last updated: **2026-09-10, 23:55 ET**  
+Last updated: **2026-09-11, 10:10 ET**  
 Current branch: `feat/auth-d1`  
 Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev)  
-Tests: **5/5 test suites passing (100% green, 12/12 basic functionality checks)**  
+Tests: **5/5 test suites passing (100% green, 15/15 basic functionality checks)**  
 Production status: **Untouched** (strictly protected by standing rules)
 
 ---
 
+## 🎯 Active Task: Complete Playlists Suite (Step-by-Step)
+- [x] **Phase 1: Play Queue UX & Idempotent Modal Controls** *(COMPLETED)*
+  - Fix idempotent single-click close for `#queuePopup` (clicking Open Queue multiple times won't stack open states; single `✕` click unconditionally closes).
+  - Fix empty queue prompt icon and text (match circular queue icon `📋` / list icon with SVG).
+- [ ] **Phase 2: Playlists Tab Restructuring & Sticky Controls** *(IN PROGRESS)*
+  - Segmented top control: `My Playlists` vs `Public Playlists`.
+  - Sticky / frozen top row in `My Playlists` (`History`, `Save for Later`, `+ New Playlist`).
+  - Subscribed / read-only border highlights in Light Mode and Dark Mode.
+- [ ] **Phase 3: Playlist Sorting & Ordering Controls** *(PENDING)*
+  - Sort selector per playlist: `Last Listened`, `Shiur Date`, `Manual / Drag-and-Drop`.
+- [ ] **Phase 4: Enhanced Playlist Creation Modal** *(PENDING)*
+  - Emoji / Icon picker for playlists.
+  - Curated taxonomy tag selector (speakers, venues, topics, categories; max 5).
+  - Per-user duplicate playlist name prevention.
+- [ ] **Phase 5: Add-to-Playlist Multi-Select Popup Enhancements** *(PENDING)*
+  - Live counter tick (`+1` / `-1`) on checkbox toggle.
+  - Explicit `💾 Save Changes` commitment button.
+  - Self-saving guard (hide "Save" on public playlists authored by current user).
+
+---
+
 ## 🕒 Chronological Activity Log
+
+### [2026-09-11 10:12 ET] — Commit `feat/auth-d1` (Play Queue UX: Idempotent Single-Click Close & Circular Icon Prompt)
+- `[DONE]` **Idempotent Single-Click Close**:
+  - Replaced ambiguous toggle with `closeQueuePopup()` and `openQueuePopup()`.
+  - Close button `✕` on `#queuePopup` now directly invokes `closeQueuePopup(); event.stopPropagation();` which unconditionally hides `#queuePopup` on the very first click regardless of how many times "Open Play Queue" was clicked.
+  - `devOpenQueueView()` idempotently calls `openQueuePopup()`.
+  - Outside click listener closes `#queuePopup` when clicking anywhere outside without interfering with queue trigger buttons.
+- `[DONE]` **Empty Queue Circular Icon Alignment**:
+  - Replaced stale `⏭ Queue` prompt with the exact circular queue icon (`devQueueIconSvg()`) used across all shiur cards.
+- `[DONE]` **Automated Testing**: Updated `testDropdownNavAndThemeAesthetics` in `tests/basic_functionality.test.mjs`. All 5 test suites passed 100% green.
 
 ### [2026-09-10 23:55 ET] — Commit `feat/auth-d1` (Public Playlist Save Choice: Subscribe Live Sync vs Editable Copy + D1 Backup Guide)
 - `[DONE]` **Public Playlist Save Choice Modal**:
