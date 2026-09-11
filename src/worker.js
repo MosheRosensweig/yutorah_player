@@ -13778,6 +13778,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         activateDevMode();
       }
     } catch (e) {}
+    // Playlist deep-links (?tab=playlists&pl=...) survive reload + sharing.
+    // A shiur-search URL always wins (one view per URL; searches clear pl*).
+    try {
+      const bootParams = new URLSearchParams(window.location.search);
+      if (!bootParams.get('search') && readPlaylistUrlState()) {
+        switchCollection('playlists');
+        if (activeDevPlaylistId === 'public') plSearchPublic();
+      }
+    } catch (e) {}
     setupAutocompleteInput('teacher', 'advTeacherInput', 'teacherDropdown', 'teachers');
     setupAutocompleteInput('category', 'advCategoryInput', 'categoryDropdown', 'categories');
     setupAutocompleteInput('location', 'advLocationInput', 'locationDropdown', 'venues');
@@ -14339,6 +14348,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     else newUrl.searchParams.delete('sort');
     newUrl.searchParams.delete('shiurId');
     newUrl.searchParams.delete('id');
+    // Shiur search is its own view: drop playlist deep-link keys (one view
+    // per URL; in-memory playlist state is untouched and re-syncs on return).
+    try { clearPlaylistUrlKeys(newUrl); } catch (e) {}
     history.pushState({ search: query, ...extraParams }, '', newUrl.toString());
 
     if (currentSearchAbort) {
@@ -14962,6 +14974,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       const k = curParams.has('theme') ? 'theme' : 'mode';
       newUrl.searchParams.set(k, activeTheme);
     }
+    // Carry playlist context onto the shiur page so reload keeps the tab,
+    // filters, and search the listener came from (shareable as one link).
+    try {
+      ['tab', 'pl', 'plq', 'plteachers', 'plvenues', 'pltopics', 'plscope', 'plsort'].forEach(k => {
+        curParams.getAll(k).forEach(v => newUrl.searchParams.append(k, v));
+      });
+    } catch (e) {}
     history.pushState({ shiurId: id }, '', newUrl.pathname + newUrl.search);
 
     try {
@@ -15234,7 +15253,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     currentShiurId = '';
     const newUrl = new URL(window.location.href);
     newUrl.pathname = '/';
-    newUrl.search = '';
+    // Keep playlist + theme context; drop only player/search-specific keys.
+    try {
+      const keep = new URLSearchParams();
+      ['tab', 'pl', 'plq', 'plteachers', 'plvenues', 'pltopics', 'plscope', 'plsort', 'theme', 'mode', 'dark', 'light'].forEach(k => {
+        newUrl.searchParams.getAll(k).forEach(v => keep.append(k, v));
+      });
+      newUrl.search = keep.toString();
+    } catch (e) {
+      newUrl.search = '';
+    }
     history.pushState({}, '', newUrl.toString());
   }
 
@@ -15910,6 +15938,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   function devSelectPlaylist(pid) {
     activeDevPlaylistId = pid;
     renderPlaylistsGrid();
+    syncPlaylistUrl();
   }
   window.devSelectPlaylist = devSelectPlaylist;
 
@@ -16251,6 +16280,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       plPublicTotal = 0;
     }
     plPatchPublicResults();
+    syncPlaylistUrl();
   }
 
   function plTagOptions(kind) {
@@ -16354,12 +16384,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (sub === 'public') {
       activeDevPlaylistId = 'public';
       renderPlaylistsGrid();
+      syncPlaylistUrl();
       if (plPublicResults.length === 0 && !plPublicQuery) plSearchPublic();
     } else {
       if (activeDevPlaylistId === 'public') {
         activeDevPlaylistId = 'history';
       }
       renderPlaylistsGrid();
+      syncPlaylistUrl();
     }
   }
   window.devSwitchPlaylistSubView = devSwitchPlaylistSubView;
@@ -16407,6 +16439,80 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     return h;
   }
   window.devPlaylistsHeaderHtml = devPlaylistsHeaderHtml;
+
+  // ---- Playlist tab deep-linking (reload-safe + shareable) ----
+  // Namespaced pl* keys so shiur-search params (search/sort/...) never collide.
+  const PL_URL_KEYS = ['tab', 'pl', 'plq', 'plteachers', 'plvenues', 'pltopics', 'plscope', 'plsort'];
+
+  function clearPlaylistUrlKeys(url) {
+    try {
+      PL_URL_KEYS.forEach(k => url.searchParams.delete(k));
+    } catch (e) {}
+    return url;
+  }
+
+  function syncPlaylistUrl() {
+    try {
+      const tabEl = document.getElementById('tab-playlists');
+      const tabActive = !!(tabEl && tabEl.classList.contains('active'));
+      const url = new URL(window.location.href);
+      clearPlaylistUrlKeys(url);
+      if (tabActive) {
+        url.searchParams.set('tab', 'playlists');
+        url.searchParams.set('pl', activeDevPlaylistId || 'history');
+        if ((plPublicQuery || '').trim()) url.searchParams.set('plq', plPublicQuery.trim());
+        (plPublicFilterTags.teachers || []).forEach(t => { if (t && (t.name || t.id)) url.searchParams.append('plteachers', t.name || t.id); });
+        (plPublicFilterTags.venues || []).forEach(v => { if (v && (v.name || v.id)) url.searchParams.append('plvenues', v.name || v.id); });
+        (plPublicFilterTags.topics || []).forEach(t => { if (t && (t.name || t.id)) url.searchParams.append('pltopics', t.name || t.id); });
+        const sc = [];
+        if (plPublicScope.title) sc.push('title');
+        if (plPublicScope.desc) sc.push('desc');
+        if (plPublicScope.shiurim) sc.push('shiurim');
+        if (sc.join(',') !== 'title,desc') url.searchParams.set('plscope', sc.join(','));
+        if (plPublicSort === 'saves') url.searchParams.set('plsort', 'saves');
+      }
+      history.replaceState(history.state, '', url.toString());
+    } catch (e) {}
+  }
+
+  function readPlaylistUrlState() {
+    // Restores public-search vars (validated) + active playlist from the URL.
+    // Returns { pid } when ?tab=playlists, else null.
+    try {
+      const bp = new URLSearchParams(window.location.search);
+      if (bp.get('tab') !== 'playlists') return null;
+      const multi = (k) => {
+        const out = [];
+        bp.getAll(k).forEach(v => String(v || '').split(',').forEach(s => {
+          const t = s.trim();
+          if (t) out.push(t);
+        }));
+        return out;
+      };
+      plPublicQuery = bp.get('plq') || '';
+      plPublicFilterDraft = { teachers: '', venues: '', topics: '' };
+      plPublicFilterTags = {
+        teachers: multi('plteachers').map(n => ({ id: n, name: n })),
+        venues: multi('plvenues').map(n => ({ id: n, name: n })),
+        topics: multi('pltopics').map(n => ({ id: n, name: n }))
+      };
+      const sc = (bp.get('plscope') || 'title,desc').split(',').map(s => s.trim().toLowerCase());
+      plPublicScope = { title: sc.includes('title'), desc: sc.includes('desc'), shiurim: sc.includes('shiurim') };
+      if (!plPublicScope.title && !plPublicScope.desc && !plPublicScope.shiurim) {
+        plPublicScope = { title: true, desc: true, shiurim: false };
+      }
+      plPublicSort = bp.get('plsort') === 'saves' ? 'saves' : 'recent';
+      let pid = bp.get('pl') || 'history';
+      const specials = ['history', 'save_for_later', 'favorites', 'queue', 'public'];
+      if (!specials.includes(pid)) {
+        try {
+          if (!getDevPlaylist(getDevStore(), pid)) pid = 'history';
+        } catch (e) { pid = 'history'; }
+      }
+      activeDevPlaylistId = pid;
+      return { pid: pid };
+    } catch (e) { return null; }
+  }
 
   function renderPlPublicInto(container, isGuest) {
     if (!container) return;
@@ -17299,6 +17405,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       plPublicTotal = 0;
     }
     if (grid && activeDevPlaylistId !== 'queue') renderPlaylistsGrid();
+    syncPlaylistUrl();
   }
 
   async function plPublicMore() {
@@ -19710,6 +19817,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       renderDevCuratedGrid();
     }
     try { if (typeof devUpgradeCards === 'function') devUpgradeCards(); } catch (e) {}
+    // Keep playlist deep-links truthful: sync on entry, clear on leave.
+    try {
+      if (activeName === 'playlists') {
+        syncPlaylistUrl();
+      } else {
+        const u = new URL(window.location.href);
+        const before = u.search;
+        clearPlaylistUrlKeys(u);
+        if (u.search !== before) history.replaceState(history.state, '', u.toString());
+      }
+    } catch (e) {}
   }
 
   let activeDevPersonaFilter = 'all';
@@ -20215,6 +20333,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         initTheme();
         applyHolidayTheme();
       }
+      // Back/forward into a playlist deep-link restores the tab + filters.
+      try {
+        if (p.get('tab') === 'playlists' && !p.get('search')) {
+          if (readPlaylistUrlState()) {
+            switchCollection('playlists');
+            if (activeDevPlaylistId === 'public') plSearchPublic();
+          }
+        }
+      } catch (e) {}
       try { if (typeof devRefreshCardButtons === 'function') devRefreshCardButtons(); } catch (e) {}
     } catch(e) {}
   });

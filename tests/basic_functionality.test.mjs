@@ -613,6 +613,40 @@ async function testPlaylistsEnhancementsRound2() {
   console.log('  ✅ Save for later, multi-select filter cards, search scope checkboxes & direct reordering verified.');
 }
 
+async function testPlaylistUrlDeepLinks() {
+  console.log('18. Testing Playlist URL Deep-Links (reload-safe + shareable)...');
+  const req = new Request('https://yutorah-player.mrosensweig.workers.dev/', {
+    headers: { 'User-Agent': 'TestRunner' }
+  });
+  const res = await worker.fetch(req, mockEnv, mockCtx);
+  assert.equal(res.status, 200);
+  const html = await res.text();
+
+  // Namespaced keys + sync/hydrate plumbing
+  assert.ok(html.includes('PL_URL_KEYS'), 'PL_URL_KEYS namespace must be defined');
+  assert.ok(html.includes('function syncPlaylistUrl()'), 'syncPlaylistUrl must be defined');
+  assert.ok(html.includes('function readPlaylistUrlState()'), 'readPlaylistUrlState must be defined');
+  assert.ok(html.includes('function clearPlaylistUrlKeys('), 'clearPlaylistUrlKeys must be defined');
+  assert.ok(html.includes("bp.get('tab') !== 'playlists'"), 'hydration must gate on tab=playlists');
+  assert.ok(html.includes("bp.get('plq')"), 'hydration must restore public query (plq)');
+  assert.ok(html.includes("multi('plteachers')"), 'hydration must restore teacher pills');
+  assert.ok(html.includes("multi('plvenues')"), 'hydration must restore venue pills');
+  assert.ok(html.includes("multi('pltopics')"), 'hydration must restore topic pills');
+  assert.ok(html.includes("bp.get('plscope')"), 'hydration must restore scope');
+  assert.ok(html.includes("bp.get('plsort')"), 'hydration must restore sort');
+  assert.ok(html.includes("bp.get('pl')"), 'hydration must restore active playlist id');
+  // Writers: select/subview/search sync; tab-leave clears
+  assert.ok(html.includes('syncPlaylistUrl();\n  }\n  window.devSelectPlaylist') || html.includes('renderPlaylistsGrid();\n    syncPlaylistUrl();'), 'playlist selection must sync URL');
+  assert.ok(html.includes('plPatchPublicResults();\n    syncPlaylistUrl();'), 'public search must sync URL after patch');
+  // One view per URL: shiur search drops playlist keys
+  assert.ok(html.includes('clearPlaylistUrlKeys(newUrl)'), 'shiur search must clear playlist keys');
+  // Player open carries playlist context; close preserves it
+  assert.ok(html.includes("curParams.getAll(k).forEach(v => newUrl.searchParams.append(k, v))"), 'player open must carry playlist keys');
+  assert.ok(html.includes("'tab', 'pl', 'plq'"), 'playlist key list must be shared');
+
+  console.log('  ✅ Playlist deep-links: sync, hydration, one-view-per-URL & player carry-over verified.');
+}
+
 async function runAll() {
   try {
     await testHomepage();
@@ -632,6 +666,7 @@ async function runAll() {
     await testSearchResultsScrollAndHeroSlideClick();
     await testPlaylistSuitePhase5();
     await testPlaylistsEnhancementsRound2();
+    await testPlaylistUrlDeepLinks();
     console.log('\n🎉 ALL BASIC FUNCTIONALITY, ARTICLE READER & LIQUID MODE TESTS PASSED SUCCESSFULLY!');
   } catch (err) {
     console.error('\n❌ Test failed:', err);
