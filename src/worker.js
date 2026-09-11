@@ -3376,13 +3376,26 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     .theme-toggle-btn:focus,
     .theme-toggle-btn:active {
-      outline: none !important;
+      outline: none;
       background: none !important;
       box-shadow: none !important;
+    }
+    .theme-toggle-btn:focus-visible {
+      outline: 2px solid #ffffff !important;
+      outline-offset: 2px;
+      border-radius: 4px;
     }
     .theme-toggle-btn:hover {
       background: none !important;
       transform: scale(1.22);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .auth-btn.logged-in .auth-gear,
+      .theme-toggle-btn,
+      .hero-cta {
+        transition: none !important;
+        transform: none !important;
+      }
     }
 
     /* [DEAD CODE / INACTIVE] Settings Dropdown, Simple View & Theme Picker */
@@ -6241,7 +6254,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     .hero-dot:focus-visible,
     .hero-arrow:focus-visible,
-    .hero-cta:focus-visible {
+    .hero-cta:focus-visible,
+    a.hero-slide:focus-visible .hero-cta {
       outline: 2px solid #fff !important;
       outline-offset: 2px;
       box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.55);
