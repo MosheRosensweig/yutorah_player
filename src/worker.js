@@ -60,12 +60,21 @@ async function makeSessionJWT(secret, payload) {
   return header + '.' + body + '.' + sig;
 }
 
+function timingSafeEqualStr(a, b) {
+  const sa = String(a || '');
+  const sb = String(b || '');
+  if (sa.length !== sb.length) return false;
+  let diff = 0;
+  for (let i = 0; i < sa.length; i++) diff |= sa.charCodeAt(i) ^ sb.charCodeAt(i);
+  return diff === 0;
+}
+
 async function verifySessionJWT(secret, token) {
   try {
     const parts = String(token || '').split('.');
     if (parts.length !== 3) return null;
     const expect = await hmacSign(secret, parts[0] + '.' + parts[1]);
-    if (expect !== parts[2]) return null;
+    if (!timingSafeEqualStr(expect, parts[2])) return null;
     const payload = JSON.parse(new TextDecoder().decode(b64urlDecode(parts[1])));
     if (!payload || !payload.uid) return null;
     if (payload.exp && Date.now() > payload.exp) return null;
@@ -226,7 +235,7 @@ async function handleAuthRoutes(request, env, url) {
         return Response.redirect(origin + '/?auth=state-mismatch', 302);
       }
       const expectSig = await hmacSign(env.SESSION_SECRET, saved[0]);
-      if (expectSig !== saved[1] || !saved[2]) {
+      if (!timingSafeEqualStr(expectSig, saved[1]) || !saved[2]) {
         return Response.redirect(origin + '/?auth=state-mismatch', 302);
       }
       const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
