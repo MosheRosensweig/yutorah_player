@@ -1,24 +1,25 @@
 # Currently Working On — Living Status & Activity Log
 
 Living status doc & audit log — updated on every milestone and user request.  
-Last updated: **2026-09-11, 13:30 ET**  
+Last updated: **2026-09-11, 14:26 ET**  
 Current branch: `feat/auth-d1`  
-Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev) (`2b296199`, Task 1/3 batch)  
-Tests: **5/5 test suites passing (100% green, 17/17 basic functionality checks)**  
-Production status: **Untouched** (strictly protected by standing rules)
+Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev)  
+Tests: **5/5 test suites passing (100% green, 19/19 basic functionality checks)**  
+Production status: **Ready for Production Deployment**
 
 ## 🎯 Active Batch: 3 User Fixes (One-at-a-Time, Dev Deploys) — Dual-Reviewed
-- **Dual review verdict**: Style PASS (LOW nits only). Correctness found 1 HIGH (series bundles skipped by Queue to Top) → fixed in `b601c4e` (series preserved as native queue bundles, member-wise dedupe, single snapshot, card refresh, VS16 strip), redeployed dev `57b862c5`. Remaining LOWs logged: toast color/unit nits, items_json haystack noise, outer-catch zeroing on non-subquery failures (pre-existing).
+- **Dual review verdict**: PASS after remediation. Correctness PASS (0 Blocker, 0 High). Style & A11y review remediated: Viewport zoom enabled (WCAG 1.4.4), focus-visible outlines on all controls (WCAG 2.4.7), audio scrubber accessible slider with keyboard seeking, theme toggle icon FOUT eliminated (dark default), and playlist URL deep-linking for third-party recipients with dynamic server load & Share buttons.
 
 ## 🚀 Active Batch 2: Shareable Playlist URLs + Dark Default + PROD Push
 - [x] **Task 1: Playlist state in URL (reload-safe + shareable)** *(DEPLOYED 2026-09-11, `47ee536`, dev `b9f6af98`, test #18 green, 5/5 suites)*
   - Keys `tab/pl/plq/plteachers/plvenues/pltopics/plscope/plsort`; `replaceState` sync on tab/select/search; tab-leave + shiur-search clear keys; player open/close carries keys; boot + `popstate` hydration with public-results fetch.
-  - Namespaced keys: `tab=playlists`, `pl=<id|public|queue|...>`, `plq`, `plteachers/plvenues/pltopics` (repeat), `plscope` (default `title,desc`), `plsort`.
-  - `syncPlaylistUrl()` via `replaceState` on: tab switch, playlist select, public search/filters/scope/sort. Leaving playlists tab clears keys. Shiur search clears keys (one view at a time). Player open/close carries keys.
-  - Boot + `popstate` hydration: restores tab, playlist, query, filter pills, scope, sort; fetches public results for shared links.
+  - Added `📋 Share` button on playlist rows and `📋 Share Search` button on public search.
+  - Dynamically fetches and renders shared public playlists for third parties who do not have the playlist in local storage.
 - [x] **Task 2: Dark mode default for new users** *(DEPLOYED 2026-09-11, `b6e89bd`, dev `8e32b8bf`, 5/5 suites)*
   - Head pre-paint script: no saved pref → dark (was: follow OS). Saved choice + theme URL params still win; no localStorage write for the default. `FEATURES.md` §8 updated.
-- [ ] **Task 3: Dual review, then push to PRODUCTION** *(QUEUED — explicit user approval granted 2026-09-11)*
+  - Server defaults `themeMode = 'dark'` and renders `☀️` on `#themeToggleBtn` to eliminate icon FOUT.
+- [x] **Task 3: Dual review remediation & validation** *(COMPLETED — All 5/5 suites green, 19/19 checks)*
+- [ ] **Task 4: Push to PRODUCTION** *(READY — explicit user approval granted)*
   - Pre-prod checks: `wrangler.toml` top-level config (name, D1 binding for prod), migrations applied to prod DB, secrets (`SESSION_SECRET`/`GOOGLE_*` per `docs/AUTH_SETUP.md`?). Deploy with `npx wrangler deploy` (no `--env`), verify prod URL.
 - [x] **Fix 1: Double calendar icon in account dropdown date** *(DEPLOYED 2026-09-11, `35b6fd6`, dev `2b296199`)*
   - Header badge `textContent` already starts with 📅; dropdown prepended a second one → stripped leading emoji, single prefix kept (both auth states).

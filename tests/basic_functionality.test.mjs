@@ -647,6 +647,50 @@ async function testPlaylistUrlDeepLinks() {
   console.log('  ✅ Playlist deep-links: sync, hydration, one-view-per-URL & player carry-over verified.');
 }
 
+async function testDualReviewAccessibilityAndSharingRemediation() {
+  console.log('19. Testing Dual Review Remediation (Viewport, Focus Rings, Scrubber Slider, Theme Sync & Sharing)...');
+  const req = new Request('https://yutorah-player.mrosensweig.workers.dev/', {
+    headers: { 'User-Agent': 'TestRunner' }
+  });
+  const res = await worker.fetch(req, mockEnv, mockCtx);
+  assert.equal(res.status, 200);
+  const html = await res.text();
+
+  // B2: Viewport zoom allowed
+  assert.ok(html.includes('<meta name="viewport" content="width=device-width, initial-scale=1.0">'), 'Viewport meta must not disable scaling or specify maximum-scale');
+  assert.ok(!html.includes('user-scalable=no'), 'Viewport meta must not include user-scalable=no');
+
+  // B3: Focus rings restored
+  assert.ok(html.includes('button:focus-visible'), 'button:focus-visible outline styling must be present');
+  assert.ok(html.includes('.ctrl-btn:focus-visible'), 'ctrl-btn:focus-visible outline styling must be present');
+  assert.ok(html.includes('.mini-play-btn:focus-visible'), 'mini-play-btn:focus-visible outline styling must be present');
+  assert.ok(html.includes('.mini-btn.skip-btn:focus-visible'), 'mini-btn.skip-btn:focus-visible outline styling must be present');
+  assert.ok(html.includes('.playlist-reorder-btn:focus-visible'), 'playlist-reorder-btn:focus-visible outline styling must be present');
+
+  // H1: Default dark mode sync (button renders sun ☀️ to avoid FOUT)
+  assert.ok(html.includes('id="themeToggleBtn" class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Dark / Light Mode">☀️</button>'), 'Theme toggle button must render ☀️ by default in dark mode to prevent FOUT');
+
+  // H2: Audio Scrubber accessibility
+  assert.ok(html.includes('role="slider"'), 'Scrubber bar must have role=slider');
+  assert.ok(html.includes('tabindex="0"'), 'Scrubber bar must have tabindex=0');
+  assert.ok(html.includes('aria-label="Seek time"'), 'Scrubber bar must have aria-label=Seek time');
+  assert.ok(html.includes('aria-valuenow="0"'), 'Scrubber bar must have aria-valuenow attribute');
+  assert.ok(html.includes("e.key === 'ArrowLeft'"), 'Scrubber bar must support ArrowLeft key seeking');
+  assert.ok(html.includes("e.key === 'ArrowRight'"), 'Scrubber bar must support ArrowRight key seeking');
+
+  // B1: Sharing & public resolution helpers
+  assert.ok(html.includes('devSharePlaylist'), 'devSharePlaylist helper must be defined');
+  assert.ok(html.includes('plSharePublicSearch'), 'plSharePublicSearch helper must be defined');
+  assert.ok(html.includes('devLoadSharedPublicPlaylist'), 'devLoadSharedPublicPlaylist helper must be defined');
+  assert.ok(html.includes('📋 Share'), 'Share button must be rendered on playlist action rows');
+  assert.ok(html.includes('📋 Share Search'), 'Share Search button must be rendered on public search row');
+
+  // H4: Shuffle disabled state consistency
+  assert.ok(html.includes('items.length < 2 ? \' disabled aria-disabled="true" title="Add at least 2 items to shuffle"\''), 'Shuffle button must be disabled when fewer than 2 items across all playlist rows');
+
+  console.log('  ✅ Dual review remediation: viewport, focus rings, scrubber a11y, theme sync & sharing verified.');
+}
+
 async function runAll() {
   try {
     await testHomepage();
@@ -667,6 +711,7 @@ async function runAll() {
     await testPlaylistSuitePhase5();
     await testPlaylistsEnhancementsRound2();
     await testPlaylistUrlDeepLinks();
+    await testDualReviewAccessibilityAndSharingRemediation();
     console.log('\n🎉 ALL BASIC FUNCTIONALITY, ARTICLE READER & LIQUID MODE TESTS PASSED SUCCESSFULLY!');
   } catch (err) {
     console.error('\n❌ Test failed:', err);

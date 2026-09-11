@@ -560,7 +560,7 @@ async function handleSyncRoutes(request, env, url) {
     let items = [];
     try {
       const r = await env.yutorah_db.prepare(
-        'SELECT p.is_public AS isPublic, p.owner_id AS ownerId FROM public_playlists p WHERE p.id = ?')
+        'SELECT p.id, p.title, p.description, p.icon, p.tags, p.is_public AS isPublic, p.owner_id AS ownerId, u.display_name AS ownerName FROM public_playlists p LEFT JOIN users u ON u.id = p.owner_id WHERE p.id = ?')
         .bind(pid).first();
       if (!r || (!r.isPublic && (await getSessionUser(request, env) || {}).id !== r.ownerId)) {
         return new Response(JSON.stringify({ error: 'Playlist not found' }), {
@@ -579,7 +579,18 @@ async function handleSyncRoutes(request, env, url) {
         }
         return it;
       });
-      return new Response(JSON.stringify({ items }), {
+      let tags = { teachers: [], venues: [], topics: [] };
+      try { tags = typeof r.tags === 'string' ? JSON.parse(r.tags) : (r.tags || tags); } catch(e) {}
+      const playlist = {
+        id: r.id,
+        title: r.title,
+        description: r.description || '',
+        icon: r.icon || '📁',
+        tags: tags,
+        ownerName: r.ownerName || 'Community',
+        isPublic: !!r.isPublic
+      };
+      return new Response(JSON.stringify({ playlist, items }), {
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
       });
     } catch (e) {
@@ -2093,11 +2104,11 @@ export default {
     const timestamp = url.searchParams.get('t') || '';
     const speedParam = url.searchParams.get('speed') || url.searchParams.get('rate') || '';
     const rawThemeParam = (url.searchParams.get('theme') || url.searchParams.get('mode') || '').toLowerCase();
-    let themeMode = '';
-    if (rawThemeParam === 'dark' || url.searchParams.get('dark') === '1' || (url.searchParams.has('dark') && url.searchParams.get('dark') !== '0')) {
-      themeMode = 'dark';
-    } else if (rawThemeParam === 'light' || url.searchParams.get('dark') === '0' || url.searchParams.get('light') === '1') {
+    let themeMode = 'dark';
+    if (rawThemeParam === 'light' || url.searchParams.get('dark') === '0' || url.searchParams.get('light') === '1') {
       themeMode = 'light';
+    } else if (rawThemeParam === 'dark' || url.searchParams.get('dark') === '1' || (url.searchParams.has('dark') && url.searchParams.get('dark') !== '0')) {
+      themeMode = 'dark';
     }
 
     // 5. If a shiurId is requested, pre-fetch metadata
@@ -4262,7 +4273,7 @@ const DEV_PUBLIC_SEEDS = [
   }
 ];
 
-function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpeed = '', themeMode = '', homepageData, sponsorshipText = '', sponsorshipPlainText = '', sponsorshipAudioUrl = '', searchQuery, initialSearchResults, initialNumFound = 0, initialPhoneticExpansion = null, initialRecentDocs = [], initialRecentNumFound = 0, initialQueryResolution = null, initialDidYouMean = [], isClassicSearch = false }) {
+function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpeed = '', themeMode = 'dark', homepageData, sponsorshipText = '', sponsorshipPlainText = '', sponsorshipAudioUrl = '', searchQuery, initialSearchResults, initialNumFound = 0, initialPhoneticExpansion = null, initialRecentDocs = [], initialRecentNumFound = 0, initialQueryResolution = null, initialDidYouMean = [], isClassicSearch = false }) {
   const isPlaying = Boolean(shiurData || directAudio);
 
   const initialSearchTerms = [];
@@ -4540,7 +4551,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 <html lang="en"${htmlThemeAttr}>
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(title)} — YUTorah Enhanced</title>
   <link rel="icon" type="image/png" href="https://cdnyutorah.cachefly.net/public/v3/images/logo-university-2x.png">
   <script>
@@ -4814,13 +4825,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       user-select: none;
       outline: none;
     }
-    button:focus,
+    button:focus:not(:focus-visible),
     button:active,
-    a:focus,
+    a:focus:not(:focus-visible),
     a:active {
-      outline: none !important;
+      outline: none;
       -webkit-tap-highlight-color: transparent !important;
       -webkit-tap-highlight-color: rgba(0,0,0,0) !important;
+    }
+    button:focus-visible,
+    a:focus-visible {
+      outline: 2px solid var(--primary-light) !important;
+      outline-offset: 2px !important;
     }
     button svg, a svg {
       pointer-events: none;
@@ -6273,13 +6289,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       -webkit-user-select: none;
       transition: all 0.15s ease;
       touch-action: manipulation;
-      outline: none !important;
       -webkit-tap-highlight-color: transparent !important;
     }
-    .ctrl-btn:focus,
+    .ctrl-btn:focus:not(:focus-visible),
     .ctrl-btn:active {
-      outline: none !important;
+      outline: none;
       -webkit-tap-highlight-color: transparent !important;
+    }
+    .ctrl-btn:focus-visible {
+      outline: 2px solid var(--primary-light) !important;
+      outline-offset: 2px !important;
     }
     .ctrl-btn:hover {
       border-color: var(--primary);
@@ -8775,6 +8794,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       .playlist-system-row {
         top: 38px !important;
       }
+      .combobox-input,
+      #newPlInput,
+      #pldTitle,
+      #pldDesc,
+      #newPlDesc {
+        font-size: 16px !important;
+      }
+    }
+    .scrubber-bar:focus-visible {
+      outline: 2px solid var(--primary-light) !important;
+      outline-offset: 3px !important;
     }
     .playlist-custom-row {
       grid-column: 1 / -1;
@@ -8882,8 +8912,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       opacity: 0.45;
     }
     .playlist-reorder-btn {
-      padding: 3px 8px;
-      font-size: 11px;
+      min-width: 32px;
+      min-height: 32px;
+      padding: 4px 10px;
+      font-size: 13px;
       font-weight: 700;
       border-radius: 6px;
       border: 1px solid var(--border);
@@ -8891,11 +8923,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       color: var(--text);
       cursor: pointer;
       transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
     }
     .playlist-reorder-btn:hover:not(:disabled) {
       border-color: var(--primary);
       color: var(--primary);
       background: var(--bg);
+    }
+    .playlist-reorder-btn:focus-visible {
+      outline: 2px solid var(--primary-light) !important;
+      outline-offset: 2px !important;
     }
     .playlist-reorder-btn:disabled {
       opacity: 0.3;
@@ -9313,7 +9352,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       transition: all 0.15s ease;
       margin: 0 4px;
       flex-shrink: 0;
-      outline: none !important;
       -webkit-tap-highlight-color: transparent !important;
       -webkit-user-select: none;
       user-select: none;
@@ -9322,9 +9360,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       display: block;
       margin: 0 auto;
     }
-    .mini-play-btn:focus,
+    .mini-play-btn:focus:not(:focus-visible),
     .mini-play-btn:active {
-      outline: none !important;
+      outline: none;
+    }
+    .mini-play-btn:focus-visible {
+      outline: 2px solid var(--primary-light) !important;
+      outline-offset: 2px !important;
     }
     .mini-play-btn:hover {
       background: rgba(255,255,255,0.35);
@@ -9341,18 +9383,20 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       justify-content: center;
       transition: all 0.15s ease;
       line-height: 1;
-      outline: none !important;
       -webkit-tap-highlight-color: transparent !important;
       -webkit-user-select: none;
       user-select: none;
       box-shadow: none !important;
     }
-    .mini-btn.skip-btn:hover,
-    .mini-btn.skip-btn:focus,
+    .mini-btn.skip-btn:focus:not(:focus-visible),
     .mini-btn.skip-btn:active {
       background: none !important;
-      outline: none !important;
+      outline: none;
       box-shadow: none !important;
+    }
+    .mini-btn.skip-btn:focus-visible {
+      outline: 2px solid var(--primary-light) !important;
+      outline-offset: 2px !important;
     }
     .mini-btn.skip-btn:hover {
       transform: scale(1.08);
@@ -9748,11 +9792,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       background: none;
       border: none;
       color: inherit;
-      font-size: 13px;
+      font-size: 14px;
       cursor: pointer;
       line-height: 1;
-      padding: 0 2px;
-      border-radius: 3px;
+      padding: 4px 6px;
+      min-width: 24px;
+      min-height: 24px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
       opacity: 0.75;
     }
     .token-remove-btn:hover {
@@ -9962,9 +10011,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       cursor: pointer;
       font-size: 14px;
       line-height: 1;
-      padding: 0;
+      padding: 4px 6px;
+      min-width: 24px;
+      min-height: 24px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       color: inherit;
       opacity: 0.7;
+      border-radius: 4px;
     }
     .active-filter-pill button:hover {
       opacity: 1;
@@ -10112,7 +10167,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         <span class="auth-icon">👤</span><span class="auth-label"> Sign in</span>
       </button>
       <div id="authMenu" class="auth-menu" style="display: none;" role="menu" aria-label="Account"></div>
-      <button type="button" id="themeToggleBtn" class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Dark / Light Mode">🌙</button>
+      <button type="button" id="themeToggleBtn" class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Dark / Light Mode">${themeMode === 'light' ? '🌙' : '☀️'}</button>
       <div class="hebrew-date-badge" id="hebrewDateBadge" onclick="handleCalendarSecretClick(event); pulseHebrewDate();" tabindex="0" role="button" aria-label="Hebrew date" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();handleCalendarSecretClick(event);pulseHebrewDate();}" title="">📅<span class="hebrew-date-text">&nbsp;&nbsp;${escapeHtml(homepageData?.hebrewDateString || 'Calendar')}</span></div>
     </div>
   </div>
@@ -10380,7 +10435,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
       <!-- Scrubber -->
       <div class="scrubber-container">
-        <div class="scrubber-bar" id="scrubberBar">
+        <div class="scrubber-bar" id="scrubberBar" role="slider" tabindex="0" aria-label="Seek time" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
           <div class="scrubber-fill" id="scrubberFill">
             <div class="scrubber-handle"></div>
           </div>
@@ -16460,7 +16515,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       clearPlaylistUrlKeys(url);
       if (tabActive) {
         url.searchParams.set('tab', 'playlists');
-        url.searchParams.set('pl', activeDevPlaylistId || 'history');
+        let plVal = activeDevPlaylistId || 'history';
+        try {
+          const store = getDevStore();
+          const pl = getDevPlaylist(store, plVal);
+          if (pl && (pl.publicId || pl.subscribedPublicId)) {
+            plVal = pl.publicId || pl.subscribedPublicId;
+          }
+        } catch (e) {}
+        url.searchParams.set('pl', plVal);
         if ((plPublicQuery || '').trim()) url.searchParams.set('plq', plPublicQuery.trim());
         (plPublicFilterTags.teachers || []).forEach(t => { if (t && (t.name || t.id)) url.searchParams.append('plteachers', t.name || t.id); });
         (plPublicFilterTags.venues || []).forEach(v => { if (v && (v.name || v.id)) url.searchParams.append('plvenues', v.name || v.id); });
@@ -16475,6 +16538,83 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       history.replaceState(history.state, '', url.toString());
     } catch (e) {}
   }
+
+  async function devLoadSharedPublicPlaylist(publicId) {
+    if (!publicId) return;
+    try {
+      const cleanId = publicId.startsWith('pub_') ? publicId.slice(4) : publicId;
+      const res = await fetch('/api/playlists/items?id=' + encodeURIComponent(cleanId));
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data || !data.items) return;
+      const store = getDevStore();
+      const meta = data.playlist || {};
+      const customId = 'pub_' + cleanId;
+      store.custom[customId] = {
+        id: customId,
+        name: meta.title || 'Shared Playlist',
+        description: meta.description || '',
+        ownerName: meta.ownerName || 'Community',
+        tags: meta.tags || { teachers: [], venues: [], topics: [] },
+        isSubscription: true,
+        subscribedPublicId: cleanId,
+        publicId: cleanId,
+        icon: meta.icon || '📁',
+        items: data.items,
+        lastSyncedAt: Date.now()
+      };
+      saveDevStore(store);
+      if (activeDevPlaylistId === publicId || activeDevPlaylistId === cleanId) {
+        activeDevPlaylistId = customId;
+        syncPlaylistUrl();
+        renderPlaylistsGrid();
+      }
+    } catch (e) {}
+  }
+  window.devLoadSharedPublicPlaylist = devLoadSharedPublicPlaylist;
+
+  function devSharePlaylist(pid) {
+    try {
+      const store = getDevStore();
+      const pl = getDevPlaylist(store, pid);
+      if (!pl) return;
+      const shareUrl = new URL(window.location.origin);
+      shareUrl.searchParams.set('tab', 'playlists');
+      const shareId = pl.publicId || pl.subscribedPublicId || pl.id;
+      shareUrl.searchParams.set('pl', shareId);
+      const str = shareUrl.toString();
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(str).then(() => {
+          if (pl.publicId || pl.subscribedPublicId) {
+            flashToast('📋 Playlist link copied to clipboard!', false, false);
+          } else {
+            flashToast('📋 Link copied! (Tip: Publish this playlist so others can see it too)', false, false);
+          }
+        }).catch(() => {
+          prompt('Copy playlist link:', str);
+        });
+      } else {
+        prompt('Copy playlist link:', str);
+      }
+    } catch (e) {}
+  }
+  window.devSharePlaylist = devSharePlaylist;
+
+  function plSharePublicSearch() {
+    try {
+      const url = window.location.href;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(() => {
+          flashToast('📋 Public search link copied to clipboard!', false, false);
+        }).catch(() => {
+          prompt('Copy search link:', url);
+        });
+      } else {
+        prompt('Copy search link:', url);
+      }
+    } catch (e) {}
+  }
+  window.plSharePublicSearch = plSharePublicSearch;
 
   function readPlaylistUrlState() {
     // Restores public-search vars (validated) + active playlist from the URL.
@@ -16507,7 +16647,32 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       const specials = ['history', 'save_for_later', 'favorites', 'queue', 'public'];
       if (!specials.includes(pid)) {
         try {
-          if (!getDevPlaylist(getDevStore(), pid)) pid = 'history';
+          const store = getDevStore();
+          const existing = getDevPlaylist(store, pid);
+          if (existing) {
+            pid = existing.id;
+          } else {
+            let matchedId = null;
+            if (store.custom) {
+              for (const cid in store.custom) {
+                const c = store.custom[cid];
+                if (c && (c.publicId === pid || c.subscribedPublicId === pid || c.id === pid)) {
+                  matchedId = c.id;
+                  break;
+                }
+              }
+            }
+            if (matchedId) {
+              pid = matchedId;
+            } else {
+              const foundSeed = (typeof DEV_PUBLIC_SEEDS !== 'undefined' && DEV_PUBLIC_SEEDS.find(p => p.id === pid));
+              if (foundSeed && typeof devOpenInMyPlaylists === 'function') {
+                devOpenInMyPlaylists(pid);
+              } else if (typeof devLoadSharedPublicPlaylist === 'function') {
+                devLoadSharedPublicPlaylist(pid);
+              }
+            }
+          }
         } catch (e) { pid = 'history'; }
       }
       activeDevPlaylistId = pid;
@@ -16538,7 +16703,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       '<select id=\"plPubSort\" style=\"padding:8px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text);\">' +
       '<option value=\"recent\"' + (plPublicSort !== 'saves' ? ' selected' : '') + '>Recent</option>' +
       '<option value=\"saves\"' + (plPublicSort === 'saves' ? ' selected' : '') + '>Most saved</option></select>' +
-      '<button type=\"button\" class=\"card-mini-btn active-save\" onclick=\"plPublicSearch()\" style=\"padding:8px 14px; font-size:14px;\">🔍 Search</button></div>';
+      '<button type=\"button\" class=\"card-mini-btn active-save\" onclick=\"plPublicSearch()\" style=\"padding:8px 14px; font-size:14px;\">🔍 Search</button>' +
+      '<button type=\"button\" class=\"card-mini-btn\" onclick=\"plSharePublicSearch()\" style=\"padding:8px 14px; font-size:14px;\" title=\"Copy shareable search link\">📋 Share Search</button></div>';
 
     qhtml += '<div style="grid-column:1/-1; display:flex; gap:16px; align-items:center; flex-wrap:wrap; margin:-4px 0 12px; font-size:12.5px; color:var(--text);">' +
       '<span style="font-weight:700; color:var(--text-muted);">Search in:</span>' +
@@ -16920,8 +17086,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         }
         html += '<div style="grid-column:1/-1; margin-bottom:8px; display:flex; gap:8px; flex-wrap:wrap;">' +
           '<button type="button" class="card-mini-btn" onclick="playDevPlaylistAll()">▶ Play All</button>' +
-          '<button type="button" class="card-mini-btn" onclick="playDevPlaylistShuffled()">🔀 Shuffle</button>' +
+          '<button type="button" class="card-mini-btn"' + (items.length < 2 ? ' disabled aria-disabled="true" title="Add at least 2 items to shuffle"' : ' aria-label="Shuffle playlist" title="Play in random order"') + ' onclick="playDevPlaylistShuffled()">🔀 Shuffle</button>' +
           '<button type="button" class="card-mini-btn" onclick="devQueuePlaylistToTop()" title="Add playlist to top of queue">⏫ Queue to Top</button>' +
+          '<button type="button" class="card-mini-btn" onclick="devSharePlaylist(&quot;' + escapeHtml(pl.id) + '&quot;)" title="Share playlist link">📋 Share</button>' +
           '<button type="button" class="card-mini-btn" onclick="devSyncSubscribedPlaylist(&quot;' + escapeHtml(pl.id) + '&quot;, true)">🔄 Check for Updates</button>' +
           '<button type="button" class="card-mini-btn" onclick="devCloneSubscriptionToCopy(&quot;' + escapeHtml(pl.id) + '&quot;)">📋 Make Editable Copy</button>' +
           '<button type="button" class="card-mini-btn" onclick="devExportPlaylist()">Export JSON</button>' +
@@ -16949,8 +17116,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         }
         html += '<div style="grid-column:1/-1; margin-bottom:8px; display:flex; gap:8px; flex-wrap:wrap;">' +
           '<button type="button" class="card-mini-btn" onclick="playDevPlaylistAll()">▶ Play All</button>' +
-          '<button type="button" class="card-mini-btn" onclick="playDevPlaylistShuffled()">🔀 Shuffle</button>' +
+          '<button type="button" class="card-mini-btn"' + (items.length < 2 ? ' disabled aria-disabled="true" title="Add at least 2 items to shuffle"' : ' aria-label="Shuffle playlist" title="Play in random order"') + ' onclick="playDevPlaylistShuffled()">🔀 Shuffle</button>' +
           '<button type="button" class="card-mini-btn" onclick="devQueuePlaylistToTop()" title="Add playlist to top of queue">⏫ Queue to Top</button>' +
+          '<button type="button" class="card-mini-btn" onclick="devSharePlaylist(&quot;' + escapeHtml(pl.id) + '&quot;)" title="Share playlist link">📋 Share</button>' +
           '<button type="button" class="card-mini-btn" onclick="devExportPlaylist()">Export JSON</button>' +
           '<button type="button" class="card-mini-btn" onclick="openPlaylistDetailsModal()">📝 Details & Tags</button>';
         if (pl.publicId) {
@@ -16961,7 +17129,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         html += '<button type="button" class="card-mini-btn" onclick="devDeletePlaylist()">Delete Playlist</button></div>';
       }
     } else if (items.length > 0) {
-      html += '<div style="grid-column:1/-1; margin-bottom:8px; display:flex; gap:6px; flex-wrap:wrap;"><button type="button" class="card-mini-btn" onclick="playDevPlaylistAll()">▶ Play All</button><button type="button" class="card-mini-btn"' + (items.length<2 ? ' disabled aria-disabled="true" title="Add at least 2 items to shuffle"' : ' aria-label="Shuffle playlist" title="Play in random order"') + ' onclick="playDevPlaylistShuffled()">🔀 Shuffle</button><button type="button" class="card-mini-btn" onclick="devQueuePlaylistToTop()" title="Add playlist to top of queue">⏫ Queue to Top</button></div>';
+      html += '<div style="grid-column:1/-1; margin-bottom:8px; display:flex; gap:6px; flex-wrap:wrap;"><button type="button" class="card-mini-btn" onclick="playDevPlaylistAll()">▶ Play All</button><button type="button" class="card-mini-btn"' + (items.length<2 ? ' disabled aria-disabled="true" title="Add at least 2 items to shuffle"' : ' aria-label="Shuffle playlist" title="Play in random order"') + ' onclick="playDevPlaylistShuffled()">🔀 Shuffle</button><button type="button" class="card-mini-btn" onclick="devQueuePlaylistToTop()" title="Add playlist to top of queue">⏫ Queue to Top</button><button type="button" class="card-mini-btn" onclick="devSharePlaylist(&quot;' + escapeHtml(pl.id) + '&quot;)" title="Share playlist link">📋 Share</button></div>';
     }
     if (items.length === 0) {
       html += '<div style="grid-column:1/-1; text-align:center; padding:30px; color:var(--text-muted);">Empty playlist — tap 🕒 Save for later, ☆ Fav or ➕ Playlist on any card to add shiurim.</div>';
@@ -16979,8 +17147,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           ' onclick="devAskRemove(&quot;' + escapeHtml(pl.id) + '&quot;, &quot;' + escapeHtml(iid) + '&quot;)">✕ Remove from Playlist</button>' +
           (canReorder ?
             '<span style="display:inline-flex; gap:4px; align-items:center; margin-left:auto;">' +
-            '<button type="button" class="playlist-reorder-btn"' + (idx === 0 ? ' disabled' : '') + ' onclick="devMovePlaylistItem(&quot;' + escapeHtml(pl.id) + '&quot;, ' + idx + ', -1)" title="Move Up">▲</button>' +
-            '<button type="button" class="playlist-reorder-btn"' + (idx === items.length - 1 ? ' disabled' : '') + ' onclick="devMovePlaylistItem(&quot;' + escapeHtml(pl.id) + '&quot;, ' + idx + ', 1)" title="Move Down">▼</button>' +
+            '<button type="button" class="playlist-reorder-btn"' + (idx === 0 ? ' disabled' : '') + ' onclick="devMovePlaylistItem(&quot;' + escapeHtml(pl.id) + '&quot;, ' + idx + ', -1)" title="Move Up" aria-label="Move Up">▲</button>' +
+            '<button type="button" class="playlist-reorder-btn"' + (idx === items.length - 1 ? ' disabled' : '') + ' onclick="devMovePlaylistItem(&quot;' + escapeHtml(pl.id) + '&quot;, ' + idx + ', 1)" title="Move Down" aria-label="Move Down">▼</button>' +
             '<span style="cursor:grab; font-size:16px; opacity:0.75; padding:0 4px; user-select:none;" title="Drag to reorder">⠿</span>' +
             '</span>' : '') +
           '</div>' : '') + '</div>';
@@ -20057,8 +20225,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   function updateScrubberUi(pct) {
     scrubPct = pct;
     scrubberFill.style.width = (pct * 100) + '%';
+    if (scrubberBar) {
+      scrubberBar.setAttribute('aria-valuenow', String(Math.round(pct * 100)));
+    }
     if (audio.duration && !isNaN(audio.duration)) {
       curTimeEl.textContent = formatTime(pct * audio.duration);
+      if (scrubberBar) {
+        scrubberBar.setAttribute('aria-valuetext', formatTime(pct * audio.duration) + ' of ' + formatTime(audio.duration));
+      }
       const miniFill = document.getElementById('miniProgressFill');
       if (miniFill) miniFill.style.width = (pct * 100) + '%';
       const miniTime = document.getElementById('miniTime');
@@ -20103,6 +20277,34 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   window.addEventListener('touchend', onScrubEnd);
   window.addEventListener('touchcancel', onScrubEnd);
 
+  scrubberBar.addEventListener('keydown', function(e) {
+    if (isSponsorPlaying || !audio.duration || isNaN(audio.duration)) return;
+    let delta = 0;
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') delta = -5;
+    else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') delta = 5;
+    else if (e.key === 'PageDown') delta = -30;
+    else if (e.key === 'PageUp') delta = 30;
+    else if (e.key === 'Home') {
+      e.preventDefault();
+      audio.currentTime = 0;
+      updateScrubberUi(0);
+      updateUrlTimestamp(true);
+      return;
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      audio.currentTime = audio.duration;
+      updateScrubberUi(1);
+      updateUrlTimestamp(true);
+      return;
+    }
+    if (delta !== 0) {
+      e.preventDefault();
+      audio.currentTime = Math.max(0, Math.min(audio.duration, audio.currentTime + delta));
+      updateScrubberUi(audio.currentTime / audio.duration);
+      updateUrlTimestamp(true);
+    }
+  });
+
   // Play / Pause SVG Icons (Clean white lines without emoji background)
   const PLAY_ICON_MAIN = '<svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" style="display:block; margin-left:3px;"><path d="M8 5v14l11-7z"/></svg>';
   const PAUSE_ICON_MAIN = '<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" style="display:block;"><rect x="5" y="4" width="4" height="16" rx="1.5"/><rect x="15" y="4" width="4" height="16" rx="1.5"/></svg>';
@@ -20111,9 +20313,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   function updatePlayPauseIcons(isPlaying) {
     const mainBtn = document.getElementById('playBtn');
-    if (mainBtn) mainBtn.innerHTML = isPlaying ? PAUSE_ICON_MAIN : PLAY_ICON_MAIN;
+    if (mainBtn) {
+      mainBtn.innerHTML = isPlaying ? PAUSE_ICON_MAIN : PLAY_ICON_MAIN;
+      mainBtn.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play');
+    }
     const miniBtn = document.getElementById('miniPlayBtn');
-    if (miniBtn) miniBtn.innerHTML = isPlaying ? PAUSE_ICON_MINI : PLAY_ICON_MINI;
+    if (miniBtn) {
+      miniBtn.innerHTML = isPlaying ? PAUSE_ICON_MINI : PLAY_ICON_MINI;
+      miniBtn.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play');
+    }
   }
 
   // Audio Events
@@ -20334,14 +20542,28 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         initTheme();
         applyHolidayTheme();
       }
-      // Back/forward into a playlist deep-link restores the tab + filters.
+      // Back/forward navigation: restore tab, playlist, or non-playlist collections
       try {
         if (p.get('tab') === 'playlists' && !p.get('search')) {
           if (readPlaylistUrlState()) {
             switchCollection('playlists');
             if (activeDevPlaylistId === 'public') plSearchPublic();
           }
+        } else if (!p.get('search')) {
+          const targetTab = p.get('tab') || 'editors';
+          const validTabs = ['editors', 'series', 'recent', 'popular', 'viewed', 'parsha', 'trending'];
+          if (validTabs.includes(targetTab) && typeof switchCollection === 'function') {
+            switchCollection(targetTab);
+          }
         }
+      } catch (e) {}
+      try {
+        const pdm = document.getElementById('playlistDetailsModal');
+        if (pdm) pdm.remove();
+        const npm = document.getElementById('newPlaylistModal');
+        if (npm) npm.remove();
+        const scm = document.getElementById('saveChoiceModal');
+        if (scm) scm.remove();
       } catch (e) {}
       try { if (typeof devRefreshCardButtons === 'function') devRefreshCardButtons(); } catch (e) {}
     } catch(e) {}
