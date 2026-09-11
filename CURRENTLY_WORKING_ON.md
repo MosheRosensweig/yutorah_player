@@ -12,7 +12,8 @@ Production status: **Untouched** (strictly protected by standing rules)
   - Header badge `textContent` already starts with 📅; dropdown prepended a second one → stripped leading emoji, single prefix kept (both auth states).
 - [x] **Fix 2: Playlist → top-of-queue button** *(DEPLOYED 2026-09-11, `7c422f4`, dev `c0215d06`)*
   - New `devQueuePlaylistToTop()` prepends current playlist (in order, deduped incl. series members) to top of queue via `saveDevQueue` (cloud-synced); `⏫ Queue to Top` button next to Play All/Shuffle on all playlist rows.
-- [ ] **Fix 3: Shiurim-inside scope additive-only (no zeroing on tag click)** *(NEXT)*
+- [x] **Fix 3: Shiurim-inside scope additive-only (no zeroing on tag click)** *(DEPLOYED 2026-09-11, `ac467c3`, dev `f61ae353`)*
+  - Root cause: scope subquery referenced `i.series_title`, missing in `public_playlist_items` → whole query threw → catch returned zero rows whenever checked. Now uses `i.title + i.speaker + i.items_json` (covers series bundles) with fallback to title/desc baseline; verified additive (`muktzah` 0→1, `shabbos` 2→2).
 
 ---
 
