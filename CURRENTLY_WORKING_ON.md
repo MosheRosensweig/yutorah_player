@@ -15,17 +15,17 @@ Production status: **DEPLOYED & VERIFIED (HTTP 200 on both Dev & Prod)**
    - Only **AFTER** Dev is fully deployed, validated, and approved may the version be promoted to **Production** (`https://yutorah-player.mrosensweig.workers.dev` via `npx wrangler deploy`).
    - Dev and Prod must always remain strictly synchronized. Never push directly to Prod without the preceding Dev deployment.
 
-## 🎯 Active Task: Logged-Out Header Theme Toggle on Right-Hand Side
-- **User Request**: On the non-logged-in (guest) version of the website, have the light/dark mode button be in the header (accessible without requiring account settings) and positioned on the right-hand side.
+## 🎯 Active Task: Logged-Out Header Theme Toggle on Right-Hand Side & Cut-off Suppression
+- **User Request**: On the non-logged-in (guest) version of the website, have the light/dark mode button be in the header on the right-hand side, BUT if it would get cut off or overflow on any screens, do NOT put it in the header since theme toggling already exists inside the settings dropdown even when not logged in.
 - **Implementation Status**:
-  - SSR HTML DOM order updated in `.header-right`: `support-yutorah-btn` -> `hebrewDateBadge` -> `authBtn` -> `authMenu` -> `themeToggleBtn`.
+  - SSR HTML DOM order in `.header-right`: `support-yutorah-btn` -> `hebrewDateBadge` -> `authBtn` -> `authMenu` -> `themeToggleBtn`.
   - CSS flexbox `order: 10` applied to `#themeToggleBtn` ensuring rightmost alignment.
-  - Mobile CSS (`@media (max-width: 640px)`):
-    - `body:not(.is-logged-in) #themeToggleBtn { display: inline-flex !important; }` keeps toggle visible in header for guests.
-    - `body.is-logged-in #themeToggleBtn, .auth-btn.logged-in ~ #themeToggleBtn { display: none !important; }` hides toggle in header on mobile when logged in (accessible via `⚙️` dropdown).
-    - `min-width: 32px; min-height: 32px; padding: 2px 4px;` provides accessible touch target.
-  - Client JavaScript: `renderAuthBtn()` synchronizes `is-logged-in` class on `document.body`.
-  - Automated Test #20 added in `tests/basic_functionality.test.mjs` verifying DOM order, right-hand placement, CSS rules, and body class synchronization.
+  - Narrow screen suppression: `@media (max-width: 520px) { #themeToggleBtn { display: none !important; } }` prevents clipping or horizontal overflow on phones.
+  - Intermediate screen handling (521px–640px): `body:not(.is-logged-in) #themeToggleBtn { display: inline-flex; }` (without `!important`) allowing dynamic overflow detection to suppress it when crowded.
+  - Mobile logged-in suppression: `body.is-logged-in #themeToggleBtn { display: none !important; }` hides it when user has the `⚙️` settings gear dropdown.
+  - Client JS `checkHeaderOverflow()`: measures bounding rects against viewport and `.brand` title; suppresses `#themeToggleBtn` if it would get cut off, wrap to a 2nd line, or collide.
+  - Fallback safety net: `#authMenu` provides theme toggling (`menu-theme-toggle-btn`) for both guests and authenticated users.
+  - Automated Test #20 in `tests/basic_functionality.test.mjs` validates all 8 aspects (DOM order, CSS rules, narrow screen suppression, JS overflow check, settings menu fallback).
 - **Dual Review Verdict**: **PASS** (Correctness QA: PASS, 0 Blockers; Style & Theme: PASS, 0 Blockers).
 
 ## 🚀 Active Batch 2: Shareable Playlist URLs + Dark Default + PROD Push

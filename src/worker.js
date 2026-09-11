@@ -5372,9 +5372,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       .auth-btn.logged-in ~ #themeToggleBtn {
         display: none !important;
       }
-      /* On mobile for non-logged-in users, keep theme toggle visible in the header on the right-hand side */
+      /* On intermediate mobile screens (521px-640px) for non-logged-in users, display by default without !important so JS overflow check can hide it if cut off */
       body:not(.is-logged-in) #themeToggleBtn {
-        display: inline-flex !important;
+        display: inline-flex;
+      }
+    }
+    /* On narrow mobile screens (<= 520px), suppress header theme toggle to prevent any clipping/overflow. */
+    /* Theme toggling remains fully accessible via the settings/account dropdown (#authMenu) for all users! */
+    @media (max-width: 520px) {
+      #themeToggleBtn {
+        display: none !important;
       }
     }
     .support-yutorah-btn {
@@ -18360,6 +18367,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       btn.innerHTML = '<span class="auth-icon">👤</span><span class="auth-label"> Sign in</span>';
     }
     closeAuthMenu();
+    try { checkHeaderOverflow(); } catch (e) {}
   }
 
   function toggleAuthMenu(e) {
@@ -20599,6 +20607,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     document.querySelectorAll('.menu-theme-icon').forEach(function(icon) {
       icon.textContent = isDark ? '☀️' : '🌙';
     });
+    try { checkHeaderOverflow(); } catch(e) {}
   }
 
   function toggleTheme() {
@@ -20632,6 +20641,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       url.searchParams.set(key, nextDark ? 'dark' : 'light');
       history.replaceState(history.state, '', url.toString());
     } catch(e) {}
+    try { checkHeaderOverflow(); } catch(e) {}
   }
 
   function syncHeaderSpacer() {
@@ -20644,28 +20654,66 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   syncHeaderSpacer();
   window.addEventListener('resize', syncHeaderSpacer);
 
-  function checkCalendarOverflow() {
-    var badge = document.getElementById('hebrewDateBadge');
+  function checkHeaderOverflow() {
     var header = document.getElementById('mainHeader');
-    if (!badge || !header) return;
-
-    // Small screens hide the badge via media query
-    if (window.innerWidth <= 640) {
-      return;
-    }
-    badge.style.display = 'inline-flex';
-    var bRect = badge.getBoundingClientRect();
-    var hRect = header.getBoundingClientRect();
+    if (!header) return;
     var wWidth = window.innerWidth || document.documentElement.clientWidth;
 
-    if (bRect.right > wWidth - 8 || bRect.right > hRect.right - 6 || bRect.left < 0 || bRect.top > hRect.top + 45) {
-      badge.style.display = 'none';
-    } else {
-      badge.style.display = 'inline-flex';
+    // 1. Hebrew Calendar Badge Check (hide on mobile or when clipped)
+    var badge = document.getElementById('hebrewDateBadge');
+    if (badge) {
+      if (wWidth <= 640) {
+        badge.style.display = 'none';
+      } else {
+        badge.style.display = 'inline-flex';
+        var bRect = badge.getBoundingClientRect();
+        var hRect = header.getBoundingClientRect();
+        if (bRect.right > wWidth - 8 || bRect.right > hRect.right - 6 || bRect.left < 0 || bRect.top > hRect.top + 45) {
+          badge.style.display = 'none';
+        } else {
+          badge.style.display = 'inline-flex';
+        }
+      }
+    }
+
+    // 2. Theme Toggle Button Check: Suppress from header if it would get cut off, wrapped, or collide with brand
+    var themeBtn = document.getElementById('themeToggleBtn');
+    if (themeBtn) {
+      var isNarrow = wWidth <= 520;
+      var isLoggedIn = document.body.classList.contains('is-logged-in');
+      var isMobile = wWidth <= 640;
+
+      // On narrow mobile screens (<= 520px) or when logged in on mobile, suppress from header
+      if (isNarrow || (isMobile && isLoggedIn)) {
+        themeBtn.style.display = 'none';
+      } else {
+        // Measure button bounds to ensure it is not cut off, wrapped, or colliding with brand
+        themeBtn.style.display = 'inline-flex';
+        var tRect = themeBtn.getBoundingClientRect();
+        var hRect = header.getBoundingClientRect();
+        var brand = header.querySelector('.brand');
+        var brandRect = brand ? brand.getBoundingClientRect() : { right: 0 };
+        var maxRight = Math.min(wWidth, hRect.right);
+
+        var isCutOff = tRect.right > maxRight - 6 ||
+                       tRect.top > hRect.top + (isMobile ? 38 : 46) ||
+                       tRect.left < (brandRect.right || 0) + 8;
+        if (isCutOff) {
+          themeBtn.style.display = 'none';
+        } else {
+          themeBtn.style.display = 'inline-flex';
+        }
+      }
     }
   }
-  checkCalendarOverflow();
-  window.addEventListener('resize', checkCalendarOverflow);
+
+  function checkCalendarOverflow() {
+    checkHeaderOverflow();
+  }
+  window.checkHeaderOverflow = checkHeaderOverflow;
+  window.checkCalendarOverflow = checkCalendarOverflow;
+  checkHeaderOverflow();
+  window.addEventListener('resize', checkHeaderOverflow);
 
   initTheme();
   updateSettingsMenuText();

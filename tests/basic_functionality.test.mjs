@@ -712,18 +712,29 @@ async function testLoggedOutHeaderThemeToggle() {
   assert.ok(html.includes('.header-right #themeToggleBtn'), 'CSS must specify .header-right #themeToggleBtn styling');
   assert.ok(html.includes('order: 10'), '#themeToggleBtn must have order: 10 in CSS');
 
-  // 3. Mobile media query keeps theme toggle visible in header for logged-out / guest users
-  assert.ok(html.includes('body:not(.is-logged-in) #themeToggleBtn'), 'CSS must ensure themeToggleBtn is visible for non-logged-in users on mobile');
-  assert.ok(html.includes('display: inline-flex !important'), 'Non-logged-in theme toggle must have display: inline-flex !important');
+  // 3. Mobile media query keeps theme toggle visible in header for logged-out / guest users on intermediate screens (521px-640px)
+  assert.ok(html.includes('body:not(.is-logged-in) #themeToggleBtn'), 'CSS must specify themeToggleBtn for non-logged-in users on mobile');
+  assert.ok(html.includes('display: inline-flex;'), 'Non-logged-in theme toggle displays inline-flex by default without !important so JS overflow can hide it');
 
-  // 4. Mobile media query hides theme toggle when logged in (accessible via gear settings menu)
+  // 4. Narrow mobile screens (<= 520px) suppress theme toggle to prevent cut-off
+  assert.ok(html.includes('@media (max-width: 520px)'), 'CSS must define max-width 520px breakpoint');
+  assert.ok(html.includes('#themeToggleBtn') && html.includes('display: none !important'), 'CSS must suppress header themeToggleBtn on <= 520px screens');
+
+  // 5. Mobile media query hides theme toggle when logged in (accessible via gear settings menu)
   assert.ok(html.includes('body.is-logged-in #themeToggleBtn'), 'CSS must hide header themeToggleBtn when logged in on mobile');
 
-  // 5. Client-side renderAuthBtn updates is-logged-in class on document.body
+  // 6. Dynamic overflow detection suppresses theme toggle if it would be cut off or collide
+  assert.ok(html.includes('function checkHeaderOverflow()'), 'checkHeaderOverflow must be defined in client JS');
+  assert.ok(html.includes('isCutOff') && html.includes("themeBtn.style.display = 'none'"), 'checkHeaderOverflow must hide theme toggle if cut off');
+
+  // 7. Settings dropdown menu includes theme toggle fallback for all users (logged-in and guest)
+  assert.ok(html.includes('menu-theme-toggle-btn'), 'Settings menu must provide theme toggle fallback for all users');
+
+  // 8. Client-side renderAuthBtn updates is-logged-in class on document.body
   assert.ok(html.includes("document.body.classList.add('is-logged-in')"), 'renderAuthBtn must add is-logged-in to body when user is logged in');
   assert.ok(html.includes("document.body.classList.remove('is-logged-in')"), 'renderAuthBtn must remove is-logged-in from body when user is logged out');
 
-  console.log('  ✅ Logged-out header theme toggle button & right-hand side placement verified.');
+  console.log('  ✅ Logged-out header theme toggle button, cut-off suppression & right-hand side placement verified.');
 }
 
 async function runAll() {
