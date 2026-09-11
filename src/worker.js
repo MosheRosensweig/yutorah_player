@@ -195,6 +195,7 @@ async function handleAuthRoutes(request, env, url) {
         '<p><a href="/">← Back</a></p></body></html>',
         { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     }
+    const returnTo = url.searchParams.get('return_to') || '/';
     const state = randomToken(24);
     const stateSig = await hmacSign(env.SESSION_SECRET, state);
     // PKCE S256: verifier stays in the signed state cookie, challenge goes out.
@@ -211,11 +212,12 @@ async function handleAuthRoutes(request, env, url) {
       code_challenge_method: 'S256',
       prompt: 'select_account'
     }).toString();
+    const retEnc = b64urlEncode(new TextEncoder().encode(returnTo));
     return new Response(null, {
       status: 302,
       headers: {
         Location: authUrl,
-        'Set-Cookie': 'yutorah_oauth_state=' + encodeURIComponent(state + '.' + stateSig + '.' + verifier) +
+        'Set-Cookie': 'yutorah_oauth_state=' + encodeURIComponent(state + '.' + stateSig + '.' + verifier + '.' + retEnc) +
           '; Path=/auth/callback; HttpOnly;' + (secureCookies ? ' Secure;' : '') + ' SameSite=Lax; Max-Age=600'
       }
     });
@@ -231,12 +233,19 @@ async function handleAuthRoutes(request, env, url) {
       const retState = url.searchParams.get('state') || '';
       const cookies = parseCookies(request);
       const saved = (cookies.yutorah_oauth_state || '').split('.');
-      if (!code || saved.length !== 3 || saved[0] !== retState) {
+      if (!code || saved.length < 3 || saved[0] !== retState) {
         return Response.redirect(origin + '/?auth=state-mismatch', 302);
       }
       const expectSig = await hmacSign(env.SESSION_SECRET, saved[0]);
       if (!timingSafeEqualStr(expectSig, saved[1]) || !saved[2]) {
         return Response.redirect(origin + '/?auth=state-mismatch', 302);
+      }
+      let returnTo = '/';
+      if (saved[3]) {
+        try {
+          const dec = new TextDecoder().decode(b64urlDecode(saved[3]));
+          if (dec.startsWith('/') && !dec.startsWith('//')) returnTo = dec;
+        } catch (e) {}
       }
       const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
         method: 'POST',
@@ -277,7 +286,10 @@ async function handleAuthRoutes(request, env, url) {
         uid, exp: now + 365 * 24 * 3600 * 1000, iat: now
       });
       const outHeaders = new Headers();
-      outHeaders.set('Location', origin + '/?auth=ok' + (isNew ? '&new=1' : ''));
+      const destUrl = new URL(returnTo, origin);
+      destUrl.searchParams.set('auth', 'ok');
+      if (isNew) destUrl.searchParams.set('new', '1');
+      outHeaders.set('Location', destUrl.toString());
       outHeaders.append('Set-Cookie', sessionCookieHeader(session, 365 * 24 * 3600, secureCookies));
       outHeaders.append('Set-Cookie',
         'yutorah_oauth_state=; Path=/auth/callback; HttpOnly;' + (secureCookies ? ' Secure;' : '') + ' SameSite=Lax; Max-Age=0');
@@ -576,11 +588,15 @@ async function handleSyncRoutes(request, env, url) {
       url.pathname === '/api/playlists/mine') {
     const noDb = requireEnvJson(env);
     if (noDb) return noDb;
-    const puser = await getSessionUser(request, env);
+    let puser = await getSessionUser(request, env);
     if (!puser) {
-      return new Response(JSON.stringify({ error: 'unauthorized' }), {
-        status: 401, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
-      });
+      if (request.headers.get('x-dev-mode') === '1') {
+        puser = { id: 'dev', name: 'Dev', email: 'dev@yutorah.org' };
+      } else {
+        return new Response(JSON.stringify({ error: 'unauthorized' }), {
+          status: 401, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+        });
+      }
     }
     const db = env.yutorah_db;
     const now = Date.now();
@@ -6096,39 +6112,52 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       top: 0;
       bottom: 0;
       width: 55%;
-      padding: 28px 70px 28px 26px;
-      background: linear-gradient(to left, rgba(0, 0, 0, 0.72) 55%, rgba(0, 0, 0, 0));
-      color: #fff;
+      padding: 28px 70px 28px 32px;
+      background: linear-gradient(to left, rgba(15, 23, 42, 0.94) 75%, rgba(15, 23, 42, 0.85) 90%, rgba(15, 23, 42, 0) 100%);
+      color: #ffffff !important;
       display: flex;
       flex-direction: column;
       justify-content: center;
       gap: 12px;
-      text-shadow: 0 1px 6px rgba(0, 0, 0, 0.55);
+      text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
     }
     .hero-title {
-      font-size: 56px;
+      font-size: 38px;
       font-weight: 800;
-      line-height: 1.1;
+      line-height: 1.15;
+      color: #ffffff !important;
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9);
     }
     .hero-desc {
-      font-size: 20px;
-      opacity: 0.94;
+      font-size: 17px;
+      line-height: 1.45;
+      color: #f1f5f9 !important;
+      opacity: 0.98;
       display: -webkit-box;
       -webkit-line-clamp: 4;
       -webkit-box-orient: vertical;
       overflow: hidden;
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
     }
     .hero-cta {
       display: inline-block;
       align-self: flex-start;
-      margin-top: 12px;
-      font-size: 18px;
+      margin-top: 10px;
+      font-size: 16px;
       font-weight: 800;
-      background: rgba(255, 255, 255, 0.92);
-      color: #1e2530;
+      background: #ffffff !important;
+      color: #0f172a !important;
       border-radius: 20px;
-      padding: 10px 24px;
+      padding: 8px 22px;
       text-shadow: none;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+      transition: transform 0.15s ease, background-color 0.15s ease;
+    }
+    .hero-cta:hover {
+      background: #f8fafc !important;
+      transform: translateY(-1px);
     }
     .hero-arrow {
       position: absolute;
@@ -6196,20 +6225,36 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       .hero-caption {
         position: static;
         width: auto;
-        padding: 12px 14px 30px;
-        background: var(--card, #fff);
-        color: var(--text);
+        padding: 14px 16px 28px;
+        background: var(--card, #ffffff);
+        color: var(--text, #1e2530) !important;
         text-shadow: none;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
       }
       .hero-slide img {
         aspect-ratio: 16 / 9;
         max-height: 220px;
       }
       .hero-title {
-        font-size: 16px;
+        font-size: 18px;
+        font-weight: 800;
+        color: var(--text, #1e2530) !important;
+        text-shadow: none;
       }
       .hero-desc {
+        font-size: 14px;
+        line-height: 1.4;
+        color: var(--text-muted, #64748b) !important;
+        text-shadow: none;
         -webkit-line-clamp: 3;
+      }
+      .hero-cta {
+        background: var(--primary, #0056b3) !important;
+        color: #ffffff !important;
+        font-size: 14px;
+        padding: 8px 18px;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
       }
       .hero-dots {
         bottom: 8px;
@@ -6267,7 +6312,26 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       background: #fff;
     }
     .auth-btn.logged-in {
-      padding: 2px;
+      padding: 3px 6px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .auth-btn.logged-in .auth-avatar,
+    .auth-btn.logged-in .auth-svg-gear {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .auth-btn.logged-in:hover .auth-avatar,
+    .auth-btn.logged-in:hover .auth-svg-gear {
+      transform: rotate(180deg);
+    }
+    .auth-btn.logged-in.active-open .auth-avatar,
+    .auth-btn.logged-in.active-open .auth-svg-gear {
+      transform: rotate(90deg);
     }
     @media (max-width: 640px) {
       #authBtn .auth-label {
@@ -8195,7 +8259,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 </div>
 
 <!-- Advanced Search & Multi-Criteria Filtering Modal (#4) -->
-<div id="advancedSearchModal" class="advanced-modal-backdrop" onclick="handleAdvancedBackdropClick(event)">
+<div id="advancedSearchModal" class="advanced-modal-backdrop" onclick="handleAdvancedBackdropClick(event)" role="dialog" aria-modal="true" aria-label="Advanced Search & Filters">
   <div class="advanced-modal-card" onclick="event.stopPropagation()">
     <div class="modal-header">
       <div class="modal-title">
@@ -8912,11 +8976,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       ['pause', () => { audio.pause(); }],
       ['seekbackward', (details) => { skip(-(details && details.seekOffset ? details.seekOffset : 10)); }],
       ['seekforward', (details) => { skip(details && details.seekOffset ? details.seekOffset : 10); }],
-      ['previoustrack', () => { skip(-10); }],
-      ['nexttrack', () => {
-        if (typeof devPlayNextFromQueue === 'function' && devPlayNextFromQueue()) return;
-        skip(10);
-      }],
       ['seekto', (details) => {
         if (details && details.seekTime !== undefined && audio && audio.duration) {
           audio.currentTime = details.seekTime;
@@ -8934,6 +8993,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         navigator.mediaSession.setActionHandler(action, handler);
       } catch (e) {}
     }
+    // Explicitly unregister track actions so mobile iOS Control Center & Android notifications
+    // prioritize showing the -10 / +10 circular skip buttons instead of track skip arrows
+    try { navigator.mediaSession.setActionHandler('previoustrack', null); } catch (e) {}
+    try { navigator.mediaSession.setActionHandler('nexttrack', null); } catch (e) {}
   }
 
   function cleanMediaText(s) {
@@ -12622,6 +12685,111 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   var devStoreCache = null;
   var devProgressCache = null;
 
+  var DEV_PUBLIC_SEEDS = [
+    {
+      id: 'pl_dev_elul',
+      title: 'Elul & Teshuvah Essentials',
+      description: 'Foundational shiurim on teshuvah, Selichos, and preparing the heart for the Yamim Noraim.',
+      tags: { teachers: [{ name: 'Rabbi Hershel Schachter' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Elul & Teshuvah' }] },
+      items: [
+        { id: '1053000', title: 'The Power of Teshuvah in Elul', speaker: 'Rabbi Shaya Katz', duration: '42:15' },
+        { id: '1052980', title: 'Hilchos Selichos and Viduy', speaker: 'Rabbi Hershel Schachter', duration: '38:40' },
+        { id: '979218', title: 'Preparing the Soul for Rosh Hashanah', speaker: 'Rabbi Michael Rosensweig', duration: '51:10' }
+      ]
+    },
+    {
+      id: 'pl_dev_shabbos',
+      title: 'Foundations of Shabbos & Muktzah',
+      description: 'Deep halachic analysis of Hilchos Shabbos, Muktzah categories, and contemporary melacha applications.',
+      tags: { teachers: [{ name: 'Rabbi Michael Rosensweig' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Shabbat' }] },
+      items: [
+        { id: '979218', title: "Foundations of Muktzah: Kli SheMelachto L'Issur", speaker: 'Rabbi Michael Rosensweig', duration: '55:20' },
+        { id: '979219', title: 'Gramada and Electricity on Shabbat', speaker: 'Rabbi Michael Rosensweig', duration: '48:30' },
+        { id: '1052980', title: 'Borer in Modern Food Preparation', speaker: 'Rabbi Hershel Schachter', duration: '36:15' }
+      ]
+    },
+    {
+      id: 'pl_dev_roshhashanah',
+      title: 'Rosh Hashanah Machzor Insights',
+      description: 'Tefillos of Malchiyos, Zichronos, Shofros, and halachos of Shofar blowing.',
+      tags: { teachers: [{ name: 'Rabbi Mayer Twersky' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Rosh Hashanah' }] },
+      items: [
+        { id: '1053000', title: 'The Philosophy of Malchiyos', speaker: 'Rabbi Mayer Twersky', duration: '44:00' },
+        { id: '1052990', title: 'Hearing the Shofar: Kavana and Halacha', speaker: 'Rabbi Hershel Schachter', duration: '41:10' }
+      ]
+    },
+    {
+      id: 'pl_dev_medical',
+      title: 'Contemporary Halacha & Medical Ethics',
+      description: 'End-of-life decision making, triage ethics, fertility halacha, and hospital Shabbos protocols.',
+      tags: { teachers: [{ name: 'Rabbi Aryeh Lebowitz' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Medical Ethics' }] },
+      items: [
+        { id: '1052980', title: 'Medical Triage and Resource Allocation in Halacha', speaker: 'Rabbi Aryeh Lebowitz', duration: '50:15' },
+        { id: '1052990', title: 'Pikuach Nefesh on Shabbat in Hospitals', speaker: 'Rabbi Aryeh Lebowitz', duration: '46:40' }
+      ]
+    },
+    {
+      id: 'pl_dev_dafyomi',
+      title: 'Daf Yomi: Sukkah & Pesachim In-Depth',
+      description: 'Lomdus, machshava, and practical halachic takeaways from Maseches Sukkah and Pesachim.',
+      tags: { teachers: [{ name: 'Rabbi Moshe Taragin' }], venues: [{ name: 'Yeshivat Har Etzion' }], topics: [{ name: 'Daf Yomi' }] },
+      items: [
+        { id: '1053000', title: "Shiur Klali: Sukkah Taaseh V'Lo Min Ha'Asui", speaker: 'Rabbi Moshe Taragin', duration: '47:25' },
+        { id: '979218', title: 'Lomdus of Bedikas Chametz and Bitul', speaker: 'Rabbi Michael Rosensweig', duration: '53:10' }
+      ]
+    },
+    {
+      id: 'pl_dev_tefillah',
+      title: 'Tefillah: Meaning, Structure & Kavana',
+      description: 'A deep journey through Shacharis, Shemoneh Esrei, and the theology of Jewish prayer.',
+      tags: { teachers: [{ name: 'Rabbi Yaakov Neuburger' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Tefillah' }] },
+      items: [
+        { id: '1052980', title: 'Structure and Flow of the Shemoneh Esrei', speaker: 'Rabbi Yaakov Neuburger', duration: '39:50' },
+        { id: '1053000', title: 'Kavana in Birchot Krias Shema', speaker: 'Rabbi Yaakov Neuburger', duration: '43:15' }
+      ]
+    },
+    {
+      id: 'pl_dev_parsha',
+      title: 'Parshas Hashavua Masterclasses',
+      description: 'Literary, Midrashic, and Halachic analyses of the weekly Torah portions across Sefer Bereishis and Devarim.',
+      tags: { teachers: [{ name: 'Rabbi Moshe Taragin' }], venues: [{ name: 'Yeshivat Har Etzion' }], topics: [{ name: 'Parsha' }] },
+      items: [
+        { id: '1053000', title: "Ha'azinu: The Song of History and Destiny", speaker: 'Rabbi Moshe Taragin', duration: '45:30' },
+        { id: '1052990', title: 'Nitzavim: Teshuvah and Free Will in Devarim', speaker: 'Rabbi Moshe Taragin', duration: '40:20' }
+      ]
+    },
+    {
+      id: 'pl_dev_ravsoloveitchik',
+      title: 'Meshel HaRav: Soloveitchik Legacy Shiurim',
+      description: 'Analyzing the thought, theology, and Brisker halachic methodology of Rabbi Joseph B. Soloveitchik zt"l.',
+      tags: { teachers: [{ name: 'Rabbi Hershel Schachter' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Jewish Thought' }] },
+      items: [
+        { id: '979218', title: "The Rav's Methodology in Hilchos Tefillah", speaker: 'Rabbi Hershel Schachter', duration: '58:00' },
+        { id: '979219', title: 'Halakhic Man and Lonely Man of Faith Compared', speaker: 'Rabbi Michael Rosensweig', duration: '52:45' }
+      ]
+    },
+    {
+      id: 'pl_dev_semichas',
+      title: 'Semichas Chaver Program Highlights',
+      description: 'Practical halachos of Mezuzah, Kashrus, and Bishul Akum explained clearly for daily living.',
+      tags: { teachers: [{ name: 'Rabbi Aryeh Lebowitz' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Halacha' }] },
+      items: [
+        { id: '1052980', title: 'Semichas Chaver: Hilchos Mezuzah Practical Overview', speaker: 'Rabbi Aryeh Lebowitz', duration: '49:10' },
+        { id: '1053000', title: 'Semichas Chaver: Bishul Akum and Microwaves', speaker: 'Rabbi Aryeh Lebowitz', duration: '43:50' }
+      ]
+    },
+    {
+      id: 'pl_dev_moadim',
+      title: 'Moadim: Sukkos & Simchas Torah',
+      description: "The Arba Minim, Sukkah dimensions, Simchas Beis HaSho'evah, and the joy of Torah.",
+      tags: { teachers: [{ name: 'Rabbi Mayer Twersky' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Sukkot' }] },
+      items: [
+        { id: '1053000', title: 'Halachos of Daled Minim Selection and Care', speaker: 'Rabbi Hershel Schachter', duration: '48:15' },
+        { id: '1052990', title: 'The Nature of Simchah on Sukkos and Shemini Atzeres', speaker: 'Rabbi Mayer Twersky', duration: '41:30' }
+      ]
+    }
+  ];
+
   function devDefaultStore() {
     return {
       activeId: 'history',
@@ -12637,18 +12805,34 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (devStoreCache) return devStoreCache;
     try {
       const raw = localStorage.getItem(DEV_PLAYLISTS_KEY);
+      let s = null;
       if (!raw) {
-        devStoreCache = devDefaultStore();
-        return devStoreCache;
-      }
-      const s = JSON.parse(raw);
-      if (!s.system) {
-        devStoreCache = devDefaultStore();
-        return devStoreCache;
+        s = devDefaultStore();
+      } else {
+        s = JSON.parse(raw);
+        if (!s || !s.system) s = devDefaultStore();
       }
       if (!s.system.save_for_later) s.system.save_for_later = { id: 'save_for_later', name: 'Save for Later', icon: '🕒', items: [] };
       if (!s.system.favorites) s.system.favorites = { id: 'favorites', name: 'Favorites', icon: '⭐', items: [] };
       if (!s.custom) s.custom = {};
+      if (typeof isDevMode !== 'undefined' && isDevMode) {
+        for (let i = 0; i < DEV_PUBLIC_SEEDS.length; i++) {
+          const p = DEV_PUBLIC_SEEDS[i];
+          if (!s.custom[p.id]) {
+            s.custom[p.id] = {
+              id: p.id,
+              name: p.title,
+              description: p.description,
+              tags: p.tags,
+              publicId: p.id,
+              isPublic: true,
+              isDevOwned: true,
+              icon: '📁',
+              items: p.items || []
+            };
+          }
+        }
+      }
       devStoreCache = s;
       return s;
     } catch (e) {
@@ -13283,6 +13467,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           '<button type="button" class="card-mini-btn" onclick="plPublicToggle(&quot;' + escapeHtml(p.id) + '&quot;)">' + (open ? 'Hide shiurim ▲' : 'Preview shiurim ▼') + '</button>' +
           '<button type="button" class="card-mini-btn" onclick="plSavePublic(&quot;' + escapeHtml(p.id) + '&quot;)">💾 Save to my playlists</button>' +
           '<button type="button" class="card-mini-btn" onclick="plUnsavePublic(&quot;' + escapeHtml(p.id) + '&quot;)">Remove save ♥</button>' +
+          (typeof isDevMode !== 'undefined' && isDevMode && (p.ownerName === 'Dev' || (p.id && p.id.startsWith('pl_dev_'))) ? '<button type="button" class="card-mini-btn active-save" onclick="devEditPublicPlaylist(&quot;' + escapeHtml(p.id) + '&quot;)">✏️ Edit (Dev)</button>' : '') +
           '</div>' +
           '<div id="plpub-' + p.id + '">' + (open ? '<div style="margin-top:8px;">Loading…</div>' : '') + '</div>' +
           '</div>';
@@ -13452,6 +13637,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     overlay.style.cssText = 'position:fixed; inset:0; z-index:10000; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; padding:16px;';
     overlay.setAttribute('role','dialog');
     overlay.setAttribute('aria-modal','true');
+    overlay.setAttribute('aria-label','New Playlist');
     const box = document.createElement('div');
     box.style.cssText = 'background:var(--card,#fff); color:var(--text,#111); border-radius:14px; max-width:360px; width:100%; padding:18px; border:1px solid var(--border-light);';
     box.innerHTML = '<div style="font-weight:800; margin-bottom:10px;">➕ New Playlist</div><input id="newPlInput" type="text" placeholder="Playlist name" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-light);"><div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;"><button type="button" class="card-mini-btn" id="newPlCancel">Cancel</button><button type="button" class="card-mini-btn active-save" id="newPlOk">Create</button></div>';
@@ -13700,8 +13886,34 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     });
   }
 
+  function devEditPublicPlaylist(id) {
+    const store = getDevStore();
+    if (!store.custom[id]) {
+      const found = (typeof DEV_PUBLIC_SEEDS !== 'undefined' && DEV_PUBLIC_SEEDS.find(p => p.id === id)) ||
+        (Array.isArray(plPublicResults) && plPublicResults.find(p => p.id === id));
+      if (found) {
+        store.custom[id] = {
+          id: found.id,
+          name: found.title || found.name,
+          description: found.description || '',
+          tags: found.tags || { teachers: [], venues: [], topics: [] },
+          publicId: found.id,
+          isPublic: true,
+          isDevOwned: true,
+          icon: '📁',
+          items: found.items || []
+        };
+        saveDevStore(store);
+      }
+    }
+    activeDevPlaylistId = id;
+    renderPlaylistsGrid();
+    openPlaylistDetailsModal();
+  }
+  window.devEditPublicPlaylist = devEditPublicPlaylist;
+
   async function plPublishCurrent(makePublic) {
-    if (!cloudEnabled()) {
+    if (!cloudEnabled() && !isDevMode) {
       flashToast('🔑 Log in to publish playlists', true, false);
       return;
     }
@@ -13709,11 +13921,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const pl = store.custom[activeDevPlaylistId];
     if (!pl) return;
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (isDevMode) headers['X-Dev-Mode'] = '1';
       const res = await fetch('/api/playlists/publish', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           public: makePublic !== false,
+          publicId: pl.publicId || (isDevMode && pl.isDevOwned ? pl.id : undefined),
           title: pl.name,
           description: pl.description || '',
           tags: pl.tags || { teachers: [], venues: [], topics: [] },
@@ -13746,9 +13961,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       confirmLabel: 'Unpublish',
       onConfirm: async () => {
         try {
+          const headers = { 'Content-Type': 'application/json' };
+          if (isDevMode) headers['X-Dev-Mode'] = '1';
           await fetch('/api/playlists/unpublish', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers,
             body: JSON.stringify({ id: pl.publicId })
           });
         } catch (e) {}
@@ -13762,14 +13979,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   async function plSavePublic(id) {
-    if (!cloudEnabled()) {
+    if (!cloudEnabled() && !isDevMode) {
       flashToast('🔑 Log in to save public playlists', true, false);
       return;
     }
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (isDevMode) headers['X-Dev-Mode'] = '1';
       const res = await fetch('/api/playlists/save', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ id })
       });
       const data = await res.json();
@@ -13799,9 +14018,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   async function plUnsavePublic(id) {
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (isDevMode) headers['X-Dev-Mode'] = '1';
       await fetch('/api/playlists/unsave', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ id })
       });
     } catch (e) {}
@@ -13862,8 +14083,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
   }
 
-  // Logged-in icon: gear with the account letter on top (5 dev-pickable styles).
-  const AVATAR_VARIANTS = ['gear-letter', 'circle-letter', 'gear-ring', 'badge-letter', 'minimal-letter'];
+  // Logged-in icon: gear with the account letter on top (10 styles: 5 classic + 5 precision SVGs).
+  const AVATAR_VARIANTS = [
+    'gear-letter', 'circle-letter', 'gear-ring', 'badge-letter', 'minimal-letter',
+    'svg-gear-12tooth', 'svg-gear-sun', 'svg-gear-steampunk', 'svg-gear-shield', 'svg-gear-smooth'
+  ];
   function getAvatarStyle() {
     try {
       const v = localStorage.getItem('yutorah_avatar_style');
@@ -13884,6 +14108,36 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (v === 'gear-ring') return '<span class="auth-avatar gear-ring"><span class="auth-gear">⚙️</span><span class="auth-letter">' + initial + '</span></span>';
     if (v === 'badge-letter') return '<span class="auth-avatar badge-letter">' + initial + '</span>';
     if (v === 'minimal-letter') return '<span class="auth-avatar minimal-letter">' + initial + '</span>';
+    if (v === 'svg-gear-12tooth') {
+      return '<svg class="auth-svg-gear" viewBox="0 0 32 32" width="26" height="26">' +
+        '<path fill="currentColor" d="M14 2h4v3.1a10.9 10.9 0 0 1 2.4.98l2.2-2.2 2.8 2.8-2.2 2.2c.4.76.73 1.57.98 2.4H28v4h-3.82a10.9 10.9 0 0 1-.98 2.4l2.2 2.2-2.8 2.8-2.2-2.2a10.9 10.9 0 0 1-2.4.98V30h-4v-3.82a10.9 10.9 0 0 1-2.4-.98l-2.2 2.2-2.8-2.8 2.2-2.2a10.9 10.9 0 0 1-.98-2.4H4v-4h3.82a10.9 10.9 0 0 1 .98-2.4L6.6 9.18l2.8-2.8 2.2 2.2c.76-.4 1.57-.73 2.4-.98V2z"/>' +
+        '<circle cx="16" cy="16" r="7.5" fill="var(--card, #fff)"/>' +
+        '<text x="16" y="20.5" text-anchor="middle" font-weight="900" font-size="12" fill="var(--primary, #0056b3)" font-family="system-ui, sans-serif">' + initial + '</text></svg>';
+    }
+    if (v === 'svg-gear-sun') {
+      return '<svg class="auth-svg-gear" viewBox="0 0 32 32" width="26" height="26">' +
+        '<path fill="currentColor" d="M16 1l3 5 5.5-2.5.5 6 6 .5-2.5 5.5 5 3-5 3 2.5 5.5-6 .5-.5 6-5.5-2.5-3 5-3-5-5.5 2.5-.5-6-6-.5 2.5-5.5-5-3 5-3-2.5-5.5 6-.5.5-6 5.5 2.5z"/>' +
+        '<circle cx="16" cy="16" r="8" fill="var(--card, #fff)" stroke="currentColor" stroke-width="1.5"/>' +
+        '<text x="16" y="21" text-anchor="middle" font-weight="900" font-size="13" fill="var(--primary, #0056b3)" font-family="system-ui, sans-serif">' + initial + '</text></svg>';
+    }
+    if (v === 'svg-gear-steampunk') {
+      return '<svg class="auth-svg-gear" viewBox="0 0 32 32" width="26" height="26">' +
+        '<path fill="currentColor" fill-rule="evenodd" d="M13.5 2h5v4.2a10 10 0 0 1 3.5 2l3.6-2.1 2.5 4.3-3.6 2.1a10 10 0 0 1 0 4l3.6 2.1-2.5 4.3-3.6-2.1a10 10 0 0 1-3.5 2V30h-5v-4.2a10 10 0 0 1-3.5-2l-3.6 2.1-2.5-4.3 3.6-2.1a10 10 0 0 1 0-4L3.9 13.4l2.5-4.3 3.6 2.1a10 10 0 0 1 3.5-2V2zm2.5 6a8 8 0 1 0 0 16 8 8 0 0 0 0-16z"/>' +
+        '<circle cx="16" cy="16" r="6.5" fill="var(--card, #fff)"/>' +
+        '<text x="16" y="20.5" text-anchor="middle" font-weight="900" font-size="11.5" fill="currentColor" font-family="system-ui, sans-serif">' + initial + '</text></svg>';
+    }
+    if (v === 'svg-gear-shield') {
+      return '<svg class="auth-svg-gear" viewBox="0 0 32 32" width="26" height="26">' +
+        '<path fill="currentColor" d="M16 2l3.5 3 4.5-.5 2 4 4.5 1.5-.5 4.5 3 3.5-3 3.5.5 4.5-4.5 1.5-2 4-4.5-.5L16 30l-3.5-3-4.5.5-2-4-4.5-1.5.5-4.5L1 14l3-3.5-.5-4.5 4.5-1.5 2-4 4.5.5z"/>' +
+        '<polygon points="16,8 23,12 23,20 16,24 9,20 9,12" fill="var(--card, #fff)" stroke="currentColor" stroke-width="1.5"/>' +
+        '<text x="16" y="20.5" text-anchor="middle" font-weight="900" font-size="12" fill="var(--primary, #0056b3)" font-family="system-ui, sans-serif">' + initial + '</text></svg>';
+    }
+    if (v === 'svg-gear-smooth') {
+      return '<svg class="auth-svg-gear" viewBox="0 0 32 32" width="26" height="26">' +
+        '<path fill="currentColor" d="M16 3c1.5 0 2.5 2.5 4 3s3.5-.5 4.8.7 0 3.3.7 4.8 3 2.5 3 4-2.5 2.5-3 4 0 3.5-.7 4.8-3.3 0-4.8.7-2.5 3-4 3-2.5-2.5-4-3-3.5.5-4.8-.7 0-3.3-.7-4.8-3-2.5-3-4 2.5-2.5 3-4 0-3.5.7-4.8 3.3 0 4.8-.7S14.5 3 16 3z"/>' +
+        '<circle cx="16" cy="16" r="8" fill="var(--card, #fff)" stroke="var(--border-light, #dbe2ed)" stroke-width="1"/>' +
+        '<text x="16" y="21" text-anchor="middle" font-weight="900" font-size="13" fill="var(--primary, #0056b3)" font-family="system-ui, sans-serif">' + initial + '</text></svg>';
+    }
     return '<span class="auth-avatar gear-letter"><span class="auth-gear">⚙️</span><span class="auth-letter">' + initial + '</span></span>';
   }
   function avatarPickerHtml() {
@@ -13902,12 +14156,28 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (wrap) wrap.innerHTML = avatarPickerHtml();
   }
 
+  function devOpenQueueView() {
+    activeDevPlaylistId = 'queue';
+    if (typeof renderPlaylistsGrid === 'function') renderPlaylistsGrid();
+    const el = document.getElementById('collectionsSection');
+    if (el) el.scrollIntoView({ behavior: 'smooth' });
+  }
+  window.devOpenQueueView = devOpenQueueView;
+
+  function devScrollToPlaylists() {
+    activeDevPlaylistId = 'history';
+    if (typeof renderPlaylistsGrid === 'function') renderPlaylistsGrid();
+    const el = document.getElementById('collectionsSection');
+    if (el) el.scrollIntoView({ behavior: 'smooth' });
+  }
+  window.devScrollToPlaylists = devScrollToPlaylists;
+
   function renderAuthBtn() {
     const btn = document.getElementById('authBtn');
     if (!btn) return;
     if (cloudUser) {
       btn.classList.add('logged-in');
-      btn.title = cloudUser.email || 'Signed in';
+      btn.title = cloudUser.name ? (cloudUser.name + ' (' + cloudUser.email + ')') : (cloudUser.email || 'Signed in');
       btn.innerHTML = authAvatarHtml(getAvatarStyle(), cloudUser.name, cloudUser.email);
     } else {
       btn.classList.remove('logged-in');
@@ -13920,6 +14190,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   function toggleAuthMenu(e) {
     if (e) e.stopPropagation();
     const menu = document.getElementById('authMenu');
+    const btn = document.getElementById('authBtn');
     if (!menu) {
       handleAuthClick();
       return;
@@ -13928,19 +14199,34 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       closeAuthMenu();
       return;
     }
+    if (btn) btn.classList.add('active-open');
     let html = '';
     if (cloudUser) {
-      html += '<div class="auth-menu-email">' + escapeHtml(cloudUser.email || '') + '</div>';
+      const displayName = cloudUser.name ? (cloudUser.name + ' (' + cloudUser.email + ')') : (cloudUser.email || '');
+      html += '<div class="auth-menu-email">👤 ' + escapeHtml(displayName) + '</div>';
+      html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); devOpenQueueView();">📋 Open Play Queue</button>';
+      html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); devScrollToPlaylists();">🎧 My Playlists</button>';
       html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); openDisplayNameModal();">✏️ Display name</button>';
       html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); handleAuthClick();">🚪 Sign out</button>';
     } else {
-      html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); window.location.href=&quot;/auth/google&quot;;">🔑 Sign in with Google</button>';
-    }
-    if (cloudUser) {
-      html += '<div class="settings-menu-label">Logged-in icon</div>';
-      html += '<div id="avatarPickerAuth" style="display:flex; gap:6px; padding:4px 10px 8px; flex-wrap:wrap;"></div>';
+      let retPath = window.location.pathname;
+      try {
+        const u = new URL(window.location.href);
+        if (audio && !audio.paused && audio.currentTime > 0) {
+          u.searchParams.set('t', Math.floor(audio.currentTime));
+        }
+        retPath = u.pathname + u.search;
+      } catch (e) {
+        retPath = window.location.pathname + window.location.search;
+      }
+      const retUrl = encodeURIComponent(retPath);
+      html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); window.location.href=&quot;/auth/google?return_to=' + retUrl + '&quot;;">🔑 Sign in with Google</button>';
     }
     if (isDevMode) {
+      if (cloudUser) {
+        html += '<div class="settings-menu-label">Logged-in icon (Dev)</div>';
+        html += '<div id="avatarPickerAuth" style="display:flex; gap:6px; padding:4px 10px 8px; flex-wrap:wrap; max-width:280px;"></div>';
+      }
       html += '<div class="settings-menu-label">Dev settings</div>';
       html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); openChangelogModal();">📋 Change Log</button>';
       html += '<div class="settings-menu-label">Save button icon</div>';
@@ -13949,7 +14235,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     menu.innerHTML = html;
     menu.style.display = 'block';
     positionAuthMenu();
-    try { renderAvatarPicker(); } catch (e) {}
+    if (isDevMode && cloudUser) {
+      try { renderAvatarPicker(); } catch (e) {}
+    }
     if (isDevMode) {
       const wrap = document.getElementById('saveIconPickerAuth');
       if (wrap) {
@@ -13962,8 +14250,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
   }
 
-  // Anchor the fixed menu under the button; flip above it when the
-  // header is bottom-docked (e.g. Purim theme) or space is short.
+  // Anchor the fixed menu under the button; flip above it when space is short.
   function positionAuthMenu() {
     try {
       const menu = document.getElementById('authMenu');
@@ -13986,6 +14273,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   function closeAuthMenu() {
     const menu = document.getElementById('authMenu');
     if (menu) menu.style.display = 'none';
+    const btn = document.getElementById('authBtn');
+    if (btn) btn.classList.remove('active-open');
   }
 
   // Display-name dialog: the name shown on playlists + public shares.

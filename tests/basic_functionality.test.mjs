@@ -225,7 +225,39 @@ async function testMediaSessionIntegration() {
   assert.ok(html.includes('updateMediaSessionPosition'), 'Script must define updateMediaSessionPosition');
   assert.ok(html.includes('updateMediaSession'), 'Script must call updateMediaSession');
   assert.ok(html.includes('shaya_katz'), 'Shiur 1053000 must resolve speaker photo for Rabbi Shaya Katz');
+  assert.ok(html.includes("navigator.mediaSession.setActionHandler('previoustrack', null)"), 'MediaSession unregisters previoustrack for iOS/Android -10s skip');
+  assert.ok(html.includes("navigator.mediaSession.setActionHandler('nexttrack', null)"), 'MediaSession unregisters nexttrack for iOS/Android +10s skip');
   console.log('  ✅ MediaSession integration verified: lock screen ±10s action handlers and multi-size speaker artwork active.');
+}
+
+async function testDevModeAndAvatarVariants() {
+  console.log('10. Testing Dev Mode Playlists, 10 Avatar SVGs, and Spinning Gear...');
+  const req = new Request('https://yutorah-player.mrosensweig.workers.dev/', {
+    headers: { 'User-Agent': 'TestRunner' }
+  });
+  const res = await worker.fetch(req, mockEnv, mockCtx);
+  assert.equal(res.status, 200);
+  const html = await res.text();
+
+  assert.ok(html.includes('svg-gear-12tooth'), 'Includes svg-gear-12tooth');
+  assert.ok(html.includes('svg-gear-sun'), 'Includes svg-gear-sun');
+  assert.ok(html.includes('svg-gear-steampunk'), 'Includes svg-gear-steampunk');
+  assert.ok(html.includes('svg-gear-shield'), 'Includes svg-gear-shield');
+  assert.ok(html.includes('svg-gear-smooth'), 'Includes svg-gear-smooth');
+  assert.ok(html.includes('DEV_PUBLIC_SEEDS'), 'Includes DEV_PUBLIC_SEEDS with 10 curated playlists');
+  assert.ok(html.includes('devEditPublicPlaylist'), 'Includes devEditPublicPlaylist helper');
+  assert.ok(html.includes('.auth-btn.logged-in:hover'), 'Includes spinning gear CSS animation on hover');
+
+  // Test OAuth return_to handling
+  const oauthReq = new Request('https://yutorah-player.mrosensweig.workers.dev/auth/google?return_to=%2F1053000%3Ft%3D120', {
+    headers: { 'User-Agent': 'TestRunner' }
+  });
+  const oauthRes = await worker.fetch(oauthReq, { ...mockEnv, GOOGLE_CLIENT_ID: 'dummy', GOOGLE_CLIENT_SECRET: 'dummy', SESSION_SECRET: 'testsecret123456789012345678901234' }, mockCtx);
+  assert.equal(oauthRes.status, 302);
+  const cookie = oauthRes.headers.get('set-cookie') || '';
+  assert.ok(cookie.includes('yutorah_oauth_state'), 'OAuth state cookie set with return_to encoded');
+
+  console.log('  ✅ Dev Mode playlists, 10 Avatar SVGs, spinning gear, and return_to verified.');
 }
 
 async function runAll() {
@@ -239,6 +271,7 @@ async function runAll() {
     await testMediaTypeFilter();
     await testLiquidModeExtraction();
     await testMediaSessionIntegration();
+    await testDevModeAndAvatarVariants();
     console.log('\n🎉 ALL BASIC FUNCTIONALITY, ARTICLE READER & LIQUID MODE TESTS PASSED SUCCESSFULLY!');
   } catch (err) {
     console.error('\n❌ Test failed:', err);

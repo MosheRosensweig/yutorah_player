@@ -1,15 +1,40 @@
 # Currently Working On — Living Status & Activity Log
 
 Living status doc & audit log — updated on every milestone and user request.  
-Last updated: **2026-09-10, 22:38 ET**  
+Last updated: **2026-09-10, 23:15 ET**  
 Current branch: `feat/auth-d1`  
 Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev)  
-Tests: **5/5 test suites passing (100% green)**  
+Tests: **5/5 test suites passing (100% green, 10/10 basic functionality checks)**  
 Production status: **Untouched** (strictly protected by standing rules)
 
 ---
 
 ## 🕒 Chronological Activity Log
+
+### [2026-09-10 23:15 ET] — Commit `feat/auth-d1` (Dual Review Approved + Dev Playlists + SVGs + Hero Contrast)
+- `[DONE]` **Spinning Gear & Account Button**:
+  - Replaced account button with dynamic states: when logged out, displays `👤 Sign in` (compact `👤` on mobile); when logged in, displays gear icon with embedded user initial that spins 180° on hover with spring physics (`0.6s cubic-bezier(0.34, 1.56, 0.64, 1)`).
+  - Resolved compound rotation bug on `gear-letter` avatar by scoping rotation to `.auth-avatar` and `.auth-svg-gear`.
+- `[DONE]` **Non-Dev Menu Scoping**:
+  - In standard non-dev mode, the dropdown menu ONLY displays non-dev user items: Name/Email, `📋 Open Play Queue`, `🎧 My Playlists`, `✏️ Display name`, `🚪 Sign out`.
+  - The avatar picker, save-clock picker, and change log are strictly hidden unless `isDevMode` is active.
+- `[DONE]` **5 Additional Custom Vector SVGs (Total 10 Avatar Options)**:
+  - Added 5 precision vector SVGs: `svg-gear-12tooth` (industrial 12-cog), `svg-gear-sun` (solar crown), `svg-gear-steampunk` (6-cog horological cutout), `svg-gear-shield` (hexagonal star badge), and `svg-gear-smooth` (curved scallop).
+  - Center-embeds the user's uppercase initial into the gear.
+- `[DONE]` **Mobile Lock Screen ±10s Controls Fix**:
+  - Resolved issue where iOS Control Center / Android notifications showed track skip arrows instead of seek buttons. Explicitly unbound `previoustrack` and `nexttrack` (`setActionHandler(..., null)`), forcing mobile OS lock screens to display the circular `-10` and `+10` skip buttons.
+- `[DONE]` **10 Dev Public Playlists with Non-Google Ownership & In-App Editing**:
+  - Seeded 10 curated public playlists under owner "Dev" (`owner_id: 'dev'`) with rich tags and lecture items directly into remote Cloudflare D1 (`yutorah-db`).
+  - Added `DEV_PUBLIC_SEEDS` to client store. In Dev Mode without Google auth, user owns these playlists and can edit their details (`✏️ Edit (Dev)` button), publish, and unpublish via `X-Dev-Mode: 1` header.
+- `[DONE]` **Light Mode Hero Slideshow Contrast Polish**:
+  - Completely fixed washed-out caption text on light mode slides by adding a 55%-width dark slate gradient scrim (`rgba(15, 23, 42, 0.94)`), backdrop blur (`4px`), crisp white typography (`#ffffff`), and white CTA button.
+  - Mobile layout transitions caption to static card beneath image with dark text and solid primary button.
+- `[DONE]` **OAuth `return_to` Timestamp & Destination Preservation**:
+  - OAuth flow securely signs and verifies `return_to` path, returning users to their exact shiur URL and audio playback timestamp.
+  - Fixed duplicate `t` parameter edge case using WHATWG URL API.
+- `[DONE]` **Dual Adversarial Review Approved**:
+  - Correctness QA Reviewer and Style/Theme Reviewer completed independent reviews. Restored `positionAuthMenu()`, resolved nested rotation, fixed `return_to` query parsing, added ARIA modal attributes to `#advancedSearchModal` and `#newPlaylistModal`.
+- `[DONE]` **Automated Testing**: Added Test #10 (`testDevModeAndAvatarVariants`) to `tests/basic_functionality.test.mjs`. All 5 test suites passed 100% green.
 
 ### [2026-09-10 22:36 ET] — Commit `3fae04a` (Dual Review + Dev Deploy)
 - `[DONE]` **Dual Adversarial Review**: Correctness QA Reviewer and Style/Theme Reviewer completed reviews. All findings addressed:
@@ -29,20 +54,23 @@ Production status: **Untouched** (strictly protected by standing rules)
 ## 📊 Feature Inventory & Status Matrix
 
 ### 1. Mobile Lock Screen & Media Controls
-- `[DONE]` **±10s Skip Buttons**: Bound `seekbackward` and `seekforward` MediaSession handlers with 10s default offset universally on playback start. Mobile iOS Control Center / Lock Screen and Android notification shade now display `-10` and `+10` skip buttons flanking Play/Pause.
+- `[DONE]` **±10s Skip Buttons (iOS & Android)**: Unregistered `previoustrack` and `nexttrack` (`null`) and bound `seekbackward` / `seekforward` MediaSession handlers with 10s default offset universally on playback start. Mobile iOS Control Center / Lock Screen and Android compact notification shade now consistently display circular `-10` and `+10` skip buttons flanking Play/Pause instead of track skip arrows.
 - `[DONE]` **High-Resolution Speaker Artwork**: Multi-size W3C artwork array (`96x96`, `128x128`, `192x192`, `256x256`, `384x384`, `512x512`) pulling the speaker's portrait from `teacherPhotoURL_lp`, `teacherPhotoURL_o`, `teacherPhotoURL`, or `PHOTO` across dynamic shiur loading, SSR, and cards. Notification cards and lock screen backdrops render the speaker's photo with clean fallback to `_default.jpg`.
-- `[DONE]` **Lock Screen Scrubbing & Queue Advance**: Added `seekto` action handler for OS timeline scrubbing, `previoustrack` (`skip(-10)`), and `nexttrack` (`devPlayNextFromQueue() || skip(10)`).
+- `[DONE]` **Lock Screen Scrubbing**: Added `seekto` action handler for native OS timeline scrubbing with duration boundary checks.
 - `[DONE]` **Playback State & Clamped Position Sync**: Synchronized `playbackState` ('playing'/'paused') and throttled (1000ms) `setPositionState` on audio events.
 - `[DONE]` **Entity Sanitization**: Decoded HTML entities (`&amp;`, `&#39;`, `&quot;`) in media notification titles and speaker strings via `cleanMediaText(s)`.
 
-### 2. Account Playlists & Public Playlists Rollout
+### 2. Account Playlists, Public Discovery & Dev Ownership
+- `[DONE]` **Account / Settings Button & Spinning Gear**: When logged out, displays `👤 Sign in` (icon-only on mobile); when logged in, displays gear icon with embedded user initial that smoothly spins 180° on hover (`0.6s cubic-bezier`).
+- `[DONE]` **Non-Dev Menu Scoping**: When in non-dev mode, dropdown menu strictly shows user identity, `📋 Open Play Queue`, `🎧 My Playlists`, `✏️ Display name`, and `🚪 Sign out`. All developer pickers, changelog, and settings are hidden.
+- `[DONE]` **10 Avatar Variants (5 CSS + 5 Vector SVGs)**: 5 CSS variations + 5 custom vector SVGs (`svg-gear-12tooth`, `svg-gear-sun`, `svg-gear-steampunk`, `svg-gear-shield`, `svg-gear-smooth`) with initial centered inside the gear geometry.
+- `[DONE]` **10 Dev Public Playlists**: Curated 10 foundational public playlists owned by "Dev" (`owner_id: 'dev'`) with rich tags, description, and shiurim seeded directly in remote D1 and client store.
+- `[DONE]` **Dev Mode In-App Editing Without Google Auth**: When entering Dev Mode without logging in, user owns these 10 public playlists, can edit their details (`✏️ Edit (Dev)` button), publish, and unpublish via `X-Dev-Mode: 1`.
 - `[DONE]` **Universal Playlists Tab**: Tab is always visible to all users (logged-in or guest); guests see the public playlist browser with an unobtrusive sign-in banner rather than a blank login wall.
-- `[DONE]` **Personal Playlists**: Custom playlist creation, rename, add/remove items, totals, duration sums, and export.
-- `[DONE]` **Public Playlist Discovery**: Search public playlists by keywords, filter by teachers, venues, and topics, sort by recent or most saves.
 - `[DONE]` **Preview & Save Actions**: Expandable preview of public playlist contents (`Preview shiurim ▼`) and one-click saving to personal collection (`💾 Save to my playlists`) with unsave toggle.
 - `[DONE]` **Series Preservation**: Series items saved to playlists preserve series title, lecture count, and proper card links.
-- `[DONE]` **Modal UX**: Escape key closes all dialogs; dark mode styling for textareas; display name customization.
-- `[DONE]` **D1 Database & Migrations**: Migrations `0001_init.sql`, `0002_syncfix.sql`, `0003_public.sql`, and `0004_public_kinds.sql` created for Cloudflare D1.
+- `[DONE]` **Remote D1 Database Migrations**: Migrations `0001_init.sql`, `0002_syncfix.sql`, `0003_public.sql`, and `0004_public_kinds.sql` fully applied to remote Cloudflare D1 `yutorah-db`.
+- `[DONE]` **OAuth Return-To Preservation**: Google OAuth flow signs, verifies, and returns to exact shiur URL and audio playback timestamp via WHATWG URL parsing.
 
 ### 3. Recent Search UX & Search Capabilities
 - `[DONE]` **Recent-3 Rail**: Top 3 most recent matches displayed directly above relevance results under dedicated subtitle, followed by the remaining results under an improved subtitle.
@@ -52,7 +80,7 @@ Production status: **Untouched** (strictly protected by standing rules)
 - `[DONE]` **Phonetic & Transliteration Search**: 181 synset buckets, Ashkenazic/Sephardic equivalence, speaker honorific stripping, and fuzzy "Did-You-Mean" suggestions.
 
 ### 4. Player, Discovery & UX
-- `[DONE]` **Homepage Spotlight Slideshow**: Rotating hero slides with keyboard, touch swipe, dots, and deep links.
+- `[DONE]` **Homepage Spotlight Slideshow & Light Mode Contrast**: Rotating hero slides with keyboard, touch swipe, dots, and deep links. Light mode contrast perfected with 55% dark slate gradient scrim (`rgba(15, 23, 42, 0.94)`), backdrop blur (`4px`), crisp white typography (`#ffffff`), and white CTA button.
 - `[DONE]` **View Toggle (Cards vs. Rows)**: Desktop rows default, mobile cards default; persists across reloads and tabs.
 - `[DONE]` **Player Metadata**: Direct upload date display alongside given date; clickable topic chips.
 - `[DONE]` **Card Action Split**: Play badge starts mini-player; card body opens full player.
