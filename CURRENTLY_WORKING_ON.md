@@ -7,7 +7,8 @@ Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yut
 Tests: **5/5 test suites passing (100% green, 17/17 basic functionality checks)**  
 Production status: **Untouched** (strictly protected by standing rules)
 
-## 🎯 Active Batch: 3 User Fixes (One-at-a-Time, Dev Deploys)
+## 🎯 Active Batch: 3 User Fixes (One-at-a-Time, Dev Deploys) — Dual-Reviewed
+- **Dual review verdict**: Style PASS (LOW nits only). Correctness found 1 HIGH (series bundles skipped by Queue to Top) → fixed in `b601c4e` (series preserved as native queue bundles, member-wise dedupe, single snapshot, card refresh, VS16 strip), redeployed dev `57b862c5`. Remaining LOWs logged: toast color/unit nits, items_json haystack noise, outer-catch zeroing on non-subquery failures (pre-existing).
 - [x] **Fix 1: Double calendar icon in account dropdown date** *(DEPLOYED 2026-09-11, `35b6fd6`, dev `2b296199`)*
   - Header badge `textContent` already starts with 📅; dropdown prepended a second one → stripped leading emoji, single prefix kept (both auth states).
 - [x] **Fix 2: Playlist → top-of-queue button** *(DEPLOYED 2026-09-11, `7c422f4`, dev `c0215d06`)*
