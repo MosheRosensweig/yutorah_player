@@ -481,7 +481,11 @@ async function testSearchResultsScrollAndHeroSlideClick() {
   // 6. Sort label includes icon (↕️ Sort:)
   assert.ok(html.includes('↕️ Sort:'), 'Sort label must have an icon on its left');
 
-  console.log('  ✅ Search results smooth scroll, hero slideshow click search & multi-line date/sort filters verified.');
+  // 7. Direct shiur slides (like Opening the Zman at YU -> /1187437) play/navigate directly instead of searching
+  assert.ok(html.includes('directShiurId'), 'handleHeroSlideClick must identify direct shiur IDs');
+  assert.ok(html.includes('playShiurById(event, directShiurId)'), 'handleHeroSlideClick must trigger playShiurById for direct shiur slides');
+
+  console.log('  ✅ Search results smooth scroll, hero slideshow direct shiur & search click & multi-line date/sort filters verified.');
 }
 
 async function runAll() {

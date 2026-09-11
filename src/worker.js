@@ -13856,23 +13856,71 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   window.scrollToSearchResults = scrollToSearchResults;
 
   function handleHeroSlideClick(event, el) {
+    if (!el) return;
+
     if (event) {
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.button === 1) {
         return;
       }
+    }
+
+    const slideHref = el.getAttribute('data-slide-href') || el.getAttribute('href') || '';
+    const slideName = (el.getAttribute('data-slide-name') || '').trim();
+
+    // 1. If external link (e.g. target="_blank" or external domain), allow native navigation
+    if (el.getAttribute('target') === '_blank' || (slideHref && (slideHref.indexOf('http://') === 0 || slideHref.indexOf('https://') === 0) && !slideHref.startsWith(window.location.origin))) {
+      return;
+    }
+
+    // 2. If the slide links to a specific shiur ID (e.g. /1187437 or /lectures/1187437)
+    let directShiurId = null;
+    if (slideHref && slideHref !== '#') {
+      try {
+        const parsedUrl = new URL(slideHref, window.location.origin);
+        const pathSegments = parsedUrl.pathname.split('/').filter(Boolean);
+        if (pathSegments.length === 1 && /^[0-9]+$/.test(pathSegments[0])) {
+          directShiurId = pathSegments[0];
+        } else if (pathSegments.length === 2 && pathSegments[0] === 'lectures' && /^[0-9]+$/.test(pathSegments[1])) {
+          directShiurId = pathSegments[1];
+        }
+      } catch (e) {
+        const parts = slideHref.split('?')[0].split('/').filter(Boolean);
+        const lastPart = parts.pop() || '';
+        if (/^[0-9]+$/.test(lastPart)) {
+          directShiurId = lastPart;
+        }
+      }
+    }
+
+    if (directShiurId) {
+      if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      const resSection = document.getElementById('searchResultsSection');
+      if (resSection) resSection.style.display = 'none';
+      const colSection = document.getElementById('collectionsSection');
+      if (colSection) colSection.style.display = 'block';
+
+      if (typeof playShiurById === 'function') {
+        playShiurById(event, directShiurId);
+      } else {
+        window.location.href = '/' + directShiurId;
+      }
+      return;
+    }
+
+    // 3. Otherwise, for search-based slides, execute live search and scroll to search results
+    if (event) {
       event.preventDefault();
       event.stopPropagation();
     }
-    if (!el) return;
 
     if (hasAudio) {
       minimizePlayer();
     }
     const bioBanner = document.getElementById('bioBanner');
     if (bioBanner) bioBanner.style.display = 'none';
-
-    const slideHref = el.getAttribute('data-slide-href') || el.getAttribute('href') || '';
-    const slideName = (el.getAttribute('data-slide-name') || '').trim();
 
     let query = '';
     const extra = {};
@@ -13901,19 +13949,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
         if (sParam) {
           query = sParam;
-        } else if (!extra.subCategoryId && !extra.teacherId && !extra.seriesId) {
-          const pathSegments = parsedUrl.pathname.split('/').filter(Boolean);
-          if (pathSegments.length === 1 && /^[0-9]+$/.test(pathSegments[0])) {
-            query = slideName || pathSegments[0];
-          } else {
-            query = slideName;
-          }
         }
       } catch (e) {
         query = slideName;
       }
-    } else {
-      query = slideName;
     }
 
     if (!query && !extra.subCategoryId && !extra.teacherId && !extra.seriesId) {
