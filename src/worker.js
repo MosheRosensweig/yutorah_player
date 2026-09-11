@@ -13613,6 +13613,35 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     });
 
     input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && input.value.trim()) {
+        e.preventDefault();
+        const val = input.value.trim().toLowerCase();
+        // Try to find exact match in current dropdown or full list
+        const firstMatch = dropdown.querySelector('.autocomplete-item');
+        if (firstMatch) {
+          const id = firstMatch.getAttribute('data-id');
+          const name = firstMatch.getAttribute('data-name');
+          if (id && name) {
+            addComboboxToken(type, id, name);
+            input.value = '';
+            dropdown.style.display = 'none';
+            dropdown.innerHTML = '';
+            return;
+          }
+        }
+        // Fallback: check full list for exact match
+        loadAutocompleteMeta().then(meta => {
+          if (!meta || !meta[dataKey]) return;
+          const match = meta[dataKey].find(item => (item.name || '').toLowerCase() === val);
+          if (match) {
+            addComboboxToken(type, match.id, match.name);
+            input.value = '';
+            dropdown.style.display = 'none';
+            dropdown.innerHTML = '';
+          }
+        });
+        return;
+      }
       if (e.key === 'Escape') {
         dropdown.style.display = 'none';
       } else if (e.key === 'Backspace' && input.value === '') {
@@ -16266,15 +16295,23 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           if (match) {
             plAddFilterTag(kind, match);
             el.value = '';
-          } else {
-            // No exact match: keep input for further typing, show hint
-            // Don't clear, user can keep typing or pick from dropdown
+            // Ensure dropdown hidden and input remains usable
+            const dl = document.getElementById(id + 'List');
+            if (dl) dl.style.display = 'none';
           }
         };
         el.addEventListener('change', tryAdd);
-        el.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); tryAdd(); } });
-        // Clear on Escape
-        el.addEventListener('keydown', e => { if (e.key === 'Escape') el.value = ''; });
+        el.addEventListener('keydown', e => {
+          if (e.key === 'Enter') { e.preventDefault(); tryAdd(); }
+          if (e.key === 'Escape') { el.value = ''; el.blur(); }
+        });
+        // Also handle input to show dropdown like other places
+        el.addEventListener('input', () => {
+          // Trigger datalist dropdown by forcing input event
+          if (el.value.length >= 1) {
+            el.setAttribute('data-typed', el.value);
+          }
+        });
       };
       bindTypableFilter('plPubTeacher', 'teachers');
       bindTypableFilter('plPubVenue', 'venues');
