@@ -1,10 +1,10 @@
 # Currently Working On — Living Status & Activity Log
 
 Living status doc & audit log — updated on every milestone and user request.  
-Last updated: **2026-09-11, 10:40 ET**  
+Last updated: **2026-09-11, 11:30 ET**  
 Current branch: `feat/auth-d1`  
 Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev)  
-Tests: **5/5 test suites passing (100% green, 16/16 basic functionality checks)**  
+Tests: **5/5 test suites passing (100% green, 17/17 basic functionality checks)**  
 Production status: **Untouched** (strictly protected by standing rules)
 
 ---
@@ -22,8 +22,9 @@ Production status: **Untouched** (strictly protected by standing rules)
 - [x] **Task 4: Playlist Reordering Experience Parity with Queue** *(COMPLETED)*
   - Provided direct, intuitive reordering of shiurim in playlists with grab handles (⠿) and ▲▼ move actions matching the queue.
   - Added disabled states on edge items, drag-over visuals, persisted via `saveDevStore`, handles queue parity review fixes (dual review 2026-09-11).
-- [ ] **Task 5: Shuffle Play Option for Playlists** *(IN PROGRESS)*
+- [x] **Task 5: Shuffle Play Option for Playlists** *(COMPLETED)*
   - Add option to play playlist in sequential order (default) or randomized order via `🔀 Shuffle` button on playlists.
+  - Fisher-Yates shuffle, non-mutating, uses queue system with cloud sync, disabled when <2 items, dual-reviewed 2026-09-11.
 
 ---
 
@@ -37,6 +38,11 @@ Production status: **Untouched** (strictly protected by standing rules)
 ---
 
 ## 🕒 Chronological Activity Log
+
+### [2026-09-11 11:30 ET] — Commit `feat/auth-d1` (Task 5: Shuffle Play + Task 4 Parity Polish)
+- `[DONE]` **Task 4 Parity Fixes**: Added disabled states on queue ▲▼, drag-over visuals, persisted parity; queue parity now matches playlist.
+- `[DONE]` **Task 5 Shuffle**: Fisher-Yates shuffle via queue, disabled when <2 items, dual-reviewed and deployed.
+- `[DONE]` **Dual Review (Final)**: Correctness + Style reviews passed with 6 low/medium gaps noted as follow-ups; all blocking issues cleared.
 
 ### [2026-09-11 10:46 ET] — Commit `feat/auth-d1` (Task 3: Playlist Search Scope Checkboxes)
 - `[DONE]` **Tri-Checkbox Search Scope (Title & Tags, Description, Shiurim Therein)**:
@@ -282,7 +288,20 @@ Production status: **Untouched** (strictly protected by standing rules)
 
 ## 🛡️ Standing Development Guidelines
 1. **Log Updates**: Update this document (`CURRENTLY_WORKING_ON.md`) on every milestone, logging completed work (`[DONE]`), in-progress work (`[IN PROGRESS]`), and queued items (`[REQUESTED / NOT DONE]`).
-2. **Dual Review**: Correctness QA and Style/Theme subagents must review and approve every release before deployment.
+2. **Dual Review**: Correctness QA and Style/Theme subagents must review and approve every release before deployment. See *How to do a dual review and deploy* below.
 3. **Separate Commits**: Maintain atomic commits per feature branch.
 4. **DEV ONLY**: Deploy strictly to `yutorah-player-dev.mrosensweig.workers.dev` via `npx wrangler deploy --env dev`. **NEVER** touch production without explicit user command.
 5. **Changelog**: Update `src/changelog.json` on every push.
+
+### How to do a dual review and deploy (robust, step-by-step)
+1. **Finish one task at a time** — scope is a single feature or fix batch; no bundling of unrelated changes.
+2. **Local verify**: `npm test` (must be 5/5 green) + `node --check src/worker.js`.
+3. **Launch two subagents in parallel** via Task tool:
+   - **Correctness reviewer**: prompt to check logic, edge cases, state, persistence, quota, XSS, bounds. Must cite `file:line`.
+   - **Style/Theme reviewer**: prompt to check UX, light/dark, touch targets, focus rings, a11y, contrast. Must cite `file:line`.
+4. **Triage**: BLOCKER/HIGH must be fixed before deploy; LOW/MEDIUM may be logged as follow-ups.
+5. **Fix, re-test, re-review if needed** — iterate until both reviewers PASS or only LOWs remain.
+6. **Commit & push**: `git add -A && git commit -m "... (muse spark)" && git push origin <branch>`.
+7. **Deploy to dev only**: `npx wrangler deploy --env dev` → verify `Current Version ID` and `curl -s -o /dev/null -w "%{http_code}" https://yutorah-player-dev...` is 200.
+8. **Update logs**: append to `CURRENTLY_WORKING_ON.md` activity log and `src/changelog.json` newest-first entry with ISO date.
+9. **Final dual review**: after the last task in the batch, run one concluding dual review across the whole batch to catch integration gaps.
