@@ -5,6 +5,16 @@ compatibility_date = "2024-09-01"
 [observability]
 enabled = true
 
+# Production bindings (top-level = production worker "yutorah-player").
+# NOTE: prod shares the single yutorah-db D1 (only DB in the account);
+# migrations 0001-0004 already applied. Secrets (GOOGLE_*, SESSION_SECRET)
+# exist in both top-level (prod) and env.dev.
+[[d1_databases]]
+binding = "yutorah_db"
+database_name = "yutorah-db"
+database_id = "f64d0181-1795-4e34-b2bf-4d828049ce61"
+migrations_dir = "migrations"
+
 # Dev version of the site (second public link). Deploy with:
 #   npx wrangler deploy --env dev
 [env.dev]
