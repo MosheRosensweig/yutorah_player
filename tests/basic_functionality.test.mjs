@@ -758,10 +758,10 @@ async function testPwaIntegration() {
     assert.equal(manifest.display, 'standalone', 'Manifest display should be standalone');
     assert.equal(manifest.background_color, '#0f141c', 'Manifest background_color should be #0f141c');
     assert.equal(manifest.theme_color, '#2b4c7e', 'Manifest theme_color should be #2b4c7e');
-    assert.ok(Array.isArray(manifest.icons) && manifest.icons.length >= 4, 'Manifest must declare at least 4 icon configurations');
+    assert.ok(Array.isArray(manifest.icons) && manifest.icons.length >= 2, 'Manifest must declare at least 2 icon configurations');
     assert.ok(manifest.icons.some(i => i.src.includes('icon-shield-192.png') && i.sizes === '192x192'), 'Manifest must include 192x192 shield icon');
     assert.ok(manifest.icons.some(i => i.src.includes('icon-shield-512.png') && i.sizes === '512x512'), 'Manifest must include 512x512 shield icon');
-    assert.ok(manifest.icons.some(i => i.purpose === 'maskable'), 'Manifest must include maskable icon for Android adaptive icons');
+    assert.ok(manifest.icons.every(i => i.purpose === 'any'), 'Manifest icons must declare purpose: "any" to preserve transparency without forced adaptive masks');
   }
 
   // 2. Service Worker endpoint (/sw.js)
@@ -771,7 +771,7 @@ async function testPwaIntegration() {
   assert.ok(swRes.headers.get('Content-Type')?.includes('application/javascript'), '/sw.js should have application/javascript content-type');
   assert.equal(swRes.headers.get('Service-Worker-Allowed'), '/', '/sw.js must set Service-Worker-Allowed: /');
   const swContent = await swRes.text();
-  assert.ok(swContent.includes('yutorah-pwa-v4'), 'SW must define CACHE_NAME v4');
+  assert.ok(swContent.includes('yutorah-pwa-v5'), 'SW must define CACHE_NAME v5');
   assert.ok(swContent.includes("req.headers.has('range')"), 'SW must bypass streaming audio range requests');
   assert.ok(swContent.includes('shiurim.yutorah.net'), 'SW must bypass audio CDN requests');
   assert.ok(swContent.includes("req.mode === 'navigate'"), 'SW must handle navigation requests with network-first');
@@ -785,7 +785,7 @@ async function testPwaIntegration() {
     assert.equal(iconRes.headers.get('Content-Type'), 'image/png', `${iconPath} should have image/png content-type`);
     const iconBuf = new Uint8Array(await iconRes.arrayBuffer());
     assert.ok(pngSig.every((b, i) => iconBuf[i] === b), `${iconPath} must have valid PNG signature`);
-    assert.equal(iconBuf.length, 4733, `${iconPath} length should match expected 192 shield icon bytes`);
+    assert.equal(iconBuf.length, 4734, `${iconPath} length should match expected 192 shield icon bytes`);
   }
 
   for (const iconPath of ['/icons/icon-shield-512.png', '/icons/icon-512.png', '/icons/icon-maskable-512.png']) {
@@ -809,11 +809,11 @@ async function testPwaIntegration() {
   const homeReq = new Request('https://yutorah-player.mrosensweig.workers.dev/');
   const homeRes = await worker.fetch(homeReq, mockEnv, mockCtx);
   const html = await homeRes.text();
-  assert.ok(html.includes('<link rel="manifest" href="/manifest.json?v=4">'), 'HTML must link to /manifest.json?v=4');
+  assert.ok(html.includes('<link rel="manifest" href="/manifest.json?v=5">'), 'HTML must link to /manifest.json?v=5');
   assert.ok(html.includes('<meta name="mobile-web-app-capable" content="yes">'), 'HTML must include mobile-web-app-capable');
   assert.ok(html.includes('<meta name="apple-mobile-web-app-capable" content="yes">'), 'HTML must include apple-mobile-web-app-capable');
   assert.ok(html.includes('<meta name="apple-mobile-web-app-title" content="YUTorah">'), 'HTML must include apple-mobile-web-app-title');
-  assert.ok(html.includes('<link rel="apple-touch-icon" href="/icons/icon-shield-192.png?v=4">'), 'HTML must link to apple-touch-icon with v=4');
+  assert.ok(html.includes('<link rel="apple-touch-icon" href="/icons/icon-shield-192.png?v=5">'), 'HTML must link to apple-touch-icon with v=5');
   assert.ok(html.includes("navigator.serviceWorker.register('/sw.js'"), 'HTML must register service worker /sw.js');
 
   console.log('  ✅ PWA manifest, service worker caching, app icons (192 & 512 PNG/SVG), meta tags & registration verified.');
