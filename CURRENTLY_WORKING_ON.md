@@ -1,26 +1,32 @@
 # Currently Working On — Living Status & Activity Log
 
 Living status doc & audit log — updated on every milestone and user request.  
-Last updated: **2026-09-11, 14:30 ET**  
+Last updated: **2026-09-11, 14:45 ET**  
 Current branch: `feat/auth-d1` (synchronized with `main`)  
 Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev) (`b5a428ea`)  
 Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://yutorah-player.mrosensweig.workers.dev) (`df656c57`)  
-Tests: **5/5 test suites passing (100% green, 19/19 basic functionality checks)**  
-Production status: **DEPLOYED & VERIFIED (HTTP 200)**
+Tests: **5/5 test suites passing (100% green, 20/20 basic functionality checks)**  
+Production status: **READY FOR DEPLOYMENT (Dual Review PASS)**
 
-## 🎯 Active Batch: 3 User Fixes (One-at-a-Time, Dev Deploys) — Dual-Reviewed
-- **Dual review verdict**: PASS after remediation. Correctness PASS (0 Blocker, 0 High). Style & A11y review remediated: Viewport zoom enabled (WCAG 1.4.4), focus-visible outlines on all controls (WCAG 2.4.7), audio scrubber accessible slider with keyboard seeking, theme toggle icon FOUT eliminated (dark default), and playlist URL deep-linking for third-party recipients with dynamic server load & Share buttons.
+## 🎯 Active Task: Logged-Out Header Theme Toggle on Right-Hand Side
+- **User Request**: On the non-logged-in (guest) version of the website, have the light/dark mode button be in the header (accessible without requiring account settings) and positioned on the right-hand side.
+- **Implementation Status**:
+  - SSR HTML DOM order updated in `.header-right`: `support-yutorah-btn` -> `hebrewDateBadge` -> `authBtn` -> `authMenu` -> `themeToggleBtn`.
+  - CSS flexbox `order: 10` applied to `#themeToggleBtn` ensuring rightmost alignment.
+  - Mobile CSS (`@media (max-width: 640px)`):
+    - `body:not(.is-logged-in) #themeToggleBtn { display: inline-flex !important; }` keeps toggle visible in header for guests.
+    - `body.is-logged-in #themeToggleBtn, .auth-btn.logged-in ~ #themeToggleBtn { display: none !important; }` hides toggle in header on mobile when logged in (accessible via `⚙️` dropdown).
+    - `min-width: 32px; min-height: 32px; padding: 2px 4px;` provides accessible touch target.
+  - Client JavaScript: `renderAuthBtn()` synchronizes `is-logged-in` class on `document.body`.
+  - Automated Test #20 added in `tests/basic_functionality.test.mjs` verifying DOM order, right-hand placement, CSS rules, and body class synchronization.
+- **Dual Review Verdict**: **PASS** (Correctness QA: PASS, 0 Blockers; Style & Theme: PASS, 0 Blockers).
 
 ## 🚀 Active Batch 2: Shareable Playlist URLs + Dark Default + PROD Push
 - [x] **Task 1: Playlist state in URL (reload-safe + shareable)** *(DEPLOYED 2026-09-11, `47ee536`, dev `b9f6af98`, test #18 green, 5/5 suites)*
-  - Keys `tab/pl/plq/plteachers/plvenues/pltopics/plscope/plsort`; `replaceState` sync on tab/select/search; tab-leave + shiur-search clear keys; player open/close carries keys; boot + `popstate` hydration with public-results fetch.
-  - Added `📋 Share` button on playlist rows and `📋 Share Search` button on public search.
-  - Dynamically fetches and renders shared public playlists for third parties who do not have the playlist in local storage.
 - [x] **Task 2: Dark mode default for new users** *(DEPLOYED 2026-09-11, `b6e89bd`, dev `8e32b8bf`, 5/5 suites)*
-  - Head pre-paint script: no saved pref → dark (was: follow OS). Saved choice + theme URL params still win; no localStorage write for the default. `FEATURES.md` §8 updated.
-  - Server defaults `themeMode = 'dark'` and renders `☀️` on `#themeToggleBtn` to eliminate icon FOUT.
-- [x] **Task 3: Dual review remediation & validation** *(COMPLETED — All 5/5 suites green, 19/19 checks)*
+- [x] **Task 3: Dual review remediation & validation** *(COMPLETED — All 5/5 suites green, 20/20 checks)*
 - [x] **Task 4: Push to PRODUCTION** *(COMPLETED 2026-09-11 — Deployed version `df656c57` to `https://yutorah-player.mrosensweig.workers.dev`, 200 OK)*
+- [x] **Task 5: Logged-out header theme toggle on right-hand side** *(READY FOR DEPLOYMENT)*
   - Pre-prod checks: `wrangler.toml` top-level config (name, D1 binding for prod), migrations applied to prod DB, secrets (`SESSION_SECRET`/`GOOGLE_*` per `docs/AUTH_SETUP.md`?). Deploy with `npx wrangler deploy` (no `--env`), verify prod URL.
 - [x] **Fix 1: Double calendar icon in account dropdown date** *(DEPLOYED 2026-09-11, `35b6fd6`, dev `2b296199`)*
   - Header badge `textContent` already starts with 📅; dropdown prepended a second one → stripped leading emoji, single prefix kept (both auth states).
@@ -74,6 +80,22 @@ Production status: **DEPLOYED & VERIFIED (HTTP 200)**
 ---
 
 ## 🕒 Chronological Activity Log
+
+### [2026-09-11 14:45 ET] — Header Theme Toggle: Logged-Out Access on Right-Hand Side
+- `[DONE]` **DOM Header Restructuring**:
+  - Reordered `.header-right`: `support-yutorah-btn` -> `hebrewDateBadge` -> `authBtn` -> `authMenu` -> `themeToggleBtn`.
+  - Added CSS `order: 10` to `.header-right #themeToggleBtn` to ensure it sits on the far right-hand side.
+- `[DONE]` **Mobile Accessibility & Logged-Out Visibility**:
+  - `body:not(.is-logged-in) #themeToggleBtn { display: inline-flex !important; }` guarantees the theme toggle remains visible in the header on screens ≤640px for guest / non-logged-in users.
+  - `body.is-logged-in #themeToggleBtn, .auth-btn.logged-in ~ #themeToggleBtn { display: none !important; }` hides the header button on mobile for authenticated users who have the `⚙️` settings gear dropdown.
+  - Added `min-width: 32px; min-height: 32px; padding: 2px 4px;` for comfortable touch target accessibility across mobile and touch devices.
+- `[DONE]` **Client State Synchronization**:
+  - `renderAuthBtn()` synchronizes `is-logged-in` class on `document.body`.
+  - `initTheme()` and `toggleTheme()` dynamically update `aria-label` alongside `title`.
+  - `checkCalendarOverflow()` returns early on screens ≤640px to prevent inline style overrides on mobile.
+- `[DONE]` **Automated Testing & Dual Review**:
+  - Test #20 (`testLoggedOutHeaderThemeToggle`) added to `tests/basic_functionality.test.mjs`. All 5 test suites pass 100% green (20/20 checks).
+  - Dual Review completed: Correctness QA (**PASS**, 0 Blockers) and Style & Theme (**PASS**, 0 Blockers).
 
 ### [2026-09-11 14:30 ET] — PRODUCTION DEPLOYMENT (`df656c57`) & Dual Review Hardening
 - `[DONE]` **Production Deployment**:

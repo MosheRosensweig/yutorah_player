@@ -5360,9 +5360,21 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       gap: 8px;
       flex-shrink: 0;
     }
+    .header-right #themeToggleBtn {
+      order: 10;
+    }
     @media (max-width: 640px) {
-      #themeToggleBtn, #hebrewDateBadge {
+      #hebrewDateBadge {
         display: none !important;
+      }
+      /* When logged in on mobile, theme toggle is accessible via the settings gear dropdown */
+      body.is-logged-in #themeToggleBtn,
+      .auth-btn.logged-in ~ #themeToggleBtn {
+        display: none !important;
+      }
+      /* On mobile for non-logged-in users, keep theme toggle visible in the header on the right-hand side */
+      body:not(.is-logged-in) #themeToggleBtn {
+        display: inline-flex !important;
       }
     }
     .support-yutorah-btn {
@@ -5417,6 +5429,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       box-shadow: none !important;
       width: auto;
       height: auto;
+      min-width: 32px;
+      min-height: 32px;
       outline: none !important;
       -webkit-tap-highlight-color: transparent !important;
       -webkit-user-select: none;
@@ -5769,7 +5783,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       }
       .theme-toggle-btn {
         font-size: 18px;
-        padding: 0 2px;
+        padding: 2px 4px;
+        min-width: 32px;
+        min-height: 32px;
       }
       .hebrew-date-badge {
         font-size: 11px;
@@ -10163,12 +10179,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         </div>
       </div>
       <a href="https://www.givecampus.com/campaigns/50770/donations/new" target="_blank" rel="noopener noreferrer" class="support-yutorah-btn" title="Support YUTorah & Sponsor Learning (Opens in new window)">❤️ Support YUTorah</a>
+      <div class="hebrew-date-badge" id="hebrewDateBadge" onclick="handleCalendarSecretClick(event); pulseHebrewDate();" tabindex="0" role="button" aria-label="Hebrew date" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();handleCalendarSecretClick(event);pulseHebrewDate();}" title="">📅<span class="hebrew-date-text">&nbsp;&nbsp;${escapeHtml(homepageData?.hebrewDateString || 'Calendar')}</span></div>
       <button type="button" id="authBtn" class="theme-toggle-btn auth-btn" onclick="toggleAuthMenu(event)" title="Sign in to sync across devices">
         <span class="auth-icon">👤</span><span class="auth-label"> Sign in</span>
       </button>
       <div id="authMenu" class="auth-menu" style="display: none;" role="menu" aria-label="Account"></div>
       <button type="button" id="themeToggleBtn" class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Dark / Light Mode">${themeMode === 'light' ? '🌙' : '☀️'}</button>
-      <div class="hebrew-date-badge" id="hebrewDateBadge" onclick="handleCalendarSecretClick(event); pulseHebrewDate();" tabindex="0" role="button" aria-label="Hebrew date" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();handleCalendarSecretClick(event);pulseHebrewDate();}" title="">📅<span class="hebrew-date-text">&nbsp;&nbsp;${escapeHtml(homepageData?.hebrewDateString || 'Calendar')}</span></div>
     </div>
   </div>
 </header>
@@ -18333,10 +18349,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (!btn) return;
     try { localStorage.removeItem('yutorah_avatar_style'); } catch (e) {}
     if (cloudUser) {
+      document.body.classList.add('is-logged-in');
       btn.classList.add('logged-in');
       btn.title = cloudUser.name ? (cloudUser.name + ' (' + cloudUser.email + ')') : (cloudUser.email || 'Signed in');
       btn.innerHTML = '<span class="auth-avatar plain-gear"><span class="auth-gear">⚙️</span></span>';
     } else {
+      document.body.classList.remove('is-logged-in');
       btn.classList.remove('logged-in');
       btn.title = 'Account';
       btn.innerHTML = '<span class="auth-icon">👤</span><span class="auth-label"> Sign in</span>';
@@ -20576,6 +20594,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (btn) {
       btn.textContent = isDark ? '☀️' : '🌙';
       btn.title = isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode';
+      btn.setAttribute('aria-label', isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode');
     }
     document.querySelectorAll('.menu-theme-icon').forEach(function(icon) {
       icon.textContent = isDark ? '☀️' : '🌙';
@@ -20596,6 +20615,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (btn) {
       btn.textContent = nextDark ? '☀️' : '🌙';
       btn.title = nextDark ? 'Switch to Light Mode' : 'Switch to Dark Mode';
+      btn.setAttribute('aria-label', nextDark ? 'Switch to Light Mode' : 'Switch to Dark Mode');
     }
     document.querySelectorAll('.menu-theme-icon').forEach(function(icon) {
       icon.textContent = nextDark ? '☀️' : '🌙';
@@ -20629,10 +20649,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     var header = document.getElementById('mainHeader');
     if (!badge || !header) return;
 
-    // Small screens keep the icon-only badge (tap expands via pulseHebrewDate);
-    // never fully hide it — the icon is tiny.
+    // Small screens hide the badge via media query
     if (window.innerWidth <= 640) {
-      badge.style.display = 'inline-flex';
       return;
     }
     badge.style.display = 'inline-flex';

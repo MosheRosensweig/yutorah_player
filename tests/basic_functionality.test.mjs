@@ -691,6 +691,41 @@ async function testDualReviewAccessibilityAndSharingRemediation() {
   console.log('  ✅ Dual review remediation: viewport, focus rings, scrubber a11y, theme sync & sharing verified.');
 }
 
+async function testLoggedOutHeaderThemeToggle() {
+  console.log('20. Testing Logged-Out Header Theme Toggle & Right-Hand Placement...');
+
+  const res = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/'));
+  assert.equal(res.status, 200, 'Homepage SSR must return 200 OK');
+  const html = await res.text();
+
+  // 1. Theme toggle button is rendered on the right-hand side of #authBtn in header HTML
+  const authBtnIndex = html.indexOf('id="authBtn"');
+  const themeToggleIndex = html.indexOf('id="themeToggleBtn"');
+  const hebrewDateIndex = html.indexOf('id="hebrewDateBadge"');
+  assert.ok(authBtnIndex !== -1, 'Header must contain #authBtn');
+  assert.ok(themeToggleIndex !== -1, 'Header must contain #themeToggleBtn');
+  assert.ok(hebrewDateIndex !== -1, 'Header must contain #hebrewDateBadge');
+  assert.ok(authBtnIndex < themeToggleIndex, '#themeToggleBtn must be rendered after #authBtn in DOM to sit on the right-hand side');
+  assert.ok(hebrewDateIndex < themeToggleIndex, '#themeToggleBtn must be rendered after #hebrewDateBadge in DOM');
+
+  // 2. CSS orders #themeToggleBtn on the right with order: 10
+  assert.ok(html.includes('.header-right #themeToggleBtn'), 'CSS must specify .header-right #themeToggleBtn styling');
+  assert.ok(html.includes('order: 10'), '#themeToggleBtn must have order: 10 in CSS');
+
+  // 3. Mobile media query keeps theme toggle visible in header for logged-out / guest users
+  assert.ok(html.includes('body:not(.is-logged-in) #themeToggleBtn'), 'CSS must ensure themeToggleBtn is visible for non-logged-in users on mobile');
+  assert.ok(html.includes('display: inline-flex !important'), 'Non-logged-in theme toggle must have display: inline-flex !important');
+
+  // 4. Mobile media query hides theme toggle when logged in (accessible via gear settings menu)
+  assert.ok(html.includes('body.is-logged-in #themeToggleBtn'), 'CSS must hide header themeToggleBtn when logged in on mobile');
+
+  // 5. Client-side renderAuthBtn updates is-logged-in class on document.body
+  assert.ok(html.includes("document.body.classList.add('is-logged-in')"), 'renderAuthBtn must add is-logged-in to body when user is logged in');
+  assert.ok(html.includes("document.body.classList.remove('is-logged-in')"), 'renderAuthBtn must remove is-logged-in from body when user is logged out');
+
+  console.log('  ✅ Logged-out header theme toggle button & right-hand side placement verified.');
+}
+
 async function runAll() {
   try {
     await testHomepage();
@@ -712,6 +747,7 @@ async function runAll() {
     await testPlaylistsEnhancementsRound2();
     await testPlaylistUrlDeepLinks();
     await testDualReviewAccessibilityAndSharingRemediation();
+    await testLoggedOutHeaderThemeToggle();
     console.log('\n🎉 ALL BASIC FUNCTIONALITY, ARTICLE READER & LIQUID MODE TESTS PASSED SUCCESSFULLY!');
   } catch (err) {
     console.error('\n❌ Test failed:', err);
