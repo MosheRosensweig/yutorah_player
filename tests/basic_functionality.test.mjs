@@ -750,6 +750,7 @@ async function testPwaIntegration() {
     const res = await worker.fetch(req, mockEnv, mockCtx);
     assert.equal(res.status, 200, `${manifestPath} should return 200 OK`);
     assert.ok(res.headers.get('Content-Type')?.includes('application/manifest+json'), `${manifestPath} content-type should be application/manifest+json`);
+    assert.ok(res.headers.get('Cache-Control')?.includes('no-cache'), `${manifestPath} Cache-Control should be no-cache`);
     const manifest = await res.json();
     assert.equal(manifest.name, 'YUTorah Player', 'Manifest name should be YUTorah Player');
     assert.equal(manifest.short_name, 'YUTorah', 'Manifest short_name should be YUTorah');
@@ -758,8 +759,8 @@ async function testPwaIntegration() {
     assert.equal(manifest.background_color, '#0f141c', 'Manifest background_color should be #0f141c');
     assert.equal(manifest.theme_color, '#2b4c7e', 'Manifest theme_color should be #2b4c7e');
     assert.ok(Array.isArray(manifest.icons) && manifest.icons.length >= 4, 'Manifest must declare at least 4 icon configurations');
-    assert.ok(manifest.icons.some(i => i.src === '/icons/icon-192.png' && i.sizes === '192x192'), 'Manifest must include 192x192 icon');
-    assert.ok(manifest.icons.some(i => i.src === '/icons/icon-512.png' && i.sizes === '512x512'), 'Manifest must include 512x512 icon');
+    assert.ok(manifest.icons.some(i => i.src.includes('icon-shield-192.png') && i.sizes === '192x192'), 'Manifest must include 192x192 shield icon');
+    assert.ok(manifest.icons.some(i => i.src.includes('icon-shield-512.png') && i.sizes === '512x512'), 'Manifest must include 512x512 shield icon');
     assert.ok(manifest.icons.some(i => i.purpose === 'maskable'), 'Manifest must include maskable icon for Android adaptive icons');
   }
 
@@ -770,14 +771,14 @@ async function testPwaIntegration() {
   assert.ok(swRes.headers.get('Content-Type')?.includes('application/javascript'), '/sw.js should have application/javascript content-type');
   assert.equal(swRes.headers.get('Service-Worker-Allowed'), '/', '/sw.js must set Service-Worker-Allowed: /');
   const swContent = await swRes.text();
-  assert.ok(swContent.includes('yutorah-pwa-v2'), 'SW must define CACHE_NAME v2');
+  assert.ok(swContent.includes('yutorah-pwa-v3'), 'SW must define CACHE_NAME v3');
   assert.ok(swContent.includes("req.headers.has('range')"), 'SW must bypass streaming audio range requests');
   assert.ok(swContent.includes('shiurim.yutorah.net'), 'SW must bypass audio CDN requests');
   assert.ok(swContent.includes("req.mode === 'navigate'"), 'SW must handle navigation requests with network-first');
 
   // 3. PNG and SVG Icons endpoints (Authentic Yeshiva University Shield)
   const pngSig = [137, 80, 78, 71, 13, 10, 26, 10];
-  for (const iconPath of ['/icons/icon-192.png', '/icons/icon-maskable-192.png', '/favicon.ico']) {
+  for (const iconPath of ['/icons/icon-shield-192.png', '/icons/icon-192.png', '/icons/icon-maskable-192.png', '/favicon.ico']) {
     const iconReq = new Request(`https://yutorah-player.mrosensweig.workers.dev${iconPath}`);
     const iconRes = await worker.fetch(iconReq, mockEnv, mockCtx);
     assert.equal(iconRes.status, 200, `${iconPath} should return 200 OK`);
@@ -787,7 +788,7 @@ async function testPwaIntegration() {
     assert.equal(iconBuf.length, 8863, `${iconPath} length should match expected 192 shield icon bytes`);
   }
 
-  for (const iconPath of ['/icons/icon-512.png', '/icons/icon-maskable-512.png']) {
+  for (const iconPath of ['/icons/icon-shield-512.png', '/icons/icon-512.png', '/icons/icon-maskable-512.png']) {
     const iconReq = new Request(`https://yutorah-player.mrosensweig.workers.dev${iconPath}`);
     const iconRes = await worker.fetch(iconReq, mockEnv, mockCtx);
     assert.equal(iconRes.status, 200, `${iconPath} should return 200 OK`);
@@ -808,11 +809,11 @@ async function testPwaIntegration() {
   const homeReq = new Request('https://yutorah-player.mrosensweig.workers.dev/');
   const homeRes = await worker.fetch(homeReq, mockEnv, mockCtx);
   const html = await homeRes.text();
-  assert.ok(html.includes('<link rel="manifest" href="/manifest.json">'), 'HTML must link to /manifest.json');
+  assert.ok(html.includes('<link rel="manifest" href="/manifest.json?v=3">'), 'HTML must link to /manifest.json?v=3');
   assert.ok(html.includes('<meta name="mobile-web-app-capable" content="yes">'), 'HTML must include mobile-web-app-capable');
   assert.ok(html.includes('<meta name="apple-mobile-web-app-capable" content="yes">'), 'HTML must include apple-mobile-web-app-capable');
   assert.ok(html.includes('<meta name="apple-mobile-web-app-title" content="YUTorah">'), 'HTML must include apple-mobile-web-app-title');
-  assert.ok(html.includes('<link rel="apple-touch-icon" href="/icons/icon-192.png">'), 'HTML must link to apple-touch-icon');
+  assert.ok(html.includes('<link rel="apple-touch-icon" href="/icons/icon-shield-192.png?v=3">'), 'HTML must link to apple-touch-icon with v=3');
   assert.ok(html.includes("navigator.serviceWorker.register('/sw.js'"), 'HTML must register service worker /sw.js');
 
   console.log('  ✅ PWA manifest, service worker caching, app icons (192 & 512 PNG/SVG), meta tags & registration verified.');

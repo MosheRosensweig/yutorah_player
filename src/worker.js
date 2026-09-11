@@ -1751,34 +1751,28 @@ const PWA_MANIFEST = {
   categories: ["education", "religion", "audio"],
   icons: [
     {
-      src: "/icons/icon-192.png",
+      src: "/icons/icon-shield-192.png?v=3",
       sizes: "192x192",
       type: "image/png",
       purpose: "any"
     },
     {
-      src: "/icons/icon-512.png",
+      src: "/icons/icon-shield-512.png?v=3",
       sizes: "512x512",
       type: "image/png",
       purpose: "any"
     },
     {
-      src: "/icons/icon-maskable-192.png",
+      src: "/icons/icon-shield-192.png?v=3",
       sizes: "192x192",
       type: "image/png",
       purpose: "maskable"
     },
     {
-      src: "/icons/icon-maskable-512.png",
+      src: "/icons/icon-shield-512.png?v=3",
       sizes: "512x512",
       type: "image/png",
       purpose: "maskable"
-    },
-    {
-      src: "/icons/icon.svg",
-      sizes: "any",
-      type: "image/svg+xml",
-      purpose: "any maskable"
     }
   ]
 };
@@ -1792,13 +1786,12 @@ const PWA_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 5
 </svg>`;
 
 const SW_SCRIPT = `// YUTorah Player Service Worker v1.0.0
-const CACHE_NAME = 'yutorah-pwa-v2';
+const CACHE_NAME = 'yutorah-pwa-v3';
 const PRECACHE_URLS = [
   '/',
-  '/manifest.json',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
-  '/icons/icon.svg'
+  '/manifest.json?v=3',
+  '/icons/icon-shield-192.png?v=3',
+  '/icons/icon-shield-512.png?v=3'
 ];
 
 self.addEventListener('install', (event) => {
@@ -1944,7 +1937,7 @@ function handlePwaRoutes(request, url) {
       headers: {
         'Content-Type': 'application/manifest+json; charset=utf-8',
         'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800'
+        'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0'
       }
     });
   }
@@ -1960,7 +1953,12 @@ function handlePwaRoutes(request, url) {
     });
   }
 
-  if (url.pathname === '/icons/icon-192.png' || url.pathname === '/icons/icon-maskable-192.png' || url.pathname === '/favicon.ico') {
+  if (
+    url.pathname === '/icons/icon-shield-192.png' ||
+    url.pathname === '/icons/icon-192.png' ||
+    url.pathname === '/icons/icon-maskable-192.png' ||
+    url.pathname === '/favicon.ico'
+  ) {
     return new Response(getIcon192Bytes(), {
       headers: {
         'Content-Type': 'image/png',
@@ -1970,7 +1968,11 @@ function handlePwaRoutes(request, url) {
     });
   }
 
-  if (url.pathname === '/icons/icon-512.png' || url.pathname === '/icons/icon-maskable-512.png') {
+  if (
+    url.pathname === '/icons/icon-shield-512.png' ||
+    url.pathname === '/icons/icon-512.png' ||
+    url.pathname === '/icons/icon-maskable-512.png'
+  ) {
     return new Response(getIcon512Bytes(), {
       headers: {
         'Content-Type': 'image/png',
@@ -4818,8 +4820,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(title)} — YUTorah Enhanced</title>
-  <link rel="icon" type="image/png" href="https://cdnyutorah.cachefly.net/public/v3/images/logo-university-2x.png">
-  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/png" href="/icons/icon-shield-192.png?v=3">
+  <link rel="manifest" href="/manifest.json?v=3">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -4827,9 +4829,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   <meta name="application-name" content="YUTorah">
   <meta name="theme-color" content="#2b4c7e" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0f141c" media="(prefers-color-scheme: dark)">
-  <link rel="apple-touch-icon" href="/icons/icon-192.png">
-  <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192.png">
-  <link rel="apple-touch-icon" sizes="512x512" href="/icons/icon-512.png">
+  <link rel="apple-touch-icon" href="/icons/icon-shield-192.png?v=3">
+  <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-shield-192.png?v=3">
+  <link rel="apple-touch-icon" sizes="512x512" href="/icons/icon-shield-512.png?v=3">
   <script>
     (function() {
       try {
