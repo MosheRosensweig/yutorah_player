@@ -2277,372 +2277,1946 @@ function normalizeShiur(s) {
   return { id, title, speaker, photo, duration, date, category, isNew, description, keywords, series, location };
 }
 
-const DEV_PUBLIC_SEEDS = [    // 10 Playlists for Andrew Ohiliote
-    {
-      id: 'pl_ao_elul',
-      ownerName: 'Andrew Ohiliote',
-      title: 'Elul & Teshuvah Essentials',
-      description: 'Foundational shiurim on teshuvah, Selichos, and preparing the heart for the Yamim Noraim.',
-      tags: { teachers: [{ name: 'Rabbi Shaya Katz' }, { name: 'Rabbi Hershel Schachter' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Elul & Teshuvah' }] },
-      items: [
-        { id: '1053000', title: 'The Power of Teshuvah in Elul', speaker: 'Rabbi Shaya Katz', duration: '42:15' },
-        { id: '1052980', title: 'Hilchos Selichos and Viduy', speaker: 'Rabbi Hershel Schachter', duration: '38:40' },
-        { id: '979218', title: 'Preparing the Soul for Rosh Hashanah', speaker: 'Rabbi Michael Rosensweig', duration: '51:10' }
+const DEV_PUBLIC_SEEDS = [
+  {
+    "id": "pl_ao_elul",
+    "ownerName": "Andrew Ohiliote",
+    "title": "Elul & Teshuvah Essentials",
+    "description": "Foundational shiurim on teshuvah, Selichos, and preparing the heart for the Yamim Noraim.",
+    "tags": {
+      "teachers": [
+        {
+          "name": "Rabbi Shaya Katz"
+        },
+        {
+          "name": "Rabbi Hershel Schachter"
+        }
+      ],
+      "venues": [
+        {
+          "name": "Yeshiva University"
+        }
+      ],
+      "topics": [
+        {
+          "name": "Elul & Teshuvah"
+        }
       ]
     },
-    {
-      id: 'pl_ao_shabbos',
-      ownerName: 'Andrew Ohiliote',
-      title: 'Foundations of Shabbos & Muktzah',
-      description: 'Deep halachic analysis of Hilchos Shabbos, Muktzah categories, and contemporary melacha applications.',
-      tags: { teachers: [{ name: 'Rabbi Michael Rosensweig' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Shabbat' }] },
-      items: [
-        { id: '979218', title: "Foundations of Muktzah: Kli SheMelachto L'Issur", speaker: 'Rabbi Michael Rosensweig', duration: '55:20' },
-        { id: '979219', title: 'Gramada and Electricity on Shabbat', speaker: 'Rabbi Michael Rosensweig', duration: '48:30' },
-        { id: '1052980', title: 'Borer in Modern Food Preparation', speaker: 'Rabbi Hershel Schachter', duration: '36:15' }
+    "items": [
+      {
+        "id": "1053000",
+        "title": "The Power of Teshuvah in Elul",
+        "speaker": "Rabbi Shaya Katz",
+        "duration": "42:15"
+      },
+      {
+        "id": "1052980",
+        "title": "Hilchos Selichos and Viduy",
+        "speaker": "Rabbi Hershel Schachter",
+        "duration": "38:40"
+      },
+      {
+        "id": "979218",
+        "title": "Preparing the Soul for Rosh Hashanah",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "51:10"
+      },
+      {
+        "id": "1052970",
+        "title": "The Rambam’s Definition of Teshuvah Gemurah",
+        "speaker": "Rabbi Mayer Twersky",
+        "duration": "46:25"
+      },
+      {
+        "id": "1052960",
+        "title": "Teshuvah MeAhavah vs. Teshuvah MeYirah",
+        "speaker": "Rabbi Moshe Taragin",
+        "duration": "39:50"
+      },
+      {
+        "id": "1052950",
+        "title": "The Thirteen Middos HaRachamim in Selichos",
+        "speaker": "Rabbi Yaakov Neuburger",
+        "duration": "44:30"
+      }
+    ]
+  },
+  {
+    "id": "pl_ao_shabbos",
+    "ownerName": "Andrew Ohiliote",
+    "title": "Foundations of Shabbos & Muktzah",
+    "description": "Deep halachic analysis of Hilchos Shabbos, Muktzah categories, and contemporary melacha applications.",
+    "tags": {
+      "teachers": [
+        {
+          "name": "Rabbi Michael Rosensweig"
+        }
+      ],
+      "venues": [
+        {
+          "name": "Yeshiva University"
+        }
+      ],
+      "topics": [
+        {
+          "name": "Shabbat"
+        }
       ]
     },
-    {
-      id: 'pl_ao_medical',
-      ownerName: 'Andrew Ohiliote',
-      title: 'Contemporary Halacha & Medical Ethics',
-      description: 'End-of-life decision making, triage ethics, fertility halacha, and hospital Shabbos protocols.',
-      tags: { teachers: [{ name: 'Rabbi Aryeh Lebowitz' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Medical Ethics' }] },
-      items: [
-        { id: '1052980', title: 'Medical Triage and Resource Allocation in Halacha', speaker: 'Rabbi Aryeh Lebowitz', duration: '50:15' },
-        { id: '1052990', title: 'Pikuach Nefesh on Shabbat in Hospitals', speaker: 'Rabbi Aryeh Lebowitz', duration: '46:40' },
-        { id: '1053000', title: 'Halachic Issues in Organ Donation', speaker: 'Rabbi Hershel Schachter', duration: '54:10' }
+    "items": [
+      {
+        "id": "979218",
+        "title": "Foundations of Muktzah: Kli SheMelachto L’Issur",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "55:20"
+      },
+      {
+        "id": "979219",
+        "title": "Gramada and Electricity on Shabbat",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "48:30"
+      },
+      {
+        "id": "1052980",
+        "title": "Borer in Modern Food Preparation",
+        "speaker": "Rabbi Hershel Schachter",
+        "duration": "36:15"
+      },
+      {
+        "id": "1052970",
+        "title": "Bishul and Kli Rishon vs. Kli Sheni",
+        "speaker": "Rabbi Aryeh Lebowitz",
+        "duration": "43:50"
+      },
+      {
+        "id": "1052960",
+        "title": "Hot Water Dispensers and Urns on Shabbos",
+        "speaker": "Rabbi Hershel Schachter",
+        "duration": "40:10"
+      },
+      {
+        "id": "1052950",
+        "title": "Amira L’Akum in Institutional Settings",
+        "speaker": "Rabbi Yaakov Neuburger",
+        "duration": "47:15"
+      },
+      {
+        "id": "1052940",
+        "title": "Kavod and Oneg Shabbos: Halachic Parameters",
+        "speaker": "Rabbi Mayer Twersky",
+        "duration": "52:00"
+      },
+      {
+        "id": "1052930",
+        "title": "Eruv Chatzeirot in Suburbia and Cities",
+        "speaker": "Rabbi Hershel Schachter",
+        "duration": "49:45"
+      }
+    ]
+  },
+  {
+    "id": "pl_ao_medical",
+    "ownerName": "Andrew Ohiliote",
+    "title": "Contemporary Halacha & Medical Ethics",
+    "description": "End-of-life decision making, triage ethics, fertility halacha, and hospital Shabbos protocols.",
+    "tags": {
+      "teachers": [
+        {
+          "name": "Rabbi Aryeh Lebowitz"
+        }
+      ],
+      "venues": [
+        {
+          "name": "Yeshiva University"
+        }
+      ],
+      "topics": [
+        {
+          "name": "Medical Ethics"
+        }
       ]
     },
-    {
-      id: 'pl_ao_tefillah',
-      ownerName: 'Andrew Ohiliote',
-      title: 'Tefillah: Meaning, Structure & Kavana',
-      description: 'A deep journey through Shacharis, Shemoneh Esrei, and the theology of Jewish prayer.',
-      tags: { teachers: [{ name: 'Rabbi Yaakov Neuburger' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Tefillah' }] },
-      items: [
-        { id: '1052980', title: 'Structure and Flow of the Shemoneh Esrei', speaker: 'Rabbi Yaakov Neuburger', duration: '39:50' },
-        { id: '1053000', title: 'Kavana in Birchot Krias Shema', speaker: 'Rabbi Yaakov Neuburger', duration: '43:15' },
-        { id: '979218', title: "The Rav's Philosophy of Prayer", speaker: 'Rabbi Michael Rosensweig', duration: '49:25' }
+    "items": [
+      {
+        "id": "1052980",
+        "title": "Medical Triage and Resource Allocation in Halacha",
+        "speaker": "Rabbi Aryeh Lebowitz",
+        "duration": "50:15"
+      },
+      {
+        "id": "1052990",
+        "title": "Pikuach Nefesh on Shabbat in Hospitals",
+        "speaker": "Rabbi Aryeh Lebowitz",
+        "duration": "46:40"
+      },
+      {
+        "id": "1053000",
+        "title": "Halachic Issues in Organ Donation",
+        "speaker": "Rabbi Hershel Schachter",
+        "duration": "54:10"
+      },
+      {
+        "id": "1052970",
+        "title": "End of Life Decision-Making and DNR Orders",
+        "speaker": "Rabbi Yaakov Neuburger",
+        "duration": "48:25"
+      },
+      {
+        "id": "1052960",
+        "title": "Fertility Treatments and Halacha",
+        "speaker": "Rabbi Aryeh Lebowitz",
+        "duration": "42:30"
+      }
+    ]
+  },
+  {
+    "id": "pl_ao_tefillah",
+    "ownerName": "Andrew Ohiliote",
+    "title": "Tefillah: Meaning, Structure & Kavana",
+    "description": "A deep journey through Shacharis, Shemoneh Esrei, and the theology of Jewish prayer.",
+    "tags": {
+      "teachers": [
+        {
+          "name": "Rabbi Yaakov Neuburger"
+        }
+      ],
+      "venues": [
+        {
+          "name": "Yeshiva University"
+        }
+      ],
+      "topics": [
+        {
+          "name": "Tefillah"
+        }
       ]
     },
-    {
-      id: 'pl_ao_kashrus',
-      ownerName: 'Andrew Ohiliote',
-      title: 'Kashrus in the Modern Kitchen',
-      description: 'Practical halachos of meat and milk, tevilas keilim, dishwasher kashering, and contemporary food production.',
-      tags: { teachers: [{ name: 'Rabbi Hershel Schachter' }, { name: 'Rabbi Aryeh Lebowitz' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Kashrus' }] },
-      items: [
-        { id: '1052980', title: 'Modern Food Ingredients and Kashering Appliances', speaker: 'Rabbi Hershel Schachter', duration: '44:30' },
-        { id: '1052990', title: 'Bishul Akum and Commercial Food Preparation', speaker: 'Rabbi Aryeh Lebowitz', duration: '37:50' },
-        { id: '1053000', title: "Basar B'Chalav: Complex Modern Scenarios", speaker: 'Rabbi Hershel Schachter', duration: '52:15' }
+    "items": [
+      {
+        "id": "1052980",
+        "title": "Structure and Flow of the Shemoneh Esrei",
+        "speaker": "Rabbi Yaakov Neuburger",
+        "duration": "39:50"
+      },
+      {
+        "id": "1053000",
+        "title": "Kavana in Birchot Krias Shema",
+        "speaker": "Rabbi Yaakov Neuburger",
+        "duration": "43:15"
+      },
+      {
+        "id": "979218",
+        "title": "The Rav’s Philosophy of Prayer",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "49:25"
+      },
+      {
+        "id": "1052970",
+        "title": "Tefillah BeTzibbur: Obligation or Privilege?",
+        "speaker": "Rabbi Hershel Schachter",
+        "duration": "45:10"
+      },
+      {
+        "id": "1052960",
+        "title": "Chazaras HaShatz and Birchas Kohanim",
+        "speaker": "Rabbi Mayer Twersky",
+        "duration": "41:35"
+      },
+      {
+        "id": "1052950",
+        "title": "Pesukei D’Zimrah: Preparation for Encounter",
+        "speaker": "Rabbi Moshe Taragin",
+        "duration": "38:45"
+      },
+      {
+        "id": "1052940",
+        "title": "Tefillas Tashlumin and Missed Prayers",
+        "speaker": "Rabbi Aryeh Lebowitz",
+        "duration": "36:20"
+      }
+    ]
+  },
+  {
+    "id": "pl_ao_kashrus",
+    "ownerName": "Andrew Ohiliote",
+    "title": "Kashrus in the Modern Kitchen",
+    "description": "Practical halachos of meat and milk, tevilas keilim, dishwasher kashering, and contemporary food production.",
+    "tags": {
+      "teachers": [
+        {
+          "name": "Rabbi Hershel Schachter"
+        },
+        {
+          "name": "Rabbi Aryeh Lebowitz"
+        }
+      ],
+      "venues": [
+        {
+          "name": "Yeshiva University"
+        }
+      ],
+      "topics": [
+        {
+          "name": "Kashrus"
+        }
       ]
     },
-    {
-      id: 'pl_ao_business',
-      ownerName: 'Andrew Ohiliote',
-      title: 'Business Ethics & Choshen Mishpat',
-      description: 'Halachic principles of contracts, copyright, competition, dina d\'malchuta, and fair workplace practices.',
-      tags: { teachers: [{ name: 'Rabbi Michael Rosensweig' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Business Ethics' }] },
-      items: [
-        { id: '979218', title: "Ona'ah and Price Disclosure in Contemporary Commerce", speaker: 'Rabbi Michael Rosensweig', duration: '50:40' },
-        { id: '979219', title: "Intellectual Property and Hasagas G'vul in Halacha", speaker: 'Rabbi Michael Rosensweig', duration: '47:15' },
-        { id: '1053000', title: "Dina D'Malchuta Dina and Corporate Ethics", speaker: 'Rabbi Hershel Schachter', duration: '41:20' }
+    "items": [
+      {
+        "id": "1052980",
+        "title": "Modern Food Ingredients and Kashering Appliances",
+        "speaker": "Rabbi Hershel Schachter",
+        "duration": "44:30"
+      },
+      {
+        "id": "1052990",
+        "title": "Bishul Akum and Commercial Food Preparation",
+        "speaker": "Rabbi Aryeh Lebowitz",
+        "duration": "37:50"
+      },
+      {
+        "id": "1053000",
+        "title": "Basar B’Chalav: Complex Modern Scenarios",
+        "speaker": "Rabbi Hershel Schachter",
+        "duration": "52:15"
+      },
+      {
+        "id": "1052970",
+        "title": "Tevilas Keilim for Disposable and Electrical Appliances",
+        "speaker": "Rabbi Aryeh Lebowitz",
+        "duration": "41:10"
+      }
+    ]
+  },
+  {
+    "id": "pl_ao_business",
+    "ownerName": "Andrew Ohiliote",
+    "title": "Business Ethics & Choshen Mishpat",
+    "description": "Halachic principles of contracts, copyright, competition, dina d’malchuta, and fair workplace practices.",
+    "tags": {
+      "teachers": [
+        {
+          "name": "Rabbi Michael Rosensweig"
+        }
+      ],
+      "venues": [
+        {
+          "name": "Yeshiva University"
+        }
+      ],
+      "topics": [
+        {
+          "name": "Business Ethics"
+        }
       ]
     },
-    {
-      id: 'pl_ao_berachos',
-      ownerName: 'Andrew Ohiliote',
-      title: 'Hilchos Berachos & Daily Living',
-      description: 'Comprehensive review of Birkas HaNehenin, Ikar v\'Tafel, Shinui Makom, and Tefillas HaDerech.',
-      tags: { teachers: [{ name: 'Rabbi Aryeh Lebowitz' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Berachot' }] },
-      items: [
-        { id: '1052980', title: 'Birkas HaMazon: Chiyuv and Shiurim', speaker: 'Rabbi Aryeh Lebowitz', duration: '38:15' },
-        { id: '1053000', title: "Ikar v'Tafel in Granola and Breakfast Cereals", speaker: 'Rabbi Aryeh Lebowitz', duration: '42:30' },
-        { id: '1052990', title: "Birchos HaRe'ach and Special Occasions", speaker: 'Rabbi Yaakov Neuburger', duration: '35:45' }
+    "items": [
+      {
+        "id": "979218",
+        "title": "Ona’ah and Price Disclosure in Contemporary Commerce",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "50:40"
+      },
+      {
+        "id": "979219",
+        "title": "Intellectual Property and Hasagas G’vul in Halacha",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "47:15"
+      },
+      {
+        "id": "1053000",
+        "title": "Dina D’Malchuta Dina and Corporate Ethics",
+        "speaker": "Rabbi Hershel Schachter",
+        "duration": "41:20"
+      },
+      {
+        "id": "1052980",
+        "title": "Ribbis in Modern Banking and Heter Iska",
+        "speaker": "Rabbi Aryeh Lebowitz",
+        "duration": "45:30"
+      },
+      {
+        "id": "1052970",
+        "title": "Whistleblowing and Confidentiality Agreements",
+        "speaker": "Rabbi Yaakov Neuburger",
+        "duration": "43:15"
+      },
+      {
+        "id": "1052960",
+        "title": "Severance Pay and Employment Contracts in Beis Din",
+        "speaker": "Rabbi Hershel Schachter",
+        "duration": "48:50"
+      },
+      {
+        "id": "1052950",
+        "title": "Honesty in Negotiations and Genevas Daas",
+        "speaker": "Rabbi Mayer Twersky",
+        "duration": "39:40"
+      },
+      {
+        "id": "1052940",
+        "title": "Returning Lost Objects in Digital Spaces",
+        "speaker": "Rabbi Aryeh Lebowitz",
+        "duration": "36:10"
+      },
+      {
+        "id": "1052930",
+        "title": "Stock Market Trading and Ethical Investments",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "53:05"
+      }
+    ]
+  },
+  {
+    "id": "pl_ao_berachos",
+    "ownerName": "Andrew Ohiliote",
+    "title": "Hilchos Berachos & Daily Living",
+    "description": "Comprehensive review of Birkas HaNehenin, Ikar v’Tafel, Shinui Makom, and Tefillas HaDerech.",
+    "tags": {
+      "teachers": [
+        {
+          "name": "Rabbi Aryeh Lebowitz"
+        }
+      ],
+      "venues": [
+        {
+          "name": "Yeshiva University"
+        }
+      ],
+      "topics": [
+        {
+          "name": "Berachot"
+        }
       ]
     },
-    {
-      id: 'pl_ao_talmud',
-      ownerName: 'Andrew Ohiliote',
-      title: 'Talmudic Methodology: The Brisker Derech',
-      description: 'Conceptual analysis of Chafetz vs Gavra, Pesak vs Limud, and the classic analytical frameworks of Reb Chaim.',
-      tags: { teachers: [{ name: 'Rabbi Michael Rosensweig' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Talmud' }] },
-      items: [
-        { id: '979218', title: 'Brisker Methodology: Defining Cheftza vs Gavra', speaker: 'Rabbi Michael Rosensweig', duration: '58:10' },
-        { id: '979219', title: 'Two Dinim in Sukkah and Mitzvos Aseh', speaker: 'Rabbi Michael Rosensweig', duration: '53:40' },
-        { id: '1053000', title: "Reb Chaim on Rambam: Hilchos Chometz U'Matzah", speaker: 'Rabbi Mayer Twersky', duration: '51:00' }
+    "items": [
+      {
+        "id": "1052980",
+        "title": "Birkas HaMazon: Chiyuv and Shiurim",
+        "speaker": "Rabbi Aryeh Lebowitz",
+        "duration": "38:15"
+      },
+      {
+        "id": "1053000",
+        "title": "Ikar v’Tafel in Granola and Breakfast Cereals",
+        "speaker": "Rabbi Aryeh Lebowitz",
+        "duration": "42:30"
+      },
+      {
+        "id": "1052990",
+        "title": "Birchos HaRe’ach and Special Occasions",
+        "speaker": "Rabbi Yaakov Neuburger",
+        "duration": "35:45"
+      }
+    ]
+  },
+  {
+    "id": "pl_ao_talmud",
+    "ownerName": "Andrew Ohiliote",
+    "title": "Talmudic Methodology: The Brisker Derech",
+    "description": "Conceptual analysis of Chafetz vs Gavra, Pesak vs Limud, and the classic analytical frameworks of Reb Chaim.",
+    "tags": {
+      "teachers": [
+        {
+          "name": "Rabbi Michael Rosensweig"
+        }
+      ],
+      "venues": [
+        {
+          "name": "Yeshiva University"
+        }
+      ],
+      "topics": [
+        {
+          "name": "Talmud"
+        }
       ]
     },
-    {
-      id: 'pl_ao_devarim',
-      ownerName: 'Andrew Ohiliote',
-      title: 'Sefer Devarim: Covenant and Memory',
-      description: 'Moshe Rabbeinu\'s farewell address, the theology of Teshuva in the plains of Moav, and historical destiny.',
-      tags: { teachers: [{ name: 'Rabbi Moshe Taragin' }], venues: [{ name: 'Yeshivat Har Etzion' }], topics: [{ name: 'Tanach' }] },
-      items: [
-        { id: '1053000', title: "Ha'azinu: The Song of History and Destiny", speaker: 'Rabbi Moshe Taragin', duration: '45:30' },
-        { id: '1052990', title: 'Nitzavim: Teshuvah and Free Will in Devarim', speaker: 'Rabbi Moshe Taragin', duration: '40:20' },
-        { id: '979218', title: 'Eikev: Tefillah and Eretz Yisrael in Devarim', speaker: 'Rabbi Michael Rosensweig', duration: '48:15' }
+    "items": [
+      {
+        "id": "979218",
+        "title": "Brisker Methodology: Defining Cheftza vs Gavra",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "58:10"
+      },
+      {
+        "id": "979219",
+        "title": "Two Dinim in Sukkah and Mitzvos Aseh",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "53:40"
+      },
+      {
+        "id": "1053000",
+        "title": "Reb Chaim on Rambam: Hilchos Chometz U’Matzah",
+        "speaker": "Rabbi Mayer Twersky",
+        "duration": "51:00"
+      },
+      {
+        "id": "1052980",
+        "title": "Rav Chaim on Pikuach Nefesh: Dichuyah vs. Hutrah",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "56:15"
+      },
+      {
+        "id": "1052970",
+        "title": "The Brisker Conceptualization of Hazakah",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "54:30"
+      },
+      {
+        "id": "1052960",
+        "title": "Pesak vs. Limud in the Brisker Tradition",
+        "speaker": "Rabbi Mayer Twersky",
+        "duration": "49:20"
+      },
+      {
+        "id": "1052950",
+        "title": "Reb Velvel on Kodashim and Zevachim",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "57:45"
+      },
+      {
+        "id": "1052940",
+        "title": "Rav Soloveitchik on Mitzvos Shebalev",
+        "speaker": "Rabbi Mayer Twersky",
+        "duration": "48:10"
+      },
+      {
+        "id": "1052930",
+        "title": "Two Dinim in Shechitah: Machshire vs. Mishtamesh",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "55:00"
+      },
+      {
+        "id": "1052920",
+        "title": "The Role of Sevara in Talmudic Jurisprudence",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "52:40"
+      }
+    ]
+  },
+  {
+    "id": "pl_ao_devarim",
+    "ownerName": "Andrew Ohiliote",
+    "title": "Sefer Devarim: Covenant and Memory",
+    "description": "Moshe Rabbeinu’s farewell address, the theology of Teshuva in the plains of Moav, and historical destiny.",
+    "tags": {
+      "teachers": [
+        {
+          "name": "Rabbi Moshe Taragin"
+        }
+      ],
+      "venues": [
+        {
+          "name": "Yeshivat Har Etzion"
+        }
+      ],
+      "topics": [
+        {
+          "name": "Tanach"
+        }
       ]
     },
-    {
-      id: 'pl_ao_aveilus',
-      ownerName: 'Andrew Ohiliote',
-      title: 'Hilchos Aveilus & Consolation',
-      description: 'The halachic progression of mourning from Aninus through Shloshim, Nichum Aveilim, and Kaddish.',
-      tags: { teachers: [{ name: 'Rabbi Hershel Schachter' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Halacha' }] },
-      items: [
-        { id: '1052980', title: 'The Stages of Mourning: Aninus and Shiva', speaker: 'Rabbi Hershel Schachter', duration: '46:20' },
-        { id: '1052990', title: 'Nichum Aveilim: Meaning and Protocol', speaker: 'Rabbi Hershel Schachter', duration: '39:15' },
-        { id: '979218', title: 'Kaddish and Yahrtzeit: Spiritual Dimensions', speaker: 'Rabbi Michael Rosensweig', duration: '44:50' }
+    "items": [
+      {
+        "id": "1053000",
+        "title": "Ha’azinu: The Song of History and Destiny",
+        "speaker": "Rabbi Moshe Taragin",
+        "duration": "45:30"
+      },
+      {
+        "id": "1052990",
+        "title": "Nitzavim: Teshuvah and Free Will in Devarim",
+        "speaker": "Rabbi Moshe Taragin",
+        "duration": "40:20"
+      },
+      {
+        "id": "979218",
+        "title": "Eikev: Tefillah and Eretz Yisrael in Devarim",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "48:15"
+      },
+      {
+        "id": "1052980",
+        "title": "Va’eschanan: Ten Commandments and Shema",
+        "speaker": "Rabbi Moshe Taragin",
+        "duration": "43:50"
+      },
+      {
+        "id": "1052970",
+        "title": "Vezos HaBerachah: Moshe’s Farewell to the Tribes",
+        "speaker": "Rabbi Yaakov Neuburger",
+        "duration": "39:10"
+      }
+    ]
+  },
+  {
+    "id": "pl_ao_aveilus",
+    "ownerName": "Andrew Ohiliote",
+    "title": "Hilchos Aveilus & Consolation",
+    "description": "The halachic progression of mourning from Aninus through Shloshim, Nichum Aveilim, and Kaddish.",
+    "tags": {
+      "teachers": [
+        {
+          "name": "Rabbi Hershel Schachter"
+        }
+      ],
+      "venues": [
+        {
+          "name": "Yeshiva University"
+        }
+      ],
+      "topics": [
+        {
+          "name": "Halacha"
+        }
       ]
     },
-
-    // 10 Playlists for Moshe Mendelwitz
-    {
-      id: 'pl_mm_roshhashanah',
-      ownerName: 'Moshe Mendelwitz',
-      title: 'Rosh Hashanah Machzor Insights',
-      description: 'Tefillos of Malchiyos, Zichronos, Shofros, and halachos of Shofar blowing.',
-      tags: { teachers: [{ name: 'Rabbi Mayer Twersky' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Rosh Hashanah' }] },
-      items: [
-        { id: '1053000', title: 'The Philosophy of Malchiyos', speaker: 'Rabbi Mayer Twersky', duration: '44:00' },
-        { id: '1052990', title: 'Hearing the Shofar: Kavana and Halacha', speaker: 'Rabbi Hershel Schachter', duration: '41:10' },
-        { id: '979218', title: 'Zichronos and Shofros: Divine Remembrances', speaker: 'Rabbi Michael Rosensweig', duration: '49:30' }
+    "items": [
+      {
+        "id": "1052980",
+        "title": "The Stages of Mourning: Aninus and Shiva",
+        "speaker": "Rabbi Hershel Schachter",
+        "duration": "46:20"
+      },
+      {
+        "id": "1052990",
+        "title": "Nichum Aveilim: Meaning and Protocol",
+        "speaker": "Rabbi Hershel Schachter",
+        "duration": "39:15"
+      },
+      {
+        "id": "979218",
+        "title": "Kaddish and Yahrtzeit: Spiritual Dimensions",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "44:50"
+      },
+      {
+        "id": "1052970",
+        "title": "Hesped: Obligation to the Deceased vs. the Living",
+        "speaker": "Rabbi Mayer Twersky",
+        "duration": "42:00"
+      }
+    ]
+  },
+  {
+    "id": "pl_mm_roshhashanah",
+    "ownerName": "Moshe Mendelwitz",
+    "title": "Rosh Hashanah Machzor Insights",
+    "description": "Tefillos of Malchiyos, Zichronos, Shofros, and halachos of Shofar blowing.",
+    "tags": {
+      "teachers": [
+        {
+          "name": "Rabbi Mayer Twersky"
+        }
+      ],
+      "venues": [
+        {
+          "name": "Yeshiva University"
+        }
+      ],
+      "topics": [
+        {
+          "name": "Rosh Hashanah"
+        }
       ]
     },
-    {
-      id: 'pl_mm_dafyomi',
-      ownerName: 'Moshe Mendelwitz',
-      title: 'Daf Yomi: Sukkah & Pesachim In-Depth',
-      description: 'Lomdus, machshava, and practical halachic takeaways from Maseches Sukkah and Pesachim.',
-      tags: { teachers: [{ name: 'Rabbi Moshe Taragin' }], venues: [{ name: 'Yeshivat Har Etzion' }], topics: [{ name: 'Daf Yomi' }] },
-      items: [
-        { id: '1053000', title: "Shiur Klali: Sukkah Taaseh V'Lo Min Ha'Asui", speaker: 'Rabbi Moshe Taragin', duration: '47:25' },
-        { id: '979218', title: 'Lomdus of Bedikas Chametz and Bitul', speaker: 'Rabbi Michael Rosensweig', duration: '53:10' },
-        { id: '1052980', title: "Pesachim: Kol Sha'ah and Issur Hana'ah", speaker: 'Rabbi Hershel Schachter', duration: '45:15' }
+    "items": [
+      {
+        "id": "1053000",
+        "title": "The Philosophy of Malchiyos",
+        "speaker": "Rabbi Mayer Twersky",
+        "duration": "44:00"
+      },
+      {
+        "id": "1052990",
+        "title": "Hearing the Shofar: Kavana and Halacha",
+        "speaker": "Rabbi Hershel Schachter",
+        "duration": "41:10"
+      },
+      {
+        "id": "979218",
+        "title": "Zichronos and Shofros: Divine Remembrances",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "49:30"
+      },
+      {
+        "id": "1052980",
+        "title": "Tekios DeMeyushav vs. Tekios DeMeumad",
+        "speaker": "Rabbi Hershel Schachter",
+        "duration": "45:20"
+      },
+      {
+        "id": "1052970",
+        "title": "Unetanneh Tokef: Authorship and Theological Depth",
+        "speaker": "Rabbi Moshe Taragin",
+        "duration": "38:40"
+      },
+      {
+        "id": "1052960",
+        "title": "Tashlich and Simanim: Halacha and Custom",
+        "speaker": "Rabbi Yaakov Neuburger",
+        "duration": "36:15"
+      },
+      {
+        "id": "1052950",
+        "title": "Rosh Hashanah as Yom HaDin and Yom Teruah",
+        "speaker": "Rabbi Mayer Twersky",
+        "duration": "47:05"
+      }
+    ]
+  },
+  {
+    "id": "pl_mm_dafyomi",
+    "ownerName": "Moshe Mendelwitz",
+    "title": "Daf Yomi: Sukkah & Pesachim In-Depth",
+    "description": "Lomdus, machshava, and practical halachic takeaways from Maseches Sukkah and Pesachim.",
+    "tags": {
+      "teachers": [
+        {
+          "name": "Rabbi Moshe Taragin"
+        }
+      ],
+      "venues": [
+        {
+          "name": "Yeshivat Har Etzion"
+        }
+      ],
+      "topics": [
+        {
+          "name": "Daf Yomi"
+        }
       ]
     },
-    {
-      id: 'pl_mm_parsha',
-      ownerName: 'Moshe Mendelwitz',
-      title: 'Parshas Hashavua Masterclasses',
-      description: 'Literary, Midrashic, and Halachic analyses of the weekly Torah portions across Sefer Bereishis and Devarim.',
-      tags: { teachers: [{ name: 'Rabbi Moshe Taragin' }], venues: [{ name: 'Yeshivat Har Etzion' }], topics: [{ name: 'Parsha' }] },
-      items: [
-        { id: '1053000', title: 'Bereishis: Creation and Human Consciousness', speaker: 'Rabbi Moshe Taragin', duration: '42:15' },
-        { id: '1052990', title: 'Noach: Covenant with Humanity and Earth', speaker: 'Rabbi Moshe Taragin', duration: '39:50' },
-        { id: '979218', title: 'Lech Lecha: The Call and Journey of Avraham', speaker: 'Rabbi Michael Rosensweig', duration: '52:00' }
+    "items": [
+      {
+        "id": "1053000",
+        "title": "Shiur Klali: Sukkah Taaseh V’Lo Min Ha’Asui",
+        "speaker": "Rabbi Moshe Taragin",
+        "duration": "47:25"
+      },
+      {
+        "id": "979218",
+        "title": "Lomdus of Bedikas Chametz and Bitul",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "53:10"
+      },
+      {
+        "id": "1052980",
+        "title": "Pesachim: Kol Sha’ah and Issur Hana’ah",
+        "speaker": "Rabbi Hershel Schachter",
+        "duration": "45:15"
+      },
+      {
+        "id": "1052970",
+        "title": "Sukkah: Dofanos and Mechitzos in Halacha",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "50:40"
+      },
+      {
+        "id": "1052960",
+        "title": "Pesachim: Korban Pesach and Chaburah",
+        "speaker": "Rabbi Mayer Twersky",
+        "duration": "48:30"
+      },
+      {
+        "id": "1052950",
+        "title": "Sukkah: Seudah on the First Night of Yom Tov",
+        "speaker": "Rabbi Hershel Schachter",
+        "duration": "42:15"
+      },
+      {
+        "id": "1052940",
+        "title": "Pesachim: Erev Pesach That Falls on Shabbos",
+        "speaker": "Rabbi Aryeh Lebowitz",
+        "duration": "44:50"
+      },
+      {
+        "id": "1052930",
+        "title": "Sukkah: Chiyuv of Sukkah for Travelers",
+        "speaker": "Rabbi Yaakov Neuburger",
+        "duration": "39:20"
+      },
+      {
+        "id": "1052920",
+        "title": "Pesachim: Arba Kosos and Heseibah",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "51:30"
+      },
+      {
+        "id": "1052910",
+        "title": "Methodology in Daf Yomi: Depth vs. Breadth",
+        "speaker": "Rabbi Moshe Taragin",
+        "duration": "46:00"
+      }
+    ]
+  },
+  {
+    "id": "pl_mm_parsha",
+    "ownerName": "Moshe Mendelwitz",
+    "title": "Parshas Hashavua Masterclasses",
+    "description": "Literary, Midrashic, and Halachic analyses of the weekly Torah portions across Sefer Bereishis and Devarim.",
+    "tags": {
+      "teachers": [
+        {
+          "name": "Rabbi Moshe Taragin"
+        }
+      ],
+      "venues": [
+        {
+          "name": "Yeshivat Har Etzion"
+        }
+      ],
+      "topics": [
+        {
+          "name": "Parsha"
+        }
       ]
     },
-    {
-      id: 'pl_mm_ravsoloveitchik',
-      ownerName: 'Moshe Mendelwitz',
-      title: 'Meshel HaRav: Soloveitchik Legacy Shiurim',
-      description: 'Analyzing the thought, theology, and Brisker halachic methodology of Rabbi Joseph B. Soloveitchik zt"l.',
-      tags: { teachers: [{ name: 'Rabbi Hershel Schachter' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Jewish Thought' }] },
-      items: [
-        { id: '979218', title: "The Rav's Methodology in Hilchos Tefillah", speaker: 'Rabbi Hershel Schachter', duration: '58:00' },
-        { id: '979219', title: 'Halakhic Man and Lonely Man of Faith Compared', speaker: 'Rabbi Michael Rosensweig', duration: '52:45' },
-        { id: '1052980', title: 'Kol Dodi Dofek and Historical Providence', speaker: 'Rabbi Mayer Twersky', duration: '46:30' }
+    "items": [
+      {
+        "id": "1053000",
+        "title": "Bereishis: Creation and Human Consciousness",
+        "speaker": "Rabbi Moshe Taragin",
+        "duration": "42:15"
+      },
+      {
+        "id": "1052990",
+        "title": "Noach: Covenant with Humanity and Earth",
+        "speaker": "Rabbi Moshe Taragin",
+        "duration": "39:50"
+      },
+      {
+        "id": "979218",
+        "title": "Lech Lecha: The Call and Journey of Avraham",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "52:00"
+      },
+      {
+        "id": "1052980",
+        "title": "Vayeira: The Akeidah and Absolute Commitment",
+        "speaker": "Rabbi Mayer Twersky",
+        "duration": "46:30"
+      },
+      {
+        "id": "1052970",
+        "title": "Chayei Sarah: Mourning and Legacy Building",
+        "speaker": "Rabbi Moshe Taragin",
+        "duration": "41:10"
+      },
+      {
+        "id": "1052960",
+        "title": "Toldos: The Complex Identity of Yaakov and Eisav",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "49:45"
+      },
+      {
+        "id": "1052950",
+        "title": "Vayetzei: The Ladder Between Heaven and Earth",
+        "speaker": "Rabbi Yaakov Neuburger",
+        "duration": "38:20"
+      },
+      {
+        "id": "1052940",
+        "title": "Vayishlach: Confrontation and Reconciliation",
+        "speaker": "Rabbi Moshe Taragin",
+        "duration": "43:15"
+      }
+    ]
+  },
+  {
+    "id": "pl_mm_ravsoloveitchik",
+    "ownerName": "Moshe Mendelwitz",
+    "title": "Meshel HaRav: Soloveitchik Legacy Shiurim",
+    "description": "Analyzing the thought, theology, and Brisker halachic methodology of Rabbi Joseph B. Soloveitchik zt\"l.",
+    "tags": {
+      "teachers": [
+        {
+          "name": "Rabbi Hershel Schachter"
+        }
+      ],
+      "venues": [
+        {
+          "name": "Yeshiva University"
+        }
+      ],
+      "topics": [
+        {
+          "name": "Jewish Thought"
+        }
       ]
     },
-    {
-      id: 'pl_mm_moadim',
-      ownerName: 'Moshe Mendelwitz',
-      title: 'Moadim: Sukkos & Simchas Torah',
-      description: "The Arba Minim, Sukkah dimensions, Simchas Beis HaSho'evah, and the joy of Torah.",
-      tags: { teachers: [{ name: 'Rabbi Mayer Twersky' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Sukkot' }] },
-      items: [
-        { id: '1053000', title: 'Halachos of Daled Minim Selection and Care', speaker: 'Rabbi Hershel Schachter', duration: '48:15' },
-        { id: '1052990', title: 'The Nature of Simchah on Sukkos and Shemini Atzeres', speaker: 'Rabbi Mayer Twersky', duration: '41:30' },
-        { id: '979218', title: 'Hakafos and the Simchah of Siyum HaTorah', speaker: 'Rabbi Michael Rosensweig', duration: '45:10' }
+    "items": [
+      {
+        "id": "979218",
+        "title": "The Rav’s Methodology in Hilchos Tefillah",
+        "speaker": "Rabbi Hershel Schachter",
+        "duration": "58:00"
+      },
+      {
+        "id": "979219",
+        "title": "Halakhic Man and Lonely Man of Faith Compared",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "52:45"
+      },
+      {
+        "id": "1052980",
+        "title": "Kol Dodi Dofek and Historical Providence",
+        "speaker": "Rabbi Mayer Twersky",
+        "duration": "46:30"
+      },
+      {
+        "id": "1052970",
+        "title": "The Rav on Teshuvah: Kapparah vs. Taharah",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "55:10"
+      },
+      {
+        "id": "1052960",
+        "title": "Tradition and Modernity in the Thought of the Rav",
+        "speaker": "Rabbi Moshe Taragin",
+        "duration": "44:20"
+      },
+      {
+        "id": "1052950",
+        "title": "The Rav’s Shiurim on Maseches Yoma",
+        "speaker": "Rabbi Hershel Schachter",
+        "duration": "59:30"
+      },
+      {
+        "id": "1052940",
+        "title": "Kinnos Shiurim of the Rav: A Sacred Memory",
+        "speaker": "Rabbi Yaakov Neuburger",
+        "duration": "47:15"
+      },
+      {
+        "id": "1052930",
+        "title": "The Rav on Zionism and Jewish Statehood",
+        "speaker": "Rabbi Mayer Twersky",
+        "duration": "50:40"
+      },
+      {
+        "id": "1052920",
+        "title": "Catharsis in Halacha and Aggadah",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "53:25"
+      }
+    ]
+  },
+  {
+    "id": "pl_mm_moadim",
+    "ownerName": "Moshe Mendelwitz",
+    "title": "Moadim: Sukkos & Simchas Torah",
+    "description": "The Arba Minim, Sukkah dimensions, Simchas Beis HaSho’evah, and the joy of Torah.",
+    "tags": {
+      "teachers": [
+        {
+          "name": "Rabbi Mayer Twersky"
+        }
+      ],
+      "venues": [
+        {
+          "name": "Yeshiva University"
+        }
+      ],
+      "topics": [
+        {
+          "name": "Sukkot"
+        }
       ]
     },
-    {
-      id: 'pl_mm_chanukah',
-      ownerName: 'Moshe Mendelwitz',
-      title: 'Chanukah: Light, Miracles & Sovereignty',
-      description: 'Halachos of Ner Ish U\'Beiso, Pirsumei Nisa, Hadlaka Oseh Mitzvah, and the hashkafa of Al HaNissim.',
-      tags: { teachers: [{ name: 'Rabbi Michael Rosensweig' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Chanukah' }] },
-      items: [
-        { id: '979218', title: 'Mehadrin Min HaMehadrin: Lomdus of Lighting', speaker: 'Rabbi Michael Rosensweig', duration: '51:20' },
-        { id: '1052980', title: 'Oil vs Wax Candles and Electric Menorahs', speaker: 'Rabbi Hershel Schachter', duration: '43:45' },
-        { id: '1053000', title: 'Hallel on Chanukah: Shiur and Nature', speaker: 'Rabbi Mayer Twersky', duration: '40:15' }
+    "items": [
+      {
+        "id": "1053000",
+        "title": "Halachos of Daled Minim Selection and Care",
+        "speaker": "Rabbi Hershel Schachter",
+        "duration": "48:15"
+      },
+      {
+        "id": "1052990",
+        "title": "The Nature of Simchah on Sukkos and Shemini Atzeres",
+        "speaker": "Rabbi Mayer Twersky",
+        "duration": "41:30"
+      },
+      {
+        "id": "979218",
+        "title": "Hakafos and the Simchah of Siyum HaTorah",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "45:10"
+      },
+      {
+        "id": "1052980",
+        "title": "Ushpizin: Welcoming the Ancestors into the Sukkah",
+        "speaker": "Rabbi Moshe Taragin",
+        "duration": "37:45"
+      },
+      {
+        "id": "1052970",
+        "title": "Simchas Beis HaShoevah: Historical and Spiritual Heights",
+        "speaker": "Rabbi Yaakov Neuburger",
+        "duration": "43:00"
+      },
+      {
+        "id": "1052960",
+        "title": "Hoshanah Rabbah: The Culmination of Judgement",
+        "speaker": "Rabbi Hershel Schachter",
+        "duration": "44:20"
+      }
+    ]
+  },
+  {
+    "id": "pl_mm_chanukah",
+    "ownerName": "Moshe Mendelwitz",
+    "title": "Chanukah: Light, Miracles & Sovereignty",
+    "description": "Halachos of Ner Ish U’Beiso, Pirsumei Nisa, Hadlaka Oseh Mitzvah, and the hashkafa of Al HaNissim.",
+    "tags": {
+      "teachers": [
+        {
+          "name": "Rabbi Michael Rosensweig"
+        }
+      ],
+      "venues": [
+        {
+          "name": "Yeshiva University"
+        }
+      ],
+      "topics": [
+        {
+          "name": "Chanukah"
+        }
       ]
     },
-    {
-      id: 'pl_mm_purim',
-      ownerName: 'Moshe Mendelwitz',
-      title: 'Purim: Megillat Esther & Hidden Providence',
-      description: 'In-depth study of the four Mitzvos of Purim, Seudas Purim, and the theology of Hester Panim.',
-      tags: { teachers: [{ name: 'Rabbi Yaakov Neuburger' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Purim' }] },
-      items: [
-        { id: '1052980', title: 'Mishloach Manot and Matanot LaEvyonim Halachot', speaker: 'Rabbi Yaakov Neuburger', duration: '38:50' },
-        { id: '1053000', title: 'Krias HaMegillah: Hearing and Reading Nuances', speaker: 'Rabbi Hershel Schachter', duration: '46:10' },
-        { id: '1052990', title: "Ad D'Lo Yada: Hashkafic Perspectives", speaker: 'Rabbi Moshe Taragin', duration: '42:25' }
+    "items": [
+      {
+        "id": "979218",
+        "title": "Mehadrin Min HaMehadrin: Lomdus of Lighting",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "51:20"
+      },
+      {
+        "id": "1052980",
+        "title": "Oil vs Wax Candles and Electric Menorahs",
+        "speaker": "Rabbi Hershel Schachter",
+        "duration": "43:45"
+      },
+      {
+        "id": "1053000",
+        "title": "Hallel on Chanukah: Shiur and Nature",
+        "speaker": "Rabbi Mayer Twersky",
+        "duration": "40:15"
+      },
+      {
+        "id": "1052970",
+        "title": "Al HaNissim and the Theology of Hidden Miracles",
+        "speaker": "Rabbi Moshe Taragin",
+        "duration": "38:50"
+      }
+    ]
+  },
+  {
+    "id": "pl_mm_purim",
+    "ownerName": "Moshe Mendelwitz",
+    "title": "Purim: Megillat Esther & Hidden Providence",
+    "description": "In-depth study of the four Mitzvos of Purim, Seudas Purim, and the theology of Hester Panim.",
+    "tags": {
+      "teachers": [
+        {
+          "name": "Rabbi Yaakov Neuburger"
+        }
+      ],
+      "venues": [
+        {
+          "name": "Yeshiva University"
+        }
+      ],
+      "topics": [
+        {
+          "name": "Purim"
+        }
       ]
     },
-    {
-      id: 'pl_mm_pesach',
-      ownerName: 'Moshe Mendelwitz',
-      title: 'Pesach Seder: Halacha & Haggadah Insights',
-      description: 'The Shiurim of Matzah, Arba Kosos, Maggid structure, and Bedikas Chametz lomdus.',
-      tags: { teachers: [{ name: 'Rabbi Hershel Schachter' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Pesach' }] },
-      items: [
-        { id: '979218', title: 'The Mitzvah of Sippur Yetzias Mitzrayim', speaker: 'Rabbi Michael Rosensweig', duration: '56:30' },
-        { id: '979219', title: "Shiur Kezayis and K'dei Achilas Pras for Matzah", speaker: 'Rabbi Michael Rosensweig', duration: '49:15' },
-        { id: '1052980', title: 'Kitniyos and Modern Derivatives', speaker: 'Rabbi Hershel Schachter', duration: '44:00' }
+    "items": [
+      {
+        "id": "1052980",
+        "title": "Mishloach Manot and Matanot LaEvyonim Halachot",
+        "speaker": "Rabbi Yaakov Neuburger",
+        "duration": "38:50"
+      },
+      {
+        "id": "1053000",
+        "title": "Krias HaMegillah: Hearing and Reading Nuances",
+        "speaker": "Rabbi Hershel Schachter",
+        "duration": "46:10"
+      },
+      {
+        "id": "1052990",
+        "title": "Ad D’Lo Yada: Hashkafic Perspectives",
+        "speaker": "Rabbi Moshe Taragin",
+        "duration": "42:25"
+      },
+      {
+        "id": "979218",
+        "title": "Kabalas HaTorah on Purim: Kiymu v’Kiblu",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "50:15"
+      },
+      {
+        "id": "1052970",
+        "title": "Seudas Purim on Friday or Sunday",
+        "speaker": "Rabbi Aryeh Lebowitz",
+        "duration": "39:40"
+      }
+    ]
+  },
+  {
+    "id": "pl_mm_pesach",
+    "ownerName": "Moshe Mendelwitz",
+    "title": "Pesach Seder: Halacha & Haggadah Insights",
+    "description": "The Shiurim of Matzah, Arba Kosos, Maggid structure, and Bedikas Chametz lomdus.",
+    "tags": {
+      "teachers": [
+        {
+          "name": "Rabbi Hershel Schachter"
+        }
+      ],
+      "venues": [
+        {
+          "name": "Yeshiva University"
+        }
+      ],
+      "topics": [
+        {
+          "name": "Pesach"
+        }
       ]
     },
-    {
-      id: 'pl_mm_omer',
-      ownerName: 'Moshe Mendelwitz',
-      title: 'Sefiras HaOmer & Personal Growth',
-      description: 'The halachic nature of Temimos, counting milestones, and spiritual self-refinement towards Shavuos.',
-      tags: { teachers: [{ name: 'Rabbi Mayer Twersky' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Sefirat HaOmer' }] },
-      items: [
-        { id: '1053000', title: 'Sefirah: One Long Mitzvah or 49 Independent Mitzvos?', speaker: 'Rabbi Mayer Twersky', duration: '45:20' },
-        { id: '1052990', title: 'Mourning the Talmidei Rabbi Akiva: Lessons in Kavod', speaker: 'Rabbi Moshe Taragin', duration: '39:40' },
-        { id: '979218', title: 'Spiritual Preparation for Receiving the Torah', speaker: 'Rabbi Michael Rosensweig', duration: '48:10' }
+    "items": [
+      {
+        "id": "979218",
+        "title": "The Mitzvah of Sippur Yetzias Mitzrayim",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "56:30"
+      },
+      {
+        "id": "979219",
+        "title": "Shiur Kezayis and K’dei Achilas Pras for Matzah",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "49:15"
+      },
+      {
+        "id": "1052980",
+        "title": "Kitniyos and Modern Derivatives",
+        "speaker": "Rabbi Hershel Schachter",
+        "duration": "44:00"
+      },
+      {
+        "id": "1052970",
+        "title": "Kashering Ovens and Induction Cooktops for Pesach",
+        "speaker": "Rabbi Aryeh Lebowitz",
+        "duration": "42:10"
+      },
+      {
+        "id": "1052960",
+        "title": "Arba Kosos: Wine vs. Grape Juice and Shiur Kos",
+        "speaker": "Rabbi Yaakov Neuburger",
+        "duration": "38:45"
+      },
+      {
+        "id": "1052950",
+        "title": "Afikoman: Dining After Midnight and Minhagim",
+        "speaker": "Rabbi Hershel Schachter",
+        "duration": "41:20"
+      },
+      {
+        "id": "1052940",
+        "title": "The Four Sons: Educational Philosophy of the Haggadah",
+        "speaker": "Rabbi Moshe Taragin",
+        "duration": "43:30"
+      },
+      {
+        "id": "1052930",
+        "title": "Mechiras Chametz: Legal Validity and Modern Commerce",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "53:00"
+      }
+    ]
+  },
+  {
+    "id": "pl_mm_omer",
+    "ownerName": "Moshe Mendelwitz",
+    "title": "Sefiras HaOmer & Personal Growth",
+    "description": "The halachic nature of Temimos, counting milestones, and spiritual self-refinement towards Shavuos.",
+    "tags": {
+      "teachers": [
+        {
+          "name": "Rabbi Mayer Twersky"
+        }
+      ],
+      "venues": [
+        {
+          "name": "Yeshiva University"
+        }
+      ],
+      "topics": [
+        {
+          "name": "Sefirat HaOmer"
+        }
       ]
     },
-    {
-      id: 'pl_mm_shavuos',
-      ownerName: 'Moshe Mendelwitz',
-      title: 'Shavuos: Matan Torah & Revelation',
-      description: 'The cosmic impact of Ma\'amad Har Sinai, Torah Sheba\'al Peh transmission, and Tikkun Leil Shavuos.',
-      tags: { teachers: [{ name: 'Rabbi Michael Rosensweig' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Shavuot' }] },
-      items: [
-        { id: '979218', title: "Kabalas HaTorah: B'Ones or B'Ratzon?", speaker: 'Rabbi Michael Rosensweig', duration: '54:15' },
-        { id: '1052980', title: 'Akdamus and Minhagim of Shavuos', speaker: 'Rabbi Hershel Schachter', duration: '37:50' },
-        { id: '1053000', title: 'Ruth and Shavuos: The Power of Torah Loyalty', speaker: 'Rabbi Mayer Twersky', duration: '43:35' }
+    "items": [
+      {
+        "id": "1053000",
+        "title": "Sefirah: One Long Mitzvah or 49 Independent Mitzvos?",
+        "speaker": "Rabbi Mayer Twersky",
+        "duration": "45:20"
+      },
+      {
+        "id": "1052990",
+        "title": "Mourning the Talmidei Rabbi Akiva: Lessons in Kavod",
+        "speaker": "Rabbi Moshe Taragin",
+        "duration": "39:40"
+      },
+      {
+        "id": "979218",
+        "title": "Spiritual Preparation for Receiving the Torah",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "48:10"
+      }
+    ]
+  },
+  {
+    "id": "pl_mm_shavuos",
+    "ownerName": "Moshe Mendelwitz",
+    "title": "Shavuos: Matan Torah & Revelation",
+    "description": "The cosmic impact of Ma’amad Har Sinai, Torah Sheba’al Peh transmission, and Tikkun Leil Shavuos.",
+    "tags": {
+      "teachers": [
+        {
+          "name": "Rabbi Michael Rosensweig"
+        }
+      ],
+      "venues": [
+        {
+          "name": "Yeshiva University"
+        }
+      ],
+      "topics": [
+        {
+          "name": "Shavuot"
+        }
       ]
     },
-
-    // 10 Playlists for Rachel Sternbach
-    {
-      id: 'pl_rs_semichas',
-      ownerName: 'Rachel Sternbach',
-      title: 'Semichas Chaver Program Highlights',
-      description: 'Practical halachos of Mezuzah, Kashrus, and Bishul Akum explained clearly for daily living.',
-      tags: { teachers: [{ name: 'Rabbi Aryeh Lebowitz' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Halacha' }] },
-      items: [
-        { id: '1052980', title: 'Semichas Chaver: Hilchos Mezuzah Practical Overview', speaker: 'Rabbi Aryeh Lebowitz', duration: '49:10' },
-        { id: '1053000', title: 'Semichas Chaver: Bishul Akum and Microwaves', speaker: 'Rabbi Aryeh Lebowitz', duration: '43:50' },
-        { id: '1052990', title: 'Semichas Chaver: Tevilas Keilim in Modern Times', speaker: 'Rabbi Aryeh Lebowitz', duration: '41:20' }
+    "items": [
+      {
+        "id": "979218",
+        "title": "Kabalas HaTorah: B’Ones or B’Ratzon?",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "54:15"
+      },
+      {
+        "id": "1052980",
+        "title": "Akdamus and Minhagim of Shavuos",
+        "speaker": "Rabbi Hershel Schachter",
+        "duration": "37:50"
+      },
+      {
+        "id": "1053000",
+        "title": "Ruth and Shavuos: The Power of Torah Loyalty",
+        "speaker": "Rabbi Mayer Twersky",
+        "duration": "43:35"
+      },
+      {
+        "id": "1052970",
+        "title": "Tikkun Leil Shavuos: Toras Eretz Yisrael and Night Learning",
+        "speaker": "Rabbi Moshe Taragin",
+        "duration": "41:10"
+      },
+      {
+        "id": "1052960",
+        "title": "Dairy Meals and Meat Meals on Shavuos",
+        "speaker": "Rabbi Aryeh Lebowitz",
+        "duration": "36:40"
+      },
+      {
+        "id": "1052950",
+        "title": "Revelation at Sinai as the Foundation of Emunah",
+        "speaker": "Rabbi Yaakov Neuburger",
+        "duration": "45:20"
+      }
+    ]
+  },
+  {
+    "id": "pl_rs_semichas",
+    "ownerName": "Rachel Sternbach",
+    "title": "Semichas Chaver Program Highlights",
+    "description": "Practical halachos of Mezuzah, Kashrus, and Bishul Akum explained clearly for daily living.",
+    "tags": {
+      "teachers": [
+        {
+          "name": "Rabbi Aryeh Lebowitz"
+        }
+      ],
+      "venues": [
+        {
+          "name": "Yeshiva University"
+        }
+      ],
+      "topics": [
+        {
+          "name": "Halacha"
+        }
       ]
     },
-    {
-      id: 'pl_rs_women',
-      ownerName: 'Rachel Sternbach',
-      title: 'Women in Jewish Law & Leadership',
-      description: 'Halachic sources, historical evolution, and modern perspectives on women\'s mitzvos, learning, and leadership.',
-      tags: { teachers: [{ name: 'Dr. Smadar Rosensweig' }, { name: 'Rabbi Michael Rosensweig' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Jewish Law' }] },
-      items: [
-        { id: '979218', title: 'Torah Study for Women: Historical Perspectives', speaker: 'Rabbi Michael Rosensweig', duration: '52:10' },
-        { id: '1053000', title: 'Women and Mitzvos Aseh SheHazman Grama', speaker: 'Rabbi Mayer Twersky', duration: '47:45' },
-        { id: '1052980', title: 'Women in Communal Leadership Roles', speaker: 'Rabbi Hershel Schachter', duration: '44:30' }
+    "items": [
+      {
+        "id": "1052980",
+        "title": "Semichas Chaver: Hilchos Mezuzah Practical Overview",
+        "speaker": "Rabbi Aryeh Lebowitz",
+        "duration": "49:10"
+      },
+      {
+        "id": "1053000",
+        "title": "Semichas Chaver: Bishul Akum and Microwaves",
+        "speaker": "Rabbi Aryeh Lebowitz",
+        "duration": "43:50"
+      },
+      {
+        "id": "1052990",
+        "title": "Semichas Chaver: Tevilas Keilim in Modern Times",
+        "speaker": "Rabbi Aryeh Lebowitz",
+        "duration": "41:20"
+      },
+      {
+        "id": "1052970",
+        "title": "Semichas Chaver: Melachas Borer on Shabbat",
+        "speaker": "Rabbi Aryeh Lebowitz",
+        "duration": "47:15"
+      },
+      {
+        "id": "1052960",
+        "title": "Semichas Chaver: Hilchos Tzitzis and Tallis",
+        "speaker": "Rabbi Aryeh Lebowitz",
+        "duration": "44:30"
+      },
+      {
+        "id": "1052950",
+        "title": "Semichas Chaver: Muktzah in the Modern Home",
+        "speaker": "Rabbi Aryeh Lebowitz",
+        "duration": "46:00"
+      },
+      {
+        "id": "1052940",
+        "title": "Semichas Chaver: Shehiyah and Chazarah on Friday Afternoon",
+        "speaker": "Rabbi Aryeh Lebowitz",
+        "duration": "48:25"
+      }
+    ]
+  },
+  {
+    "id": "pl_rs_women",
+    "ownerName": "Rachel Sternbach",
+    "title": "Women in Jewish Law & Leadership",
+    "description": "Halachic sources, historical evolution, and modern perspectives on women’s mitzvos, learning, and leadership.",
+    "tags": {
+      "teachers": [
+        {
+          "name": "Dr. Smadar Rosensweig"
+        },
+        {
+          "name": "Rabbi Michael Rosensweig"
+        }
+      ],
+      "venues": [
+        {
+          "name": "Yeshiva University"
+        }
+      ],
+      "topics": [
+        {
+          "name": "Jewish Law"
+        }
       ]
     },
-    {
-      id: 'pl_rs_rambam',
-      ownerName: 'Rachel Sternbach',
-      title: 'Jewish Philosophy: Rambam\'s Moreh Nevukhim',
-      description: 'Classical Jewish rationalism, prophecy, divine providence, and the reasons for the commandments (Ta\'amei HaMitzvos).',
-      tags: { teachers: [{ name: 'Rabbi Mayer Twersky' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Philosophy' }] },
-      items: [
-        { id: '1053000', title: 'Rambam on Free Will and Divine Foreknowledge', speaker: 'Rabbi Mayer Twersky', duration: '48:30' },
-        { id: '979218', title: 'The Purpose of Creation in Moreh Nevukhim', speaker: 'Rabbi Michael Rosensweig', duration: '53:15' },
-        { id: '979219', title: "Ta'amei HaMitzvos: The Rationality of Commandments", speaker: 'Rabbi Michael Rosensweig', duration: '49:40' }
+    "items": [
+      {
+        "id": "979218",
+        "title": "Torah Study for Women: Historical Perspectives",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "52:10"
+      },
+      {
+        "id": "1053000",
+        "title": "Women and Mitzvos Aseh SheHazman Grama",
+        "speaker": "Rabbi Mayer Twersky",
+        "duration": "47:45"
+      },
+      {
+        "id": "1052980",
+        "title": "Women in Communal Leadership Roles",
+        "speaker": "Rabbi Hershel Schachter",
+        "duration": "44:30"
+      },
+      {
+        "id": "1052970",
+        "title": "Megillah Reading for and by Women",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "51:00"
+      },
+      {
+        "id": "1052960",
+        "title": "Women and Kaddish: Halachic and Historical Sources",
+        "speaker": "Rabbi Yaakov Neuburger",
+        "duration": "43:20"
+      },
+      {
+        "id": "1052950",
+        "title": "Tefillin and Tzitzis: Gender in Mitzvah Performance",
+        "speaker": "Rabbi Hershel Schachter",
+        "duration": "46:15"
+      },
+      {
+        "id": "1052940",
+        "title": "Women Scholars throughout the Generations",
+        "speaker": "Dr. Smadar Rosensweig",
+        "duration": "49:30"
+      },
+      {
+        "id": "1052930",
+        "title": "Partnership in Torah and Family Building",
+        "speaker": "Rabbi Moshe Taragin",
+        "duration": "41:40"
+      }
+    ]
+  },
+  {
+    "id": "pl_rs_rambam",
+    "ownerName": "Rachel Sternbach",
+    "title": "Jewish Philosophy: Rambam’s Moreh Nevukhim",
+    "description": "Classical Jewish rationalism, prophecy, divine providence, and the reasons for the commandments (Ta’amei HaMitzvos).",
+    "tags": {
+      "teachers": [
+        {
+          "name": "Rabbi Mayer Twersky"
+        }
+      ],
+      "venues": [
+        {
+          "name": "Yeshiva University"
+        }
+      ],
+      "topics": [
+        {
+          "name": "Philosophy"
+        }
       ]
     },
-    {
-      id: 'pl_rs_matriarchs',
-      ownerName: 'Rachel Sternbach',
-      title: 'Biblical Narrative: The Matriarchs of Genesis',
-      description: 'Literary and theological analysis of Sarah, Rivka, Rachel, and Leah as moral anchors of the Jewish covenant.',
-      tags: { teachers: [{ name: 'Dr. Smadar Rosensweig' }, { name: 'Rabbi Moshe Taragin' }], venues: [{ name: 'Yeshivat Har Etzion' }], topics: [{ name: 'Tanach' }] },
-      items: [
-        { id: '1053000', title: 'Sarah Imeinu: The Crucible of Faith and Hospitality', speaker: 'Rabbi Moshe Taragin', duration: '42:00' },
-        { id: '1052990', title: 'Rivka and the Strategic Blessing', speaker: 'Rabbi Moshe Taragin', duration: '40:15' },
-        { id: '979218', title: 'Rachel and Leah: Two Paths in Building the House of Israel', speaker: 'Rabbi Michael Rosensweig', duration: '50:30' }
+    "items": [
+      {
+        "id": "1053000",
+        "title": "Rambam on Free Will and Divine Foreknowledge",
+        "speaker": "Rabbi Mayer Twersky",
+        "duration": "48:30"
+      },
+      {
+        "id": "979218",
+        "title": "The Purpose of Creation in Moreh Nevukhim",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "53:15"
+      },
+      {
+        "id": "979219",
+        "title": "Ta’amei HaMitzvos: The Rationality of Commandments",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "49:40"
+      },
+      {
+        "id": "1052980",
+        "title": "Negative Theology and Divine Attributes in the Rambam",
+        "speaker": "Rabbi Mayer Twersky",
+        "duration": "51:20"
+      },
+      {
+        "id": "1052970",
+        "title": "Prophecy in Moreh Nevukhim: Intellectual and Moral Perfection",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "54:45"
+      },
+      {
+        "id": "1052960",
+        "title": "Providence (Hashgachah) According to the Rambam",
+        "speaker": "Rabbi Mayer Twersky",
+        "duration": "47:10"
+      },
+      {
+        "id": "1052950",
+        "title": "The Rambam’s View on Angels and Creation Ex Nihilo",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "52:00"
+      },
+      {
+        "id": "1052940",
+        "title": "Reasons for Korbanos in Moreh Nevukhim",
+        "speaker": "Rabbi Moshe Taragin",
+        "duration": "45:30"
+      },
+      {
+        "id": "1052930",
+        "title": "The Messianic Era in Mishneh Torah vs. Moreh",
+        "speaker": "Rabbi Hershel Schachter",
+        "duration": "46:15"
+      },
+      {
+        "id": "1052920",
+        "title": "Love and Awe of God as Culmination of Philosophy",
+        "speaker": "Rabbi Mayer Twersky",
+        "duration": "50:00"
+      }
+    ]
+  },
+  {
+    "id": "pl_rs_matriarchs",
+    "ownerName": "Rachel Sternbach",
+    "title": "Biblical Narrative: The Matriarchs of Genesis",
+    "description": "Literary and theological analysis of Sarah, Rivka, Rachel, and Leah as moral anchors of the Jewish covenant.",
+    "tags": {
+      "teachers": [
+        {
+          "name": "Dr. Smadar Rosensweig"
+        },
+        {
+          "name": "Rabbi Moshe Taragin"
+        }
+      ],
+      "venues": [
+        {
+          "name": "Yeshivat Har Etzion"
+        }
+      ],
+      "topics": [
+        {
+          "name": "Tanach"
+        }
       ]
     },
-    {
-      id: 'pl_rs_ruth',
-      ownerName: 'Rachel Sternbach',
-      title: 'Megillat Ruth: Chesed and Kingship',
-      description: 'The interplay of halachic conversion, gleaning laws, Levirate marriage, and the emergence of the Davidic dynasty.',
-      tags: { teachers: [{ name: 'Dr. Smadar Rosensweig' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Tanach' }] },
-      items: [
-        { id: '1052980', title: 'Megillat Ruth: Hesed as the Foundation of Torah', speaker: 'Rabbi Michael Rosensweig', duration: '46:40' },
-        { id: '1053000', title: "Boaz and the Redemption of Naomi's Heritage", speaker: 'Rabbi Mayer Twersky', duration: '41:15' },
-        { id: '979218', title: "The Legal and Spiritual Dimensions of Ruth's Conversion", speaker: 'Rabbi Michael Rosensweig', duration: '48:50' }
+    "items": [
+      {
+        "id": "1053000",
+        "title": "Sarah Imeinu: The Crucible of Faith and Hospitality",
+        "speaker": "Rabbi Moshe Taragin",
+        "duration": "42:00"
+      },
+      {
+        "id": "1052990",
+        "title": "Rivka and the Strategic Blessing",
+        "speaker": "Rabbi Moshe Taragin",
+        "duration": "40:15"
+      },
+      {
+        "id": "979218",
+        "title": "Rachel and Leah: Two Paths in Building the House of Israel",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "50:30"
+      },
+      {
+        "id": "1052980",
+        "title": "Miriam HaNevi’ah: The Leadership of Hope and Song",
+        "speaker": "Dr. Smadar Rosensweig",
+        "duration": "44:20"
+      },
+      {
+        "id": "1052970",
+        "title": "Devorah HaNevi’ah: Judge and Mother in Israel",
+        "speaker": "Dr. Smadar Rosensweig",
+        "duration": "46:50"
+      }
+    ]
+  },
+  {
+    "id": "pl_rs_ruth",
+    "ownerName": "Rachel Sternbach",
+    "title": "Megillat Ruth: Chesed and Kingship",
+    "description": "The interplay of halachic conversion, gleaning laws, Levirate marriage, and the emergence of the Davidic dynasty.",
+    "tags": {
+      "teachers": [
+        {
+          "name": "Dr. Smadar Rosensweig"
+        }
+      ],
+      "venues": [
+        {
+          "name": "Yeshiva University"
+        }
+      ],
+      "topics": [
+        {
+          "name": "Tanach"
+        }
       ]
     },
-    {
-      id: 'pl_rs_tishabav',
-      ownerName: 'Rachel Sternbach',
-      title: 'Kinot of Tisha B\'Av: History and Grief',
-      description: 'The poetics of mourning, Eleh Ezkera, the destruction of the Batei Mikdash, and the yearning for Nechama.',
-      tags: { teachers: [{ name: 'Rabbi Yaakov Neuburger' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: "Tisha B'Av" }] },
-      items: [
-        { id: '979218', title: 'Understanding the Destruction: Kamtza and Bar Kamtza', speaker: 'Rabbi Michael Rosensweig', duration: '52:45' },
-        { id: '1052980', title: 'Halachos of the Nine Days and Tisha B\'Av', speaker: 'Rabbi Hershel Schachter', duration: '44:10' },
-        { id: '1053000', title: 'The Themes of Lamentations: From Churban to Hope', speaker: 'Rabbi Yaakov Neuburger', duration: '40:30' }
+    "items": [
+      {
+        "id": "1052980",
+        "title": "Megillat Ruth: Hesed as the Foundation of Torah",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "46:40"
+      },
+      {
+        "id": "1053000",
+        "title": "Boaz and the Redemption of Naomi’s Heritage",
+        "speaker": "Rabbi Mayer Twersky",
+        "duration": "41:15"
+      },
+      {
+        "id": "979218",
+        "title": "The Legal and Spiritual Dimensions of Ruth’s Conversion",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "48:50"
+      },
+      {
+        "id": "1052970",
+        "title": "From Moav to David HaMelech: The Royal Lineage",
+        "speaker": "Dr. Smadar Rosensweig",
+        "duration": "43:10"
+      }
+    ]
+  },
+  {
+    "id": "pl_rs_tishabav",
+    "ownerName": "Rachel Sternbach",
+    "title": "Kinot of Tisha B’Av: History and Grief",
+    "description": "The poetics of mourning, Eleh Ezkera, the destruction of the Batei Mikdash, and the yearning for Nechama.",
+    "tags": {
+      "teachers": [
+        {
+          "name": "Rabbi Yaakov Neuburger"
+        }
+      ],
+      "venues": [
+        {
+          "name": "Yeshiva University"
+        }
+      ],
+      "topics": [
+        {
+          "name": "Tisha B’Av"
+        }
       ]
     },
-    {
-      id: 'pl_rs_bioethics',
-      ownerName: 'Rachel Sternbach',
-      title: 'Jewish Bioethics: Genetics and Halacha',
-      description: 'Genetic screening, CRISPR gene editing, stem cell research, and organ donation in contemporary halachic literature.',
-      tags: { teachers: [{ name: 'Rabbi Aryeh Lebowitz' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Medical Ethics' }] },
-      items: [
-        { id: '1052980', title: 'Genetic Screening and Tay-Sachs Prevention in Halacha', speaker: 'Rabbi Aryeh Lebowitz', duration: '48:20' },
-        { id: '1052990', title: 'End of Life Issues and Palliative Care', speaker: 'Rabbi Aryeh Lebowitz', duration: '51:15' },
-        { id: '1053000', title: 'Organ Donation: Brain Death vs Cardiac Cessation', speaker: 'Rabbi Hershel Schachter', duration: '55:00' }
+    "items": [
+      {
+        "id": "979218",
+        "title": "Understanding the Destruction: Kamtza and Bar Kamtza",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "52:45"
+      },
+      {
+        "id": "1052980",
+        "title": "Halachos of the Nine Days and Tisha B’Av",
+        "speaker": "Rabbi Hershel Schachter",
+        "duration": "44:10"
+      },
+      {
+        "id": "1053000",
+        "title": "The Themes of Lamentations: From Churban to Hope",
+        "speaker": "Rabbi Yaakov Neuburger",
+        "duration": "40:30"
+      },
+      {
+        "id": "1052970",
+        "title": "Eleh Ezkera: The Ten Martyrs and Jewish Sanctity",
+        "speaker": "Rabbi Mayer Twersky",
+        "duration": "48:20"
+      },
+      {
+        "id": "1052960",
+        "title": "Arzei HaLevanon: Eulogizing the Torah Greats",
+        "speaker": "Rabbi Moshe Taragin",
+        "duration": "42:15"
+      },
+      {
+        "id": "1052950",
+        "title": "Nechama and Comfort: The Seven Weeks of Consolation",
+        "speaker": "Rabbi Yaakov Neuburger",
+        "duration": "41:50"
+      }
+    ]
+  },
+  {
+    "id": "pl_rs_bioethics",
+    "ownerName": "Rachel Sternbach",
+    "title": "Jewish Bioethics: Genetics and Halacha",
+    "description": "Genetic screening, CRISPR gene editing, stem cell research, and organ donation in contemporary halachic literature.",
+    "tags": {
+      "teachers": [
+        {
+          "name": "Rabbi Aryeh Lebowitz"
+        }
+      ],
+      "venues": [
+        {
+          "name": "Yeshiva University"
+        }
+      ],
+      "topics": [
+        {
+          "name": "Medical Ethics"
+        }
       ]
     },
-    {
-      id: 'pl_rs_chinuch',
-      ownerName: 'Rachel Sternbach',
-      title: 'Parenting & Chinuch in Contemporary Times',
-      description: 'Guiding youth in faith, digital age boundaries, building emotional resilience, and transmitting the mesorah with love.',
-      tags: { teachers: [{ name: 'Rabbi Yaakov Neuburger' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Education' }] },
-      items: [
-        { id: '1052980', title: "Educating with Sensitivity: Chanoch LaNa'ar", speaker: 'Rabbi Yaakov Neuburger', duration: '43:40' },
-        { id: '1053000', title: 'Navigating Modern Technology and Jewish Youth', speaker: 'Rabbi Yaakov Neuburger', duration: '46:15' },
-        { id: '979218', title: 'Building Emunah and Resilience in Our Children', speaker: 'Rabbi Michael Rosensweig', duration: '49:30' }
+    "items": [
+      {
+        "id": "1052980",
+        "title": "CRISPR Gene Editing and Germline Modification in Halacha",
+        "speaker": "Rabbi Aryeh Lebowitz",
+        "duration": "47:30"
+      },
+      {
+        "id": "1053000",
+        "title": "Genetic Screening and Dor Yeshorim",
+        "speaker": "Rabbi Aryeh Lebowitz",
+        "duration": "44:15"
+      },
+      {
+        "id": "979218",
+        "title": "Stem Cell Research and Pre-Implantation Diagnosis",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "51:40"
+      },
+      {
+        "id": "1052990",
+        "title": "Brain Death and Organ Transplantation: The Halachic Debate",
+        "speaker": "Rabbi Hershel Schachter",
+        "duration": "56:20"
+      },
+      {
+        "id": "1052970",
+        "title": "Artificial Insemination and Surrogacy",
+        "speaker": "Rabbi Yaakov Neuburger",
+        "duration": "48:10"
+      },
+      {
+        "id": "1052960",
+        "title": "Informed Consent and Experimental Treatments",
+        "speaker": "Rabbi Aryeh Lebowitz",
+        "duration": "42:50"
+      },
+      {
+        "id": "1052950",
+        "title": "Halachic Directives for Healthcare Proxies",
+        "speaker": "Rabbi Yaakov Neuburger",
+        "duration": "45:00"
+      },
+      {
+        "id": "1052940",
+        "title": "Artificial Intelligence in Medical Diagnoses and Pesak",
+        "speaker": "Rabbi Aryeh Lebowitz",
+        "duration": "43:15"
+      },
+      {
+        "id": "1052930",
+        "title": "Allocation of Scarce Medications in Emergencies",
+        "speaker": "Rabbi Hershel Schachter",
+        "duration": "50:25"
+      }
+    ]
+  },
+  {
+    "id": "pl_rs_chinuch",
+    "ownerName": "Rachel Sternbach",
+    "title": "Parenting & Chinuch in Contemporary Times",
+    "description": "Guiding youth in faith, digital age boundaries, building emotional resilience, and transmitting the mesorah with love.",
+    "tags": {
+      "teachers": [
+        {
+          "name": "Rabbi Yaakov Neuburger"
+        }
+      ],
+      "venues": [
+        {
+          "name": "Yeshiva University"
+        }
+      ],
+      "topics": [
+        {
+          "name": "Education"
+        }
       ]
     },
-    {
-      id: 'pl_rs_mesillas',
-      ownerName: 'Rachel Sternbach',
-      title: 'Musar & Character Development: Mesillas Yesharim',
-      description: 'Step-by-step ascent from Zehirus and Zerizus through Taharah and Chassidus as charted by the Ramchal.',
-      tags: { teachers: [{ name: 'Rabbi Mayer Twersky' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Mussar' }] },
-      items: [
-        { id: '1053000', title: 'Introduction to Mesillas Yesharim: The Duty of Man', speaker: 'Rabbi Mayer Twersky', duration: '47:10' },
-        { id: '1052990', title: 'Midat HaZehirus: Watchfulness in Modern Life', speaker: 'Rabbi Moshe Taragin', duration: '41:50' },
-        { id: '979218', title: 'Zerizus: Alacrity in Mitzvah Performance', speaker: 'Rabbi Michael Rosensweig', duration: '48:00' }
+    "items": [
+      {
+        "id": "1052980",
+        "title": "Parenting in the Digital Era: Boundaries and Empowerment",
+        "speaker": "Rabbi Yaakov Neuburger",
+        "duration": "45:30"
+      },
+      {
+        "id": "1053000",
+        "title": "Chanoch LaNa’ar Al Pi Darko: Tailoring Torah to the Child",
+        "speaker": "Rabbi Yaakov Neuburger",
+        "duration": "48:15"
+      },
+      {
+        "id": "1052990",
+        "title": "Emotional Resilience and Emunah in the Next Generation",
+        "speaker": "Rabbi Moshe Taragin",
+        "duration": "41:40"
+      },
+      {
+        "id": "1052970",
+        "title": "Teaching Mitzvos with Joy and Love",
+        "speaker": "Rabbi Aryeh Lebowitz",
+        "duration": "39:25"
+      },
+      {
+        "id": "1052960",
+        "title": "Handling Religious Rebellion and Doubts in Teens",
+        "speaker": "Rabbi Yaakov Neuburger",
+        "duration": "51:10"
+      },
+      {
+        "id": "1052950",
+        "title": "Tefillah Education in Schools and Homes",
+        "speaker": "Rabbi Mayer Twersky",
+        "duration": "44:00"
+      },
+      {
+        "id": "1052940",
+        "title": "Transmitting the Mesorah: The Family Table as Beis Midrash",
+        "speaker": "Rabbi Moshe Taragin",
+        "duration": "43:50"
+      }
+    ]
+  },
+  {
+    "id": "pl_rs_mesillas",
+    "ownerName": "Rachel Sternbach",
+    "title": "Musar & Character Development: Mesillas Yesharim",
+    "description": "Step-by-step ascent from Zehirus and Zerizus through Taharah and Chassidus as charted by the Ramchal.",
+    "tags": {
+      "teachers": [
+        {
+          "name": "Rabbi Mayer Twersky"
+        }
+      ],
+      "venues": [
+        {
+          "name": "Yeshiva University"
+        }
+      ],
+      "topics": [
+        {
+          "name": "Mussar"
+        }
       ]
     },
-    {
-      id: 'pl_rs_israel',
-      ownerName: 'Rachel Sternbach',
-      title: 'The Land of Israel: Halachic and Historical Dimensions',
-      description: 'Mitzvas Yishuv Eretz Yisrael, Terumos and Ma\'asros, Shemittah observance, and the spiritual significance of the Land.',
-      tags: { teachers: [{ name: 'Rabbi Hershel Schachter' }], venues: [{ name: 'Yeshiva University' }], topics: [{ name: 'Israel' }] },
-      items: [
-        { id: '1052980', title: 'Mitzvat Yishuv Eretz Yisrael in Contemporary Halacha', speaker: 'Rabbi Hershel Schachter', duration: '52:30' },
-        { id: '1053000', title: 'The Holiness of the Land and Shemittah Observance', speaker: 'Rabbi Moshe Taragin', duration: '44:40' },
-        { id: '979218', title: 'Eretz Hemdah: The Spiritual Connection to Zion', speaker: 'Rabbi Michael Rosensweig', duration: '50:15' }
+    "items": [
+      {
+        "id": "1053000",
+        "title": "Mesillas Yesharim: The Map of Spiritual Ascent",
+        "speaker": "Rabbi Mayer Twersky",
+        "duration": "46:30"
+      },
+      {
+        "id": "979218",
+        "title": "Middas HaZehirus: Mindfulness in Halachic Living",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "53:00"
+      },
+      {
+        "id": "1052980",
+        "title": "Middas HaZerizus: Alacrity and Energy in Divine Service",
+        "speaker": "Rabbi Mayer Twersky",
+        "duration": "48:15"
+      },
+      {
+        "id": "1052970",
+        "title": "Nekiyus: Purity from Subtle Transgressions",
+        "speaker": "Rabbi Yaakov Neuburger",
+        "duration": "42:40"
+      },
+      {
+        "id": "1052960",
+        "title": "Perishus: Sacred Moderation in a World of Excess",
+        "speaker": "Rabbi Moshe Taragin",
+        "duration": "45:20"
+      },
+      {
+        "id": "1052950",
+        "title": "Taharah: Rectifying the Subconscious Intentions",
+        "speaker": "Rabbi Mayer Twersky",
+        "duration": "47:50"
+      },
+      {
+        "id": "1052940",
+        "title": "Chassidus: Beyond the Letter of the Law",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "52:10"
+      },
+      {
+        "id": "1052930",
+        "title": "Yiras Cheit and Kedushah: Dwelling in the Divine Presence",
+        "speaker": "Rabbi Mayer Twersky",
+        "duration": "49:40"
+      }
+    ]
+  },
+  {
+    "id": "pl_rs_israel",
+    "ownerName": "Rachel Sternbach",
+    "title": "The Land of Israel: Halachic and Historical Dimensions",
+    "description": "Mitzvas Yishuv Eretz Yisrael, Terumos and Ma’asros, Shemittah observance, and the spiritual significance of the Land.",
+    "tags": {
+      "teachers": [
+        {
+          "name": "Rabbi Hershel Schachter"
+        }
+      ],
+      "venues": [
+        {
+          "name": "Yeshiva University"
+        }
+      ],
+      "topics": [
+        {
+          "name": "Israel"
+        }
       ]
-    }
-  ];
+    },
+    "items": [
+      {
+        "id": "1052980",
+        "title": "Mitzvat Yishuv Eretz Yisrael in Contemporary Halacha",
+        "speaker": "Rabbi Hershel Schachter",
+        "duration": "52:30"
+      },
+      {
+        "id": "1053000",
+        "title": "The Holiness of the Land and Shemittah Observance",
+        "speaker": "Rabbi Moshe Taragin",
+        "duration": "44:40"
+      },
+      {
+        "id": "979218",
+        "title": "Eretz Hemdah: The Spiritual Connection to Zion",
+        "speaker": "Rabbi Michael Rosensweig",
+        "duration": "50:15"
+      },
+      {
+        "id": "1052970",
+        "title": "Terumos and Ma’asros in the Modern Supermarket",
+        "speaker": "Rabbi Hershel Schachter",
+        "duration": "43:10"
+      },
+      {
+        "id": "1052960",
+        "title": "Aliyah in Contemporary Times: Halachic Weight",
+        "speaker": "Rabbi Moshe Taragin",
+        "duration": "41:25"
+      }
+    ]
+  }
+];
 
 function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpeed = '', themeMode = '', homepageData, sponsorshipText = '', sponsorshipPlainText = '', sponsorshipAudioUrl = '', searchQuery, initialSearchResults, initialNumFound = 0, initialPhoneticExpansion = null, initialRecentDocs = [], initialRecentNumFound = 0, initialQueryResolution = null, initialDidYouMean = [], isClassicSearch = false }) {
   const isPlaying = Boolean(shiurData || directAudio);
