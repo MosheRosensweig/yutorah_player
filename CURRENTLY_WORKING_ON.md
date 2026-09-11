@@ -1,7 +1,7 @@
 # Currently Working On — Living Status & Activity Log
 
 Living status doc & audit log — updated on every milestone and user request.  
-Last updated: **2026-09-11, 10:25 ET**  
+Last updated: **2026-09-11, 10:30 ET**  
 Current branch: `feat/auth-d1`  
 Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev)  
 Tests: **5/5 test suites passing (100% green, 16/16 basic functionality checks)**  
@@ -34,6 +34,24 @@ Production status: **Untouched** (strictly protected by standing rules)
 ---
 
 ## 🕒 Chronological Activity Log
+
+### [2026-09-11 10:30 ET] — Commit `feat/auth-d1` (Dual Review Polish: Contrast, Focus, Drag-End & A11y)
+- `[DONE]` **Contrast Compliance**:
+  - Dark mode `.playlist-seg-btn.active` adjusted to `#1e2c40` with `#7ca5de` text for full WCAG AA compliance.
+  - Light mode `.pl-tick-add` darkened to `#15803d` (4.56:1 contrast ratio, WCAG AA compliant).
+  - Dark mode `.pl-save-changes-btn` styled with `#2563eb` and `#3b82f6` border.
+  - Public subscribed badge given `.playlist-sub-badge` with theme-aware `#7dd3fc` color in dark mode.
+- `[DONE]` **Drag & Drop Abort Safety**:
+  - Implemented `devDragEnd(event)` and bound `ondragend` on `.playlist-item-wrap` to immediately reset opacity and clear `.dragging` / `.drag-over` if drag is cancelled mid-air.
+- `[DONE]` **Accessibility & Keyboard Focus**:
+  - Added `role="alert"` and `aria-live="polite"` to `#newPlError`.
+  - Added `aria-label="Close dialog"` to `#newPlClose`.
+  - Added `aria-label="Select [emoji] icon"` and `aria-pressed="true/false"` to the 16 emoji picker buttons.
+  - Added `:focus-visible` outline rings to segmented buttons, playlist pills, and emoji options.
+  - Checkbox toggle in Add-to-Playlist modal retains DOM focus on the toggled item across list redrawing.
+  - Added duplicate name guard to the inline quick-create handler in the Add-to-Playlist modal.
+- `[DONE]` **Mobile Header Alignment**:
+  - Anchored `.playlist-system-row` to `top: 38px !important;` on screens <= 640px to eliminate the 14px gap beneath the compact mobile header.
 
 ### [2026-09-11 10:25 ET] — Commit `feat/auth-d1` (Phase 5: Staged Add-to-Playlist, Live Counter Ticks & Author Guard)
 - `[DONE]` **Staged State Management & Explicit Save Changes**:
