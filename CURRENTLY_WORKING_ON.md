@@ -1,11 +1,12 @@
 # Currently Working On — Living Status & Activity Log
 
 Living status doc & audit log — updated on every milestone and user request.  
-Last updated: **2026-09-11, 14:26 ET**  
-Current branch: `feat/auth-d1`  
-Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev)  
+Last updated: **2026-09-11, 14:30 ET**  
+Current branch: `feat/auth-d1` (synchronized with `main`)  
+Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev) (`b5a428ea`)  
+Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://yutorah-player.mrosensweig.workers.dev) (`df656c57`)  
 Tests: **5/5 test suites passing (100% green, 19/19 basic functionality checks)**  
-Production status: **Ready for Production Deployment**
+Production status: **DEPLOYED & VERIFIED (HTTP 200)**
 
 ## 🎯 Active Batch: 3 User Fixes (One-at-a-Time, Dev Deploys) — Dual-Reviewed
 - **Dual review verdict**: PASS after remediation. Correctness PASS (0 Blocker, 0 High). Style & A11y review remediated: Viewport zoom enabled (WCAG 1.4.4), focus-visible outlines on all controls (WCAG 2.4.7), audio scrubber accessible slider with keyboard seeking, theme toggle icon FOUT eliminated (dark default), and playlist URL deep-linking for third-party recipients with dynamic server load & Share buttons.
@@ -19,7 +20,7 @@ Production status: **Ready for Production Deployment**
   - Head pre-paint script: no saved pref → dark (was: follow OS). Saved choice + theme URL params still win; no localStorage write for the default. `FEATURES.md` §8 updated.
   - Server defaults `themeMode = 'dark'` and renders `☀️` on `#themeToggleBtn` to eliminate icon FOUT.
 - [x] **Task 3: Dual review remediation & validation** *(COMPLETED — All 5/5 suites green, 19/19 checks)*
-- [ ] **Task 4: Push to PRODUCTION** *(READY — explicit user approval granted)*
+- [x] **Task 4: Push to PRODUCTION** *(COMPLETED 2026-09-11 — Deployed version `df656c57` to `https://yutorah-player.mrosensweig.workers.dev`, 200 OK)*
   - Pre-prod checks: `wrangler.toml` top-level config (name, D1 binding for prod), migrations applied to prod DB, secrets (`SESSION_SECRET`/`GOOGLE_*` per `docs/AUTH_SETUP.md`?). Deploy with `npx wrangler deploy` (no `--env`), verify prod URL.
 - [x] **Fix 1: Double calendar icon in account dropdown date** *(DEPLOYED 2026-09-11, `35b6fd6`, dev `2b296199`)*
   - Header badge `textContent` already starts with 📅; dropdown prepended a second one → stripped leading emoji, single prefix kept (both auth states).
@@ -74,7 +75,27 @@ Production status: **Ready for Production Deployment**
 
 ## 🕒 Chronological Activity Log
 
-### [2026-09-11 11:30 ET] — Commit `feat/auth-d1` (Task 5: Shuffle Play + Task 4 Parity Polish)
+### [2026-09-11 14:30 ET] — PRODUCTION DEPLOYMENT (`df656c57`) & Dual Review Hardening
+- `[DONE]` **Production Deployment**:
+  - Deployed full feature suite to **PRODUCTION** (`https://yutorah-player.mrosensweig.workers.dev`, Version ID: `df656c57-572b-4175-bb1c-1adafe3a6f4c`).
+  - Verified remote Cloudflare D1 migrations up-to-date (`yutorah-db`).
+  - Smoke tests verified 100% green across homepage, playlists view, and individual shiur endpoints (all HTTP 200).
+- `[DONE]` **Dual Review Hardening & Remediation**:
+  - **WCAG 1.4.4 (Resize Text)**: Removed `maximum-scale=1.0, user-scalable=no` from `<meta name="viewport">` to allow fluid mobile pinch-to-zoom.
+  - **WCAG 2.4.7 (Focus Visible)**: Eliminated blanket `outline: none !important;` on buttons and added explicit `:focus-visible` rings (`2px solid var(--primary-light)`) to media transport controls (`#playBtn`, `.ctrl-btn`, `.mini-play-btn`, `.mini-btn.skip-btn`, `.playlist-reorder-btn`, and `#scrubberBar`).
+  - **WCAG 2.1.1 & 4.1.2 (Scrubber Slider)**: Added `role="slider"`, `tabindex="0"`, `aria-label="Seek time"`, dynamic `aria-valuenow`, `aria-valuetext`, and Arrow key seek handlers (`Left`/`Right` ±5s, `PageUp`/`PageDown` ±30s, `Home`/`End`).
+  - **Theme FOUT Elimination**: Server defaults `themeMode = 'dark'` and renders `☀️` on `#themeToggleBtn` on initial HTML render so dark-mode first-time users experience zero theme or icon flash.
+  - **Shared Public Playlist Deep-Linking**: Upgraded `/api/playlists/items` to return playlist metadata (`title`, `description`, `icon`, `tags`, `ownerName`) alongside `items`. Implemented `devLoadSharedPublicPlaylist(pid)` to dynamically fetch and render third-party public playlists on deep links.
+  - **Share Actions**: Added `📋 Share` button on playlist headers and `📋 Share Search` button on the public playlist browser with clipboard copying and toast confirmations.
+  - **Shuffle Parity**: Enforced `items.length < 2` disabled state on custom and subscribed playlists.
+  - **Touch Targets**: Enlarged `.playlist-reorder-btn`, `.token-remove-btn`, and `.active-filter-pill button` touch dimensions, with 16px input font sizing on mobile to prevent iOS Safari auto-zoom.
+- `[DONE]` **Automated Testing**: Added Test #19 (`testDualReviewAccessibilityAndSharingRemediation`) to `tests/basic_functionality.test.mjs`. All 5 test suites passed 100% green (19/19 basic functionality checks).
+- `[DONE]` **Git Sync**: Both `feat/auth-d1` and `main` branches fast-forwarded and pushed to GitHub.
+
+### [2026-09-11 13:45 ET] — Commit `feat/auth-d1` (Batch 2: Shareable Playlist URLs + Dark Default)
+- `[DONE]` **Shareable Playlist URLs**: URL parameters (`tab=playlists`, `pl`, `plq`, `plteachers`, `plvenues`, `pltopics`, `plscope`, `plsort`), `replaceState` sync, boot hydration (`hydrateFromUrl`), `popstate` listener.
+- `[DONE]` **Dark Mode Default**: Pre-paint head script defaults to dark when no user preference is stored.
+- `[DONE]` **Dev Worker Deployment**: Deployed to `https://yutorah-player-dev.mrosensweig.workers.dev` (Version `b5a428ea`).
 - `[DONE]` **Task 4 Parity Fixes**: Added disabled states on queue ▲▼, drag-over visuals, persisted parity; queue parity now matches playlist.
 - `[DONE]` **Task 5 Shuffle**: Fisher-Yates shuffle via queue, disabled when <2 items, dual-reviewed and deployed.
 - `[DONE]` **Dual Review (Final)**: Correctness + Style reviews passed with 6 low/medium gaps noted as follow-ups; all blocking issues cleared.
