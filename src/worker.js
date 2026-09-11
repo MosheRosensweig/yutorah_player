@@ -8682,11 +8682,23 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       border-color: var(--primary);
       color: var(--primary);
     }
+    .playlist-seg-btn:focus-visible,
+    .playlist-pill:focus-visible,
+    .new-pl-emoji-btn:focus-visible {
+      outline: 2px solid var(--primary) !important;
+      outline-offset: 2px;
+    }
     .playlist-seg-btn.active {
       background: var(--primary);
       color: #fff;
       border-color: var(--primary);
       box-shadow: 0 2px 6px rgba(43, 76, 126, 0.25);
+    }
+    [data-theme="dark"] .playlist-seg-btn.active {
+      background: #1e2c40;
+      color: #7ca5de;
+      border-color: #5c8ecc;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
     }
     .playlist-system-row {
       grid-column: 1 / -1;
@@ -8702,6 +8714,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       z-index: 10;
       background: var(--bg);
       padding-top: 6px;
+    }
+    @media (max-width: 640px) {
+      .playlist-system-row {
+        top: 38px !important;
+      }
     }
     .playlist-custom-row {
       grid-column: 1 / -1;
@@ -8744,6 +8761,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       color: #fff;
       border-color: #38bdf8;
     }
+    .playlist-sub-badge {
+      background: rgba(56, 189, 248, 0.15) !important;
+      color: #0369a1 !important;
+      border-color: #38bdf8 !important;
+    }
+    [data-theme="dark"] .playlist-sub-badge {
+      background: rgba(2, 132, 199, 0.25) !important;
+      color: #7dd3fc !important;
+      border-color: #0284c7 !important;
+    }
     .playlist-subscribed-card {
       border: 2px solid #38bdf8 !important;
       box-shadow: 0 0 0 1px #bae6fd, 0 4px 14px rgba(56, 189, 248, 0.15) !important;
@@ -8761,7 +8788,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.3), 0 4px 14px rgba(96, 165, 250, 0.25) !important;
     }
     .pl-tick-add {
-      color: #16a34a !important;
+      color: #15803d !important;
       font-weight: 800;
       font-size: 12px;
     }
@@ -8775,6 +8802,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     [data-theme="dark"] .pl-tick-del {
       color: #f87171 !important;
+    }
+    .pl-save-changes-btn {
+      background: var(--primary) !important;
+      color: #fff !important;
+      border-color: var(--primary) !important;
+    }
+    [data-theme="dark"] .pl-save-changes-btn {
+      background: #2563eb !important;
+      color: #fff !important;
+      border-color: #3b82f6 !important;
     }
     .playlist-item-wrap {
       transition: all 0.15s ease;
@@ -16069,7 +16106,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           '<div class="playlist-card-title">' + escapeHtml(p.title || 'Untitled') + '</div>' +
           (isAuthor
             ? '<span class="active-filter-pill" style="background:rgba(43, 76, 126, 0.12); color:var(--primary); border-color:var(--primary); font-weight:700; white-space:nowrap; flex-shrink:0;">👤 Your Playlist</span>'
-            : (isSub ? '<span class="active-filter-pill" style="background:rgba(56, 189, 248, 0.15); color:#0369a1; border-color:#38bdf8; font-weight:700; white-space:nowrap; flex-shrink:0;">📡 Subscribed</span>' : '')
+            : (isSub ? '<span class="active-filter-pill playlist-sub-badge" style="font-weight:700; white-space:nowrap; flex-shrink:0;">📡 Subscribed</span>' : '')
           ) +
           '</div>' +
           '<div class="playlist-card-meta">by ' + escapeHtml(p.ownerName || (isAuthor ? 'You' : 'a listener')) +
@@ -16223,6 +16260,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     devDragPlId = null;
   }
   window.devDropItem = devDropItem;
+
+  function devDragEnd(e) {
+    devDragPlId = null;
+    devDragSrcIndex = null;
+    document.querySelectorAll('.playlist-item-wrap.dragging').forEach(el => el.classList.remove('dragging'));
+    document.querySelectorAll('.playlist-item-wrap.drag-over').forEach(el => el.classList.remove('drag-over'));
+  }
+  window.devDragEnd = devDragEnd;
 
   function devMovePlaylistItem(pid, fromIdx, delta) {
     devReorderPlaylistItem(pid, fromIdx, fromIdx + delta);
@@ -16396,7 +16441,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         const iid = String(item.id);
         const canRemove = !pl.isSubscription;
         const dragAttrs = isManualMode
-          ? ' draggable="true" ondragstart="devDragStart(event, &quot;' + escapeHtml(pl.id) + '&quot;, ' + idx + ')" ondragover="devDragOver(event)" ondragleave="devDragLeave(event)" ondrop="devDropItem(event, &quot;' + escapeHtml(pl.id) + '&quot;, ' + idx + ')"'
+          ? ' draggable="true" ondragstart="devDragStart(event, &quot;' + escapeHtml(pl.id) + '&quot;, ' + idx + ')" ondragover="devDragOver(event)" ondragleave="devDragLeave(event)" ondrop="devDropItem(event, &quot;' + escapeHtml(pl.id) + '&quot;, ' + idx + ')" ondragend="devDragEnd(event)"'
           : '';
         return '<div class="playlist-item-wrap"' + dragAttrs + '>' +
           renderDocToCard(item) +
@@ -16439,17 +16484,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     box.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">' +
       '<div style="font-weight:800; font-size:16px; display:flex; align-items:center; gap:8px;">' +
       '<span id="newPlIconPreview" style="font-size:22px;">📁</span><span>Create New Playlist</span></div>' +
-      '<button type="button" class="card-mini-btn" id="newPlClose" style="padding:4px 8px;">✕</button></div>' +
+      '<button type="button" class="card-mini-btn" id="newPlClose" aria-label="Close dialog" style="padding:4px 8px;">✕</button></div>' +
 
       '<label style="font-size:12px; font-weight:700; color:var(--text-muted); display:block; margin-bottom:4px;">Choose Icon</label>' +
       '<div id="newPlEmojiGrid" class="new-pl-emoji-grid">' +
       EMOJI_OPTIONS.map(em =>
-        '<button type="button" class="new-pl-emoji-btn' + (em === selectedIcon ? ' selected' : '') + '" data-emoji="' + em + '">' + em + '</button>'
+        '<button type="button" class="new-pl-emoji-btn' + (em === selectedIcon ? ' selected' : '') + '" data-emoji="' + em + '" aria-label="Select ' + em + ' icon" aria-pressed="' + (em === selectedIcon ? 'true' : 'false') + '">' + em + '</button>'
       ).join('') + '</div>' +
 
       '<label style="font-size:12px; font-weight:700; color:var(--text-muted); display:block; margin-bottom:2px;">Playlist Name <span style="color:#ef4444;">*</span></label>' +
       '<input id="newPlInput" type="text" placeholder="e.g. In-Depth Shabbos Shiurim" maxlength="60" style="width:100%; padding:9px 12px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text); margin-bottom:4px;">' +
-      '<div id="newPlError" style="display:none; color:#ef4444; font-size:12px; font-weight:600; margin-bottom:8px;"></div>' +
+      '<div id="newPlError" role="alert" aria-live="polite" style="display:none; color:#ef4444; font-size:12px; font-weight:600; margin-bottom:8px;"></div>' +
 
       '<label style="font-size:12px; font-weight:700; color:var(--text-muted); display:block; margin-top:8px; margin-bottom:2px;">Description (optional)</label>' +
       '<textarea id="newPlDesc" rows="2" maxlength="300" placeholder="What is this playlist about?" style="width:100%; padding:8px 12px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text); resize:vertical; margin-bottom:10px;"></textarea>' +
@@ -16487,7 +16532,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     box.querySelectorAll('.new-pl-emoji-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         selectedIcon = btn.getAttribute('data-emoji');
-        box.querySelectorAll('.new-pl-emoji-btn').forEach(b => b.classList.toggle('selected', b === btn));
+        box.querySelectorAll('.new-pl-emoji-btn').forEach(b => {
+          b.classList.toggle('selected', b === btn);
+          b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
+        });
         if (iconPreview) iconPreview.textContent = selectedIcon;
       });
     });
@@ -18524,6 +18572,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         createWrap.innerHTML = '<button type="button" class="card-mini-btn active-save" id="devPlCreateBtn" style="margin-bottom:8px;">➕ Create "' + escapeHtml(v) + '"</button>';
         const cb = createWrap.querySelector('#devPlCreateBtn');
         cb.addEventListener('click', () => {
+          if (typeof devIsDuplicatePlaylistName === 'function' && devIsDuplicatePlaylistName(v)) {
+            flashToast('A playlist with this name already exists', true, false);
+            return;
+          }
           const nid = devCreatePlaylist(v);
           if (nid) {
             initialStates[nid] = false;
@@ -18546,6 +18598,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       const pid = cb.getAttribute('data-pl-check');
       stagedStates[pid] = cb.checked;
       listEl.innerHTML = listHtml(filterInput.value);
+      const reCheck = listEl.querySelector('[data-pl-check="' + pid + '"]');
+      if (reCheck) reCheck.focus();
       updateFooter();
     });
 
