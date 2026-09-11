@@ -343,8 +343,18 @@ async function testPublicPlaylistSubscriptionOptions() {
   assert.ok(html.includes('devIsSubscribedToPublicId'), 'devIsSubscribedToPublicId defined');
   assert.ok(html.includes('devOpenSubscribedPlaylist'), 'devOpenSubscribedPlaylist defined');
   assert.ok(html.includes('Open in My Playlists'), 'Subscribed public playlist cards render Open in My Playlists');
+  // 5. Phase 3: Playlist Sorting, Ordering Controls & Drag-and-Drop
+  assert.ok(html.includes('devGetPlaylistSort'), 'devGetPlaylistSort defined');
+  assert.ok(html.includes('devSetPlaylistSort'), 'devSetPlaylistSort defined');
+  assert.ok(html.includes('devItemDateTimestamp'), 'devItemDateTimestamp defined');
+  assert.ok(html.includes('devDragStart'), 'devDragStart defined');
+  assert.ok(html.includes('devDropItem'), 'devDropItem defined');
+  assert.ok(html.includes('devReorderPlaylistItem'), 'devReorderPlaylistItem defined');
+  assert.ok(html.includes('.playlist-reorder-btn'), 'playlist-reorder-btn CSS defined');
+  assert.ok(html.includes('.playlist-item-wrap'), 'playlist-item-wrap CSS defined');
+  assert.ok(html.includes('Manual / Drag-and-Drop'), 'Manual / Drag-and-Drop sort option defined');
 
-  console.log('  ✅ Public playlist save choice modal, live-sync subscription & Phase 2 segmented controls verified.');
+  console.log('  ✅ Public playlist save choice modal, live-sync subscription, segmented controls & sorting/reordering verified.');
 }
 
 async function testDevPersonasAndSecondTab() {

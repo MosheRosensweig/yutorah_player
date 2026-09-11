@@ -8752,6 +8752,38 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       border: 2px solid #0284c7 !important;
       box-shadow: 0 0 0 1px #0369a1, 0 4px 14px rgba(2, 132, 199, 0.3) !important;
     }
+    .playlist-item-wrap {
+      transition: all 0.15s ease;
+    }
+    .playlist-item-wrap.drag-over {
+      outline: 2px dashed var(--primary);
+      outline-offset: 4px;
+      border-radius: 12px;
+      transform: scale(0.99);
+    }
+    .playlist-item-wrap.dragging {
+      opacity: 0.45;
+    }
+    .playlist-reorder-btn {
+      padding: 3px 8px;
+      font-size: 11px;
+      font-weight: 700;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .playlist-reorder-btn:hover:not(:disabled) {
+      border-color: var(--primary);
+      color: var(--primary);
+      background: var(--bg);
+    }
+    .playlist-reorder-btn:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
     .playlist-public-card {
       grid-column: 1 / -1;
       background: var(--card);
@@ -15989,6 +16021,108 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
   }
 
+  function devItemDateTimestamp(it) {
+    if (!it) return 0;
+    if (it.dateISO) {
+      const d = parseLocalDate(it.dateISO);
+      if (d && !isNaN(d.getTime())) return d.getTime();
+    }
+    if (it.date) {
+      const d = parseLocalDate(it.date);
+      if (d && !isNaN(d.getTime())) return d.getTime();
+    }
+    return 0;
+  }
+  window.devItemDateTimestamp = devItemDateTimestamp;
+
+  function devGetPlaylistSort(pid) {
+    try {
+      const store = getDevStore();
+      const pl = getDevPlaylist(store, pid);
+      if (pl && pl.sortOrder) return pl.sortOrder;
+      const v = localStorage.getItem('yutorah_pl_sort_' + pid);
+      if (v) return v;
+    } catch (e) {}
+    if (pid === 'history') {
+      try {
+        const hs = localStorage.getItem('yutorah_history_sort');
+        if (hs === 'shiurdate') return 'date_desc';
+      } catch (e) {}
+      return 'listened';
+    }
+    return 'added';
+  }
+  window.devGetPlaylistSort = devGetPlaylistSort;
+
+  function devSetPlaylistSort(pid, sort) {
+    try {
+      localStorage.setItem('yutorah_pl_sort_' + pid, sort);
+      if (pid === 'history') {
+        localStorage.setItem('yutorah_history_sort', (sort === 'date_desc' || sort === 'shiurdate') ? 'shiurdate' : 'listened');
+      }
+      const store = getDevStore();
+      if (store && store.custom && store.custom[pid]) {
+        store.custom[pid].sortOrder = sort;
+        saveDevStore(store);
+      }
+    } catch (e) {}
+    renderPlaylistsGrid();
+  }
+  window.devSetPlaylistSort = devSetPlaylistSort;
+
+  let devDragSrcIndex = null;
+  let devDragPlId = null;
+
+  function devDragStart(e, pid, idx) {
+    devDragPlId = pid;
+    devDragSrcIndex = idx;
+    try {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', String(idx));
+    } catch (err) {}
+    if (e.currentTarget) e.currentTarget.classList.add('dragging');
+  }
+  window.devDragStart = devDragStart;
+
+  function devDragOver(e) {
+    e.preventDefault();
+    try { e.dataTransfer.dropEffect = 'move'; } catch (err) {}
+    if (e.currentTarget) e.currentTarget.classList.add('drag-over');
+  }
+  window.devDragOver = devDragOver;
+
+  function devDragLeave(e) {
+    if (e.currentTarget) e.currentTarget.classList.remove('drag-over');
+  }
+  window.devDragLeave = devDragLeave;
+
+  function devDropItem(e, pid, targetIdx) {
+    e.preventDefault();
+    if (e.currentTarget) e.currentTarget.classList.remove('drag-over');
+    if (devDragPlId !== pid || devDragSrcIndex === null || devDragSrcIndex === targetIdx) return;
+    devReorderPlaylistItem(pid, devDragSrcIndex, targetIdx);
+    devDragSrcIndex = null;
+    devDragPlId = null;
+  }
+  window.devDropItem = devDropItem;
+
+  function devMovePlaylistItem(pid, fromIdx, delta) {
+    devReorderPlaylistItem(pid, fromIdx, fromIdx + delta);
+  }
+  window.devMovePlaylistItem = devMovePlaylistItem;
+
+  function devReorderPlaylistItem(pid, fromIdx, toIdx) {
+    const store = getDevStore();
+    const pl = store.custom && store.custom[pid];
+    if (!pl || !pl.items || pl.isSubscription) return;
+    if (fromIdx < 0 || fromIdx >= pl.items.length || toIdx < 0 || toIdx >= pl.items.length) return;
+    const moved = pl.items.splice(fromIdx, 1)[0];
+    pl.items.splice(toIdx, 0, moved);
+    saveDevStore(store);
+    renderPlaylistsGrid();
+  }
+  window.devReorderPlaylistItem = devReorderPlaylistItem;
+
   function renderPlaylistsGrid() {
     const grid = document.getElementById('grid-playlists');
     if (!grid) return;
@@ -16029,19 +16163,59 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const pl = getDevPlaylist(store, activeDevPlaylistId);
     let html = devPlaylistsHeaderHtml(store, activeDevPlaylistId);
     let items = (pl && pl.items) || [];
-    // History sort: last-listened (default, recency of play) vs shiur date.
-    let historySort = 'listened';
-    try { historySort = localStorage.getItem('yutorah_history_sort') || 'listened'; } catch (e) {}
-    if (pl && pl.isHistory) {
-      if (historySort !== 'shiurdate') historySort = 'listened';
-      if (historySort === 'shiurdate') {
-        items = [...items].sort((a, b) => String(b.dateISO || b.date || '').localeCompare(String(a.dateISO || a.date || '')));
+    const canManual = !pl.isHistory && !store.system[pl.id] && !pl.isSubscription;
+    const sort = devGetPlaylistSort(pl.id);
+
+    // Apply sorting
+    if (pl.isHistory) {
+      if (sort === 'date_desc' || sort === 'shiurdate') {
+        items = [...items].sort((a, b) => {
+          const diff = devItemDateTimestamp(b) - devItemDateTimestamp(a);
+          return diff !== 0 ? diff : String(b.id || '').localeCompare(String(a.id || ''));
+        });
+      } else if (sort === 'date_asc') {
+        items = [...items].sort((a, b) => {
+          const diff = devItemDateTimestamp(a) - devItemDateTimestamp(b);
+          return diff !== 0 ? diff : String(a.id || '').localeCompare(String(b.id || ''));
+        });
       }
-      html += '<div style="grid-column:1/-1; margin-bottom:8px; display:flex; gap:6px; align-items:center; flex-wrap:wrap;">' +
-        '<span style="font-size:12px; font-weight:700; color:var(--text-muted);">Order:</span>' +
-        '<button type="button" class="card-mini-btn' + (historySort === 'listened' ? ' active-save' : '') + '" onclick="setHistorySort(&quot;listened&quot;)">🕒 Last Listened</button>' +
-        '<button type="button" class="card-mini-btn' + (historySort === 'shiurdate' ? ' active-save' : '') + '" onclick="setHistorySort(&quot;shiurdate&quot;)">📅 Shiur Date</button></div>';
+      // 'listened': original array order preserved
+    } else {
+      if (sort === 'date_desc') {
+        items = [...items].sort((a, b) => {
+          const diff = devItemDateTimestamp(b) - devItemDateTimestamp(a);
+          return diff !== 0 ? diff : String(b.id || '').localeCompare(String(a.id || ''));
+        });
+      } else if (sort === 'date_asc') {
+        items = [...items].sort((a, b) => {
+          const diff = devItemDateTimestamp(a) - devItemDateTimestamp(b);
+          return diff !== 0 ? diff : String(a.id || '').localeCompare(String(b.id || ''));
+        });
+      } else if (sort === 'added') {
+        items = [...items].sort((a, b) => ((b.addedAt || 0) - (a.addedAt || 0)));
+      }
+      // 'manual': raw array order preserved
     }
+
+    // Sort order row
+    let sortRowHtml = '<div style="grid-column:1/-1; margin-bottom:8px; display:flex; gap:6px; align-items:center; flex-wrap:wrap;">' +
+      '<span style="font-size:12px; font-weight:700; color:var(--text-muted);">↕️ Order:</span>';
+    if (pl.isHistory) {
+      sortRowHtml += '<button type="button" class="card-mini-btn' + (sort === 'listened' ? ' active-save' : '') + '" onclick="devSetPlaylistSort(&quot;history&quot;, &quot;listened&quot;)">🕒 Last Listened</button>' +
+        '<button type="button" class="card-mini-btn' + (sort === 'date_desc' || sort === 'shiurdate' ? ' active-save' : '') + '" onclick="devSetPlaylistSort(&quot;history&quot;, &quot;date_desc&quot;)">📅 Shiur Date (Newest)</button>' +
+        '<button type="button" class="card-mini-btn' + (sort === 'date_asc' ? ' active-save' : '') + '" onclick="devSetPlaylistSort(&quot;history&quot;, &quot;date_asc&quot;)">📅 Shiur Date (Oldest)</button>';
+    } else {
+      sortRowHtml += '<button type="button" class="card-mini-btn' + (sort === 'added' ? ' active-save' : '') + '" onclick="devSetPlaylistSort(&quot;' + escapeHtml(pl.id) + '&quot;, &quot;added&quot;)">🕒 Recently Added</button>' +
+        '<button type="button" class="card-mini-btn' + (sort === 'date_desc' ? ' active-save' : '') + '" onclick="devSetPlaylistSort(&quot;' + escapeHtml(pl.id) + '&quot;, &quot;date_desc&quot;)">📅 Shiur Date (Newest)</button>' +
+        '<button type="button" class="card-mini-btn' + (sort === 'date_asc' ? ' active-save' : '') + '" onclick="devSetPlaylistSort(&quot;' + escapeHtml(pl.id) + '&quot;, &quot;date_asc&quot;)">📅 Shiur Date (Oldest)</button>' +
+        (canManual ? '<button type="button" class="card-mini-btn' + (sort === 'manual' ? ' active-save' : '') + '" onclick="devSetPlaylistSort(&quot;' + escapeHtml(pl.id) + '&quot;, &quot;manual&quot;)">↕️ Manual / Drag-and-Drop</button>' : '');
+    }
+    sortRowHtml += '</div>';
+    if (canManual && sort === 'manual') {
+      sortRowHtml += '<div style="grid-column:1/-1; margin:-4px 0 10px; font-size:12px; color:var(--text-muted);">💡 <b>Manual Reorder</b>: Drag cards or use the ▲ / ▼ buttons below each card to position shiurim.</div>';
+    }
+    html += sortRowHtml;
+
     html += '<div class="search-results-subheading"><span>' + escapeHtml((pl && pl.isSubscription ? '📡' : ((pl && pl.icon) || '📁'))) + '</span>' +
       '<span>' + escapeHtml((pl && pl.name) || '') + '</span>' +
       '<span class="sub-count">' + items.length + ' Shiurim • ' + escapeHtml(devTotalDuration(items)) + '</span></div>';
@@ -16099,13 +16273,24 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (items.length === 0) {
       html += '<div style="grid-column:1/-1; text-align:center; padding:30px; color:var(--text-muted);">Empty playlist — tap 🕒 Later, ☆ Fav or ➕ Playlist on any card to add shiurim.</div>';
     } else {
-      html += items.map(item => {
+      const isManualMode = canManual && sort === 'manual';
+      html += items.map((item, idx) => {
         const iid = String(item.id);
         const canRemove = !pl.isSubscription;
-        return '<div>' + renderDocToCard(item) +
-          (canRemove ? '<div style="margin-top:6px; display:flex; gap:6px; align-items:center;">' +
+        const dragAttrs = isManualMode
+          ? ' draggable="true" ondragstart="devDragStart(event, &quot;' + escapeHtml(pl.id) + '&quot;, ' + idx + ')" ondragover="devDragOver(event)" ondragleave="devDragLeave(event)" ondrop="devDropItem(event, &quot;' + escapeHtml(pl.id) + '&quot;, ' + idx + ')"'
+          : '';
+        return '<div class="playlist-item-wrap"' + dragAttrs + '>' +
+          renderDocToCard(item) +
+          (canRemove ? '<div style="margin-top:6px; display:flex; gap:6px; align-items:center; flex-wrap:wrap;">' +
           '<button type="button" class="card-mini-btn" data-dev-remove="' + pl.id + ':' + iid + '"' +
           ' onclick="devAskRemove(&quot;' + escapeHtml(pl.id) + '&quot;, &quot;' + escapeHtml(iid) + '&quot;)">✕ Remove from Playlist</button>' +
+          (isManualMode ?
+            '<span style="display:inline-flex; gap:4px; align-items:center; margin-left:auto;">' +
+            '<button type="button" class="playlist-reorder-btn"' + (idx === 0 ? ' disabled' : '') + ' onclick="devMovePlaylistItem(&quot;' + escapeHtml(pl.id) + '&quot;, ' + idx + ', -1)" title="Move Up">▲</button>' +
+            '<button type="button" class="playlist-reorder-btn"' + (idx === items.length - 1 ? ' disabled' : '') + ' onclick="devMovePlaylistItem(&quot;' + escapeHtml(pl.id) + '&quot;, ' + idx + ', 1)" title="Move Down">▼</button>' +
+            '<span style="cursor:grab; font-size:14px; opacity:0.7; padding:0 4px; user-select:none;" title="Drag to reorder">⠿</span>' +
+            '</span>' : '') +
           '</div>' : '') + '</div>';
       }).join('');
     }

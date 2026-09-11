@@ -17,9 +17,11 @@ Production status: **Untouched** (strictly protected by standing rules)
   - Segmented top control: `🎧 My Playlists` vs `🌍 Public Playlists`.
   - Sticky / frozen top row in `My Playlists` (`🕒 History`, `🕒 Later`, `⭐ Favorites`, `📋 Queue`, `➕ New Playlist`).
   - Subscribed / read-only border highlights in Light Mode and Dark Mode (`.playlist-subscribed-card`, `.subscription-pill`, `📡 Subscribed` badge, `🎧 Open in My Playlists` action).
-- [ ] **Phase 3: Playlist Sorting & Ordering Controls** *(IN PROGRESS)*
-  - Sort selector per playlist: `Last Listened`, `Shiur Date`, `Manual / Drag-and-Drop`.
-- [ ] **Phase 4: Enhanced Playlist Creation Modal** *(PENDING)*
+- [x] **Phase 3: Playlist Sorting & Ordering Controls** *(COMPLETED)*
+  - Sort selector per playlist: `Last Listened` (for History), `Recently Added`, `Shiur Date (Newest)`, `Shiur Date (Oldest)`, and `Manual / Drag-and-Drop`.
+  - Manual reordering with touch-friendly `▲` / `▼` buttons and HTML5 drag-and-drop handles (`⠿`).
+  - Sort preference persistence in `localStorage` (`yutorah_pl_sort_[id]`) and in `pl.sortOrder`.
+- [ ] **Phase 4: Enhanced Playlist Creation Modal** *(IN PROGRESS)*
   - Emoji / Icon picker for playlists.
   - Curated taxonomy tag selector (speakers, venues, topics, categories; max 5).
   - Per-user duplicate playlist name prevention.
@@ -31,6 +33,17 @@ Production status: **Untouched** (strictly protected by standing rules)
 ---
 
 ## 🕒 Chronological Activity Log
+
+### [2026-09-11 10:20 ET] — Commit `feat/auth-d1` (Phase 3: Playlist Sorting & Ordering Controls + Drag-and-Drop)
+- `[DONE]` **Multi-Criteria Playlist Sorting**:
+  - Implemented `devGetPlaylistSort`, `devSetPlaylistSort`, and `devItemDateTimestamp` supporting `listened`, `added`, `date_desc` (newest first), and `date_asc` (oldest first).
+  - Preserved backward-compatible `setHistorySort` wrapper for legacy callers.
+- `[DONE]` **Manual Reordering & Drag-and-Drop**:
+  - Enabled `Manual / Drag-and-Drop` mode on custom user playlists.
+  - Added desktop and touch-friendly `▲` (Move Up) and `▼` (Move Down) buttons next to remove action on each playlist item.
+  - Implemented native HTML5 drag-and-drop (`devDragStart`, `devDragOver`, `devDragLeave`, `devDropItem`) with grab handles (`⠿`) and visual drop indicator styling (`.playlist-item-wrap.drag-over`, `.playlist-item-wrap.dragging`).
+  - Reordering persists via `devReorderPlaylistItem` and automatically syncs to store and cloud.
+- `[DONE]` **Automated Testing**: Updated `tests/basic_functionality.test.mjs` with Phase 3 assertions. All 5 test suites passed 100% green.
 
 ### [2026-09-11 10:18 ET] — Commit `feat/auth-d1` (Phase 2: Playlists Tab Restructuring & Sticky Controls)
 - `[DONE]` **Segmented Top Control Bar**:
