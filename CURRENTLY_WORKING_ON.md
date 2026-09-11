@@ -31,6 +31,8 @@ Production status: **Untouched** (strictly protected by standing rules)
   - Made Teacher, Topic, Venue filters typable inputs with datalist dropdowns (controlled vocab, no freeform).
 - [x] **Task 8: Header Overflow — Settings in Dropdown vs Header** *(COMPLETED 2026-09-11)*
   - Header hides light/dark + calendar on mobile (≤640px) and shows them in the account dropdown; desktop shows them in header when space allows.
+- [x] **Task 9: Polish & Dual Review Follow-ups** *(COMPLETED 2026-09-11)*
+  - Fixed freeform tag bypass, all-unchecked scope guard, typable filter validation, and doc drift; 5/5 suites green.
 
 ---
 

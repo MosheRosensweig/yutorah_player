@@ -16293,11 +16293,20 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     bindSel('plPubVenue', 'venues');
     bindSel('plPubTopic', 'topics');
     const chkTitle = container.querySelector('#plScopeTitle');
-    if (chkTitle) chkTitle.addEventListener('change', () => { plPublicScope.title = chkTitle.checked; plPublicSearch(); });
     const chkDesc = container.querySelector('#plScopeDesc');
-    if (chkDesc) chkDesc.addEventListener('change', () => { plPublicScope.desc = chkDesc.checked; plPublicSearch(); });
     const chkShiurim = container.querySelector('#plScopeShiurim');
-    if (chkShiurim) chkShiurim.addEventListener('change', () => { plPublicScope.shiurim = chkShiurim.checked; plPublicSearch(); });
+    const guardScope = (el) => {
+      if (!plPublicScope.title && !plPublicScope.desc && !plPublicScope.shiurim) {
+        if (el) el.checked = true;
+        if (el === chkTitle) plPublicScope.title = true;
+        else if (el === chkDesc) plPublicScope.desc = true;
+        else if (el === chkShiurim) plPublicScope.shiurim = true;
+        flashToast('⚠️ At least one scope must stay checked', true, false);
+      }
+    };
+    if (chkTitle) chkTitle.addEventListener('change', () => { plPublicScope.title = chkTitle.checked; guardScope(chkTitle); plPublicSearch(); });
+    if (chkDesc) chkDesc.addEventListener('change', () => { plPublicScope.desc = chkDesc.checked; guardScope(chkDesc); plPublicSearch(); });
+    if (chkShiurim) chkShiurim.addEventListener('change', () => { plPublicScope.shiurim = chkShiurim.checked; guardScope(chkShiurim); plPublicSearch(); });
     const sortEl = container.querySelector('#plPubSort');
     if (sortEl) sortEl.addEventListener('change', () => { plPublicSort = sortEl.value; plPublicSearch(); });
     if (plPublicExpanded) plPublicRenderItems(plPublicExpanded);
@@ -17240,8 +17249,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         const typed = ((inp && inp.value) || '').trim().toLowerCase();
         if (!typed) return;
         const allOpts = plTagOptions(kind);
-        const match = allOpts.find(o => String(o.name || '').toLowerCase() === typed) ||
-          allOpts.find(o => String(o.name || '').toLowerCase().includes(typed));
+        const match = allOpts.find(o => String(o.name || '').toLowerCase() === typed);
         if (!match) {
           flashToast('⚠️ Pick from the list — free text goes in the description', true, false);
           return;
