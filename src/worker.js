@@ -16165,11 +16165,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     qhtml += '<div style="grid-column:1/-1; display:flex; gap:16px; align-items:center; flex-wrap:wrap; margin:-4px 0 12px; font-size:12.5px; color:var(--text);">' +
       '<span style="font-weight:700; color:var(--text-muted);">Search in:</span>' +
       '<label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; font-weight:600;">' +
-      '<input type="checkbox" id="plScopeTitle"' + (plPublicScope.title ? ' checked' : '') + ' style="accent-color:var(--primary); cursor:pointer;"> Title &amp; Tags</label>' +
+      '<input type="checkbox" id="plScopeTitle"' + (plPublicScope.title ? ' checked' : '') + ' style="accent-color:var(--primary); cursor:pointer;"> Playlist title and tags</label>' +
       '<label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; font-weight:600;">' +
-      '<input type="checkbox" id="plScopeDesc"' + (plPublicScope.desc ? ' checked' : '') + ' style="accent-color:var(--primary); cursor:pointer;"> Description</label>' +
+      '<input type="checkbox" id="plScopeDesc"' + (plPublicScope.desc ? ' checked' : '') + ' style="accent-color:var(--primary); cursor:pointer;"> Playlist description</label>' +
       '<label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; font-weight:600;">' +
-      '<input type="checkbox" id="plScopeShiurim"' + (plPublicScope.shiurim ? ' checked' : '') + ' style="accent-color:var(--primary); cursor:pointer;"> Shiurim therein</label>' +
+      '<input type="checkbox" id="plScopeShiurim"' + (plPublicScope.shiurim ? ' checked' : '') + ' style="accent-color:var(--primary); cursor:pointer;"> Shiurim inside the playlists</label>' +
       '</div>';
 
     const activeFilterCards = [];
