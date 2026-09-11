@@ -17087,15 +17087,36 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       try { flashToast('Queue is unchanged — this playlist is empty', true, false); } catch (e) {}
       return;
     }
+    const curQueue = getDevQueue();
     const seen = new Set();
     try {
-      for (const it of getDevQueue()) {
+      for (const it of curQueue) {
         if (it && it.kind === 'series' && Array.isArray(it.items)) it.items.forEach(s => { if (s && s.id) seen.add(String(s.id)); });
         else if (it && it.id) seen.add(String(it.id));
       }
     } catch (e) {}
     const fresh = [];
+    let freshCount = 0;
     for (const s of pl.items) {
+      if (s && s.kind === 'series' && Array.isArray(s.items)) {
+        const parts = s.items
+          .filter(k => k && k.id && !seen.has(String(k.id)))
+          .map(k => {
+            seen.add(String(k.id));
+            return {
+              id: String(k.id), title: k.title, speaker: k.speaker, photo: k.photo,
+              duration: k.duration, queuedAt: Date.now()
+            };
+          });
+        if (parts.length === 0) continue;
+        fresh.push({
+          kind: 'series', coverId: String(s.coverId || s.seriesTitle || s.title || ''),
+          seriesTitle: String(s.seriesTitle || s.title || 'Series'),
+          items: parts, queuedAt: Date.now()
+        });
+        freshCount += parts.length;
+        continue;
+      }
       const sid = String((s && s.id) || '');
       if (!sid || seen.has(sid)) continue;
       seen.add(sid);
@@ -17104,15 +17125,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         duration: s.duration, date: s.date, category: s.category,
         isArticle: Boolean(s.isArticle), queuedAt: Date.now()
       });
+      freshCount += 1;
     }
     if (fresh.length === 0) {
       try { flashToast('Already in queue — nothing new to add', true, false); } catch (e) {}
       return;
     }
     try {
-      saveDevQueue(fresh.concat(getDevQueue()));
+      saveDevQueue(fresh.concat(curQueue));
     } catch (e) {}
-    try { flashToast('⏫ Added ' + fresh.length + ' to top of queue', false, false); } catch (e) {}
+    try { if (typeof devRefreshCardButtons === 'function') devRefreshCardButtons(); } catch (e) {}
+    try { flashToast('⏫ Added ' + freshCount + ' to top of queue', false, false); } catch (e) {}
   }
   window.devQueuePlaylistToTop = devQueuePlaylistToTop;
 
@@ -18071,7 +18094,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       try {
         const calEl = document.getElementById('hebrewDateBadge');
         const calRaw = calEl ? (calEl.textContent || '') : '';
-        const calText = calRaw.replace(/^📅\s*/, '').trim();
+        const calText = calRaw.replace(/^📅\uFE0F?\s*/, '').trim();
         if (calText) html += '<div class="settings-menu-label auth-cal-mobile">📅 ' + escapeHtml(calText) + '</div>';
       } catch (e) {}
       html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); handleAuthClick();">🚪 Sign out</button>';
@@ -18092,7 +18115,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       try {
         const calEl2 = document.getElementById('hebrewDateBadge');
         const calRaw2 = calEl2 ? (calEl2.textContent || '') : '';
-        const calText2 = calRaw2.replace(/^📅\s*/, '').trim();
+        const calText2 = calRaw2.replace(/^📅\uFE0F?\s*/, '').trim();
         if (calText2) html += '<div class="settings-menu-label auth-cal-mobile">📅 ' + escapeHtml(calText2) + '</div>';
       } catch (e) {}
     }
