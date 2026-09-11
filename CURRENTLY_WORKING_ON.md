@@ -1,60 +1,82 @@
-# Currently Working On
+# Currently Working On — Living Status & Activity Log
 
-Living status doc — rewritten whenever the user says "write down where you're up to".
-Last updated: 2026-09-10, 22:30 ET (branch `feat/auth-d1`, all 5 test suites green).
+Living status doc & audit log — updated on every milestone and user request.  
+Last updated: **2026-09-10, 22:38 ET**  
+Current branch: `feat/auth-d1`  
+Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev)  
+Tests: **5/5 test suites passing (100% green)**  
+Production status: **Untouched** (strictly protected by standing rules)
 
-## Right now (ready for dual review & dev deploy)
-- **Account-playlists rollout review fixes**: logged-out tab ALWAYS visible (prompt + public browser, no login wall); Esc closes display-name/details/new-playlist modals; SSR tab label "🎧 My Playlists" (no Dev leak); dashed dev-tab style scoped to dev only; public/private publish choice + server-truth visibility tag; public Load More + true totals; textarea dark theme; prompt login preserves return URL; empty-name feedback; tag selects loading state; public API fixes (unsave route, XSS id validation, pagination, caps, idempotent re-publish, res.ok checks, series kind persistence).
-- **Mobile Lock Screen & Notification Center MediaSession (Swipe-Down Controls)**:
-  - **±10s Skip Buttons**: Registered `seekbackward` and `seekforward` action handlers with 10s default offset universally on playback start so mobile iOS Control Center / Lock Screen and Android notification shade display `-10` and `+10` skip buttons flanking Play/Pause.
-  - **High-Res Speaker Artwork**: Multi-size artwork array (`96x96`, `128x128`, `192x192`, `256x256`, `384x384`, `512x512`) pulling the speaker's portrait from `teacherPhotoURL_lp`, `teacherPhotoURL_o`, `teacherPhotoURL`, or `PHOTO` across dynamic shiur loading, SSR, and cards, so the mobile notification card/backdrop renders the speaker's photo instead of falling back to the generic icon.
-  - **Lock Screen Scrubbing & State Sync**: Added `seekto` handler for OS timeline scrubbing, `nexttrack` for queue advancement, and synced `playbackState` ('playing'/'paused') and `setPositionState` on audio events.
-  - **Automated Regression Coverage**: Added MediaSession integration test to `tests/basic_functionality.test.mjs`.
+---
 
-## Active threads and their state
+## 🕒 Chronological Activity Log
 
-### 1. Recent search UX (DONE, on dev)
-- Recent-3 rail + full-30 relevance + single Load More; no carve-out.
-- Quick chips Today/Yesterday/Week/Month + Relevance/Newest/Oldest sort, all URL-persisted, reload-safe.
-- Advanced datetime range (minute precision); modal reset/populate round-trips.
-- No speaker auto-narrowing (single AND multi-word); typo strips on top when <10 hits or zero-literal + distance-1; strips never echo the query itself.
+### [2026-09-10 22:36 ET] — Commit `3fae04a` (Dual Review + Dev Deploy)
+- `[DONE]` **Dual Adversarial Review**: Correctness QA Reviewer and Style/Theme Reviewer completed reviews. All findings addressed:
+  - Resolved `[data-theme="dark"] textarea` styling so dark mode modal textareas do not show white backgrounds.
+  - Decoupled speaker name and photo resolution in `normalizeShiur` so `shiurTeachers[0]` photo is never skipped when `teacherfullname` is present.
+  - Prioritized `teacherPhotoURL_lp || teacherPhotoURL_o || teacherPhotoURL` in `renderShiurCardHtml`.
+  - Fixed series saving in `/api/playlists/save` (`it.seriesTitle = it.title`).
+  - Fixed series preview in `plPublicRenderItems` (`s.kind === 'series'` renders `📚 ${seriesTitle}` and lecture count instead of `<a href="/">Untitled</a>`).
+  - Added global window Escape keydown listener closing `#newPlaylistModal`, `#playlistDetailsModal`, and `#displayNameModal`.
+  - Fixed playlist pill escaping bugs in inline script template literals by introducing `devSelectPlaylist(...)` helper and entity-encoded quotes (`&quot;`).
+- `[DONE]` **Automated Testing**: Added Test #9 (`testMediaSessionIntegration`) to `tests/basic_functionality.test.mjs`. All 5 test suites (`phonetic_engine`, `basic_functionality`, `fuzzy_suggest`, `auth_sync`, `sync_merge`) passed cleanly.
+- `[DONE]` **Git Push & Staging Deployment**: Pushed commit `3fae04a` to remote branch `feat/auth-d1` and deployed to DEV worker (`https://yutorah-player-dev.mrosensweig.workers.dev`, Version `54d37053-938a-4e5f-b747-2a4274267437`).
+- `[DONE]` **Changelog**: Updated `src/changelog.json` with entry dated `2026-09-10T22:30:00-04:00`.
 
-### 2. Discovery (DONE, on dev)
-- Hero slideshow (rotating, dots/arrows/swipe/keyboard/inert/reduced-motion); caption overlays image's blank right half; mobile stacked + fade + blur-fill centering; yutorah `/search/` dests translated to our routes; `/togo/` + unknown stay external.
-- Cards/Rows toggle (desktop rows default, mobile cards-only); works in every grid incl. series; survives reload/tab-switch (inline-display fix).
-- Series buttons named (`View N more in 'X' Series`).
-- Sponsorship dedication bolded from `l'ilui nishmas`, entities decoded once.
-- Speaker pages: Recent-6 + Top-10 (visits+downloads) + All, frozen across Load-More.
-- Transliteration essay behind circle-`i` + On/Off switch, single row.
+---
 
-### 3. Player & cards (DONE, on dev)
-- Player meta: `📤 Uploaded` row in metadata box (direct links too); topic chips search.
-- Card click split: ▶ badge mini-plays, body opens full player; same-track tap resumes.
-- Icon-only Later/Fav (5 pickable clocks: emoji + 4 bolder SVG hands), circular queue button, centered 28px heights.
-- Rows NEW badge clear of date; mobile mini-player has no expand arrow.
-- Mobile lock screen & swipe-down notification card: ±10s buttons via MediaSession (`seekbackward`/`seekforward`), high-res speaker portrait background (`96x96`–`512x512`), lock screen scrubber support (`seekto`), and queue integration (`nexttrack`).
+## 📊 Feature Inventory & Status Matrix
 
-### 4. Dev playlists + queue (DONE, on dev; now going public)
-- Playlists tab, custom playlists (modal create, custom confirm delete, export, Play All, totals), save/fav/queue/playlist card buttons + player header buttons, silent toggles.
-- Queue: card/cover/player queueing, series expand-on-play, ☰ popup + tab view, drag/▲▼/✕, clear-confirm, autoplay toast, skip-current.
-- History sort (Last Listened / Shiur Date), progress bars everywhere, `exit dev mode`.
-- Change Log viewer (`src/changelog.json`, update on every push).
+### 1. Mobile Lock Screen & Media Controls
+- `[DONE]` **±10s Skip Buttons**: Bound `seekbackward` and `seekforward` MediaSession handlers with 10s default offset universally on playback start. Mobile iOS Control Center / Lock Screen and Android notification shade now display `-10` and `+10` skip buttons flanking Play/Pause.
+- `[DONE]` **High-Resolution Speaker Artwork**: Multi-size W3C artwork array (`96x96`, `128x128`, `192x192`, `256x256`, `384x384`, `512x512`) pulling the speaker's portrait from `teacherPhotoURL_lp`, `teacherPhotoURL_o`, `teacherPhotoURL`, or `PHOTO` across dynamic shiur loading, SSR, and cards. Notification cards and lock screen backdrops render the speaker's photo with clean fallback to `_default.jpg`.
+- `[DONE]` **Lock Screen Scrubbing & Queue Advance**: Added `seekto` action handler for OS timeline scrubbing, `previoustrack` (`skip(-10)`), and `nexttrack` (`devPlayNextFromQueue() || skip(10)`).
+- `[DONE]` **Playback State & Clamped Position Sync**: Synchronized `playbackState` ('playing'/'paused') and throttled (1000ms) `setPositionState` on audio events.
+- `[DONE]` **Entity Sanitization**: Decoded HTML entities (`&amp;`, `&#39;`, `&quot;`) in media notification titles and speaker strings via `cleanMediaText(s)`.
 
-### 5. Auth + SQL backend (IN PROGRESS on `feat/auth-d1`)
-- DONE: `yutorah-db` D1 (dev-bound), migrations 0001+0002+0003, Google OAuth+PKCE, sessions (JWT, sliding, Secure-aware), `/api/me|profile|sync`, public playlist APIs, login button top + mobile dropdown, display-name dialog, 5 avatar styles, return-URL login, dirty-flag sync, LWW merges, no-wipe guarantees, series round-trip, docs (`AUTH_SETUP.md`, `USER_DATA_STRATEGY.md`, `SECURITY.md`).
-- DONE NOW: account playlists rollout — playlists/queue/progress work logged-in (not dev-gated); logged-out sees login prompt; tab renamed to "<name>'s Playlists"; public playlists (publish w/ description + controlled tags + private/public tag, browse with text+tag search, preview, save/unsave to collection); display-name setting.
-- TODO: dual review → push → deploy dev. Google credentials still needed from owner to live-test login on dev.
+### 2. Account Playlists & Public Playlists Rollout
+- `[DONE]` **Universal Playlists Tab**: Tab is always visible to all users (logged-in or guest); guests see the public playlist browser with an unobtrusive sign-in banner rather than a blank login wall.
+- `[DONE]` **Personal Playlists**: Custom playlist creation, rename, add/remove items, totals, duration sums, and export.
+- `[DONE]` **Public Playlist Discovery**: Search public playlists by keywords, filter by teachers, venues, and topics, sort by recent or most saves.
+- `[DONE]` **Preview & Save Actions**: Expandable preview of public playlist contents (`Preview shiurim ▼`) and one-click saving to personal collection (`💾 Save to my playlists`) with unsave toggle.
+- `[DONE]` **Series Preservation**: Series items saved to playlists preserve series title, lecture count, and proper card links.
+- `[DONE]` **Modal UX**: Escape key closes all dialogs; dark mode styling for textareas; display name customization.
+- `[DONE]` **D1 Database & Migrations**: Migrations `0001_init.sql`, `0002_syncfix.sql`, `0003_public.sql`, and `0004_public_kinds.sql` created for Cloudflare D1.
 
-### 6. Open questions / parked
-- Clock winner among 5 options (user picking).
-- Mobile hero: contain-full-image currently; face-crop alternative offered, declined so far.
-- Public-playlist moderation/reporting (Phase 3 ops).
-- Main-site promotion (production D1 binding + secrets + deploy) — awaiting approval.
-- PWA/Android: documented options only, no build started.
+### 3. Recent Search UX & Search Capabilities
+- `[DONE]` **Recent-3 Rail**: Top 3 most recent matches displayed directly above relevance results under dedicated subtitle, followed by the remaining results under an improved subtitle.
+- `[DONE]` **Independent Load More**: Separate load-more handling for recent and relevance sections.
+- `[DONE]` **Quick Filters & Sort**: Today / Yesterday / This Week / This Month chips + Relevance / Newest / Oldest sorting (URL-persisted and reload-safe).
+- `[DONE]` **Advanced Search Modal**: Compound multi-criteria filtering across speakers, topics, venues, duration, and minute-precision date ranges.
+- `[DONE]` **Phonetic & Transliteration Search**: 181 synset buckets, Ashkenazic/Sephardic equivalence, speaker honorific stripping, and fuzzy "Did-You-Mean" suggestions.
 
-## How we work (standing rules from user)
-- Dual review (correctness + style/theme agents) gates every commit.
-- Separate commits per feature; push + deploy to DEV only (`yutorah-player-dev…`).
-- NEVER touch production/main site without explicit approval.
-- Changelog (`src/changelog.json`) updated on every push.
-- Reprint test-lists + storage math on request.
+### 4. Player, Discovery & UX
+- `[DONE]` **Homepage Spotlight Slideshow**: Rotating hero slides with keyboard, touch swipe, dots, and deep links.
+- `[DONE]` **View Toggle (Cards vs. Rows)**: Desktop rows default, mobile cards default; persists across reloads and tabs.
+- `[DONE]` **Player Metadata**: Direct upload date display alongside given date; clickable topic chips.
+- `[DONE]` **Card Action Split**: Play badge starts mini-player; card body opens full player.
+- `[DONE]` **Article Reader & Liquid Mode 3.0**: Embedded PDF viewer with multi-column reconstruction, drop-cap stitching, and interactive footnote popovers.
+- `[DONE]` **Daily Audio Sponsorship**: Dynamic sponsorship banner with synchronized pre-roll audio playback and smooth progress bar.
+
+---
+
+## ⏳ Items In Queue: Requested & Not Done / Parked
+
+| Item | Status | Description | Notes |
+| :--- | :---: | :--- | :--- |
+| **Live Google OAuth Credentials** | `[REQUESTED / NOT DONE]` | Add `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` via `wrangler secret put` | Waiting on credentials from owner to live-test Google login on dev. |
+| **Clock Icon Selection** | `[PARKED]` | Choose preferred clock hand design among 5 options in Settings | User to select preferred SVG clock hand style. |
+| **Production Deployment** | `[PARKED]` | Promote `feat/auth-d1` branch & D1 binding to production | STRICT RULE: Awaiting explicit approval from user before touching production. |
+| **Audio Transcription (Groq Whisper)** | `[REQUESTED / NOT DONE]` | Roadmap §4: On-demand speech-to-text with Yeshivish transliteration | Documented in roadmap; implementation scheduled after auth rollout. |
+| **Admin Quota Dashboard** | `[REQUESTED / NOT DONE]` | Roadmap §5: Lightweight `/admin` telemetry for Cloudflare D1/R2/KV quotas | Documented in roadmap; implementation scheduled after auth rollout. |
+| **Public Playlist Moderation** | `[PARKED]` | Phase 3 ops: reporting/flagging inappropriate public playlist titles | Scheduled for future ops hardening. |
+
+---
+
+## 🛡️ Standing Development Guidelines
+1. **Log Updates**: Update this document (`CURRENTLY_WORKING_ON.md`) on every milestone, logging completed work (`[DONE]`), in-progress work (`[IN PROGRESS]`), and queued items (`[REQUESTED / NOT DONE]`).
+2. **Dual Review**: Correctness QA and Style/Theme subagents must review and approve every release before deployment.
+3. **Separate Commits**: Maintain atomic commits per feature branch.
+4. **DEV ONLY**: Deploy strictly to `yutorah-player-dev.mrosensweig.workers.dev` via `npx wrangler deploy --env dev`. **NEVER** touch production without explicit user command.
+5. **Changelog**: Update `src/changelog.json` on every push.
