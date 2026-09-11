@@ -15977,20 +15977,170 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   let plPublishing = false;
   let plTagsWarmed = false;
 
+  // Scratch rebuild: filter bar is persistent state; tag mutations patch
+  // tokens + results only and never destroy the inputs mid-typing.
+  let plPublicFilterDraft = { teachers: '', venues: '', topics: '' };
+  let plPublicOpenKind = null;
+
+  function plFilterIds(kind) {
+    if (kind === 'venues') return { input: 'plPubVenueInput', chips: 'plPubVenueChips', dropdown: 'plPubVenueDropdown' };
+    if (kind === 'topics') return { input: 'plPubTopicInput', chips: 'plPubTopicChips', dropdown: 'plPubTopicDropdown' };
+    return { input: 'plPubTeacherInput', chips: 'plPubTeacherChips', dropdown: 'plPubTeacherDropdown' };
+  }
+
+  function plRenderFilterTokens(kind) {
+    try {
+      const ids = plFilterIds(kind);
+      const chips = document.getElementById(ids.chips);
+      const input = document.getElementById(ids.input);
+      if (!chips || !input) return;
+      chips.querySelectorAll('.combobox-token').forEach(el => el.remove());
+      (plPublicFilterTags[kind] || []).forEach(t => {
+        const token = document.createElement('span');
+        token.className = 'combobox-token';
+        const label = document.createElement('span');
+        label.textContent = t.name || t.id || '';
+        token.appendChild(label);
+        const x = document.createElement('button');
+        x.type = 'button';
+        x.className = 'token-remove-btn';
+        x.textContent = '✕';
+        x.title = 'Remove filter';
+        x.setAttribute('aria-label', 'Remove ' + (t.name || t.id || '') + ' filter');
+        x.addEventListener('mousedown', ev => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          const arr = plPublicFilterTags[kind] || [];
+          const idx = arr.indexOf(t);
+          if (idx >= 0) plRemoveFilterTag(kind, idx);
+        });
+        token.appendChild(x);
+        chips.insertBefore(token, input);
+      });
+    } catch (e) {}
+  }
+
+  function plRenderAllFilterTokens() {
+    plRenderFilterTokens('teachers');
+    plRenderFilterTokens('venues');
+    plRenderFilterTokens('topics');
+  }
+
+  function plActiveFilterBarHtml() {
+    const cards = [];
+    (plPublicFilterTags.teachers || []).forEach((t, idx) => {
+      cards.push('<span class="active-filter-pill">👤 ' + escapeHtml(t.name) + ' <button type="button" onclick="plRemoveFilterTag(&quot;teachers&quot;, ' + idx + ')" title="Remove filter">✕</button></span>');
+    });
+    (plPublicFilterTags.venues || []).forEach((v, idx) => {
+      cards.push('<span class="active-filter-pill">📍 ' + escapeHtml(v.name) + ' <button type="button" onclick="plRemoveFilterTag(&quot;venues&quot;, ' + idx + ')" title="Remove filter">✕</button></span>');
+    });
+    (plPublicFilterTags.topics || []).forEach((tp, idx) => {
+      cards.push('<span class="active-filter-pill">🏷️ ' + escapeHtml(tp.name) + ' <button type="button" onclick="plRemoveFilterTag(&quot;topics&quot;, ' + idx + ')" title="Remove filter">✕</button></span>');
+    });
+    if (cards.length === 0) return '';
+    return '<div class="active-filters-bar" style="grid-column:1/-1; margin-bottom:12px;">' +
+      '<span style="font-size:12px; font-weight:700; color:var(--text-muted);">Active Filters:</span> ' +
+      cards.join('') +
+      ' <button type="button" class="modal-reset-btn" style="padding:2px 8px; font-size:12px;" onclick="plClearAllFilterTags()">Clear All</button>' +
+      '</div>';
+  }
+
+  function plPatchActiveFilterBar() {
+    try {
+      const bar = document.getElementById('plPublicActiveBar');
+      if (!bar) return;
+      bar.innerHTML = plActiveFilterBarHtml();
+    } catch (e) {}
+  }
+
+  function plCloseFilterDropdowns(exceptKind) {
+    try {
+      ['teachers', 'venues', 'topics'].forEach(k => {
+        if (k === exceptKind) return;
+        const ids = plFilterIds(k);
+        const dd = document.getElementById(ids.dropdown);
+        if (dd) { dd.style.display = 'none'; dd.innerHTML = ''; }
+      });
+      if (!exceptKind) plPublicOpenKind = null;
+    } catch (e) {}
+  }
+
+  function plMatchFilterOptions(kind, raw) {
+    const v = String(raw || '').trim().toLowerCase();
+    if (v.length < 1) return [];
+    const selected = new Set((plPublicFilterTags[kind] || []).map(x => String(x.id || x.name).toLowerCase()));
+    const cleanV = (kind === 'teachers') ? v.replace(/^(rabbi|rav|dr|mrs|rebbetzin|r)\s+/i, '').trim() : v;
+    const useClean = (kind === 'teachers') && cleanV.length > 0;
+    return plTagOptions(kind).filter(o => {
+      if (selected.has(String(o.id || o.name).toLowerCase())) return false;
+      const nm = String(o.name || '').toLowerCase();
+      if (nm.indexOf(v) >= 0) return true;
+      if (!useClean) return false;
+      const cleanNm = nm.replace(/^(rabbi|rav|dr|mrs|rebbetzin|r)\s+/i, '');
+      return cleanNm.indexOf(cleanV) >= 0;
+    }).slice(0, 12);
+  }
+
+  function plPaintFilterDropdown(kind) {
+    try {
+      const ids = plFilterIds(kind);
+      const input = document.getElementById(ids.input);
+      const dd = document.getElementById(ids.dropdown);
+      if (!input || !dd) return;
+      const v = (input.value || '').trim();
+      if (v.length < 1) { dd.style.display = 'none'; dd.innerHTML = ''; if (plPublicOpenKind === kind) plPublicOpenKind = null; return; }
+      const opts = plMatchFilterOptions(kind, v);
+      if (opts.length === 0) {
+        dd.innerHTML = '<div style="padding:10px 12px; font-size:12.5px; color:var(--text-muted); text-align:center;">No matching filters found</div>';
+        dd.style.display = 'block';
+        plPublicOpenKind = kind;
+        return;
+      }
+      dd.innerHTML = opts.map(o => '<div class="autocomplete-item" data-id="' + escapeHtml(o.id || o.name) + '" data-name="' + escapeHtml(o.name) + '"><span>' + escapeHtml(o.name) + '</span></div>').join('');
+      dd.style.display = 'block';
+      plPublicOpenKind = kind;
+    } catch (e) {}
+  }
+
+  function plPickFilterTag(kind, id, name) {
+    if (!kind || !plPublicFilterTags[kind]) return false;
+    const tag = { id: String(id || name || ''), name: String(name || id || '') };
+    if (!tag.name) return false;
+    const exists = plPublicFilterTags[kind].some(t => String(t.id || t.name).toLowerCase() === String(tag.id || tag.name).toLowerCase());
+    if (exists) return false;
+    plPublicFilterTags[kind].push(tag);
+    plPublicFilterDraft[kind] = '';
+    try {
+      const ids = plFilterIds(kind);
+      const input = document.getElementById(ids.input);
+      const dd = document.getElementById(ids.dropdown);
+      if (input) input.value = '';
+      if (dd) { dd.style.display = 'none'; dd.innerHTML = ''; }
+      if (plPublicOpenKind === kind) plPublicOpenKind = null;
+    } catch (e) {}
+    plRenderFilterTokens(kind);
+    plPatchActiveFilterBar();
+    plSearchPublicResultsOnly();
+    try {
+      const ids = plFilterIds(kind);
+      const input = document.getElementById(ids.input);
+      if (input) input.focus();
+    } catch (e) {}
+    return true;
+  }
+
   function plAddFilterTag(kind, tag) {
     if (!tag || !kind || !plPublicFilterTags[kind]) return;
-    const exists = plPublicFilterTags[kind].some(t => String(t.id || t.name).toLowerCase() === String(tag.id || tag.name).toLowerCase());
-    if (!exists) {
-      plPublicFilterTags[kind].push(tag);
-      plSearchPublic();
-    }
+    plPickFilterTag(kind, tag.id || tag.name, tag.name || tag.id);
   }
   window.plAddFilterTag = plAddFilterTag;
 
   function plRemoveFilterTag(kind, idx) {
     if (plPublicFilterTags[kind] && plPublicFilterTags[kind][idx] !== undefined) {
       plPublicFilterTags[kind].splice(idx, 1);
-      plSearchPublic();
+      plRenderFilterTokens(kind);
+      plPatchActiveFilterBar();
+      plSearchPublicResultsOnly();
     }
   }
   window.plRemoveFilterTag = plRemoveFilterTag;
@@ -15998,9 +16148,100 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   function plClearAllFilterTags() {
     plPublicFilterTags = { teachers: [], venues: [], topics: [] };
     plPublicTags = { teacher: null, venue: null, topic: null };
-    plSearchPublic();
+    plPublicFilterDraft = { teachers: '', venues: '', topics: '' };
+    plCloseFilterDropdowns(null);
+    plRenderAllFilterTokens();
+    plPatchActiveFilterBar();
+    try {
+      ['teachers', 'venues', 'topics'].forEach(k => {
+        const ids = plFilterIds(k);
+        const input = document.getElementById(ids.input);
+        if (input) input.value = '';
+      });
+    } catch (e) {}
+    plSearchPublicResultsOnly();
   }
   window.plClearAllFilterTags = plClearAllFilterTags;
+
+  function plPublicResultsHtml() {
+    let h = '<div class="search-results-subheading"><span>🌍</span><span>Public Playlists</span>' +
+      '<span class="sub-count">' + plPublicResults.length + ' of ' + plPublicTotal + ' shown</span></div>';
+    if (plPublicResults.length === 0) {
+      h += '<div style="grid-column:1/-1; text-align:center; padding:24px; color:var(--text-muted);">No public playlists match — try a different search or be the first to publish one.</div>';
+    } else {
+      h += plPublicResults.map(p => {
+        const open = plPublicExpanded === p.id;
+        const isSub = devIsSubscribedToPublicId(p.id);
+        const isAuthor = devIsAuthoredByCurrentUser(p);
+        const authoredCustomId = devGetAuthoredCustomId(p);
+        const tagBits = []
+          .concat((p.tags && p.tags.teachers || []).map(t => '👤 ' + t.name))
+          .concat((p.tags && p.tags.venues || []).map(t => '📍 ' + t.name))
+          .concat((p.tags && p.tags.topics || []).map(t => '🏷️ ' + t.name));
+        return '<div class="playlist-public-card' + (isSub ? ' playlist-subscribed-card' : '') + (isAuthor ? ' playlist-author-card' : '') + '">' +
+          '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">' +
+          '<div class="playlist-card-title">' + escapeHtml(p.title || 'Untitled') + '</div>' +
+          (isAuthor
+            ? '<span class="active-filter-pill" style="background:rgba(43, 76, 126, 0.12); color:var(--primary); border-color:var(--primary); font-weight:700; white-space:nowrap; flex-shrink:0;">👤 Your Playlist</span>'
+            : (isSub ? '<span class="active-filter-pill playlist-sub-badge" style="font-weight:700; white-space:nowrap; flex-shrink:0;">📡 Subscribed</span>' : '')
+          ) +
+          '</div>' +
+          '<div class="playlist-card-meta">by ' + escapeHtml(p.ownerName || (isAuthor ? 'You' : 'a listener')) +
+          ' · ' + (p.itemCount || 0) + ' shiurim · ❤️ ' + (p.saves || 0) + ' saves</div>' +
+          (p.description ? '<div class="playlist-card-desc">' + escapeHtml(p.description) + '</div>' : '') +
+          (tagBits.length ? '<div class="playlist-card-tags">' + tagBits.map(t => '<span class="playlist-tag-chip">' + escapeHtml(t) + '</span>').join('') + '</div>' : '') +
+          '<div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap;">' +
+          '<button type="button" class="card-mini-btn" onclick="plPublicToggle(&quot;' + escapeHtml(p.id) + '&quot;)">' + (open ? 'Hide shiurim ▲' : 'Preview shiurim ▼') + '</button>' +
+          (isAuthor
+            ? (authoredCustomId ? '<button type="button" class="card-mini-btn active-save" onclick="devSelectPlaylist(&quot;' + escapeHtml(authoredCustomId) + '&quot;)">🎧 Open in My Playlists</button>' : '')
+            : (isSub
+              ? '<button type="button" class="card-mini-btn active-save" onclick="devOpenSubscribedPlaylist(&quot;' + escapeHtml(p.id) + '&quot;)">🎧 Open in My Playlists</button>'
+              : '<button type="button" class="card-mini-btn" onclick="plPromptSavePublic(&quot;' + escapeHtml(p.id) + '&quot;, &quot;' + escapeHtml((p.title || 'Shared playlist').replace(/"/g, '&quot;')) + '&quot;)">💾 Save to my playlists</button>'
+            )
+          ) +
+          (!isAuthor ? '<button type="button" class="card-mini-btn" onclick="plUnsavePublic(&quot;' + escapeHtml(p.id) + '&quot;)">Remove save ♥</button>' : '') +
+          (typeof isDevMode !== 'undefined' && isDevMode ? '<button type="button" class="card-mini-btn active-save" onclick="devEditPublicPlaylist(&quot;' + escapeHtml(p.id) + '&quot;)">✏️ Edit (Dev)</button>' : '') +
+          '</div>' +
+          '<div id="plpub-' + p.id + '">' + (open ? '<div style="margin-top:8px;">Loading…</div>' : '') + '</div>' +
+          '</div>';
+      }).join('');
+      if (plPublicResults.length < plPublicTotal) {
+        h += '<div style="grid-column:1/-1; text-align:center; margin:4px 0 12px;">' +
+          '<button type="button" class="load-more-btn" onclick="plPublicMore()">🔽 Load More Playlists</button></div>';
+      }
+    }
+    return h;
+  }
+
+  function plPatchPublicResults() {
+    try {
+      const wrap = document.getElementById('plPublicResultsWrap');
+      if (wrap) {
+        wrap.innerHTML = plPublicResultsHtml();
+      } else {
+        const grid = document.getElementById('grid-playlists');
+        if (grid && activeDevPlaylistId !== 'queue') renderPlaylistsGrid();
+        return;
+      }
+      plPatchActiveFilterBar();
+      if (plPublicExpanded) plPublicRenderItems(plPublicExpanded);
+    } catch (e) {}
+  }
+
+  async function plSearchPublicResultsOnly() {
+    plPublicOffset = 0;
+    plPublicExpanded = null;
+    try {
+      const res = await fetch('/api/playlists/public?' + plPublicParams(0));
+      const data = await res.json();
+      plPublicResults = (data && data.playlists) || [];
+      plPublicTotal = (data && typeof data.total === 'number') ? data.total : plPublicResults.length;
+    } catch (e) {
+      plPublicResults = [];
+      plPublicTotal = 0;
+    }
+    plPatchPublicResults();
+  }
 
   function plTagOptions(kind) {
     try {
@@ -16167,26 +16408,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         }).catch(() => {});
       }
     } catch (e) {}
-    const tagOpts = (kind) => {
-      const selected = plPublicFilterTags[kind] || [];
-      const selectedIds = new Set(selected.map(s => String(s.id || s.name).toLowerCase()));
-      const rawList = plTagOptions(kind);
-      if (rawList.length === 0) return '<option value="">Loading filters…</option>';
-      const available = rawList.filter(o => !selectedIds.has(String(o.id || o.name).toLowerCase())).slice(0, 300);
-      const label = kind === 'teachers' ? 'Teacher' : (kind === 'venues' ? 'Venue' : 'Topic');
-      return '<option value="">+ Add ' + label + '…</option>' + available.map(o =>
-        '<option value="' + escapeHtml(o.id || o.name) + '">' + escapeHtml(o.name) + '</option>').join('');
-    };
     let qhtml = '';
     if (!isGuest) {
       qhtml += devPlaylistSegmentedBarHtml(true);
     }
-    qhtml += '<div style="grid-column:1/-1; display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">' +
+    qhtml += '<div id="plPublicFilterRow" style="grid-column:1/-1; display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">' +
       '<input id="plPubQ" type="text" placeholder="Search public playlists…" value="' + escapeHtml(plPublicQuery) + '"' +
       ' autocomplete="off" style="flex:2; min-width:160px; padding:8px 12px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text);">' +
-      '<div class="autocomplete-combobox" style="flex:1; min-width:140px;"><div class="chips-container" id="plPubTeacherChips"><input id="plPubTeacherInput" class="combobox-input" placeholder="Teacher..." autocomplete="off" aria-label="Filter by teacher" style="flex:1; border:none; background:transparent; color:var(--text); min-width:80px;"></div><div class="autocomplete-dropdown" id="plPubTeacherDropdown"></div></div>' +
-      '<div class="autocomplete-combobox" style="flex:1; min-width:140px;"><div class="chips-container" id="plPubVenueChips"><input id="plPubVenueInput" class="combobox-input" placeholder="Venue..." autocomplete="off" aria-label="Filter by venue" style="flex:1; border:none; background:transparent; color:var(--text); min-width:80px;"></div><div class="autocomplete-dropdown" id="plPubVenueDropdown"></div></div>' +
-      '<div class="autocomplete-combobox" style="flex:1; min-width:140px;"><div class="chips-container" id="plPubTopicChips"><input id="plPubTopicInput" class="combobox-input" placeholder="Topic..." autocomplete="off" aria-label="Filter by topic" style="flex:1; border:none; background:transparent; color:var(--text); min-width:80px;"></div><div class="autocomplete-dropdown" id="plPubTopicDropdown"></div></div>' +
+      '<div class="autocomplete-combobox" style="flex:1; min-width:140px;"><div class="chips-container" id="plPubTeacherChips"><input id="plPubTeacherInput" class="combobox-input" placeholder="Teacher..." autocomplete="off" aria-label="Filter by teacher" value="' + escapeHtml(plPublicFilterDraft.teachers || '') + '" style="flex:1; border:none; background:transparent; color:var(--text); min-width:80px;"></div><div class="autocomplete-dropdown" id="plPubTeacherDropdown"></div></div>' +
+      '<div class="autocomplete-combobox" style="flex:1; min-width:140px;"><div class="chips-container" id="plPubVenueChips"><input id="plPubVenueInput" class="combobox-input" placeholder="Venue..." autocomplete="off" aria-label="Filter by venue" value="' + escapeHtml(plPublicFilterDraft.venues || '') + '" style="flex:1; border:none; background:transparent; color:var(--text); min-width:80px;"></div><div class="autocomplete-dropdown" id="plPubVenueDropdown"></div></div>' +
+      '<div class="autocomplete-combobox" style="flex:1; min-width:140px;"><div class="chips-container" id="plPubTopicChips"><input id="plPubTopicInput" class="combobox-input" placeholder="Topic..." autocomplete="off" aria-label="Filter by topic" value="' + escapeHtml(plPublicFilterDraft.topics || '') + '" style="flex:1; border:none; background:transparent; color:var(--text); min-width:80px;"></div><div class="autocomplete-dropdown" id="plPubTopicDropdown"></div></div>' +
       '<select id=\"plPubSort\" style=\"padding:8px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text);\">' +
       '<option value=\"recent\"' + (plPublicSort !== 'saves' ? ' selected' : '') + '>Recent</option>' +
       '<option value=\"saves\"' + (plPublicSort === 'saves' ? ' selected' : '') + '>Most saved</option></select>' +
@@ -16202,70 +16433,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       '<input type="checkbox" id="plScopeShiurim"' + (plPublicScope.shiurim ? ' checked' : '') + ' style="accent-color:var(--primary); cursor:pointer;"> Shiurim inside the playlists</label>' +
       '</div>';
 
-    const activeFilterCards = [];
-    (plPublicFilterTags.teachers || []).forEach((t, idx) => {
-      activeFilterCards.push('<span class="active-filter-pill">👤 ' + escapeHtml(t.name) + ' <button type="button" onclick="plRemoveFilterTag(&quot;teachers&quot;, ' + idx + ')" title="Remove filter">✕</button></span>');
-    });
-    (plPublicFilterTags.venues || []).forEach((v, idx) => {
-      activeFilterCards.push('<span class="active-filter-pill">📍 ' + escapeHtml(v.name) + ' <button type="button" onclick="plRemoveFilterTag(&quot;venues&quot;, ' + idx + ')" title="Remove filter">✕</button></span>');
-    });
-    (plPublicFilterTags.topics || []).forEach((tp, idx) => {
-      activeFilterCards.push('<span class="active-filter-pill">🏷️ ' + escapeHtml(tp.name) + ' <button type="button" onclick="plRemoveFilterTag(&quot;topics&quot;, ' + idx + ')" title="Remove filter">✕</button></span>');
-    });
-
-    if (activeFilterCards.length > 0) {
-      qhtml += '<div class="active-filters-bar" style="grid-column:1/-1; margin-bottom:12px;">' +
-        '<span style="font-size:12px; font-weight:700; color:var(--text-muted);">Active Filters:</span> ' +
-        activeFilterCards.join('') +
-        ' <button type="button" class="modal-reset-btn" style="padding:2px 8px; font-size:12px;" onclick="plClearAllFilterTags()">Clear All</button>' +
-        '</div>';
-    }
-    qhtml += '<div class="search-results-subheading"><span>🌍</span><span>Public Playlists</span>' +
-      '<span class="sub-count">' + plPublicResults.length + ' of ' + plPublicTotal + ' shown</span></div>';
-    if (plPublicResults.length === 0) {
-      qhtml += '<div style="grid-column:1/-1; text-align:center; padding:24px; color:var(--text-muted);">No public playlists match — try a different search or be the first to publish one.</div>';
-    } else {
-      qhtml += plPublicResults.map(p => {
-        const open = plPublicExpanded === p.id;
-        const isSub = devIsSubscribedToPublicId(p.id);
-        const isAuthor = devIsAuthoredByCurrentUser(p);
-        const authoredCustomId = devGetAuthoredCustomId(p);
-        const tagBits = []
-          .concat((p.tags && p.tags.teachers || []).map(t => '👤 ' + t.name))
-          .concat((p.tags && p.tags.venues || []).map(t => '📍 ' + t.name))
-          .concat((p.tags && p.tags.topics || []).map(t => '🏷️ ' + t.name));
-        return '<div class="playlist-public-card' + (isSub ? ' playlist-subscribed-card' : '') + (isAuthor ? ' playlist-author-card' : '') + '">' +
-          '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">' +
-          '<div class="playlist-card-title">' + escapeHtml(p.title || 'Untitled') + '</div>' +
-          (isAuthor
-            ? '<span class="active-filter-pill" style="background:rgba(43, 76, 126, 0.12); color:var(--primary); border-color:var(--primary); font-weight:700; white-space:nowrap; flex-shrink:0;">👤 Your Playlist</span>'
-            : (isSub ? '<span class="active-filter-pill playlist-sub-badge" style="font-weight:700; white-space:nowrap; flex-shrink:0;">📡 Subscribed</span>' : '')
-          ) +
-          '</div>' +
-          '<div class="playlist-card-meta">by ' + escapeHtml(p.ownerName || (isAuthor ? 'You' : 'a listener')) +
-          ' · ' + (p.itemCount || 0) + ' shiurim · ❤️ ' + (p.saves || 0) + ' saves</div>' +
-          (p.description ? '<div class="playlist-card-desc">' + escapeHtml(p.description) + '</div>' : '') +
-          (tagBits.length ? '<div class="playlist-card-tags">' + tagBits.map(t => '<span class="playlist-tag-chip">' + escapeHtml(t) + '</span>').join('') + '</div>' : '') +
-          '<div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap;">' +
-          '<button type="button" class="card-mini-btn" onclick="plPublicToggle(&quot;' + escapeHtml(p.id) + '&quot;)">' + (open ? 'Hide shiurim ▲' : 'Preview shiurim ▼') + '</button>' +
-          (isAuthor
-            ? (authoredCustomId ? '<button type="button" class="card-mini-btn active-save" onclick="devSelectPlaylist(&quot;' + escapeHtml(authoredCustomId) + '&quot;)">🎧 Open in My Playlists</button>' : '')
-            : (isSub
-              ? '<button type="button" class="card-mini-btn active-save" onclick="devOpenSubscribedPlaylist(&quot;' + escapeHtml(p.id) + '&quot;)">🎧 Open in My Playlists</button>'
-              : '<button type="button" class="card-mini-btn" onclick="plPromptSavePublic(&quot;' + escapeHtml(p.id) + '&quot;, &quot;' + escapeHtml((p.title || 'Shared playlist').replace(/"/g, '&quot;')) + '&quot;)">💾 Save to my playlists</button>'
-            )
-          ) +
-          (!isAuthor ? '<button type="button" class="card-mini-btn" onclick="plUnsavePublic(&quot;' + escapeHtml(p.id) + '&quot;)">Remove save ♥</button>' : '') +
-          (typeof isDevMode !== 'undefined' && isDevMode ? '<button type="button" class="card-mini-btn active-save" onclick="devEditPublicPlaylist(&quot;' + escapeHtml(p.id) + '&quot;)">✏️ Edit (Dev)</button>' : '') +
-          '</div>' +
-          '<div id="plpub-' + p.id + '">' + (open ? '<div style="margin-top:8px;">Loading…</div>' : '') + '</div>' +
-          '</div>';
-      }).join('');
-      if (plPublicResults.length < plPublicTotal) {
-        qhtml += '<div style="grid-column:1/-1; text-align:center; margin:4px 0 12px;">' +
-          '<button type="button" class="load-more-btn" onclick="plPublicMore()">🔽 Load More Playlists</button></div>';
-      }
-    }
+    qhtml += '<div id="plPublicActiveBar" style="grid-column:1/-1; display:contents;">' + plActiveFilterBarHtml() + '</div>';
+    qhtml += '<div id="plPublicResultsWrap" style="grid-column:1/-1; display:contents;">' + plPublicResultsHtml() + '</div>';
     const activeEl = document.activeElement;
     const activeId = activeEl && activeEl.id ? activeEl.id : '';
     const isPlPubFocus = activeId === 'plPubQ' || activeId === 'plPubTeacherInput' || activeId === 'plPubVenueInput' || activeId === 'plPubTopicInput';
@@ -16282,134 +16451,90 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         }
       }
       qq.addEventListener('keydown', e => { if (e.key === 'Enter') plPublicSearch(); });
-      const renderPlFilterTokens = (kind, chipsId, inputId) => {
-        const chips = container.querySelector('#' + chipsId);
-        const input = container.querySelector('#' + inputId);
-        if (!chips || !input) return;
-        chips.querySelectorAll('.combobox-token').forEach(el => el.remove());
-        (plPublicFilterTags[kind] || []).forEach(t => {
-          const token = document.createElement('span');
-          token.className = 'combobox-token';
-          const label = document.createElement('span');
-          label.textContent = t.name || t.id || '';
-          token.appendChild(label);
-          const x = document.createElement('button');
-          x.type = 'button';
-          x.className = 'token-remove-btn';
-          x.textContent = '✕';
-          x.title = 'Remove filter';
-          x.setAttribute('aria-label', 'Remove ' + (t.name || t.id || '') + ' filter');
-          x.addEventListener('click', ev => {
-            ev.stopPropagation();
-            const arr = plPublicFilterTags[kind] || [];
-            const idx = arr.indexOf(t);
-            if (idx >= 0) plRemoveFilterTag(kind, idx);
-          });
-          token.appendChild(x);
-          chips.insertBefore(token, input);
-        });
-      };
-      const setupPlFilter = (inputId, chipsId, dropdownId, kind) => {
-        const input = container.querySelector('#' + inputId);
-        const chips = container.querySelector('#' + chipsId);
-        const dropdown = container.querySelector('#' + dropdownId);
-        if (!input || !chips || !dropdown) return;
-        renderPlFilterTokens(kind, chipsId, inputId);
-        chips.addEventListener('click', () => { try { input.focus(); } catch (e) {} });
-        let t = null;
-        input.addEventListener('input', () => {
-          clearTimeout(t);
-          t = setTimeout(() => {
-            const v = (input.value || '').trim().toLowerCase();
-            if (v.length < 1) { dropdown.style.display = 'none'; dropdown.innerHTML = ''; return; }
-            const selected = new Set((plPublicFilterTags[kind] || []).map(x => String(x.id || x.name).toLowerCase()));
-            const cleanV = (kind === 'teachers') ? v.replace(/^(rabbi|rav|dr|mrs|rebbetzin|r)\s+/i, '').trim() : v;
-            const useClean = (kind === 'teachers') && cleanV.length > 0;
-            const opts = plTagOptions(kind).filter(o => {
-              if (selected.has(String(o.id || o.name).toLowerCase())) return false;
-              const nm = String(o.name || '').toLowerCase();
-              if (nm.indexOf(v) >= 0) return true;
-              if (!useClean) return false;
-              const cleanNm = nm.replace(/^(rabbi|rav|dr|mrs|rebbetzin|r)\s+/i, '');
-              return cleanNm.indexOf(cleanV) >= 0;
-            }).slice(0, 12);
-            if (opts.length === 0) {
-              dropdown.innerHTML = '<div style="padding:10px 12px; font-size:12.5px; color:var(--text-muted); text-align:center;">No matching filters found</div>';
-              dropdown.style.display = 'block';
-              return;
-            }
-            dropdown.innerHTML = opts.map(o => '<div class="autocomplete-item" data-id="' + escapeHtml(o.id || o.name) + '" data-name="' + escapeHtml(o.name) + '"><span>' + escapeHtml(o.name) + '</span></div>').join('');
-            dropdown.style.display = 'block';
-          }, 120);
-        });
-        dropdown.addEventListener('click', e => {
-          const it = e.target.closest ? e.target.closest('.autocomplete-item') : null;
-          if (!it) return;
-          const id = it.getAttribute('data-id');
-          const name = it.getAttribute('data-name');
-          if (id && name) {
-            input.value = '';
-            dropdown.style.display = 'none';
-            dropdown.innerHTML = '';
-            plAddFilterTag(kind, { id: id, name: name });
-          }
-        });
-        input.addEventListener('keydown', e => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            const first = dropdown.querySelector('.autocomplete-item');
-            if (first) { first.click(); return; }
-            const v = (input.value || '').trim().toLowerCase();
-            if (!v) return;
-            const m = plTagOptions(kind).find(o => String(o.name || '').toLowerCase() === v);
-            if (m) {
-              input.value = '';
-              dropdown.style.display = 'none';
-              dropdown.innerHTML = '';
-              plAddFilterTag(kind, m);
-            }
-          } else if (e.key === 'Escape') {
-            dropdown.style.display = 'none';
-            dropdown.innerHTML = '';
-          } else if (e.key === 'Backspace' && input.value === '') {
-            const arr = plPublicFilterTags[kind] || [];
-            if (arr.length > 0) plRemoveFilterTag(kind, arr.length - 1);
-          }
-        });
-        input.addEventListener('blur', () => setTimeout(() => { dropdown.style.display = 'none'; }, 150));
-      };
-      setupPlFilter('plPubTeacherInput', 'plPubTeacherChips', 'plPubTeacherDropdown', 'teachers');
-      setupPlFilter('plPubVenueInput', 'plPubVenueChips', 'plPubVenueDropdown', 'venues');
-      setupPlFilter('plPubTopicInput', 'plPubTopicChips', 'plPubTopicDropdown', 'topics');
-      if (activeId === 'plPubTeacherInput' || activeId === 'plPubVenueInput' || activeId === 'plPubTopicInput') {
-        const refocus = container.querySelector('#' + activeId);
-        if (refocus) {
-          try {
-            refocus.focus();
-            if (selStart !== null && selEnd !== null && refocus.value) refocus.setSelectionRange(selStart, selEnd);
-          } catch (e) {}
-        }
-      }
       const deb = { t: null };
       qq.addEventListener('input', () => {
         clearTimeout(deb.t);
         deb.t = setTimeout(() => {
           plPublicQuery = qq.value;
-          plPublicSearch();
+          plSearchPublicResultsOnly();
         }, 350);
       });
     }
-    const bindSel = (id, kind) => {
-      const el = container.querySelector('#' + id);
-      if (el) el.addEventListener('change', () => {
-        if (!el.value) return;
-        const opt = el.options[el.selectedIndex];
-        plAddFilterTag(kind, { id: el.value, name: opt ? opt.text : el.value });
-        el.value = '';
+    const setupPlFilter = (inputId, chipsId, dropdownId, kind) => {
+      const input = document.getElementById(inputId);
+      const chips = document.getElementById(chipsId);
+      const dropdown = document.getElementById(dropdownId);
+      if (!input || !chips || !dropdown) return;
+      plRenderFilterTokens(kind);
+      chips.addEventListener('click', () => { try { input.focus(); } catch (e) {} });
+      let t = null;
+      input.addEventListener('input', () => {
+        plPublicFilterDraft[kind] = input.value || '';
+        clearTimeout(t);
+        t = setTimeout(() => { plPaintFilterDropdown(kind); }, 120);
       });
+      const pickFromEvent = (e) => {
+        const it = e.target && e.target.closest ? e.target.closest('.autocomplete-item') : null;
+        if (!it) return false;
+        const id = it.getAttribute('data-id');
+        const name = it.getAttribute('data-name');
+        if (id && name) {
+          plPickFilterTag(kind, id, name);
+          return true;
+        }
+        return false;
+      };
+      dropdown.addEventListener('mousedown', e => {
+        e.preventDefault();
+        pickFromEvent(e);
+      });
+      dropdown.addEventListener('click', e => { pickFromEvent(e); });
+      input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const first = dropdown.querySelector('.autocomplete-item');
+          if (first) {
+            const id = first.getAttribute('data-id');
+            const name = first.getAttribute('data-name');
+            if (id && name) { plPickFilterTag(kind, id, name); return; }
+          }
+          const v = (input.value || '').trim().toLowerCase();
+          if (!v) return;
+          const m = plTagOptions(kind).find(o => String(o.name || '').toLowerCase() === v);
+          if (m) plPickFilterTag(kind, m.id || m.name, m.name);
+        } else if (e.key === 'Escape') {
+          dropdown.style.display = 'none';
+          dropdown.innerHTML = '';
+          if (plPublicOpenKind === kind) plPublicOpenKind = null;
+        } else if (e.key === 'Backspace' && input.value === '') {
+          const arr = plPublicFilterTags[kind] || [];
+          if (arr.length > 0) plRemoveFilterTag(kind, arr.length - 1);
+        }
+      });
+      input.addEventListener('focus', () => {
+        if ((input.value || '').trim().length > 0) plPaintFilterDropdown(kind);
+      });
+      input.addEventListener('blur', () => setTimeout(() => {
+        if (plPublicOpenKind !== kind) return;
+        dropdown.style.display = 'none';
+        plPublicOpenKind = null;
+      }, 120));
     };
+    setupPlFilter('plPubTeacherInput', 'plPubTeacherChips', 'plPubTeacherDropdown', 'teachers');
+    setupPlFilter('plPubVenueInput', 'plPubVenueChips', 'plPubVenueDropdown', 'venues');
+    setupPlFilter('plPubTopicInput', 'plPubTopicChips', 'plPubTopicDropdown', 'topics');
+    plRenderAllFilterTokens();
+    if (activeId === 'plPubTeacherInput' || activeId === 'plPubVenueInput' || activeId === 'plPubTopicInput') {
+      const refocus = document.getElementById(activeId);
+      if (refocus) {
+        try {
+          refocus.focus();
+          if (selStart !== null && selEnd !== null && refocus.value) refocus.setSelectionRange(selStart, selEnd);
+        } catch (e) {}
+      }
+    }
     // plPubTeacher/Venue/Topic are Advanced-style comboboxes handled by
-    // setupPlFilter above (multi-select into plPublicFilterTags).
+    // setupPlFilter above (multi-select into plPublicFilterTags, results-only patch).
     const chkTitle = container.querySelector('#plScopeTitle');
     const chkDesc = container.querySelector('#plScopeDesc');
     const chkShiurim = container.querySelector('#plScopeShiurim');
@@ -17071,6 +17196,25 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   async function plSearchPublic() {
     const qq = document.getElementById('plPubQ');
     if (qq) plPublicQuery = qq.value;
+    try {
+      const ids = plFilterIds('teachers');
+      const ti = document.getElementById(ids.input);
+      if (ti) plPublicFilterDraft.teachers = ti.value || '';
+    } catch (e) {}
+    try {
+      const ids = plFilterIds('venues');
+      const vi = document.getElementById(ids.input);
+      if (vi) plPublicFilterDraft.venues = vi.value || '';
+    } catch (e) {}
+    try {
+      const ids = plFilterIds('topics');
+      const ti = document.getElementById(ids.input);
+      if (ti) plPublicFilterDraft.topics = ti.value || '';
+    } catch (e) {}
+    if (document.getElementById('plPublicResultsWrap')) {
+      await plSearchPublicResultsOnly();
+      return;
+    }
     const grid = document.getElementById('grid-playlists');
     plPublicOffset = 0;
     plPublicExpanded = null;
@@ -17098,6 +17242,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         if (typeof data.total === 'number') plPublicTotal = data.total;
       }
     } catch (e) {}
+    if (document.getElementById('plPublicResultsWrap')) {
+      plPatchPublicResults();
+      return;
+    }
     renderPlaylistsGrid();
     if (plPublicExpanded) plPublicRenderItems(plPublicExpanded);
   }

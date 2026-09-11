@@ -588,8 +588,11 @@ async function testPlaylistsEnhancementsRound2() {
   assert.ok(html.includes('id="plPubVenueDropdown"'), 'Venues live dropdown (Advanced-style) must be rendered');
   assert.ok(html.includes('id="plPubTopicDropdown"'), 'Topics live dropdown (Advanced-style) must be rendered');
   assert.ok(html.includes('setupPlFilter('), 'setupPlFilter live-filter must be defined (Advanced-style)');
-  assert.ok(html.includes('renderPlFilterTokens'), 'renderPlFilterTokens multi-select tokens must be defined');
-  assert.ok(html.includes("+ Add ' + label"), '+ Add label option must be constructed');
+  assert.ok(html.includes('plRenderFilterTokens') || html.includes('plRenderAllFilterTokens'), 'plRenderFilterTokens multi-select tokens must be defined');
+  assert.ok(html.includes('plPickFilterTag'), 'plPickFilterTag central multi-select pick must be defined');
+  assert.ok(html.includes('plSearchPublicResultsOnly'), 'results-only patch must exist so picks never destroy inputs');
+  assert.ok(html.includes('plPublicResultsWrap'), 'results wrapper must be stable so filter bar persists');
+  assert.ok(html.includes('plPublicActiveBar'), 'active filter bar must be patchable without full rebuild');
   assert.ok(html.includes('plRemoveFilterTag(&quot;teachers&quot;'), 'Teachers remove button must be present in filter cards');
   assert.ok(html.includes('plClearAllFilterTags()'), 'Clear All button must be present in filter bar');
 
