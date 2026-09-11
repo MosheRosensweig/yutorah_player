@@ -292,7 +292,13 @@ async function testDropdownNavAndThemeAesthetics() {
   assert.ok(html.includes('[data-theme="dark"] .hero-desc'), 'Dark mode hero desc rule present');
   assert.ok(html.includes('[data-theme="dark"] .hero-cta'), 'Dark mode hero CTA rule present');
 
-  console.log('  ✅ Plain gear default avatar, dropdown actions, and theme-adaptive hero contrast verified.');
+  // 5. Light/Dark mode toggle button in dropdown under settings/account with label
+  assert.ok(html.includes('menu-theme-toggle-btn'), 'Dropdown menu must include menu-theme-toggle-btn');
+  assert.ok(html.includes('Light / Dark Mode'), 'Dropdown theme button must display "Light / Dark Mode" label');
+  assert.ok(html.includes('menu-theme-icon'), 'Dropdown theme button must include menu-theme-icon element');
+  assert.ok(html.includes("document.querySelectorAll('.menu-theme-icon')"), 'toggleTheme must sync all menu-theme-icon elements');
+
+  console.log('  ✅ Plain gear default avatar, dropdown actions, theme-adaptive hero contrast, and dropdown theme toggle verified.');
 }
 
 async function testPublicPlaylistSubscriptionOptions() {

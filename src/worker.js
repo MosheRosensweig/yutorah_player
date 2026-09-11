@@ -5453,6 +5453,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       outline-offset: -2px;
       background: var(--border-light);
     }
+    .menu-theme-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      line-height: 1;
+      width: 18px;
+    }
     [data-theme="dark"] .settings-menu {
       background: #182232;
       border-color: #28364d;
@@ -9754,6 +9762,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       <div class="settings-wrapper" style="display: none !important;" aria-hidden="true">
         <button type="button" id="settingsBtn" class="theme-toggle-btn settings-btn" onclick="toggleSettingsMenu(event)" title="Settings" style="display: none !important;">⚙️</button>
         <div id="settingsMenu" class="settings-menu" style="display: none !important;">
+          <button type="button" class="settings-menu-item menu-theme-toggle-btn" onclick="toggleTheme();">
+            <span class="menu-theme-icon">${themeMode === 'dark' ? '☀️' : '🌙'}</span> <span>Light / Dark Mode</span>
+          </button>
           <button type="button" class="settings-menu-item dev-only" onclick="openChangelogModal()" title="Log of latest changes">
             <span>📋</span> <span>Change Log</span>
           </button>
@@ -16802,6 +16813,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       return;
     }
     if (btn) btn.classList.add('active-open');
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const themeIcon = isDark ? '☀️' : '🌙';
     let html = '';
     if (cloudUser) {
       const displayName = cloudUser.name ? (cloudUser.name + ' (' + cloudUser.email + ')') : (cloudUser.email || '');
@@ -16809,6 +16822,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); devOpenQueueView();">📋 Open Play Queue</button>';
       html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); devScrollToPlaylists();">🎧 My Playlists</button>';
       html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); openDisplayNameModal();">✏️ Display name</button>';
+      html += '<button type="button" class="settings-menu-item menu-theme-toggle-btn" onclick="toggleTheme();"><span class="menu-theme-icon">' + themeIcon + '</span> <span>Light / Dark Mode</span></button>';
       html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); handleAuthClick();">🚪 Sign out</button>';
     } else {
       let retPath = window.location.pathname;
@@ -16823,6 +16837,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       }
       const retUrl = encodeURIComponent(retPath);
       html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); window.location.href=&quot;/auth/google?return_to=' + retUrl + '&quot;;">🔑 Sign in with Google</button>';
+      html += '<button type="button" class="settings-menu-item menu-theme-toggle-btn" onclick="toggleTheme();"><span class="menu-theme-icon">' + themeIcon + '</span> <span>Light / Dark Mode</span></button>';
     }
     if (isDevMode) {
       html += '<div class="settings-menu-label">Dev settings</div>';
@@ -18800,6 +18815,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       btn.textContent = isDark ? '☀️' : '🌙';
       btn.title = isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode';
     }
+    document.querySelectorAll('.menu-theme-icon').forEach(function(icon) {
+      icon.textContent = isDark ? '☀️' : '🌙';
+    });
   }
 
   function toggleTheme() {
@@ -18817,6 +18835,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       btn.textContent = nextDark ? '☀️' : '🌙';
       btn.title = nextDark ? 'Switch to Light Mode' : 'Switch to Dark Mode';
     }
+    document.querySelectorAll('.menu-theme-icon').forEach(function(icon) {
+      icon.textContent = nextDark ? '☀️' : '🌙';
+    });
     applyHolidayTheme();
 
     try {
