@@ -18022,7 +18022,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       html += '<button type="button" class="settings-menu-item menu-theme-toggle-btn" onclick="toggleTheme();"><span class="menu-theme-icon">' + themeIcon + '</span> <span>Light / Dark Mode</span></button>';
       try {
         const calEl = document.getElementById('hebrewDateBadge');
-        const calText = calEl ? (calEl.textContent || '').trim() : '';
+        const calRaw = calEl ? (calEl.textContent || '') : '';
+        const calText = calRaw.replace(/^📅\s*/, '').trim();
         if (calText) html += '<div class="settings-menu-label auth-cal-mobile">📅 ' + escapeHtml(calText) + '</div>';
       } catch (e) {}
       html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); handleAuthClick();">🚪 Sign out</button>';
@@ -18042,7 +18043,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       html += '<button type="button" class="settings-menu-item menu-theme-toggle-btn" onclick="toggleTheme();"><span class="menu-theme-icon">' + themeIcon + '</span> <span>Light / Dark Mode</span></button>';
       try {
         const calEl2 = document.getElementById('hebrewDateBadge');
-        const calText2 = calEl2 ? (calEl2.textContent || '').trim() : '';
+        const calRaw2 = calEl2 ? (calEl2.textContent || '') : '';
+        const calText2 = calRaw2.replace(/^📅\s*/, '').trim();
         if (calText2) html += '<div class="settings-menu-label auth-cal-mobile">📅 ' + escapeHtml(calText2) + '</div>';
       } catch (e) {}
     }
