@@ -1,10 +1,10 @@
 # Currently Working On — Living Status & Activity Log
 
 Living status doc & audit log — updated on every milestone and user request.  
-Last updated: **2026-09-11, 10:10 ET**  
+Last updated: **2026-09-11, 10:25 ET**  
 Current branch: `feat/auth-d1`  
 Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev)  
-Tests: **5/5 test suites passing (100% green, 15/15 basic functionality checks)**  
+Tests: **5/5 test suites passing (100% green, 16/16 basic functionality checks)**  
 Production status: **Untouched** (strictly protected by standing rules)
 
 ---
@@ -26,14 +26,26 @@ Production status: **Untouched** (strictly protected by standing rules)
   - Multiline description textarea (`#newPlDesc`).
   - Curated taxonomy tag selector with typeahead autocomplete (speakers, venues, topics; max 5).
   - Per-user duplicate playlist name prevention with inline error feedback (`#newPlError`).
-- [ ] **Phase 5: Add-to-Playlist Multi-Select Popup Enhancements** *(IN PROGRESS)*
-  - Live counter tick (`+1` / `-1`) on checkbox toggle.
-  - Explicit `💾 Save Changes` commitment button.
-  - Self-saving guard (hide "Save" on public playlists authored by current user).
+- [x] **Phase 5: Add-to-Playlist Multi-Select Popup Enhancements** *(COMPLETED)*
+  - Live counter tick (`+1` / `-1`) on checkbox toggle with dynamic green/red indicators.
+  - Explicit `💾 Save Changes` commitment button staging modifications safely before committing.
+  - Self-saving guard: hides "Save" on public playlists authored by current user, presenting author badge and direct playlist navigation.
 
 ---
 
 ## 🕒 Chronological Activity Log
+
+### [2026-09-11 10:25 ET] — Commit `feat/auth-d1` (Phase 5: Staged Add-to-Playlist, Live Counter Ticks & Author Guard)
+- `[DONE]` **Staged State Management & Explicit Save Changes**:
+  - `openPlaylistModal(id)` now records `initialStates` and stages user checkbox adjustments cleanly in `stagedStates`.
+  - Added dedicated footer with `Cancel` button (discards pending changes) and `💾 Save Changes (N)` commitment button (`.pl-save-changes-btn`) that applies mutations via `devSetMembership` in one cohesive atomic pass.
+- `[DONE]` **Live Counter Tick (+1 / -1)**:
+  - Dynamically recalculates live playlist item count in modal rows.
+  - Renders vibrant green `(+1)` badge (`.pl-tick-add`) when checking an unincluded playlist and red `(-1)` badge (`.pl-tick-del`) when unchecking an included playlist.
+- `[DONE]` **Self-Saving Author Guard on Public Playlists**:
+  - Implemented `devIsAuthoredByCurrentUser(p)` and `devGetAuthoredCustomId(p)`.
+  - In `renderPlPublicInto()`, playlists authored by the current user display a prominent `👤 Your Playlist` badge and `🎧 Open in My Playlists` action, while cleanly suppressing redundant "Save to my playlists" and "Remove save ♥" buttons.
+- `[DONE]` **Automated Testing**: Updated `tests/basic_functionality.test.mjs` with Test #16. All 5 test suites passed 100% green.
 
 ### [2026-09-11 10:22 ET] — Commit `feat/auth-d1` (Phase 4: Enhanced Playlist Creation Modal with Emoji Picker, Tags & Duplicate Validation)
 - `[DONE]` **Emoji / Icon Picker**:

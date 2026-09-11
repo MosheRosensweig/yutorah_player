@@ -521,6 +521,46 @@ async function testSearchResultsScrollAndHeroSlideClick() {
   console.log('  ✅ Search results smooth scroll, hero slideshow direct shiur & search click & multi-line date/sort filters verified.');
 }
 
+async function testPlaylistSuitePhase5() {
+  console.log('16. Testing Playlist Suite Phase 5 (Staged Add-to-Playlist, Live Counter Ticks & Author Guard)...');
+  const req = new Request('https://yutorah-player.mrosensweig.workers.dev/', {
+    headers: { 'User-Agent': 'TestRunner' }
+  });
+  const res = await worker.fetch(req, mockEnv, mockCtx);
+  assert.equal(res.status, 200);
+  const html = await res.text();
+
+  // 1. CSS for .playlist-author-card, .pl-tick-add, and .pl-tick-del
+  assert.ok(html.includes('.playlist-author-card {'), 'CSS rule for .playlist-author-card must be present');
+  assert.ok(html.includes('.pl-tick-add {'), 'CSS rule for .pl-tick-add must be present');
+  assert.ok(html.includes('.pl-tick-del {'), 'CSS rule for .pl-tick-del must be present');
+
+  // 2. devIsAuthoredByCurrentUser & devGetAuthoredCustomId defined and exposed
+  assert.ok(html.includes('function devIsAuthoredByCurrentUser(p)'), 'devIsAuthoredByCurrentUser must be defined');
+  assert.ok(html.includes('window.devIsAuthoredByCurrentUser = devIsAuthoredByCurrentUser;'), 'devIsAuthoredByCurrentUser must be attached to window');
+  assert.ok(html.includes('function devGetAuthoredCustomId(p)'), 'devGetAuthoredCustomId must be defined');
+  assert.ok(html.includes('window.devGetAuthoredCustomId = devGetAuthoredCustomId;'), 'devGetAuthoredCustomId must be attached to window');
+
+  // 3. Staged Add-to-Playlist Modal with Save Changes and Cancel buttons
+  assert.ok(html.includes('pl-save-changes-btn'), 'Save Changes button class must be present');
+  assert.ok(html.includes('💾 Save Changes'), 'Save Changes label must be present in modal');
+  assert.ok(html.includes('id="plCancelBtn"'), 'Cancel button must be present in modal');
+  assert.ok(html.includes('id="plModalStatus"'), 'Status indicator must be present in modal');
+  assert.ok(html.includes('stagedStates'), 'stagedStates tracking must be present');
+  assert.ok(html.includes('initialStates'), 'initialStates tracking must be present');
+
+  // 4. Live counter tick (+1 / -1) classes in rowHtml
+  assert.ok(html.includes('class="pl-tick-add"'), 'pl-tick-add class must be rendered on check');
+  assert.ok(html.includes('class="pl-tick-del"'), 'pl-tick-del class must be rendered on uncheck');
+
+  // 5. Self-saving guard in renderPlPublicInto
+  assert.ok(html.includes('👤 Your Playlist'), 'Your Playlist badge must be rendered for author');
+  assert.ok(html.includes('playlist-author-card'), 'playlist-author-card class must be added to cards');
+  assert.ok(html.includes('devGetAuthoredCustomId'), 'devGetAuthoredCustomId must be called in public card rendering');
+
+  console.log('  ✅ Staged Add-to-Playlist, live counter ticks (+1/-1) & author self-save guard verified.');
+}
+
 async function runAll() {
   try {
     await testHomepage();
@@ -538,6 +578,7 @@ async function runAll() {
     await testDevPersonasAndSecondTab();
     await testHeroSizingAndPlaylistTagAutocomplete();
     await testSearchResultsScrollAndHeroSlideClick();
+    await testPlaylistSuitePhase5();
     console.log('\n🎉 ALL BASIC FUNCTIONALITY, ARTICLE READER & LIQUID MODE TESTS PASSED SUCCESSFULLY!');
   } catch (err) {
     console.error('\n❌ Test failed:', err);

@@ -8752,6 +8752,30 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       border: 2px solid #0284c7 !important;
       box-shadow: 0 0 0 1px #0369a1, 0 4px 14px rgba(2, 132, 199, 0.3) !important;
     }
+    .playlist-author-card {
+      border: 2px solid var(--primary) !important;
+      box-shadow: 0 0 0 1px rgba(43, 76, 126, 0.2), 0 4px 14px rgba(43, 76, 126, 0.12) !important;
+    }
+    [data-theme="dark"] .playlist-author-card {
+      border: 2px solid #60a5fa !important;
+      box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.3), 0 4px 14px rgba(96, 165, 250, 0.25) !important;
+    }
+    .pl-tick-add {
+      color: #16a34a !important;
+      font-weight: 800;
+      font-size: 12px;
+    }
+    [data-theme="dark"] .pl-tick-add {
+      color: #4ade80 !important;
+    }
+    .pl-tick-del {
+      color: #dc2626 !important;
+      font-weight: 800;
+      font-size: 12px;
+    }
+    [data-theme="dark"] .pl-tick-del {
+      color: #f87171 !important;
+    }
     .playlist-item-wrap {
       transition: all 0.15s ease;
     }
@@ -15892,6 +15916,43 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
   window.devOpenSubscribedPlaylist = devOpenSubscribedPlaylist;
 
+  function devIsAuthoredByCurrentUser(p) {
+    if (!p) return false;
+    try {
+      const store = getDevStore();
+      if (store && store.custom) {
+        for (const k in store.custom) {
+          const c = store.custom[k];
+          if (c && c.publicId && String(c.publicId) === String(p.id)) return true;
+        }
+      }
+      if (typeof cloudUser !== 'undefined' && cloudUser && p.ownerId && String(p.ownerId) === String(cloudUser.id)) {
+        return true;
+      }
+      if (typeof isDevMode !== 'undefined' && isDevMode && (p.ownerId === 'dev' || p.ownerName === 'Dev')) {
+        return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+  window.devIsAuthoredByCurrentUser = devIsAuthoredByCurrentUser;
+
+  function devGetAuthoredCustomId(p) {
+    if (!p) return null;
+    try {
+      const store = getDevStore();
+      if (store && store.custom) {
+        for (const k in store.custom) {
+          const c = store.custom[k];
+          if (c && c.publicId && String(c.publicId) === String(p.id)) return c.id || k;
+        }
+        if (store.custom[p.id]) return p.id;
+      }
+    } catch (e) {}
+    return null;
+  }
+  window.devGetAuthoredCustomId = devGetAuthoredCustomId;
+
   function devPlaylistSegmentedBarHtml(isPublic) {
     return '<div class="playlist-segmented-bar">' +
       '<button type="button" class="playlist-seg-btn' + (!isPublic ? ' active' : '') + '" onclick="devSwitchPlaylistSubView(&quot;my&quot;)">🎧 My Playlists</button>' +
@@ -15997,26 +16058,34 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       qhtml += plPublicResults.map(p => {
         const open = plPublicExpanded === p.id;
         const isSub = devIsSubscribedToPublicId(p.id);
+        const isAuthor = devIsAuthoredByCurrentUser(p);
+        const authoredCustomId = devGetAuthoredCustomId(p);
         const tagBits = []
           .concat((p.tags && p.tags.teachers || []).map(t => '👤 ' + t.name))
           .concat((p.tags && p.tags.venues || []).map(t => '📍 ' + t.name))
           .concat((p.tags && p.tags.topics || []).map(t => '🏷️ ' + t.name));
-        return '<div class="playlist-public-card' + (isSub ? ' playlist-subscribed-card' : '') + '">' +
+        return '<div class="playlist-public-card' + (isSub ? ' playlist-subscribed-card' : '') + (isAuthor ? ' playlist-author-card' : '') + '">' +
           '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">' +
           '<div class="playlist-card-title">' + escapeHtml(p.title || 'Untitled') + '</div>' +
-          (isSub ? '<span class="active-filter-pill" style="background:rgba(56, 189, 248, 0.15); color:#0369a1; border-color:#38bdf8; font-weight:700; white-space:nowrap; flex-shrink:0;">📡 Subscribed</span>' : '') +
+          (isAuthor
+            ? '<span class="active-filter-pill" style="background:rgba(43, 76, 126, 0.12); color:var(--primary); border-color:var(--primary); font-weight:700; white-space:nowrap; flex-shrink:0;">👤 Your Playlist</span>'
+            : (isSub ? '<span class="active-filter-pill" style="background:rgba(56, 189, 248, 0.15); color:#0369a1; border-color:#38bdf8; font-weight:700; white-space:nowrap; flex-shrink:0;">📡 Subscribed</span>' : '')
+          ) +
           '</div>' +
-          '<div class="playlist-card-meta">by ' + escapeHtml(p.ownerName || 'a listener') +
+          '<div class="playlist-card-meta">by ' + escapeHtml(p.ownerName || (isAuthor ? 'You' : 'a listener')) +
           ' · ' + (p.itemCount || 0) + ' shiurim · ❤️ ' + (p.saves || 0) + ' saves</div>' +
           (p.description ? '<div class="playlist-card-desc">' + escapeHtml(p.description) + '</div>' : '') +
           (tagBits.length ? '<div class="playlist-card-tags">' + tagBits.map(t => '<span class="playlist-tag-chip">' + escapeHtml(t) + '</span>').join('') + '</div>' : '') +
           '<div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap;">' +
           '<button type="button" class="card-mini-btn" onclick="plPublicToggle(&quot;' + escapeHtml(p.id) + '&quot;)">' + (open ? 'Hide shiurim ▲' : 'Preview shiurim ▼') + '</button>' +
-          (isSub
-            ? '<button type="button" class="card-mini-btn active-save" onclick="devOpenSubscribedPlaylist(&quot;' + escapeHtml(p.id) + '&quot;)">🎧 Open in My Playlists</button>'
-            : '<button type="button" class="card-mini-btn" onclick="plPromptSavePublic(&quot;' + escapeHtml(p.id) + '&quot;, &quot;' + escapeHtml((p.title || 'Shared playlist').replace(/"/g, '&quot;')) + '&quot;)">💾 Save to my playlists</button>'
+          (isAuthor
+            ? (authoredCustomId ? '<button type="button" class="card-mini-btn active-save" onclick="devSelectPlaylist(&quot;' + escapeHtml(authoredCustomId) + '&quot;)">🎧 Open in My Playlists</button>' : '')
+            : (isSub
+              ? '<button type="button" class="card-mini-btn active-save" onclick="devOpenSubscribedPlaylist(&quot;' + escapeHtml(p.id) + '&quot;)">🎧 Open in My Playlists</button>'
+              : '<button type="button" class="card-mini-btn" onclick="plPromptSavePublic(&quot;' + escapeHtml(p.id) + '&quot;, &quot;' + escapeHtml((p.title || 'Shared playlist').replace(/"/g, '&quot;')) + '&quot;)">💾 Save to my playlists</button>'
+            )
           ) +
-          '<button type="button" class="card-mini-btn" onclick="plUnsavePublic(&quot;' + escapeHtml(p.id) + '&quot;)">Remove save ♥</button>' +
+          (!isAuthor ? '<button type="button" class="card-mini-btn" onclick="plUnsavePublic(&quot;' + escapeHtml(p.id) + '&quot;)">Remove save ♥</button>' : '') +
           (typeof isDevMode !== 'undefined' && isDevMode ? '<button type="button" class="card-mini-btn active-save" onclick="devEditPublicPlaylist(&quot;' + escapeHtml(p.id) + '&quot;)">✏️ Edit (Dev)</button>' : '') +
           '</div>' +
           '<div id="plpub-' + p.id + '">' + (open ? '<div style="margin-top:8px;">Loading…</div>' : '') + '</div>' +
@@ -18334,7 +18403,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     closePlaylistModal();
     const snap = devSnapshot(id);
     if (!snap) return;
-    const store = getDevStore();
     const overlay = document.createElement('div');
     overlay.id = 'playlistModal';
     overlay.setAttribute('role', 'dialog');
@@ -18342,12 +18410,50 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     overlay.setAttribute('aria-label', 'Add to playlist');
     overlay.style.cssText = 'position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; padding:16px;';
     const box = document.createElement('div');
-    box.style.cssText = 'background:var(--card,#fff); color:var(--text,#111); border-radius:14px; max-width:440px; width:100%; max-height:80vh; overflow:auto; padding:18px; border:1px solid var(--border-light);';
-    function rowHtml(pid, name, icon, count, checked, isReadOnly) {
-      return '<label style="display:flex; align-items:center; gap:8px; padding:7px 4px; cursor:' + (isReadOnly ? 'not-allowed; opacity:0.6;' : 'pointer;') + '" data-pl-row="' + escapeHtml(name.toLowerCase()) + '">' +
-        '<input type="checkbox" data-pl-check="' + pid + '"' + (checked ? ' checked' : '') + (pid === 'history' || isReadOnly ? ' disabled' : '') + '>' +
-        '<span>' + escapeHtml(icon) + ' ' + escapeHtml(name) + ' (' + count + ')' + (isReadOnly ? ' <em style="font-size:11px; color:var(--text-muted);">(Read-Only)</em>' : '') + '</span></label>';
+    box.style.cssText = 'background:var(--card,#fff); color:var(--text,#111); border-radius:14px; max-width:440px; width:100%; max-height:80vh; overflow:auto; padding:18px; border:1px solid var(--border-light); box-shadow:0 12px 32px rgba(0,0,0,0.25);';
+
+    // Staged membership and count tracking
+    const initialStates = {};
+    const initialCounts = {};
+    const stagedStates = {};
+
+    function initStates() {
+      const s = getDevStore();
+      devPlaylistIds(s).forEach(pid => {
+        const inPl = devInPlaylist(pid, id);
+        initialStates[pid] = inPl;
+        if (!(pid in stagedStates)) {
+          stagedStates[pid] = inPl;
+        }
+        const p = getDevPlaylist(s, pid);
+        initialCounts[pid] = p && p.items ? p.items.length : 0;
+      });
     }
+    initStates();
+
+    function rowHtml(pid, name, icon, isReadOnly) {
+      const isChecked = !!stagedStates[pid];
+      const isInitial = !!initialStates[pid];
+      const baseCount = initialCounts[pid] || 0;
+      let displayCount = baseCount;
+      let tickHtml = '';
+      if (isChecked && !isInitial) {
+        displayCount = baseCount + 1;
+        tickHtml = ' <span class="pl-tick-add" style="color:#16a34a; font-weight:800; font-size:12px; margin-left:3px;">(+1)</span>';
+      } else if (!isChecked && isInitial) {
+        displayCount = Math.max(0, baseCount - 1);
+        tickHtml = ' <span class="pl-tick-del" style="color:#dc2626; font-weight:800; font-size:12px; margin-left:3px;">(-1)</span>';
+      }
+      return '<label style="display:flex; align-items:center; gap:8px; padding:7px 4px; cursor:' + (isReadOnly ? 'not-allowed; opacity:0.6;' : 'pointer;') + '" data-pl-row="' + escapeHtml(name.toLowerCase()) + '">' +
+        '<input type="checkbox" data-pl-check="' + pid + '"' + (isChecked ? ' checked' : '') + (pid === 'history' || isReadOnly ? ' disabled' : '') + '>' +
+        '<span style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">' +
+        '<span>' + escapeHtml(icon) + ' ' + escapeHtml(name) + '</span>' +
+        '<span style="color:var(--text-muted); font-size:12px;">(<span id="pl-count-' + pid + '">' + displayCount + '</span>)</span>' +
+        tickHtml +
+        (isReadOnly ? ' <em style="font-size:11px; color:var(--text-muted);">(Read-Only)</em>' : '') +
+        '</span></label>';
+    }
+
     function listHtml(filter) {
       const s = getDevStore();
       const f = String(filter || '').toLowerCase();
@@ -18357,46 +18463,111 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         if (!p) return;
         if (f && p.name.toLowerCase().indexOf(f) === -1) return;
         const isRo = !!(p.isSubscription);
-        h += rowHtml(pid, p.name, p.icon || '📁', (p.items || []).length, devInPlaylist(pid, id), isRo);
+        h += rowHtml(pid, p.name, p.icon || '📁', isRo);
       });
       return h || '<div style="padding:8px; color:var(--text-muted);">No playlists match.</div>';
     }
+
+    function getChangesCount() {
+      let c = 0;
+      for (const pid in stagedStates) {
+        if (stagedStates[pid] !== initialStates[pid]) c++;
+      }
+      return c;
+    }
+
+    function updateFooter() {
+      const cnt = getChangesCount();
+      const statusEl = box.querySelector('#plModalStatus');
+      const saveBtn = box.querySelector('#plSaveBtn');
+      if (statusEl) {
+        if (cnt > 0) {
+          statusEl.innerHTML = '<span style="color:var(--primary); font-weight:700;">' + cnt + ' change' + (cnt === 1 ? '' : 's') + ' pending</span>';
+        } else {
+          statusEl.innerHTML = '<span style="color:var(--text-muted);">No changes</span>';
+        }
+      }
+      if (saveBtn) {
+        saveBtn.innerHTML = cnt > 0 ? '💾 Save Changes (' + cnt + ')' : '💾 Save Changes';
+        saveBtn.style.opacity = cnt > 0 ? '1' : '0.75';
+      }
+    }
+
     box.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">' +
-      '<div style="font-weight:800;">➕ Add to Playlist</div>' +
+      '<div style="font-weight:800; font-size:16px;">➕ Add to Playlist</div>' +
       '<button type="button" class="card-mini-btn" onclick="closePlaylistModal()">Close ×</button></div>' +
-      '<div style="font-size:13px; color:var(--text-muted); margin-bottom:10px;">' + escapeHtml(snap.title) + '</div>' +
+      '<div style="font-size:13px; color:var(--text-muted); margin-bottom:12px;">' + escapeHtml(snap.title) + '</div>' +
       '<input id="devPlFilter" type="text" placeholder="Type to filter or create..." autocomplete="off"' +
-      ' style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-light); margin-bottom:6px;">' +
+      ' style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-light); margin-bottom:6px; background:var(--card); color:var(--text);">' +
       '<div id="devPlCreateWrap"></div>' +
-      '<div id="devPlList">' + listHtml('') + '</div>';
+      '<div id="devPlList" style="max-height:260px; overflow-y:auto; margin-bottom:8px;">' + listHtml('') + '</div>' +
+      '<div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; padding-top:12px; border-top:1px solid var(--border-light);">' +
+      '<div id="plModalStatus" style="font-size:12px; color:var(--text-muted);">No changes</div>' +
+      '<div style="display:flex; gap:8px;">' +
+      '<button type="button" class="card-mini-btn" id="plCancelBtn" onclick="closePlaylistModal()">Cancel</button>' +
+      '<button type="button" class="card-mini-btn pl-save-changes-btn" id="plSaveBtn" style="background:var(--primary); color:#fff; border-color:var(--primary); font-weight:700;">💾 Save Changes</button>' +
+      '</div></div>';
+
     overlay.appendChild(box);
     overlay.addEventListener('click', e => { if (e.target === overlay) closePlaylistModal(); });
     document.body.appendChild(overlay);
+
     const filterInput = box.querySelector('#devPlFilter');
     const listEl = box.querySelector('#devPlList');
     const createWrap = box.querySelector('#devPlCreateWrap');
+    const saveBtn = box.querySelector('#plSaveBtn');
+
     filterInput.addEventListener('input', () => {
       listEl.innerHTML = listHtml(filterInput.value);
       const v = filterInput.value.trim();
       if (v) {
-        createWrap.innerHTML = '<button type="button" class="card-mini-btn" id="devPlCreateBtn">➕ Create "' + escapeHtml(v) + '"</button>';
+        createWrap.innerHTML = '<button type="button" class="card-mini-btn active-save" id="devPlCreateBtn" style="margin-bottom:8px;">➕ Create "' + escapeHtml(v) + '"</button>';
         const cb = createWrap.querySelector('#devPlCreateBtn');
         cb.addEventListener('click', () => {
           const nid = devCreatePlaylist(v);
-          if (nid) devSetMembership(nid, id, true);
-          openPlaylistModal(id);
-          renderPlaylistsGrid();
+          if (nid) {
+            initialStates[nid] = false;
+            initialCounts[nid] = 0;
+            stagedStates[nid] = true;
+          }
+          filterInput.value = '';
+          createWrap.innerHTML = '';
+          listEl.innerHTML = listHtml('');
+          updateFooter();
         });
       } else {
         createWrap.innerHTML = '';
       }
     });
+
     listEl.addEventListener('change', e => {
       const cb = e.target.closest('[data-pl-check]');
       if (!cb) return;
-      devSetMembership(cb.getAttribute('data-pl-check'), id, cb.checked);
-      devRefreshCardButtons();
+      const pid = cb.getAttribute('data-pl-check');
+      stagedStates[pid] = cb.checked;
+      listEl.innerHTML = listHtml(filterInput.value);
+      updateFooter();
     });
+
+    if (saveBtn) {
+      saveBtn.addEventListener('click', () => {
+        let changed = false;
+        for (const pid in stagedStates) {
+          if (stagedStates[pid] !== initialStates[pid]) {
+            devSetMembership(pid, id, stagedStates[pid]);
+            changed = true;
+          }
+        }
+        if (changed) {
+          devRefreshCardButtons();
+          if (document.getElementById('grid-playlists') && document.getElementById('grid-playlists').style.display !== 'none') {
+            renderPlaylistsGrid();
+          }
+        }
+        closePlaylistModal();
+      });
+    }
+
     const first = box.querySelector('#devPlFilter');
     if (first) first.focus();
   }
