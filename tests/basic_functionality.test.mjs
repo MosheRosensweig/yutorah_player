@@ -770,12 +770,12 @@ async function testPwaIntegration() {
   assert.ok(swRes.headers.get('Content-Type')?.includes('application/javascript'), '/sw.js should have application/javascript content-type');
   assert.equal(swRes.headers.get('Service-Worker-Allowed'), '/', '/sw.js must set Service-Worker-Allowed: /');
   const swContent = await swRes.text();
-  assert.ok(swContent.includes('yutorah-pwa-v1'), 'SW must define CACHE_NAME');
+  assert.ok(swContent.includes('yutorah-pwa-v2'), 'SW must define CACHE_NAME v2');
   assert.ok(swContent.includes("req.headers.has('range')"), 'SW must bypass streaming audio range requests');
   assert.ok(swContent.includes('shiurim.yutorah.net'), 'SW must bypass audio CDN requests');
   assert.ok(swContent.includes("req.mode === 'navigate'"), 'SW must handle navigation requests with network-first');
 
-  // 3. PNG and SVG Icons endpoints
+  // 3. PNG and SVG Icons endpoints (Authentic Yeshiva University Shield)
   const pngSig = [137, 80, 78, 71, 13, 10, 26, 10];
   for (const iconPath of ['/icons/icon-192.png', '/icons/icon-maskable-192.png', '/favicon.ico']) {
     const iconReq = new Request(`https://yutorah-player.mrosensweig.workers.dev${iconPath}`);
@@ -784,7 +784,7 @@ async function testPwaIntegration() {
     assert.equal(iconRes.headers.get('Content-Type'), 'image/png', `${iconPath} should have image/png content-type`);
     const iconBuf = new Uint8Array(await iconRes.arrayBuffer());
     assert.ok(pngSig.every((b, i) => iconBuf[i] === b), `${iconPath} must have valid PNG signature`);
-    assert.equal(iconBuf.length, 11269, `${iconPath} length should match expected 192 icon bytes`);
+    assert.equal(iconBuf.length, 8863, `${iconPath} length should match expected 192 shield icon bytes`);
   }
 
   for (const iconPath of ['/icons/icon-512.png', '/icons/icon-maskable-512.png']) {
@@ -794,7 +794,7 @@ async function testPwaIntegration() {
     assert.equal(iconRes.headers.get('Content-Type'), 'image/png', `${iconPath} should have image/png content-type`);
     const iconBuf = new Uint8Array(await iconRes.arrayBuffer());
     assert.ok(pngSig.every((b, i) => iconBuf[i] === b), `${iconPath} must have valid PNG signature`);
-    assert.equal(iconBuf.length, 45485, `${iconPath} length should match expected 512 icon bytes`);
+    assert.equal(iconBuf.length, 41041, `${iconPath} length should match expected 512 shield icon bytes`);
   }
 
   const svgReq = new Request('https://yutorah-player.mrosensweig.workers.dev/icons/icon.svg');
