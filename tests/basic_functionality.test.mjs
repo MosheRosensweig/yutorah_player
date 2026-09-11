@@ -468,7 +468,11 @@ async function testSearchResultsScrollAndHeroSlideClick() {
   assert.ok(html.includes('data-slide-name='), 'Hero slides must supply data-slide-name attribute');
   assert.ok(html.includes('data-slide-href='), 'Hero slides must supply data-slide-href attribute');
 
-  console.log('  ✅ Search results smooth scroll and hero slideshow click search verified.');
+  // 5. When and Sort filter rows are separated into distinct subrows so Sort starts on a new line
+  assert.ok(html.includes('.date-quick-subrow {'), 'CSS rule for .date-quick-subrow must be present');
+  assert.ok(html.includes('class="date-quick-subrow"'), 'date-quick-subrow markup must be present');
+
+  console.log('  ✅ Search results smooth scroll, hero slideshow click search & multi-line date/sort filters verified.');
 }
 
 async function runAll() {

@@ -7792,10 +7792,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     /* Quick Date Filters (every search) */
     .date-quick-row {
       display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin: 10px 0 6px;
+    }
+    .date-quick-subrow {
+      display: flex;
       flex-wrap: wrap;
       align-items: center;
       gap: 8px;
-      margin: 10px 0 4px;
     }
     .date-quick-caption {
       font-size: 12px;
@@ -9943,19 +9948,22 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     <!-- Active Filter Pills Bar (Shown when multi-criteria filters are active) -->
     <div id="activeFiltersBar" class="active-filters-bar" style="display: none;"></div>
 
-    <!-- Quick Date Filters (every search: All / Today / Yesterday / This Week / This Month) -->
+    <!-- Quick Date Filters (every search: All / Today / Yesterday / This Week / This Month) & Result Sort -->
     <div id="dateQuickRow" class="date-quick-row">
-      <span class="date-quick-caption">📅 When:</span>
-      <button type="button" class="date-quick-chip selected" data-preset="all" onclick="setDateQuick('all', this)">All Dates</button>
-      <button type="button" class="date-quick-chip" data-preset="today" onclick="setDateQuick('today', this)">Today</button>
-      <button type="button" class="date-quick-chip" data-preset="yesterday" onclick="setDateQuick('yesterday', this)">Yesterday</button>
-      <button type="button" class="date-quick-chip" data-preset="week" onclick="setDateQuick('week', this)">This Week</button>
-      <button type="button" class="date-quick-chip" data-preset="month" onclick="setDateQuick('month', this)">This Month</button>
-      <span class="date-quick-sep" aria-hidden="true"></span>
-      <span class="date-quick-caption">Sort:</span>
-      <button type="button" class="date-quick-chip sort-chip selected" data-sort="relevance" onclick="setResultSort('relevance', this)">Relevance</button>
-      <button type="button" class="date-quick-chip sort-chip" data-sort="newest" onclick="setResultSort('newest', this)">Newest</button>
-      <button type="button" class="date-quick-chip sort-chip" data-sort="oldest" onclick="setResultSort('oldest', this)">Oldest</button>
+      <div class="date-quick-subrow">
+        <span class="date-quick-caption">📅 When:</span>
+        <button type="button" class="date-quick-chip selected" data-preset="all" onclick="setDateQuick('all', this)">All Dates</button>
+        <button type="button" class="date-quick-chip" data-preset="today" onclick="setDateQuick('today', this)">Today</button>
+        <button type="button" class="date-quick-chip" data-preset="yesterday" onclick="setDateQuick('yesterday', this)">Yesterday</button>
+        <button type="button" class="date-quick-chip" data-preset="week" onclick="setDateQuick('week', this)">This Week</button>
+        <button type="button" class="date-quick-chip" data-preset="month" onclick="setDateQuick('month', this)">This Month</button>
+      </div>
+      <div class="date-quick-subrow">
+        <span class="date-quick-caption">Sort:</span>
+        <button type="button" class="date-quick-chip sort-chip selected" data-sort="relevance" onclick="setResultSort('relevance', this)">Relevance</button>
+        <button type="button" class="date-quick-chip sort-chip" data-sort="newest" onclick="setResultSort('newest', this)">Newest</button>
+        <button type="button" class="date-quick-chip sort-chip" data-sort="oldest" onclick="setResultSort('oldest', this)">Oldest</button>
+      </div>
     </div>
 
     <!-- Phonetic Expansion Notice Banner (Shown when transliteration synonyms were searched) -->
