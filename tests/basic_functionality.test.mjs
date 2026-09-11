@@ -353,8 +353,17 @@ async function testPublicPlaylistSubscriptionOptions() {
   assert.ok(html.includes('.playlist-reorder-btn'), 'playlist-reorder-btn CSS defined');
   assert.ok(html.includes('.playlist-item-wrap'), 'playlist-item-wrap CSS defined');
   assert.ok(html.includes('Manual / Drag-and-Drop'), 'Manual / Drag-and-Drop sort option defined');
+  // 6. Phase 4: Enhanced Playlist Creation Modal
+  assert.ok(html.includes('.new-pl-emoji-grid'), 'new-pl-emoji-grid CSS defined');
+  assert.ok(html.includes('.new-pl-emoji-btn'), 'new-pl-emoji-btn CSS defined');
+  assert.ok(html.includes('devIsDuplicatePlaylistName'), 'devIsDuplicatePlaylistName defined');
+  assert.ok(html.includes('newPlEmojiGrid'), 'newPlEmojiGrid defined in creation modal');
+  assert.ok(html.includes('newPlDesc'), 'newPlDesc description textarea defined in creation modal');
+  assert.ok(html.includes('newPlTagSearch'), 'newPlTagSearch taxonomy search defined in creation modal');
+  assert.ok(html.includes('newPlChips'), 'newPlChips tag chips container defined in creation modal');
+  assert.ok(html.includes('newPlError'), 'newPlError duplicate/validation element defined in creation modal');
 
-  console.log('  ✅ Public playlist save choice modal, live-sync subscription, segmented controls & sorting/reordering verified.');
+  console.log('  ✅ Public playlist save choice modal, live-sync subscription, segmented controls, sorting & creation modal verified.');
 }
 
 async function testDevPersonasAndSecondTab() {

@@ -8784,6 +8784,36 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       opacity: 0.3;
       cursor: not-allowed;
     }
+    .new-pl-emoji-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin: 6px 0 12px;
+    }
+    .new-pl-emoji-btn {
+      font-size: 18px;
+      padding: 6px 9px;
+      border-radius: 8px;
+      border: 1.5px solid var(--border);
+      background: var(--card);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      line-height: 1;
+    }
+    .new-pl-emoji-btn:hover {
+      border-color: var(--primary);
+      transform: scale(1.12);
+    }
+    .new-pl-emoji-btn.selected {
+      border-color: var(--primary);
+      background: rgba(43, 76, 126, 0.12);
+      box-shadow: 0 0 0 1.5px var(--primary);
+    }
+    [data-theme="dark"] .new-pl-emoji-btn.selected {
+      background: rgba(92, 142, 204, 0.25);
+      box-shadow: 0 0 0 1.5px #7ca5de;
+      border-color: #7ca5de;
+    }
     .playlist-public-card {
       grid-column: 1 / -1;
       background: var(--card);
@@ -15701,17 +15731,36 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     renderPlaylistsGrid();
   }
 
-  function devCreatePlaylist(name) {
+  function devIsDuplicatePlaylistName(name, excludeId) {
+    const clean = String(name || '').trim().toLowerCase();
+    if (!clean) return false;
+    const sys = ['history', 'favorites', 'save for later', 'later', 'queue'];
+    if (sys.includes(clean)) return true;
+    const store = getDevStore();
+    if (!store || !store.custom) return false;
+    return Object.values(store.custom).some(p => p && p.id !== excludeId && (p.name || '').trim().toLowerCase() === clean);
+  }
+  window.devIsDuplicatePlaylistName = devIsDuplicatePlaylistName;
+
+  function devCreatePlaylist(name, icon, desc, tags) {
     name = String(name || '').trim().slice(0, 60);
     if (!name) return null;
     const store = getDevStore();
     const id = 'pl_' + Date.now().toString(36);
-    store.custom[id] = { id: id, name: name, icon: '📁', items: [] };
+    store.custom[id] = {
+      id: id,
+      name: name,
+      icon: icon || '📁',
+      description: desc ? String(desc).trim().slice(0, 300) : '',
+      tags: tags && typeof tags === 'object' ? tags : { teachers: [], venues: [], topics: [] },
+      items: []
+    };
     store.activeId = id;
     activeDevPlaylistId = id;
     saveDevStore(store);
     return id;
   }
+  window.devCreatePlaylist = devCreatePlaylist;
 
   function devSelectPlaylist(pid) {
     activeDevPlaylistId = pid;
@@ -16302,21 +16351,186 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const overlay = document.createElement('div');
     overlay.id = 'newPlaylistModal';
     overlay.style.cssText = 'position:fixed; inset:0; z-index:10000; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; padding:16px;';
-    overlay.setAttribute('role','dialog');
-    overlay.setAttribute('aria-modal','true');
-    overlay.setAttribute('aria-label','New Playlist');
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', 'Create New Playlist');
+
+    // Warm tag metadata if needed
+    if (typeof loadAutocompleteMeta === 'function' && (!autocompleteCache || !autocompleteData)) {
+      loadAutocompleteMeta().catch(() => {});
+    }
+
     const box = document.createElement('div');
-    box.style.cssText = 'background:var(--card,#fff); color:var(--text,#111); border-radius:14px; max-width:360px; width:100%; padding:18px; border:1px solid var(--border-light);';
-    box.innerHTML = '<div style="font-weight:800; margin-bottom:10px;">➕ New Playlist</div><input id="newPlInput" type="text" placeholder="Playlist name" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-light);"><div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;"><button type="button" class="card-mini-btn" id="newPlCancel">Cancel</button><button type="button" class="card-mini-btn active-save" id="newPlOk">Create</button></div>';
+    box.style.cssText = 'background:var(--card,#fff); color:var(--text,#111); border-radius:14px; max-width:440px; width:100%; max-height:86vh; overflow-y:auto; padding:18px; border:1px solid var(--border-light); box-shadow:0 12px 36px rgba(0,0,0,0.25);';
+
+    let selectedIcon = '📁';
+    const EMOJI_OPTIONS = ['📁', '🎧', '📚', '🕯️', '📜', '⭐', '💎', '🕊️', '🕍', '📖', '🎙️', '🧠', '✨', '🔥', '🎓', '🏷️'];
+    const plTags = { teachers: [], venues: [], topics: [] };
+
+    box.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">' +
+      '<div style="font-weight:800; font-size:16px; display:flex; align-items:center; gap:8px;">' +
+      '<span id="newPlIconPreview" style="font-size:22px;">📁</span><span>Create New Playlist</span></div>' +
+      '<button type="button" class="card-mini-btn" id="newPlClose" style="padding:4px 8px;">✕</button></div>' +
+
+      '<label style="font-size:12px; font-weight:700; color:var(--text-muted); display:block; margin-bottom:4px;">Choose Icon</label>' +
+      '<div id="newPlEmojiGrid" class="new-pl-emoji-grid">' +
+      EMOJI_OPTIONS.map(em =>
+        '<button type="button" class="new-pl-emoji-btn' + (em === selectedIcon ? ' selected' : '') + '" data-emoji="' + em + '">' + em + '</button>'
+      ).join('') + '</div>' +
+
+      '<label style="font-size:12px; font-weight:700; color:var(--text-muted); display:block; margin-bottom:2px;">Playlist Name <span style="color:#ef4444;">*</span></label>' +
+      '<input id="newPlInput" type="text" placeholder="e.g. In-Depth Shabbos Shiurim" maxlength="60" style="width:100%; padding:9px 12px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text); margin-bottom:4px;">' +
+      '<div id="newPlError" style="display:none; color:#ef4444; font-size:12px; font-weight:600; margin-bottom:8px;"></div>' +
+
+      '<label style="font-size:12px; font-weight:700; color:var(--text-muted); display:block; margin-top:8px; margin-bottom:2px;">Description (optional)</label>' +
+      '<textarea id="newPlDesc" rows="2" maxlength="300" placeholder="What is this playlist about?" style="width:100%; padding:8px 12px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text); resize:vertical; margin-bottom:10px;"></textarea>' +
+
+      '<label style="font-size:12px; font-weight:700; color:var(--text-muted); display:block; margin-bottom:2px;">Taxonomy Tags (optional, max 5)</label>' +
+      '<div id="newPlChips" style="display:flex; flex-wrap:wrap; gap:6px; margin:4px 0 8px;"></div>' +
+      '<div style="position:relative; margin-bottom:14px;">' +
+        '<input id="newPlTagSearch" placeholder="Search speakers, venues, or topics to tag…" autocomplete="off" style="width:100%; padding:8px 12px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text);">' +
+        '<div id="newPlSuggestDropdown" class="pld-suggest-dropdown"></div>' +
+      '</div>' +
+
+      '<div style="display:flex; gap:8px; justify-content:flex-end; margin-top:14px; border-top:1px solid var(--border-light); padding-top:12px;">' +
+        '<button type="button" class="card-mini-btn" id="newPlCancel">Cancel</button>' +
+        '<button type="button" class="card-mini-btn active-save" id="newPlOk" style="padding:7px 18px; font-weight:700;">Create Playlist</button>' +
+      '</div>';
+
     overlay.appendChild(box);
-    overlay.addEventListener('click', e=>{ if(e.target===overlay){ overlay.remove(); }});
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) overlay.remove();
+      const drop = box.querySelector('#newPlSuggestDropdown');
+      if (drop && (!e.target.closest || !e.target.closest('#newPlTagSearch'))) {
+        drop.style.display = 'none';
+      }
+    });
     document.body.appendChild(overlay);
+
     const input = box.querySelector('#newPlInput');
-    const ok = ()=>{ const v=(input.value||'').trim(); if(v){ devCreatePlaylist(v); renderPlaylistsGrid(); } overlay.remove(); };
-    box.querySelector('#newPlCancel').addEventListener('click', ()=>overlay.remove());
-    box.querySelector('#newPlOk').addEventListener('click', ok);
-    input.addEventListener('keydown', e=>{ if(e.key==='Enter') ok(); if(e.key==='Escape') overlay.remove(); });
-    setTimeout(()=>input.focus(), 50);
+    const errEl = box.querySelector('#newPlError');
+    const descInput = box.querySelector('#newPlDesc');
+    const tagSearch = box.querySelector('#newPlTagSearch');
+    const suggestDrop = box.querySelector('#newPlSuggestDropdown');
+    const iconPreview = box.querySelector('#newPlIconPreview');
+
+    // Emoji clicks
+    box.querySelectorAll('.new-pl-emoji-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        selectedIcon = btn.getAttribute('data-emoji');
+        box.querySelectorAll('.new-pl-emoji-btn').forEach(b => b.classList.toggle('selected', b === btn));
+        if (iconPreview) iconPreview.textContent = selectedIcon;
+      });
+    });
+
+    const getTagCount = () => plTags.teachers.length + plTags.venues.length + plTags.topics.length;
+
+    const renderChips = () => {
+      const host = box.querySelector('#newPlChips');
+      if (!host) return;
+      const chipHtml = (kind, list) => list.map((t, idx) =>
+        '<span class="active-filter-pill">' + (kind === 'teachers' ? '👤 ' : kind === 'venues' ? '📍 ' : '🏷️ ') +
+        escapeHtml(t.name) + ' <button type="button" data-del-kind="' + kind + '" data-del-idx="' + idx + '" style="background:none; border:none; color:inherit; cursor:pointer; font-weight:bold; margin-left:4px;">✕</button></span>'
+      ).join('');
+      host.innerHTML = chipHtml('teachers', plTags.teachers) + chipHtml('venues', plTags.venues) + chipHtml('topics', plTags.topics);
+      host.querySelectorAll('button[data-del-kind]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const k = btn.getAttribute('data-del-kind');
+          const i = parseInt(btn.getAttribute('data-del-idx'), 10);
+          if (plTags[k]) plTags[k].splice(i, 1);
+          renderChips();
+        });
+      });
+      if (tagSearch) {
+        tagSearch.placeholder = getTagCount() >= 5 ? 'Max 5 tags reached' : 'Search speakers, venues, or topics to tag…';
+        tagSearch.disabled = getTagCount() >= 5;
+      }
+    };
+
+    // Tag autocomplete
+    if (tagSearch && suggestDrop) {
+      tagSearch.addEventListener('input', () => {
+        const q = (tagSearch.value || '').trim().toLowerCase();
+        if (!q || getTagCount() >= 5) {
+          suggestDrop.style.display = 'none';
+          suggestDrop.innerHTML = '';
+          return;
+        }
+        const teachers = plTagOptions('teacher').filter(t => (t.name || '').toLowerCase().includes(q)).slice(0, 5);
+        const venues = plTagOptions('venue').filter(v => (v.name || '').toLowerCase().includes(q)).slice(0, 3);
+        const topics = plTagOptions('topic').filter(t => (t.name || '').toLowerCase().includes(q)).slice(0, 5);
+        const all = []
+          .concat(teachers.map(t => ({ kind: 'teachers', id: t.id || t.name, name: t.name, icon: '👤' })))
+          .concat(venues.map(v => ({ kind: 'venues', id: v.id || v.name, name: v.name, icon: '📍' })))
+          .concat(topics.map(t => ({ kind: 'topics', id: t.id || t.name, name: t.name, icon: '🏷️' })));
+
+        if (all.length === 0) {
+          suggestDrop.innerHTML = '<div style="padding:8px 12px; font-size:12px; color:var(--text-muted);">No matching tags found</div>';
+          suggestDrop.style.display = 'block';
+          return;
+        }
+        suggestDrop.innerHTML = all.map(item => {
+          const isAdded = plTags[item.kind].some(t => String(t.id) === String(item.id));
+          return '<div class="pld-suggest-item" data-item-kind="' + item.kind + '" data-item-id="' + escapeHtml(item.id) + '" data-item-name="' + escapeHtml(item.name) + '">' +
+            '<span>' + item.icon + ' ' + escapeHtml(item.name) + '</span>' +
+            (isAdded ? '<span style="font-size:11px; color:var(--text-muted); font-weight:600;">✓ added</span>' : '') +
+          '</div>';
+        }).join('');
+        suggestDrop.style.display = 'block';
+
+        suggestDrop.querySelectorAll('.pld-suggest-item').forEach(el => {
+          el.addEventListener('click', () => {
+            const kind = el.getAttribute('data-item-kind');
+            const id = el.getAttribute('data-item-id');
+            const name = el.getAttribute('data-item-name');
+            if (getTagCount() < 5 && !plTags[kind].some(t => String(t.id) === String(id))) {
+              plTags[kind].push({ id: id, name: name });
+              renderChips();
+            }
+            tagSearch.value = '';
+            suggestDrop.style.display = 'none';
+            suggestDrop.innerHTML = '';
+          });
+        });
+      });
+    }
+
+    const validateAndSubmit = () => {
+      const v = (input.value || '').trim();
+      if (!v) {
+        if (errEl) {
+          errEl.textContent = 'Please enter a playlist name.';
+          errEl.style.display = 'block';
+        }
+        input.focus();
+        return;
+      }
+      if (devIsDuplicatePlaylistName(v)) {
+        if (errEl) {
+          errEl.textContent = 'A playlist named "' + v + '" already exists. Please choose a unique name.';
+          errEl.style.display = 'block';
+        }
+        input.focus();
+        return;
+      }
+      if (errEl) errEl.style.display = 'none';
+      const desc = (descInput ? descInput.value : '').trim();
+      devCreatePlaylist(v, selectedIcon, desc, plTags);
+      renderPlaylistsGrid();
+      overlay.remove();
+    };
+
+    box.querySelector('#newPlClose').addEventListener('click', () => overlay.remove());
+    box.querySelector('#newPlCancel').addEventListener('click', () => overlay.remove());
+    box.querySelector('#newPlOk').addEventListener('click', validateAndSubmit);
+    input.addEventListener('input', () => {
+      if (errEl && errEl.style.display !== 'none') errEl.style.display = 'none';
+    });
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') validateAndSubmit();
+      if (e.key === 'Escape') overlay.remove();
+    });
+    setTimeout(() => input.focus(), 60);
   }
   function closeNewPlaylistModal(){ const m=document.getElementById('newPlaylistModal'); if(m) m.remove(); }
 

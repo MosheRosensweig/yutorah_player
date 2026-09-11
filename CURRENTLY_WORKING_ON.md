@@ -21,11 +21,12 @@ Production status: **Untouched** (strictly protected by standing rules)
   - Sort selector per playlist: `Last Listened` (for History), `Recently Added`, `Shiur Date (Newest)`, `Shiur Date (Oldest)`, and `Manual / Drag-and-Drop`.
   - Manual reordering with touch-friendly `▲` / `▼` buttons and HTML5 drag-and-drop handles (`⠿`).
   - Sort preference persistence in `localStorage` (`yutorah_pl_sort_[id]`) and in `pl.sortOrder`.
-- [ ] **Phase 4: Enhanced Playlist Creation Modal** *(IN PROGRESS)*
-  - Emoji / Icon picker for playlists.
-  - Curated taxonomy tag selector (speakers, venues, topics, categories; max 5).
-  - Per-user duplicate playlist name prevention.
-- [ ] **Phase 5: Add-to-Playlist Multi-Select Popup Enhancements** *(PENDING)*
+- [x] **Phase 4: Enhanced Playlist Creation Modal** *(COMPLETED)*
+  - Emoji / Icon picker for playlists with 16 selectable emojis and live preview.
+  - Multiline description textarea (`#newPlDesc`).
+  - Curated taxonomy tag selector with typeahead autocomplete (speakers, venues, topics; max 5).
+  - Per-user duplicate playlist name prevention with inline error feedback (`#newPlError`).
+- [ ] **Phase 5: Add-to-Playlist Multi-Select Popup Enhancements** *(IN PROGRESS)*
   - Live counter tick (`+1` / `-1`) on checkbox toggle.
   - Explicit `💾 Save Changes` commitment button.
   - Self-saving guard (hide "Save" on public playlists authored by current user).
@@ -33,6 +34,19 @@ Production status: **Untouched** (strictly protected by standing rules)
 ---
 
 ## 🕒 Chronological Activity Log
+
+### [2026-09-11 10:22 ET] — Commit `feat/auth-d1` (Phase 4: Enhanced Playlist Creation Modal with Emoji Picker, Tags & Duplicate Validation)
+- `[DONE]` **Emoji / Icon Picker**:
+  - Added interactive grid of 16 emojis (`📁`, `🎧`, `📚`, `🕯️`, `📜`, `⭐`, `💎`, `🕊️`, `🕍`, `📖`, `🎙️`, `🧠`, `✨`, `🔥`, `🎓`, `🏷️`) with `.selected` outline highlighting and dynamic live icon preview in modal header.
+- `[DONE]` **Duplicate Name Prevention**:
+  - Implemented `devIsDuplicatePlaylistName(name, excludeId)` checking case-insensitively against user's custom playlists and reserved system list names.
+  - Inline error feedback renders in `#newPlError` and prevents form submission until a unique name is entered.
+- `[DONE]` **Curated Taxonomy Tagging (Max 5)**:
+  - Added live typeahead tag search across teachers, venues, and topics via `plTagOptions`.
+  - Enforced strict 5-tag ceiling with dynamic badge counter and chip dismissal.
+- `[DONE]` **Rich Metadata Storage**:
+  - Upgraded `devCreatePlaylist(name, icon, desc, tags)` to store icon, multiline description, and taxonomy tags into `store.custom[id]`.
+- `[DONE]` **Automated Testing**: Updated `tests/basic_functionality.test.mjs` with Phase 4 assertions. All 5 test suites passed 100% green.
 
 ### [2026-09-11 10:20 ET] — Commit `feat/auth-d1` (Phase 3: Playlist Sorting & Ordering Controls + Drag-and-Drop)
 - `[DONE]` **Multi-Criteria Playlist Sorting**:
