@@ -7245,7 +7245,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       </button>
       <div id="authMenu" class="auth-menu" style="display: none;" role="menu" aria-label="Account"></div>
       <button type="button" id="themeToggleBtn" class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Dark / Light Mode">🌙</button>
-      <div class="hebrew-date-badge" id="hebrewDateBadge" onclick="handleCalendarSecretClick(event); pulseHebrewDate();" tabindex="0" role="button" aria-label="Hebrew date" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();handleCalendarSecretClick(event);pulseHebrewDate();}" title="">📅<span class="hebrew-date-text"> ${escapeHtml(homepageData?.hebrewDateString || 'Calendar')}</span></div>
+      <div class="hebrew-date-badge" id="hebrewDateBadge" onclick="handleCalendarSecretClick(event); pulseHebrewDate();" tabindex="0" role="button" aria-label="Hebrew date" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();handleCalendarSecretClick(event);pulseHebrewDate();}" title="">📅<span class="hebrew-date-text">&nbsp;&nbsp;${escapeHtml(homepageData?.hebrewDateString || 'Calendar')}</span></div>
     </div>
   </div>
 </header>
