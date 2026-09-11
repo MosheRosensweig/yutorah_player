@@ -11,7 +11,8 @@ Production status: **Untouched** (strictly protected by standing rules)
 - **Dual review verdict**: Style PASS (LOW nits only). Correctness found 1 HIGH (series bundles skipped by Queue to Top) → fixed in `b601c4e` (series preserved as native queue bundles, member-wise dedupe, single snapshot, card refresh, VS16 strip), redeployed dev `57b862c5`. Remaining LOWs logged: toast color/unit nits, items_json haystack noise, outer-catch zeroing on non-subquery failures (pre-existing).
 
 ## 🚀 Active Batch 2: Shareable Playlist URLs + Dark Default + PROD Push
-- [ ] **Task 1: Playlist state in URL (reload-safe + shareable)** *(IN PROGRESS)*
+- [x] **Task 1: Playlist state in URL (reload-safe + shareable)** *(DEPLOYED 2026-09-11, `47ee536`, dev `b9f6af98`, test #18 green, 5/5 suites)*
+  - Keys `tab/pl/plq/plteachers/plvenues/pltopics/plscope/plsort`; `replaceState` sync on tab/select/search; tab-leave + shiur-search clear keys; player open/close carries keys; boot + `popstate` hydration with public-results fetch.
   - Namespaced keys: `tab=playlists`, `pl=<id|public|queue|...>`, `plq`, `plteachers/plvenues/pltopics` (repeat), `plscope` (default `title,desc`), `plsort`.
   - `syncPlaylistUrl()` via `replaceState` on: tab switch, playlist select, public search/filters/scope/sort. Leaving playlists tab clears keys. Shiur search clears keys (one view at a time). Player open/close carries keys.
   - Boot + `popstate` hydration: restores tab, playlist, query, filter pills, scope, sort; fetches public results for shared links.
