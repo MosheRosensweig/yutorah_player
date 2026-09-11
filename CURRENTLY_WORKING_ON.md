@@ -1,11 +1,17 @@
 # Currently Working On — Living Status & Activity Log
 
 Living status doc & audit log — updated on every milestone and user request.  
-Last updated: **2026-09-11, 11:30 ET**  
+Last updated: **2026-09-11, 13:30 ET**  
 Current branch: `feat/auth-d1`  
-Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev)  
+Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev) (`2b296199`, Task 1/3 batch)  
 Tests: **5/5 test suites passing (100% green, 17/17 basic functionality checks)**  
 Production status: **Untouched** (strictly protected by standing rules)
+
+## 🎯 Active Batch: 3 User Fixes (One-at-a-Time, Dev Deploys)
+- [x] **Fix 1: Double calendar icon in account dropdown date** *(DEPLOYED 2026-09-11, `35b6fd6`, dev `2b296199`)*
+  - Header badge `textContent` already starts with 📅; dropdown prepended a second one → stripped leading emoji, single prefix kept (both auth states).
+- [ ] **Fix 2: Playlist → top-of-queue button** *(NEXT)*
+- [ ] **Fix 3: Shiurim-inside scope additive-only (no zeroing on tag click)** *(QUEUED)*
 
 ---
 
