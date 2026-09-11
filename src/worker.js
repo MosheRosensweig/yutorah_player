@@ -4557,7 +4557,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           try { localStorage.setItem('yutorah_theme', 'light'); } catch(e) {}
         } else {
           var saved = localStorage.getItem('yutorah_theme');
-          dark = saved ? saved === 'dark' : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          // New users default to dark mode; an explicit saved choice always wins.
+          dark = saved ? saved === 'dark' : true;
         }
         if (dark) {
           document.documentElement.setAttribute('data-theme', 'dark');
