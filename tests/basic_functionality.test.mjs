@@ -734,7 +734,11 @@ async function testLoggedOutHeaderThemeToggle() {
   assert.ok(html.includes("document.body.classList.add('is-logged-in')"), 'renderAuthBtn must add is-logged-in to body when user is logged in');
   assert.ok(html.includes("document.body.classList.remove('is-logged-in')"), 'renderAuthBtn must remove is-logged-in from body when user is logged out');
 
-  console.log('  ✅ Logged-out header theme toggle button, cut-off suppression & right-hand side placement verified.');
+  // 9. Settings dropdown menu icons and calendar date vertical alignment
+  assert.ok(html.includes('.menu-item-icon') && html.includes('.menu-cal-icon'), 'CSS must define .menu-item-icon and .menu-cal-icon for standardized icon container alignment');
+  assert.ok(html.includes('class="settings-menu-item auth-cal-mobile"'), 'Settings menu must render calendar date as settings-menu-item for uniform padding and icon alignment');
+
+  console.log('  ✅ Logged-out header theme toggle button, cut-off suppression & settings menu icon alignment verified.');
 }
 
 async function runAll() {

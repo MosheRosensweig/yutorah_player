@@ -5528,13 +5528,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       outline-offset: -2px;
       background: var(--border-light);
     }
-    .menu-theme-icon {
+    .menu-item-icon,
+    .menu-theme-icon,
+    .menu-cal-icon {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      font-size: 14px;
+      font-size: 15px;
       line-height: 1;
-      width: 18px;
+      width: 20px;
+      flex-shrink: 0;
+      text-align: center;
     }
     [data-theme="dark"] .settings-menu {
       background: #182232;
@@ -8536,14 +8540,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     .auth-menu .auth-menu-email {
       font-size: 12px;
       color: var(--text-muted);
-      padding: 6px 10px;
+      padding: 8px 14px;
       word-break: break-all;
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
     .auth-menu .settings-menu-label {
       font-size: 11px;
       font-weight: 800;
       color: var(--text-muted);
-      padding: 8px 10px 2px;
+      padding: 8px 14px 2px;
       text-transform: uppercase;
       letter-spacing: 0.4px;
     }
@@ -8552,8 +8559,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     @media (max-width: 640px) {
       .auth-cal-mobile {
-        display: block;
+        display: flex;
       }
+    }
+    .auth-menu .auth-cal-mobile {
+      cursor: pointer;
     }
     .auth-btn img {
       width: 26px;
@@ -18388,18 +18398,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     let html = '';
     if (cloudUser) {
       const displayName = cloudUser.name ? (cloudUser.name + ' (' + cloudUser.email + ')') : (cloudUser.email || '');
-      html += '<div class="auth-menu-email">👤 ' + escapeHtml(displayName) + '</div>';
-      html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); devOpenQueueView();">📋 Open Play Queue</button>';
-      html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); devScrollToPlaylists();">🎧 My Playlists</button>';
-      html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); openDisplayNameModal();">✏️ Display name</button>';
-      html += '<button type="button" class="settings-menu-item menu-theme-toggle-btn" onclick="toggleTheme();"><span class="menu-theme-icon">' + themeIcon + '</span> <span>Light / Dark Mode</span></button>';
+      html += '<div class="auth-menu-email"><span class="menu-item-icon">👤</span> <span>' + escapeHtml(displayName) + '</span></div>';
+      html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); devOpenQueueView();"><span class="menu-item-icon">📋</span> <span>Open Play Queue</span></button>';
+      html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); devScrollToPlaylists();"><span class="menu-item-icon">🎧</span> <span>My Playlists</span></button>';
+      html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); openDisplayNameModal();"><span class="menu-item-icon">✏️</span> <span>Display name</span></button>';
+      html += '<button type="button" class="settings-menu-item menu-theme-toggle-btn" onclick="toggleTheme();"><span class="menu-item-icon menu-theme-icon">' + themeIcon + '</span> <span>Light / Dark Mode</span></button>';
       try {
         const calEl = document.getElementById('hebrewDateBadge');
         const calRaw = calEl ? (calEl.textContent || '') : '';
         const calText = calRaw.replace(/^📅\uFE0F?\s*/, '').trim();
-        if (calText) html += '<div class="settings-menu-label auth-cal-mobile">📅 ' + escapeHtml(calText) + '</div>';
+        if (calText) html += '<div class="settings-menu-item auth-cal-mobile" onclick="handleCalendarSecretClick(event);" title="Hebrew Calendar Date"><span class="menu-item-icon menu-cal-icon">📅</span> <span>' + escapeHtml(calText) + '</span></div>';
       } catch (e) {}
-      html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); handleAuthClick();">🚪 Sign out</button>';
+      html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); handleAuthClick();"><span class="menu-item-icon">🚪</span> <span>Sign out</span></button>';
     } else {
       let retPath = window.location.pathname;
       try {
@@ -18412,18 +18422,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         retPath = window.location.pathname + window.location.search;
       }
       const retUrl = encodeURIComponent(retPath);
-      html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); window.location.href=&quot;/auth/google?return_to=' + retUrl + '&quot;;">🔑 Sign in with Google</button>';
-      html += '<button type="button" class="settings-menu-item menu-theme-toggle-btn" onclick="toggleTheme();"><span class="menu-theme-icon">' + themeIcon + '</span> <span>Light / Dark Mode</span></button>';
+      html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); window.location.href=&quot;/auth/google?return_to=' + retUrl + '&quot;;"><span class="menu-item-icon">🔑</span> <span>Sign in with Google</span></button>';
+      html += '<button type="button" class="settings-menu-item menu-theme-toggle-btn" onclick="toggleTheme();"><span class="menu-item-icon menu-theme-icon">' + themeIcon + '</span> <span>Light / Dark Mode</span></button>';
       try {
         const calEl2 = document.getElementById('hebrewDateBadge');
         const calRaw2 = calEl2 ? (calEl2.textContent || '') : '';
         const calText2 = calRaw2.replace(/^📅\uFE0F?\s*/, '').trim();
-        if (calText2) html += '<div class="settings-menu-label auth-cal-mobile">📅 ' + escapeHtml(calText2) + '</div>';
+        if (calText2) html += '<div class="settings-menu-item auth-cal-mobile" onclick="handleCalendarSecretClick(event);" title="Hebrew Calendar Date"><span class="menu-item-icon menu-cal-icon">📅</span> <span>' + escapeHtml(calText2) + '</span></div>';
       } catch (e) {}
     }
     if (isDevMode) {
       html += '<div class="settings-menu-label">Dev settings</div>';
-      html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); openChangelogModal();">📋 Change Log</button>';
+      html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); openChangelogModal();"><span class="menu-item-icon">📋</span> <span>Change Log</span></button>';
       html += '<div class="settings-menu-label">Save button icon</div>';
       html += '<div id="saveIconPickerAuth" style="display:flex; gap:6px; padding:4px 10px 8px; flex-wrap:wrap;"></div>';
     }

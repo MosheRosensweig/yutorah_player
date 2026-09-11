@@ -15,18 +15,22 @@ Production status: **DEPLOYED & VERIFIED (HTTP 200 on both Dev & Prod)**
    - Only **AFTER** Dev is fully deployed, validated, and approved may the version be promoted to **Production** (`https://yutorah-player.mrosensweig.workers.dev` via `npx wrangler deploy`).
    - Dev and Prod must always remain strictly synchronized. Never push directly to Prod without the preceding Dev deployment.
 
-## 🎯 Active Task: Logged-Out Header Theme Toggle on Right-Hand Side & Cut-off Suppression
+## 🎯 Active Task: Settings Menu Icon & Calendar Date Vertical Alignment
+- **User Request**: In the settings menu, all the icons are aligned one on top of the other on the left-hand side except for the calendar date which was not aligned. Make the calendar date come into alignment with all the icons and push to both Dev and Production.
+- **Root Cause**:
+  - The calendar date in the mobile dropdown was rendered using `<div class="settings-menu-label auth-cal-mobile">` which had `padding: 8px 10px 2px;` (10px left padding) and `font-size: 11px;`, causing the `📅` icon to sit 4px to the left of the button icons which have `padding: 10px 14px;`.
+- **Implementation**:
+  - Standardized `.menu-item-icon`, `.menu-theme-icon`, and `.menu-cal-icon` container with `display: inline-flex; align-items: center; justify-content: center; width: 20px; font-size: 15px;`.
+  - Replaced label wrapper with `<div class="settings-menu-item auth-cal-mobile"><span class="menu-item-icon menu-cal-icon">📅</span> <span>...</span></div>` so it uses the exact same `padding: 10px 14px;`, font sizing, and flexbox alignment.
+  - Wrapped all menu icons (`👤`, `📋`, `🎧`, `✏️`, `☀️`/`🌙`, `📅`, `🚪`, `🔑`) in `<span class="menu-item-icon">` containers so that all icons are centered within an identical 20px column and all text labels start at `42px` from the left edge.
+  - Updated `.auth-cal-mobile` media query to `display: flex;` on screens $\le 640\text{px}$.
+  - Added assertion in `tests/basic_functionality.test.mjs` Test #20. All 5 test suites pass 100% green.
+- **Dual Review Verdict**: In progress.
+
+## 🎯 Completed Task: Logged-Out Header Theme Toggle on Right-Hand Side & Cut-off Suppression
 - **User Request**: On the non-logged-in (guest) version of the website, have the light/dark mode button be in the header on the right-hand side, BUT if it would get cut off or overflow on any screens, do NOT put it in the header since theme toggling already exists inside the settings dropdown even when not logged in.
-- **Implementation Status**:
-  - SSR HTML DOM order in `.header-right`: `support-yutorah-btn` -> `hebrewDateBadge` -> `authBtn` -> `authMenu` -> `themeToggleBtn`.
-  - CSS flexbox `order: 10` applied to `#themeToggleBtn` ensuring rightmost alignment.
-  - Narrow screen suppression: `@media (max-width: 520px) { #themeToggleBtn { display: none !important; } }` prevents clipping or horizontal overflow on phones.
-  - Intermediate screen handling (521px–640px): `body:not(.is-logged-in) #themeToggleBtn { display: inline-flex; }` (without `!important`) allowing dynamic overflow detection to suppress it when crowded.
-  - Mobile logged-in suppression: `body.is-logged-in #themeToggleBtn { display: none !important; }` hides it when user has the `⚙️` settings gear dropdown.
-  - Client JS `checkHeaderOverflow()`: measures bounding rects against viewport and `.brand` title; suppresses `#themeToggleBtn` if it would get cut off, wrap to a 2nd line, or collide.
-  - Fallback safety net: `#authMenu` provides theme toggling (`menu-theme-toggle-btn`) for both guests and authenticated users.
-  - Automated Test #20 in `tests/basic_functionality.test.mjs` validates all 8 aspects (DOM order, CSS rules, narrow screen suppression, JS overflow check, settings menu fallback).
-- **Dual Review Verdict**: **PASS** (Correctness QA: PASS, 0 Blockers; Style & Theme: PASS, 0 Blockers).
+- **Implementation**: Responsive CSS suppression on $\le 520\text{px}$, dynamic runtime overflow detection via `checkHeaderOverflow()`, right-hand placement, and dropdown menu safety net.
+- **Dual Review Verdict**: **PASS** (Correctness QA: PASS, 0 Blockers; Style & Theme: PASS, 0 Blockers). Deployed to Dev (`6122bbf2`) and Prod (`f8b08d53`).
 
 ## 🚀 Active Batch 2: Shareable Playlist URLs + Dark Default + PROD Push
 - [x] **Task 1: Playlist state in URL (reload-safe + shareable)** *(DEPLOYED 2026-09-11, `47ee536`, dev `b9f6af98`, test #18 green, 5/5 suites)*
