@@ -16531,6 +16531,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         }
         html += '<div style="grid-column:1/-1; margin-bottom:8px; display:flex; gap:8px; flex-wrap:wrap;">' +
           '<button type="button" class="card-mini-btn" onclick="playDevPlaylistAll()">▶ Play All</button>' +
+          '<button type="button" class="card-mini-btn" onclick="playDevPlaylistShuffled()">🔀 Shuffle</button>' +
           '<button type="button" class="card-mini-btn" onclick="devSyncSubscribedPlaylist(&quot;' + escapeHtml(pl.id) + '&quot;, true)">🔄 Check for Updates</button>' +
           '<button type="button" class="card-mini-btn" onclick="devCloneSubscriptionToCopy(&quot;' + escapeHtml(pl.id) + '&quot;)">📋 Make Editable Copy</button>' +
           '<button type="button" class="card-mini-btn" onclick="devExportPlaylist()">Export JSON</button>' +
@@ -16558,6 +16559,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         }
         html += '<div style="grid-column:1/-1; margin-bottom:8px; display:flex; gap:8px; flex-wrap:wrap;">' +
           '<button type="button" class="card-mini-btn" onclick="playDevPlaylistAll()">▶ Play All</button>' +
+          '<button type="button" class="card-mini-btn" onclick="playDevPlaylistShuffled()">🔀 Shuffle</button>' +
           '<button type="button" class="card-mini-btn" onclick="devExportPlaylist()">Export JSON</button>' +
           '<button type="button" class="card-mini-btn" onclick="openPlaylistDetailsModal()">📝 Details & Tags</button>';
         if (pl.publicId) {
@@ -16568,7 +16570,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         html += '<button type="button" class="card-mini-btn" onclick="devDeletePlaylist()">Delete Playlist</button></div>';
       }
     } else if (items.length > 0) {
-      html += '<div style="grid-column:1/-1; margin-bottom:8px;"><button type="button" class="card-mini-btn" onclick="playDevPlaylistAll()">▶ Play All</button></div>';
+      html += '<div style="grid-column:1/-1; margin-bottom:8px; display:flex; gap:6px;"><button type="button" class="card-mini-btn" onclick="playDevPlaylistAll()">▶ Play All</button><button type="button" class="card-mini-btn"' + (items.length<2 ? ' disabled aria-disabled="true" title="Add at least 2 items to shuffle"' : ' aria-label="Shuffle playlist" title="Play in random order"') + ' onclick="playDevPlaylistShuffled()">🔀 Shuffle</button></div>';
     }
     if (items.length === 0) {
       html += '<div style="grid-column:1/-1; text-align:center; padding:30px; color:var(--text-muted);">Empty playlist — tap 🕒 Save for later, ☆ Fav or ➕ Playlist on any card to add shiurim.</div>';
@@ -16794,6 +16796,26 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       playShiurById(null, String(pl.items[0].id));
     }
   }
+  function playDevPlaylistShuffled() {
+    const store = getDevStore();
+    const pl = getDevPlaylist(store, activeDevPlaylistId);
+    if (!pl || !pl.items || pl.items.length < 2) return;
+    const shuffled = [...pl.items];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    try {
+      const q = shuffled.map(s => ({
+        id: String(s.id), title: s.title, speaker: s.speaker, photo: s.photo,
+        duration: s.duration, date: s.date, category: s.category,
+        isArticle: Boolean(s.isArticle), queuedAt: Date.now()
+      }));
+      saveDevQueue(q);
+    } catch (e) {}
+    playShiurById(null, String(shuffled[0].id));
+  }
+  window.playDevPlaylistShuffled = playDevPlaylistShuffled;
 
   function devExportPlaylist() {
     const store = getDevStore();
