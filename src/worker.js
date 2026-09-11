@@ -16259,14 +16259,22 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       const bindTypableFilter = (id, kind) => {
         const el = container.querySelector('#' + id);
         if (!el) return;
-        const resolve = () => {
-          const v = (el.value || '').trim().toLowerCase();
-          if (!v) { plPublicTags[kind === 'teachers' ? 'teacher' : kind === 'venues' ? 'venue' : 'topic'] = null; return; }
-          const match = plTagOptions(kind).find(o => String(o.name || '').toLowerCase() === v);
-          plPublicTags[kind === 'teachers' ? 'teacher' : kind === 'venues' ? 'venue' : 'topic'] = match ? { id: match.id, name: match.name } : null;
+        const tryAdd = () => {
+          const v = (el.value || '').trim();
+          if (!v) return;
+          const match = plTagOptions(kind).find(o => String(o.name || '').toLowerCase() === v.toLowerCase());
+          if (match) {
+            plAddFilterTag(kind, match);
+            el.value = '';
+          } else {
+            // No exact match: keep input for further typing, show hint
+            // Don't clear, user can keep typing or pick from dropdown
+          }
         };
-        el.addEventListener('change', () => { resolve(); plPublicSearch(); });
-        el.addEventListener('input', () => { if (!el.value) { resolve(); plPublicSearch(); } });
+        el.addEventListener('change', tryAdd);
+        el.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); tryAdd(); } });
+        // Clear on Escape
+        el.addEventListener('keydown', e => { if (e.key === 'Escape') el.value = ''; });
       };
       bindTypableFilter('plPubTeacher', 'teachers');
       bindTypableFilter('plPubVenue', 'venues');
