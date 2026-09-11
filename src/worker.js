@@ -2940,6 +2940,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       align-items: center;
       gap: 8px;
       flex-shrink: 0;
+      overflow-x: auto;
+      scrollbar-width: none;
+      max-width: 100%;
+    }
+    .header-right::-webkit-scrollbar {
+      display: none;
+    }
+    .header-right > * {
+      flex-shrink: 0;
     }
     .support-yutorah-btn {
       display: inline-flex;
@@ -3268,7 +3277,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       text-decoration: none !important;
     }
 
-    @media (max-width: 600px) {
+    @media (max-width: 640px) {
       header#mainHeader {
         padding: 8px 10px;
       }
@@ -3290,6 +3299,31 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       }
       .support-yutorah-btn {
         display: none !important;
+      }
+      /* Mobile: Hebrew date collapses to icon; tap expands briefly. */
+      .hebrew-date-badge .hebrew-date-text {
+        display: none;
+      }
+      .hebrew-date-badge.expanded .hebrew-date-text {
+        display: inline;
+      }
+      .hebrew-date-badge:focus-visible {
+        outline: 2px solid var(--primary) !important;
+        outline-offset: 2px;
+      }
+      /* Dev-mode mobile: header-right scrolls sideways, settings last. */
+      body.dev-mode-active .header-right {
+        overflow-x: auto;
+        max-width: 52vw;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+      }
+      body.dev-mode-active .header-right::-webkit-scrollbar {
+        display: none;
+      }
+      body.dev-mode-active .settings-wrapper {
+        order: 99;
+        flex-shrink: 0;
       }
       .theme-toggle-btn {
         font-size: 18px;
@@ -5875,9 +5909,47 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       font-size: 12px;
       font-weight: 700;
       white-space: nowrap;
+      background: rgba(255, 255, 255, 0.94);
+      color: #1e2530;
+      border: 1px solid rgba(255, 255, 255, 0.9);
+    }
+    .auth-btn:hover {
+      background: #fff;
     }
     .auth-btn.logged-in {
       padding: 2px;
+    }
+    @media (max-width: 640px) {
+      #authBtn .auth-label {
+        display: none;
+      }
+    }
+    .auth-menu {
+      position: fixed;
+      top: 52px;
+      right: 12px;
+      min-width: 220px;
+      background: var(--card, #fff);
+      color: var(--text);
+      border: 1px solid var(--border-light);
+      border-radius: 12px;
+      box-shadow: var(--shadow-hover);
+      z-index: 9500;
+      padding: 8px;
+    }
+    .auth-menu .auth-menu-email {
+      font-size: 12px;
+      color: var(--text-muted);
+      padding: 6px 10px;
+      word-break: break-all;
+    }
+    .auth-menu .settings-menu-label {
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--text-muted);
+      padding: 8px 10px 2px;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
     }
     .auth-btn img {
       width: 26px;
@@ -7136,9 +7208,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         </div>
       </div>
       <a href="https://www.givecampus.com/campaigns/50770/donations/new" target="_blank" rel="noopener noreferrer" class="support-yutorah-btn" title="Support YUTorah & Sponsor Learning (Opens in new window)">❤️ Support YUTorah</a>
-      <button type="button" id="authBtn" class="theme-toggle-btn auth-btn" onclick="handleAuthClick()" title="Sign in to sync across devices">👤 Sign in</button>
+      <button type="button" id="authBtn" class="theme-toggle-btn auth-btn" onclick="toggleAuthMenu(event)" title="Sign in to sync across devices">
+        <span class="auth-icon">👤</span><span class="auth-label"> Sign in</span>
+      </button>
+      <div id="authMenu" class="auth-menu" style="display: none;" role="menu" aria-label="Account"></div>
       <button type="button" id="themeToggleBtn" class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Dark / Light Mode">🌙</button>
-      <div class="hebrew-date-badge" id="hebrewDateBadge" onclick="handleCalendarSecretClick(event)" title="">📅 ${escapeHtml(homepageData?.hebrewDateString || 'Calendar')}</div>
+      <div class="hebrew-date-badge" id="hebrewDateBadge" onclick="handleCalendarSecretClick(event); pulseHebrewDate();" tabindex="0" role="button" aria-label="Hebrew date" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();handleCalendarSecretClick(event);pulseHebrewDate();}" title="">📅<span class="hebrew-date-text"> ${escapeHtml(homepageData?.hebrewDateString || 'Calendar')}</span></div>
     </div>
   </div>
 </header>
@@ -8293,6 +8368,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   let calendarClickCount = 0;
   let calendarClickTimer = null;
   let toastTimer = null;
+
+  let hebrewPulseTimer = null;
+  function pulseHebrewDate() {
+    try {
+      const badge = document.getElementById('hebrewDateBadge');
+      if (!badge) return;
+      badge.classList.add('expanded');
+      clearTimeout(hebrewPulseTimer);
+      hebrewPulseTimer = setTimeout(() => badge.classList.remove('expanded'), 2200);
+    } catch (e) {}
+  }
 
   function handleCalendarSecretClick(e) {
     if (e) {
@@ -11298,6 +11384,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       closeConfirmModal();
       closePlaylistModal();
       closeChangelogModal();
+      closeAuthMenu();
       const qp = document.getElementById('queuePopup');
       if (qp) qp.style.display = 'none';
     }
@@ -12736,16 +12823,103 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (cloudUser) {
       btn.classList.add('logged-in');
       btn.title = cloudUser.email || 'Signed in';
-      const pic = cloudUser.picture
+      btn.innerHTML = cloudUser.picture
         ? '<img src="' + escapeHtml(cloudUser.picture) + '" alt="" referrerpolicy="no-referrer">'
-        : '👤';
-      btn.innerHTML = pic;
+        : '<span class="auth-icon">👤</span>';
     } else {
       btn.classList.remove('logged-in');
-      btn.title = 'Sign in to sync across devices';
-      btn.textContent = '👤 Sign in';
+      btn.title = 'Account';
+      btn.innerHTML = '<span class="auth-icon">👤</span><span class="auth-label"> Sign in</span>';
+    }
+    closeAuthMenu();
+  }
+
+  function toggleAuthMenu(e) {
+    if (e) e.stopPropagation();
+    const menu = document.getElementById('authMenu');
+    if (!menu) {
+      handleAuthClick();
+      return;
+    }
+    if (menu.style.display === 'block') {
+      closeAuthMenu();
+      return;
+    }
+    let html = '';
+    if (cloudUser) {
+      html += '<div class="auth-menu-email">' + escapeHtml(cloudUser.email || '') + '</div>';
+      html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); handleAuthClick();">🚪 Sign out</button>';
+    } else {
+      html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); window.location.href=&quot;/auth/google&quot;;">🔑 Sign in with Google</button>';
+    }
+    if (isDevMode) {
+      html += '<div class="settings-menu-label">Dev settings</div>';
+      html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); openChangelogModal();">📋 Change Log</button>';
+      html += '<div class="settings-menu-label">Save button icon</div>';
+      html += '<div id="saveIconPickerAuth" style="display:flex; gap:6px; padding:4px 10px 8px; flex-wrap:wrap;"></div>';
+    }
+    menu.innerHTML = html;
+    menu.style.display = 'block';
+    positionAuthMenu();
+    if (isDevMode) {
+      const wrap = document.getElementById('saveIconPickerAuth');
+      if (wrap) {
+        const cur = getSaveIconId();
+        wrap.innerHTML = DEV_SAVE_ICONS.map(function(oid) {
+          return '<button type="button" class="card-mini-btn icon-btn' + (oid === cur ? ' active-save' : '') + '"' +
+            ' data-oid="' + oid + '" onclick="setSaveIcon(this.getAttribute(&quot;data-oid&quot;))" title="Save-for-later icon">' + saveIconThumb(oid) + '</button>';
+        }).join('');
+      }
     }
   }
+
+  // Anchor the fixed menu under the button; flip above it when the
+  // header is bottom-docked (e.g. Purim theme) or space is short.
+  function positionAuthMenu() {
+    try {
+      const menu = document.getElementById('authMenu');
+      const btn = document.getElementById('authBtn');
+      if (!menu || !btn || menu.style.display !== 'block') return;
+      const r = btn.getBoundingClientRect();
+      const h = menu.offsetHeight || 200;
+      const roomBelow = window.innerHeight - r.bottom;
+      menu.style.right = Math.max(8, window.innerWidth - r.right) + 'px';
+      menu.style.top = '';
+      menu.style.bottom = '';
+      if (roomBelow >= h + 12) {
+        menu.style.top = Math.max(8, r.bottom + 6) + 'px';
+      } else {
+        menu.style.bottom = Math.max(8, window.innerHeight - r.top + 6) + 'px';
+      }
+    } catch (e) {}
+  }
+
+  function closeAuthMenu() {
+    const menu = document.getElementById('authMenu');
+    if (menu) menu.style.display = 'none';
+  }
+
+  document.addEventListener('click', (e) => {
+    const menu = document.getElementById('authMenu');
+    const btn = document.getElementById('authBtn');
+    if (menu && menu.style.display === 'block' && btn &&
+        !menu.contains(e.target) && !btn.contains(e.target)) {
+      closeAuthMenu();
+    }
+  });
+
+  window.addEventListener('resize', () => {
+    try {
+      const menu = document.getElementById('authMenu');
+      if (menu && menu.style.display === 'block') positionAuthMenu();
+    } catch (e) {}
+  });
+  document.querySelector('.header-right')?.addEventListener('scroll', () => {
+    try {
+      const menu = document.getElementById('authMenu');
+      if (menu && menu.style.display === 'block') positionAuthMenu();
+    } catch (e) {}
+  }, { passive: true });
 
   function collectLocalState() {
     const body = {
@@ -14490,11 +14664,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     var header = document.getElementById('mainHeader');
     if (!badge || !header) return;
 
-    if (window.innerWidth <= 520) {
-      badge.style.display = 'none';
-      return;
-    }
-
+    // Small screens keep the icon-only badge (tap expands via pulseHebrewDate);
+    // never fully hide it — the media query collapses the text instead.
     badge.style.display = 'inline-flex';
     var bRect = badge.getBoundingClientRect();
     var hRect = header.getBoundingClientRect();
