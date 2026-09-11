@@ -260,6 +260,41 @@ async function testDevModeAndAvatarVariants() {
   console.log('  ✅ Dev Mode playlists, 10 Avatar SVGs, spinning gear, and return_to verified.');
 }
 
+async function testDropdownNavAndThemeAesthetics() {
+  console.log('11. Testing Plain Gear Avatar, Dropdown Navigation & Adaptive Hero Scrim...');
+  const req = new Request('https://yutorah-player.mrosensweig.workers.dev/', {
+    headers: { 'User-Agent': 'TestRunner' }
+  });
+  const res = await worker.fetch(req, mockEnv, mockCtx);
+  assert.equal(res.status, 200);
+  const html = await res.text();
+
+  // 1. Plain gear is default
+  assert.ok(html.includes("'plain-gear'"), 'AVATAR_VARIANTS must include plain-gear');
+  assert.ok(html.includes("return 'plain-gear'"), 'getAvatarStyle must return plain-gear as default');
+  assert.ok(html.includes("authAvatarHtml(variant"), 'authAvatarHtml defined');
+  assert.ok(html.includes("if (v === 'plain-gear') return '<span class=\"auth-avatar plain-gear\"><span class=\"auth-gear\">⚙️</span></span>'"), 'Plain gear renders gear emoji wrapped in auth-avatar');
+  assert.ok(html.includes('.auth-btn.logged-in:hover .auth-gear') || html.includes('.auth-avatar.plain-gear'), 'Default gear must be targeted by hover animation');
+
+
+  // 2. Navigation fixes
+  assert.ok(html.includes("switchCollection('playlists')"), 'Dropdown actions must switch collection to playlists');
+  assert.ok(html.includes("pop.style.display = 'flex'"), 'devOpenQueueView displays queue popup');
+  assert.ok(html.includes("if (!playlistsEnabled())"), 'renderQueuePopup guards on playlistsEnabled() for non-dev auth users');
+
+  // 3. Playlist styling and contrast
+  assert.ok(html.includes('.playlist-public-card'), 'Public playlist card class defined in CSS');
+  assert.ok(html.includes('--border: #cbd5e1'), 'Light mode border strengthened for card readability');
+
+  // 4. Hero scrim theme adaptability
+  assert.ok(html.includes('[data-theme="dark"] .hero-caption'), 'Dark mode hero caption rule present');
+  assert.ok(html.includes('[data-theme="dark"] .hero-title'), 'Dark mode hero title rule present');
+  assert.ok(html.includes('[data-theme="dark"] .hero-desc'), 'Dark mode hero desc rule present');
+  assert.ok(html.includes('[data-theme="dark"] .hero-cta'), 'Dark mode hero CTA rule present');
+
+  console.log('  ✅ Plain gear default avatar, dropdown actions, and theme-adaptive hero contrast verified.');
+}
+
 async function runAll() {
   try {
     await testHomepage();
@@ -272,6 +307,7 @@ async function runAll() {
     await testLiquidModeExtraction();
     await testMediaSessionIntegration();
     await testDevModeAndAvatarVariants();
+    await testDropdownNavAndThemeAesthetics();
     console.log('\n🎉 ALL BASIC FUNCTIONALITY, ARTICLE READER & LIQUID MODE TESTS PASSED SUCCESSFULLY!');
   } catch (err) {
     console.error('\n❌ Test failed:', err);
@@ -280,4 +316,5 @@ async function runAll() {
 }
 
 runAll();
+
 

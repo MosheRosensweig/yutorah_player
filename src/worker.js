@@ -2549,8 +2549,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       --card: #ffffff;
       --text: #1e2530;
       --text-muted: #5e6978;
-      --border: #dce2eb;
-      --border-light: #edf1f7;
+      --border: #cbd5e1;
+      --border-light: #e2e8f0;
       --shadow: 0 4px 18px rgba(0, 0, 0, 0.06);
       --shadow-hover: 0 8px 24px rgba(0, 0, 0, 0.1);
     }
@@ -3425,12 +3425,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       gap: 8px;
       transition: background 0.15s ease, color 0.15s ease;
       white-space: nowrap;
-      outline: none !important;
+      outline: none;
       -webkit-tap-highlight-color: transparent !important;
     }
     .settings-menu-item:hover {
       background: var(--border-light);
       color: var(--primary);
+    }
+    .settings-menu-item:focus-visible {
+      outline: 2px solid var(--primary) !important;
+      outline-offset: -2px;
+      background: var(--border-light);
     }
     [data-theme="dark"] .settings-menu {
       background: #182232;
@@ -3438,6 +3443,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
     }
     [data-theme="dark"] .settings-menu-item:hover {
+      background: #243247;
+      color: #7ca5de;
+    }
+    [data-theme="dark"] .settings-menu-item:focus-visible {
       background: #243247;
       color: #7ca5de;
     }
@@ -6111,53 +6120,66 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       right: 0;
       top: 0;
       bottom: 0;
-      width: 55%;
-      padding: 28px 70px 28px 32px;
-      background: linear-gradient(to left, rgba(15, 23, 42, 0.94) 75%, rgba(15, 23, 42, 0.85) 90%, rgba(15, 23, 42, 0) 100%);
-      color: #ffffff !important;
+      width: 54%;
+      padding: 24px 64px 24px 28px;
+      background: linear-gradient(to left, rgba(255, 255, 255, 0.96) 55%, rgba(255, 255, 255, 0.84) 80%, rgba(255, 255, 255, 0) 100%);
+      color: #0f172a;
       display: flex;
       flex-direction: column;
       justify-content: center;
-      gap: 12px;
-      text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85);
+      gap: 10px;
       backdrop-filter: blur(4px);
       -webkit-backdrop-filter: blur(4px);
     }
     .hero-title {
-      font-size: 38px;
+      font-size: clamp(20px, 2.6vw, 30px);
       font-weight: 800;
-      line-height: 1.15;
-      color: #ffffff !important;
-      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9);
+      line-height: 1.2;
+      color: #0f172a;
     }
     .hero-desc {
-      font-size: 17px;
-      line-height: 1.45;
-      color: #f1f5f9 !important;
-      opacity: 0.98;
+      font-size: clamp(13px, 1.3vw, 15px);
+      line-height: 1.5;
+      color: #334155;
       display: -webkit-box;
-      -webkit-line-clamp: 4;
+      -webkit-line-clamp: 3;
       -webkit-box-orient: vertical;
       overflow: hidden;
-      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
     }
     .hero-cta {
       display: inline-block;
       align-self: flex-start;
-      margin-top: 10px;
-      font-size: 16px;
-      font-weight: 800;
-      background: #ffffff !important;
-      color: #0f172a !important;
+      margin-top: 8px;
+      font-size: 14px;
+      font-weight: 700;
+      background: var(--primary, #2b4c7e);
+      color: #ffffff;
       border-radius: 20px;
-      padding: 8px 22px;
-      text-shadow: none;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+      padding: 7px 20px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
       transition: transform 0.15s ease, background-color 0.15s ease;
     }
     .hero-cta:hover {
-      background: #f8fafc !important;
+      background: var(--primary-dark, #1b3356);
       transform: translateY(-1px);
+    }
+    [data-theme="dark"] .hero-caption {
+      background: linear-gradient(to left, rgba(15, 20, 28, 0.95) 55%, rgba(15, 20, 28, 0.82) 80%, rgba(15, 20, 28, 0) 100%);
+      color: #f8fafc;
+    }
+    [data-theme="dark"] .hero-title {
+      color: #ffffff;
+    }
+    [data-theme="dark"] .hero-desc {
+      color: #cbd5e1;
+    }
+    [data-theme="dark"] .hero-cta {
+      background: var(--primary, #5c8ecc);
+      color: #0f172a;
+      font-weight: 800;
+    }
+    [data-theme="dark"] .hero-cta:hover {
+      background: #7ca5de;
     }
     .hero-arrow {
       position: absolute;
@@ -6225,9 +6247,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       .hero-caption {
         position: static;
         width: auto;
-        padding: 14px 16px 28px;
-        background: var(--card, #ffffff);
-        color: var(--text, #1e2530) !important;
+        padding: 14px 16px 24px;
+        background: var(--card);
+        color: var(--text);
         text-shadow: none;
         backdrop-filter: none;
         -webkit-backdrop-filter: none;
@@ -6237,24 +6259,29 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         max-height: 220px;
       }
       .hero-title {
-        font-size: 18px;
+        font-size: 17px;
         font-weight: 800;
-        color: var(--text, #1e2530) !important;
+        color: var(--text);
         text-shadow: none;
       }
       .hero-desc {
-        font-size: 14px;
-        line-height: 1.4;
-        color: var(--text-muted, #64748b) !important;
+        font-size: 13.5px;
+        line-height: 1.45;
+        color: var(--text-muted);
         text-shadow: none;
         -webkit-line-clamp: 3;
       }
       .hero-cta {
-        background: var(--primary, #0056b3) !important;
-        color: #ffffff !important;
-        font-size: 14px;
-        padding: 8px 18px;
+        background: var(--primary);
+        color: #ffffff;
+        font-size: 13px;
+        padding: 7px 18px;
         box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+      }
+      [data-theme="dark"] .hero-cta {
+        background: var(--primary);
+        color: #0f172a;
+        font-weight: 800;
       }
       .hero-dots {
         bottom: 8px;
@@ -6319,6 +6346,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       justify-content: center;
     }
     .auth-btn.logged-in .auth-avatar,
+    .auth-btn.logged-in > .auth-gear,
+    .auth-btn.logged-in .auth-gear,
     .auth-btn.logged-in .auth-svg-gear {
       display: inline-flex;
       align-items: center;
@@ -6326,12 +6355,32 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
     }
     .auth-btn.logged-in:hover .auth-avatar,
+    .auth-btn.logged-in:hover > .auth-gear,
+    .auth-btn.logged-in:hover .auth-gear,
     .auth-btn.logged-in:hover .auth-svg-gear {
       transform: rotate(180deg);
     }
     .auth-btn.logged-in.active-open .auth-avatar,
+    .auth-btn.logged-in.active-open > .auth-gear,
+    .auth-btn.logged-in.active-open .auth-gear,
     .auth-btn.logged-in.active-open .auth-svg-gear {
       transform: rotate(90deg);
+    }
+    .auth-btn.logged-in .auth-gear {
+      font-size: 22px;
+      line-height: 1;
+    }
+    .auth-avatar.plain-gear {
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      width: auto;
+      height: auto;
+    }
+    .auth-avatar.plain-gear .auth-gear {
+      font-size: 22px;
+      line-height: 1;
+      filter: none;
     }
     @media (max-width: 640px) {
       #authBtn .auth-label {
@@ -6504,8 +6553,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       color: #e5e7eb;
     }
     [data-theme="dark"] .card-mini-btn.active-save {
-      background: #d97706;
-      border-color: #d97706;
+      background: #b45309;
+      border-color: #b45309;
       color: #fff;
     }
     [data-theme="dark"] .card-mini-btn.active-fav {
@@ -6578,13 +6627,79 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       padding: 6px 14px;
       font-size: 13px;
       font-weight: 700;
-      border: 1px solid var(--border-light);
-      background: var(--card, #fff);
+      border: 1.5px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      transition: all 0.15s ease;
+    }
+    .playlist-pill:hover {
+      border-color: var(--primary);
+      color: var(--primary);
     }
     .playlist-pill.active {
       background: var(--primary);
       color: #fff;
       border-color: var(--primary);
+    }
+    .playlist-public-card {
+      grid-column: 1 / -1;
+      background: var(--card);
+      border: 1.5px solid var(--border);
+      border-radius: 14px;
+      padding: 16px 18px;
+      margin-bottom: 12px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .playlist-public-card:hover {
+      border-color: var(--primary);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+    }
+    [data-theme="dark"] .playlist-public-card {
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+    }
+    [data-theme="dark"] .playlist-public-card:hover {
+      border-color: var(--primary-light, #7ca5de);
+    }
+    .playlist-card-title {
+      font-weight: 800;
+      font-size: 16.5px;
+      color: var(--text);
+      line-height: 1.3;
+    }
+    .playlist-card-meta {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--primary);
+      margin-top: 4px;
+    }
+    [data-theme="dark"] .playlist-card-meta {
+      color: var(--primary-light, #7ca5de);
+    }
+    .playlist-card-desc {
+      font-size: 13.5px;
+      line-height: 1.5;
+      color: var(--text);
+      margin-top: 8px;
+    }
+    .playlist-card-tags {
+      font-size: 12px;
+      margin-top: 8px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .playlist-tag-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 6px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      font-size: 11.5px;
+      font-weight: 500;
+      color: var(--text);
     }
     .card-progress-track {
       height: 4px;
@@ -6611,23 +6726,29 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     .card-mini-btn {
       cursor: pointer;
-      border: 1px solid var(--border-light);
-      background: transparent;
+      border: 1.5px solid var(--border);
+      background: var(--card);
+      color: var(--text);
       border-radius: 16px;
       font-size: 12px;
-      padding: 3px 9px;
-      opacity: 0.85;
+      font-weight: 600;
+      padding: 4px 10px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       min-height: 28px;
       line-height: 1.2;
       vertical-align: middle;
+      transition: all 0.15s ease;
+    }
+    .card-mini-btn:hover {
+      border-color: var(--primary);
+      color: var(--primary);
     }
     .card-mini-btn.active-save {
-      background: #d97706;
+      background: #b45309;
       color: #fff;
-      border-color: #d97706;
+      border-color: #b45309;
       opacity: 1;
     }
     .card-mini-btn.active-fav {
@@ -13436,16 +13557,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         '<button type="button" class="playlist-pill active">🌍 Public</button>' +
         '<button type="button" class="playlist-pill" onclick="devPromptNewPlaylist()">➕ New Playlist</button></div>';
     }
-    qhtml += '<div style="grid-column:1/-1; display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">' +
+    qhtml += '<div style="grid-column:1/-1; display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">' +
       '<input id="plPubQ" type="text" placeholder="Search public playlists…" value="' + escapeHtml(plPublicQuery) + '"' +
-      ' autocomplete="off" style="flex:2; min-width:160px; padding:7px 10px; border-radius:8px; border:1px solid var(--border-light);">' +
-      '<select id="plPubTeacher" style="flex:1; min-width:120px; padding:7px; border-radius:8px; border:1px solid var(--border-light);">' + tagOpts('teacher', plPublicTags.teacher) + '</select>' +
-      '<select id="plPubVenue" style="flex:1; min-width:120px; padding:7px; border-radius:8px; border:1px solid var(--border-light);">' + tagOpts('venue', plPublicTags.venue) + '</select>' +
-      '<select id="plPubTopic" style="flex:1; min-width:120px; padding:7px; border-radius:8px; border:1px solid var(--border-light);">' + tagOpts('topic', plPublicTags.topic) + '</select>' +
-      '<select id="plPubSort" style="padding:7px; border-radius:8px; border:1px solid var(--border-light);">' +
+      ' autocomplete="off" style="flex:2; min-width:160px; padding:8px 12px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text);">' +
+      '<select id="plPubTeacher" style="flex:1; min-width:120px; padding:8px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text);">' + tagOpts('teacher', plPublicTags.teacher) + '</select>' +
+      '<select id="plPubVenue" style="flex:1; min-width:120px; padding:8px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text);">' + tagOpts('venue', plPublicTags.venue) + '</select>' +
+      '<select id="plPubTopic" style="flex:1; min-width:120px; padding:8px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text);">' + tagOpts('topic', plPublicTags.topic) + '</select>' +
+      '<select id="plPubSort" style="padding:8px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text);">' +
       '<option value="recent"' + (plPublicSort !== 'saves' ? ' selected' : '') + '>Recent</option>' +
       '<option value="saves"' + (plPublicSort === 'saves' ? ' selected' : '') + '>Most saved</option></select>' +
-      '<button type="button" class="card-mini-btn" onclick="plPublicSearch()">🔍</button></div>';
+      '<button type="button" class="card-mini-btn active-save" onclick="plPublicSearch()" style="padding:8px 14px; font-size:14px;">🔍 Search</button></div>';
     qhtml += '<div class="search-results-subheading"><span>🌍</span><span>Public Playlists</span>' +
       '<span class="sub-count">' + plPublicResults.length + ' of ' + plPublicTotal + ' shown</span></div>';
     if (plPublicResults.length === 0) {
@@ -13457,13 +13578,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           .concat((p.tags && p.tags.teachers || []).map(t => '👤 ' + t.name))
           .concat((p.tags && p.tags.venues || []).map(t => '📍 ' + t.name))
           .concat((p.tags && p.tags.topics || []).map(t => '🏷️ ' + t.name));
-        return '<div style="grid-column:1/-1; border:1px solid var(--border-light); border-radius:12px; padding:12px 14px; margin-bottom:8px;">' +
-          '<div style="font-weight:800; font-size:15px;">' + escapeHtml(p.title || 'Untitled') + '</div>' +
-          '<div style="font-size:12px; color:var(--text-muted);">by ' + escapeHtml(p.ownerName || 'a listener') +
+        return '<div class="playlist-public-card">' +
+          '<div class="playlist-card-title">' + escapeHtml(p.title || 'Untitled') + '</div>' +
+          '<div class="playlist-card-meta">by ' + escapeHtml(p.ownerName || 'a listener') +
           ' · ' + (p.itemCount || 0) + ' shiurim · ❤️ ' + (p.saves || 0) + ' saves</div>' +
-          (p.description ? '<div style="font-size:13px; margin-top:6px;">' + escapeHtml(p.description) + '</div>' : '') +
-          (tagBits.length ? '<div style="font-size:12px; color:var(--text-muted); margin-top:6px;">' + tagBits.map(escapeHtml).join(' · ') + '</div>' : '') +
-          '<div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">' +
+          (p.description ? '<div class="playlist-card-desc">' + escapeHtml(p.description) + '</div>' : '') +
+          (tagBits.length ? '<div class="playlist-card-tags">' + tagBits.map(t => '<span class="playlist-tag-chip">' + escapeHtml(t) + '</span>').join('') + '</div>' : '') +
+          '<div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap;">' +
           '<button type="button" class="card-mini-btn" onclick="plPublicToggle(&quot;' + escapeHtml(p.id) + '&quot;)">' + (open ? 'Hide shiurim ▲' : 'Preview shiurim ▼') + '</button>' +
           '<button type="button" class="card-mini-btn" onclick="plSavePublic(&quot;' + escapeHtml(p.id) + '&quot;)">💾 Save to my playlists</button>' +
           '<button type="button" class="card-mini-btn" onclick="plUnsavePublic(&quot;' + escapeHtml(p.id) + '&quot;)">Remove save ♥</button>' +
@@ -13477,9 +13598,20 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           '<button type="button" class="load-more-btn" onclick="plPublicMore()">🔽 Load More Playlists</button></div>';
       }
     }
+    const activeEl = document.activeElement;
+    const isInputActive = activeEl && activeEl.id === 'plPubQ';
+    const selStart = isInputActive ? activeEl.selectionStart : null;
+    const selEnd = isInputActive ? activeEl.selectionEnd : null;
+
     container.innerHTML = qhtml;
     const qq = container.querySelector('#plPubQ');
     if (qq) {
+      if (isInputActive) {
+        qq.focus();
+        if (selStart !== null && selEnd !== null) {
+          try { qq.setSelectionRange(selStart, selEnd); } catch (e) {}
+        }
+      }
       qq.addEventListener('keydown', e => { if (e.key === 'Enter') plPublicSearch(); });
       const deb = { t: null };
       qq.addEventListener('input', () => {
@@ -13728,14 +13860,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           const sTitle = s.seriesTitle || s.title || 'Series';
           const count = Array.isArray(s.items) ? s.items.length : 0;
           const firstId = (s.items && s.items[0] && (s.items[0].id || s.items[0].shiurID)) || '';
-          return '<div style="font-size:13px; padding:3px 0; border-bottom:1px solid var(--border-light);">' +
-            (firstId ? '<a href="/' + String(firstId) + '" style="font-weight:700;">📚 ' + escapeHtml(sTitle) + '</a>' : '<span style="font-weight:700;">📚 ' + escapeHtml(sTitle) + '</span>') +
-            '<div style="font-size:11px; color:var(--text-muted);">' + count + ' lectures in series</div></div>';
+          return '<div style="font-size:13.5px; padding:6px 0; border-bottom:1px solid var(--border);">' +
+            (firstId ? '<a href="/' + String(firstId) + '" style="font-weight:700; color:var(--primary);">📚 ' + escapeHtml(sTitle) + '</a>' : '<span style="font-weight:700;">📚 ' + escapeHtml(sTitle) + '</span>') +
+            '<div style="font-size:11.5px; color:var(--text-muted); margin-top:2px;">' + count + ' lectures in series</div></div>';
         }
-        return '<div style="font-size:13px; padding:3px 0; border-bottom:1px solid var(--border-light);">' +
-          '<a href="/' + String(s.id || '') + '" style="font-weight:700;">' + escapeHtml(s.title || 'Untitled') + '</a>' +
-          '<div style="font-size:11px; color:var(--text-muted);">' + escapeHtml(s.speaker || '') + '</div></div>';
-      }).join('') + (items.length > 8 ? '<div style="font-size:12px; color:var(--text-muted);">+' + (items.length - 8) + ' more after saving</div>' : '');
+        return '<div style="font-size:13.5px; padding:6px 0; border-bottom:1px solid var(--border);">' +
+          '<a href="/' + String(s.id || '') + '" style="font-weight:700; color:var(--text);">' + escapeHtml(s.title || 'Untitled') + '</a>' +
+          '<div style="font-size:11.5px; color:var(--text-muted); margin-top:2px;">' + escapeHtml(s.speaker || '') + '</div></div>';
+      }).join('') + (items.length > 8 ? '<div style="font-size:12px; color:var(--text-muted); margin-top:6px;">+' + (items.length - 8) + ' more after saving</div>' : '');
     } catch (e) {
       host.innerHTML = '<div style="color:var(--text-muted); font-size:13px;">Could not load preview.</div>';
     }
@@ -14083,17 +14215,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
   }
 
-  // Logged-in icon: gear with the account letter on top (10 styles: 5 classic + 5 precision SVGs).
+  // Logged-in icon: plain gear (default) or gear with account letter (11 styles).
   const AVATAR_VARIANTS = [
-    'gear-letter', 'circle-letter', 'gear-ring', 'badge-letter', 'minimal-letter',
+    'plain-gear', 'gear-letter', 'circle-letter', 'gear-ring', 'badge-letter', 'minimal-letter',
     'svg-gear-12tooth', 'svg-gear-sun', 'svg-gear-steampunk', 'svg-gear-shield', 'svg-gear-smooth'
   ];
   function getAvatarStyle() {
     try {
       const v = localStorage.getItem('yutorah_avatar_style');
-      if (AVATAR_VARIANTS.includes(v)) return v;
+      if (v && AVATAR_VARIANTS.includes(v)) return v;
     } catch (e) {}
-    return 'gear-letter';
+    return 'plain-gear';
   }
   function setAvatarStyle(v) {
     if (!AVATAR_VARIANTS.includes(v)) return;
@@ -14102,8 +14234,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     try { renderAvatarPicker(); } catch (e) {}
   }
   function authAvatarHtml(variant, name, email) {
+    const v = AVATAR_VARIANTS.includes(variant) ? variant : 'plain-gear';
+    if (v === 'plain-gear') return '<span class="auth-avatar plain-gear"><span class="auth-gear">⚙️</span></span>';
     const initial = escapeHtml((((name || email) || '?').trim()[0] || '?').toUpperCase());
-    const v = AVATAR_VARIANTS.includes(variant) ? variant : 'gear-letter';
     if (v === 'circle-letter') return '<span class="auth-avatar">' + initial + '</span>';
     if (v === 'gear-ring') return '<span class="auth-avatar gear-ring"><span class="auth-gear">⚙️</span><span class="auth-letter">' + initial + '</span></span>';
     if (v === 'badge-letter') return '<span class="auth-avatar badge-letter">' + initial + '</span>';
@@ -14158,7 +14291,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   function devOpenQueueView() {
     activeDevPlaylistId = 'queue';
-    if (typeof renderPlaylistsGrid === 'function') renderPlaylistsGrid();
+    if (typeof switchCollection === 'function') {
+      switchCollection('playlists');
+    }
+    if (playlistsEnabled()) {
+      const pop = document.getElementById('queuePopup');
+      if (pop) {
+        renderQueuePopup();
+        pop.style.display = 'flex';
+      }
+    }
     const el = document.getElementById('collectionsSection');
     if (el) el.scrollIntoView({ behavior: 'smooth' });
   }
@@ -14166,7 +14308,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   function devScrollToPlaylists() {
     activeDevPlaylistId = 'history';
-    if (typeof renderPlaylistsGrid === 'function') renderPlaylistsGrid();
+    if (typeof switchCollection === 'function') {
+      switchCollection('playlists');
+    }
     const el = document.getElementById('collectionsSection');
     if (el) el.scrollIntoView({ behavior: 'smooth' });
   }
@@ -15026,7 +15170,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const list = document.getElementById('queueList');
     const count = document.getElementById('queueCount');
     if (!pop || !list) return;
-    if (!isDevMode) {
+    if (!playlistsEnabled()) {
       pop.style.display = 'none';
       return;
     }

@@ -1,15 +1,41 @@
 # Currently Working On — Living Status & Activity Log
 
 Living status doc & audit log — updated on every milestone and user request.  
-Last updated: **2026-09-10, 23:15 ET**  
+Last updated: **2026-09-10, 23:35 ET**  
 Current branch: `feat/auth-d1`  
 Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev)  
-Tests: **5/5 test suites passing (100% green, 10/10 basic functionality checks)**  
+Tests: **5/5 test suites passing (100% green, 11/11 basic functionality checks)**  
 Production status: **Untouched** (strictly protected by standing rules)
 
 ---
 
 ## 🕒 Chronological Activity Log
+
+### [2026-09-10 23:35 ET] — Commit `feat/auth-d1` (Plain Gear Avatar Default + Dropdown Navigation Fixes + Light Mode Playlists Contrast + Theme-Adaptive Hero Scrim)
+- `[DONE]` **Plain Gear Replacement for Login Icon**:
+  - Set `plain-gear` (`⚙️`) as the default avatar variant in `AVATAR_VARIANTS` and `getAvatarStyle()`.
+  - When logged out: shows `👤 Sign in` (compact `👤` on mobile); when logged in: shows `⚙️` spinning 180° on hover. Users can still choose other styles in Dev Mode avatar picker.
+- `[DONE]` **Dropdown "My Playlists" Navigation**:
+  - `devScrollToPlaylists()` now explicitly invokes `switchCollection('playlists')`, activates `'history'`, renders the grid, and smoothly scrolls to `#collectionsSection`.
+- `[DONE]` **Dropdown "Open Queue" Navigation & Popup**:
+  - `devOpenQueueView()` opens `#queuePopup` with `display: flex`, calls `renderQueuePopup()`, and switches collection to `playlists` with `activeDevPlaylistId = 'queue'`.
+  - Changed `renderQueuePopup()` guard from `if (!isDevMode)` to `if (!playlistsEnabled())`, unlocking queue popup for all logged-in users in non-dev mode.
+- `[DONE]` **Light Mode Playlists Readability & Outline Boxes**:
+  - Upgraded theme variables: `--border: #cbd5e1;` and `--border-light: #e2e8f0;` for crisp card boundaries.
+  - Added dedicated CSS classes: `.playlist-public-card`, `.playlist-card-title`, `.playlist-card-meta`, `.playlist-card-desc`, `.playlist-card-tags`, `.playlist-tag-chip` with `1.5px solid var(--border)` and subtle shadow.
+  - Upgraded public search bar inputs/selects, preview rows, `.playlist-pill`, and `.card-mini-btn` with `1.5px solid var(--border)`.
+- `[DONE]` **Hero Slideshow Text Contrast in Both Modes**:
+  - Replaced single hardcoded scrim with theme-adaptive scrim:
+    - **Light Mode**: `linear-gradient(to left, rgba(255, 255, 255, 0.96) 55%, rgba(255, 255, 255, 0.84) 80%, rgba(255, 255, 255, 0) 100%)` with dark slate text (`#0f172a` title, `#334155` desc) and primary button (`#2b4c7e`).
+    - **Dark Mode**: `linear-gradient(to left, rgba(15, 20, 28, 0.95) 55%, rgba(15, 20, 28, 0.82) 80%, rgba(15, 20, 28, 0) 100%)` with crisp white text (`#ffffff` title, `#cbd5e1` desc) and bright button (`#5c8ecc`).
+    - **Mobile**: Uses `--card`, `--text`, `--text-muted`, and `--primary` seamlessly in both modes.
+- `[DONE]` **Dual Review Adversarial Hardening**:
+  - Fixed plain-gear hover spin by wrapping in `<span class="auth-avatar plain-gear">` and explicitly targeting `.auth-gear` in CSS.
+  - Resolved public playlist search focus drop by capturing and restoring input focus/caret across debounced queries.
+  - Eliminated navigation double-renders by setting `activeDevPlaylistId` before switching collections.
+  - Upgraded `.card-mini-btn.active-save` to `#b45309` (Amber 700) for WCAG AA compliance (4.67:1 ratio).
+  - Added `:focus-visible` to `.settings-menu-item` for keyboard accessibility.
+- `[DONE]` **Automated Testing**: Added Test #11 (`testDropdownNavAndThemeAesthetics`) to `tests/basic_functionality.test.mjs`. All 5 test suites passed 100% green.
 
 ### [2026-09-10 23:15 ET] — Commit `feat/auth-d1` (Dual Review Approved + Dev Playlists + SVGs + Hero Contrast)
 - `[DONE]` **Spinning Gear & Account Button**:
