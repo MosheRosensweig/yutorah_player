@@ -2948,11 +2948,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       display: flex;
       align-items: center;
       gap: 8px;
-      flex-shrink: 0;
+      flex-shrink: 1;
+      min-width: 0;
       overflow-x: auto;
       scrollbar-width: none;
       max-width: 100%;
       touch-action: pan-x pan-y;
+      -webkit-overflow-scrolling: touch;
     }
     .header-right::-webkit-scrollbar {
       display: none;
