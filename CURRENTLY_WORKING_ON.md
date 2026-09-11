@@ -13,10 +13,10 @@ Production status: **Untouched** (strictly protected by standing rules)
 - [x] **Task 1: Rename "Later" to "Save for later" & Vertical Icon Centering** *(COMPLETED)*
   - Rename playlist pill and label from "Later" to "Save for later".
   - Ensure icon is centered height-wise with text across all playlist pills (`display: inline-flex; align-items: center; gap: 6px; vertical-align: middle; line-height: 1.1;`).
-- [ ] **Task 2: Multi-Select Category Filter Cards in Playlist Search** *(IN PROGRESS)*
+- [x] **Task 2: Multi-Select Category Filter Cards in Playlist Search** *(COMPLETED)*
   - Support selecting multiple teachers, venues, and topics like Advanced Search.
-  - Selected filters render as dismissible cards/chips with `✕` remove button.
-- [ ] **Task 3: Playlist Search Scope Checkboxes (Title & Tags, Description, Shiurim Therein)** *(PENDING)*
+  - Selected filters render as dismissible cards/chips with `✕` remove button and "Clear All" action.
+- [ ] **Task 3: Playlist Search Scope Checkboxes (Title & Tags, Description, Shiurim Therein)** *(IN PROGRESS)*
   - 3 checkboxes: "Title & Tags" (default checked), "Description" (default checked), and "Shiurim therein" (default unchecked).
   - When 3rd checkbox is checked, match search queries against lectures inside playlists.
 - [ ] **Task 4: Playlist Reordering Experience Parity with Queue** *(PENDING)*
@@ -36,6 +36,20 @@ Production status: **Untouched** (strictly protected by standing rules)
 ---
 
 ## 🕒 Chronological Activity Log
+
+### [2026-09-11 10:44 ET] — Commit `feat/auth-d1` (Task 2: Multi-Select Category Filter Cards in Playlist Search)
+- `[DONE]` **Multi-Select Filter Tags**:
+  - Implemented `plPublicFilterTags` state tracking arrays for `teachers`, `venues`, and `topics`.
+  - Added `plAddFilterTag(kind, tag)`, `plRemoveFilterTag(kind, idx)`, and `plClearAllFilterTags()`.
+  - Updated `tagOpts(kind)` to exclude already-selected items and prompt `+ Add [Teacher/Venue/Topic]…`.
+  - Selecting a filter immediately resets the dropdown and renders an active filter card chip.
+- `[DONE]` **Active Filters Card Bar**:
+  - Rendered `.active-filters-bar` displaying dismissible `.active-filter-pill` chips with category icons (`👤`, `📍`, `🏷️`), name, and `✕` removal button.
+  - Added `Clear All` reset button.
+- `[DONE]` **Backend Query Param Handling**:
+  - `/api/playlists/public` accepts repeated or comma-separated `teachers`, `venues`, `topics`.
+  - `matchTags()` filters playlists matching selected entities with category AND logic and multi-entity OR matching.
+- `[DONE]` **Automated Testing**: 100% green on all 5 test suites (17/17 basic functionality checks).
 
 ### [2026-09-11 10:40 ET] — Commit `feat/auth-d1` (Task 1: Rename Later to Save for later & Center Icons)
 - `[DONE]` **Rename Later to "Save for later"**:

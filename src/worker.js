@@ -452,9 +452,21 @@ async function handleSyncRoutes(request, env, url) {
         });
       }
       const q = (url.searchParams.get('q') || '').trim().toLowerCase();
-      const fTeacher = (url.searchParams.get('teacher') || '').trim().toLowerCase();
-      const fVenue = (url.searchParams.get('venue') || '').trim().toLowerCase();
-      const fTopic = (url.searchParams.get('topic') || '').trim().toLowerCase();
+      const fTeachers = url.searchParams.getAll('teacher')
+        .concat(url.searchParams.getAll('teachers'))
+        .concat((url.searchParams.get('teacher') || '').split(','))
+        .concat((url.searchParams.get('teachers') || '').split(','))
+        .map(s => s.trim().toLowerCase()).filter(Boolean);
+      const fVenues = url.searchParams.getAll('venue')
+        .concat(url.searchParams.getAll('venues'))
+        .concat((url.searchParams.get('venue') || '').split(','))
+        .concat((url.searchParams.get('venues') || '').split(','))
+        .map(s => s.trim().toLowerCase()).filter(Boolean);
+      const fTopics = url.searchParams.getAll('topic')
+        .concat(url.searchParams.getAll('topics'))
+        .concat((url.searchParams.get('topic') || '').split(','))
+        .concat((url.searchParams.get('topics') || '').split(','))
+        .map(s => s.trim().toLowerCase()).filter(Boolean);
       const sort = (url.searchParams.get('sort') || 'recent').toLowerCase();
       const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') || '30', 10) || 30, 1), 100);
       const offset = Math.max(parseInt(url.searchParams.get('offset') || '0', 10) || 0, 0);
@@ -479,9 +491,9 @@ async function handleSyncRoutes(request, env, url) {
         const teachers = ((t.teachers || []).map(x => String(x.name || x).toLowerCase()));
         const venues = ((t.venues || []).map(x => String(x.name || x).toLowerCase()));
         const topics = ((t.topics || []).map(x => String(x.name || x).toLowerCase()));
-        if (fTeacher && !teachers.some(n => n.includes(fTeacher))) return null;
-        if (fVenue && !venues.some(n => n.includes(fVenue))) return null;
-        if (fTopic && !topics.some(n => n.includes(fTopic))) return null;
+        if (fTeachers.length > 0 && !fTeachers.some(ft => teachers.some(n => n.includes(ft)))) return null;
+        if (fVenues.length > 0 && !fVenues.some(fv => venues.some(n => n.includes(fv)))) return null;
+        if (fTopics.length > 0 && !fTopics.some(ft => topics.some(n => n.includes(ft)))) return null;
         return { teachers: t.teachers || [], venues: t.venues || [], topics: t.topics || [] };
       };
       let list = [];
@@ -15900,6 +15912,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   // =========================================================================
   let plBrowseMode = 'mine';
   let plPublicQuery = '';
+  let plPublicFilterTags = { teachers: [], venues: [], topics: [] };
   let plPublicTags = { teacher: null, venue: null, topic: null };
   let plPublicSort = 'recent';
   let plPublicResults = [];
@@ -15910,6 +15923,31 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   let plMineCache = { at: 0, list: [] };
   let plPublishing = false;
   let plTagsWarmed = false;
+
+  function plAddFilterTag(kind, tag) {
+    if (!tag || !kind || !plPublicFilterTags[kind]) return;
+    const exists = plPublicFilterTags[kind].some(t => String(t.id || t.name).toLowerCase() === String(tag.id || tag.name).toLowerCase());
+    if (!exists) {
+      plPublicFilterTags[kind].push(tag);
+      plSearchPublic();
+    }
+  }
+  window.plAddFilterTag = plAddFilterTag;
+
+  function plRemoveFilterTag(kind, idx) {
+    if (plPublicFilterTags[kind] && plPublicFilterTags[kind][idx] !== undefined) {
+      plPublicFilterTags[kind].splice(idx, 1);
+      plSearchPublic();
+    }
+  }
+  window.plRemoveFilterTag = plRemoveFilterTag;
+
+  function plClearAllFilterTags() {
+    plPublicFilterTags = { teachers: [], venues: [], topics: [] };
+    plPublicTags = { teacher: null, venue: null, topic: null };
+    plSearchPublic();
+  }
+  window.plClearAllFilterTags = plClearAllFilterTags;
 
   function plTagOptions(kind) {
     try {
@@ -16076,12 +16114,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         }).catch(() => {});
       }
     } catch (e) {}
-    const tagOpts = (kind, cur) => {
-      const list = plTagOptions(kind).slice(0, 300);
-      if (list.length === 0) return '<option value="">Loading filters…</option>';
-      return '<option value="">Any ' + kind + '</option>' + list.map(o =>
-        '<option value="' + escapeHtml(o.id || o.name) + '"' + (cur && String(cur.id || cur.name) === String(o.id || o.name) ? ' selected' : '') + '>' +
-        escapeHtml(o.name) + '</option>').join('');
+    const tagOpts = (kind) => {
+      const selected = plPublicFilterTags[kind] || [];
+      const selectedIds = new Set(selected.map(s => String(s.id || s.name).toLowerCase()));
+      const rawList = plTagOptions(kind);
+      if (rawList.length === 0) return '<option value="">Loading filters…</option>';
+      const available = rawList.filter(o => !selectedIds.has(String(o.id || o.name).toLowerCase())).slice(0, 300);
+      const label = kind === 'teachers' ? 'Teacher' : (kind === 'venues' ? 'Venue' : 'Topic');
+      return '<option value="">+ Add ' + label + '…</option>' + available.map(o =>
+        '<option value="' + escapeHtml(o.id || o.name) + '">' + escapeHtml(o.name) + '</option>').join('');
     };
     let qhtml = '';
     if (!isGuest) {
@@ -16090,13 +16131,32 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     qhtml += '<div style="grid-column:1/-1; display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">' +
       '<input id="plPubQ" type="text" placeholder="Search public playlists…" value="' + escapeHtml(plPublicQuery) + '"' +
       ' autocomplete="off" style="flex:2; min-width:160px; padding:8px 12px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text);">' +
-      '<select id="plPubTeacher" style="flex:1; min-width:120px; padding:8px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text);">' + tagOpts('teacher', plPublicTags.teacher) + '</select>' +
-      '<select id="plPubVenue" style="flex:1; min-width:120px; padding:8px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text);">' + tagOpts('venue', plPublicTags.venue) + '</select>' +
-      '<select id="plPubTopic" style="flex:1; min-width:120px; padding:8px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text);">' + tagOpts('topic', plPublicTags.topic) + '</select>' +
+      '<select id="plPubTeacher" style="flex:1; min-width:120px; padding:8px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text);">' + tagOpts('teachers') + '</select>' +
+      '<select id="plPubVenue" style="flex:1; min-width:120px; padding:8px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text);">' + tagOpts('venues') + '</select>' +
+      '<select id="plPubTopic" style="flex:1; min-width:120px; padding:8px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text);">' + tagOpts('topics') + '</select>' +
       '<select id="plPubSort" style="padding:8px; border-radius:8px; border:1.5px solid var(--border); background:var(--card); color:var(--text);">' +
       '<option value="recent"' + (plPublicSort !== 'saves' ? ' selected' : '') + '>Recent</option>' +
       '<option value="saves"' + (plPublicSort === 'saves' ? ' selected' : '') + '>Most saved</option></select>' +
       '<button type="button" class="card-mini-btn active-save" onclick="plPublicSearch()" style="padding:8px 14px; font-size:14px;">🔍 Search</button></div>';
+
+    const activeFilterCards = [];
+    (plPublicFilterTags.teachers || []).forEach((t, idx) => {
+      activeFilterCards.push('<span class="active-filter-pill">👤 ' + escapeHtml(t.name) + ' <button type="button" onclick="plRemoveFilterTag(&quot;teachers&quot;, ' + idx + ')" title="Remove filter">✕</button></span>');
+    });
+    (plPublicFilterTags.venues || []).forEach((v, idx) => {
+      activeFilterCards.push('<span class="active-filter-pill">📍 ' + escapeHtml(v.name) + ' <button type="button" onclick="plRemoveFilterTag(&quot;venues&quot;, ' + idx + ')" title="Remove filter">✕</button></span>');
+    });
+    (plPublicFilterTags.topics || []).forEach((tp, idx) => {
+      activeFilterCards.push('<span class="active-filter-pill">🏷️ ' + escapeHtml(tp.name) + ' <button type="button" onclick="plRemoveFilterTag(&quot;topics&quot;, ' + idx + ')" title="Remove filter">✕</button></span>');
+    });
+
+    if (activeFilterCards.length > 0) {
+      qhtml += '<div class="active-filters-bar" style="grid-column:1/-1; margin-bottom:12px;">' +
+        '<span style="font-size:12px; font-weight:700; color:var(--text-muted);">Active Filters:</span> ' +
+        activeFilterCards.join('') +
+        ' <button type="button" class="modal-reset-btn" style="padding:2px 8px; font-size:12px;" onclick="plClearAllFilterTags()">Clear All</button>' +
+        '</div>';
+    }
     qhtml += '<div class="search-results-subheading"><span>🌍</span><span>Public Playlists</span>' +
       '<span class="sub-count">' + plPublicResults.length + ' of ' + plPublicTotal + ' shown</span></div>';
     if (plPublicResults.length === 0) {
@@ -16167,17 +16227,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         }, 350);
       });
     }
-    const bindSel = (id, fn) => {
+    const bindSel = (id, kind) => {
       const el = container.querySelector('#' + id);
       if (el) el.addEventListener('change', () => {
+        if (!el.value) return;
         const opt = el.options[el.selectedIndex];
-        fn(el.value ? { id: el.value, name: opt ? opt.text : el.value } : null);
-        plPublicSearch();
+        plAddFilterTag(kind, { id: el.value, name: opt ? opt.text : el.value });
+        el.value = '';
       });
     };
-    bindSel('plPubTeacher', v => { plPublicTags.teacher = v; });
-    bindSel('plPubVenue', v => { plPublicTags.venue = v; });
-    bindSel('plPubTopic', v => { plPublicTags.topic = v; });
+    bindSel('plPubTeacher', 'teachers');
+    bindSel('plPubVenue', 'venues');
+    bindSel('plPubTopic', 'topics');
     const sortEl = container.querySelector('#plPubSort');
     if (sortEl) sortEl.addEventListener('change', () => { plPublicSort = sortEl.value; plPublicSearch(); });
     if (plPublicExpanded) plPublicRenderItems(plPublicExpanded);
@@ -16752,9 +16813,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   function plPublicParams(offset) {
     const q = new URLSearchParams();
     if (plPublicQuery.trim()) q.set('q', plPublicQuery.trim());
-    if (plPublicTags.teacher) q.set('teacher', plPublicTags.teacher.name);
-    if (plPublicTags.venue) q.set('venue', plPublicTags.venue.name);
-    if (plPublicTags.topic) q.set('topic', plPublicTags.topic.name);
+    (plPublicFilterTags.teachers || []).forEach(t => q.append('teachers', t.name || t.id));
+    (plPublicFilterTags.venues || []).forEach(v => q.append('venues', v.name || v.id));
+    (plPublicFilterTags.topics || []).forEach(tp => q.append('topics', tp.name || tp.id));
+    if (plPublicTags.teacher && !(plPublicFilterTags.teachers || []).some(t => t.name === plPublicTags.teacher.name)) {
+      q.append('teachers', plPublicTags.teacher.name);
+    }
+    if (plPublicTags.venue && !(plPublicFilterTags.venues || []).some(v => v.name === plPublicTags.venue.name)) {
+      q.append('venues', plPublicTags.venue.name);
+    }
+    if (plPublicTags.topic && !(plPublicFilterTags.topics || []).some(tp => tp.name === plPublicTags.topic.name)) {
+      q.append('topics', plPublicTags.topic.name);
+    }
     q.set('sort', plPublicSort === 'saves' ? 'saves' : 'recent');
     q.set('limit', String(PL_PUBLIC_PAGE));
     q.set('offset', String(offset || 0));
@@ -16762,6 +16832,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   async function plSearchPublic() {
+    const qq = document.getElementById('plPubQ');
+    if (qq) plPublicQuery = qq.value;
     const grid = document.getElementById('grid-playlists');
     plPublicOffset = 0;
     plPublicExpanded = null;

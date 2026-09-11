@@ -561,6 +561,36 @@ async function testPlaylistSuitePhase5() {
   console.log('  ✅ Staged Add-to-Playlist, live counter ticks (+1/-1) & author self-save guard verified.');
 }
 
+async function testPlaylistsEnhancementsRound2() {
+  console.log('17. Testing Playlists Enhancements Round 2 (Save for Later & Multi-Select Filter Cards)...');
+  const req = new Request('https://yutorah-player.mrosensweig.workers.dev/', {
+    headers: { 'User-Agent': 'TestRunner' }
+  });
+  const res = await worker.fetch(req, mockEnv, mockCtx);
+  assert.equal(res.status, 200);
+  const html = await res.text();
+
+  // Task 1: "Save for later" and vertical icon centering
+  assert.ok(html.includes('Save for later'), 'Save for later label must be rendered');
+  assert.ok(html.includes('.playlist-pill {'), 'Playlist pill CSS must be defined');
+  assert.ok(html.includes('.playlist-pill svg {'), 'Playlist pill svg CSS must be defined');
+  assert.ok(html.includes('align-items: center;'), 'Playlist pill must vertically center');
+
+  // Task 2: Multi-Select Category Filter Cards
+  assert.ok(html.includes('let plPublicFilterTags = { teachers: [], venues: [], topics: [] };'), 'plPublicFilterTags must be initialized');
+  assert.ok(html.includes('function plAddFilterTag(kind, tag)'), 'plAddFilterTag must be defined');
+  assert.ok(html.includes('function plRemoveFilterTag(kind, idx)'), 'plRemoveFilterTag must be defined');
+  assert.ok(html.includes('function plClearAllFilterTags()'), 'plClearAllFilterTags must be defined');
+  assert.ok(html.includes("tagOpts('teachers')"), 'Teachers select uses tagOpts');
+  assert.ok(html.includes("tagOpts('venues')"), 'Venues select uses tagOpts');
+  assert.ok(html.includes("tagOpts('topics')"), 'Topics select uses tagOpts');
+  assert.ok(html.includes("+ Add ' + label"), '+ Add label option must be constructed');
+  assert.ok(html.includes('plRemoveFilterTag(&quot;teachers&quot;'), 'Teachers remove button must be present in filter cards');
+  assert.ok(html.includes('plClearAllFilterTags()'), 'Clear All button must be present in filter bar');
+
+  console.log('  ✅ Save for later label, icon centering & multi-select category filter cards verified.');
+}
+
 async function runAll() {
   try {
     await testHomepage();
@@ -579,6 +609,7 @@ async function runAll() {
     await testHeroSizingAndPlaylistTagAutocomplete();
     await testSearchResultsScrollAndHeroSlideClick();
     await testPlaylistSuitePhase5();
+    await testPlaylistsEnhancementsRound2();
     console.log('\n🎉 ALL BASIC FUNCTIONALITY, ARTICLE READER & LIQUID MODE TESTS PASSED SUCCESSFULLY!');
   } catch (err) {
     console.error('\n❌ Test failed:', err);
