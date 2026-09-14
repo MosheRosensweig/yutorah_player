@@ -20,6 +20,7 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 10. [Edge Infrastructure & Performance](#10-edge-infrastructure--performance)
 11. [Product Roadmap](#11-product-roadmap)
 12. [Recent Features — Search, Discovery & Dev Mode](#12-recent-features--search-discovery--dev-mode)
+13. [Recent Features — Header, Sync, Playlists & PWA (Sept 2026)](#13-recent-features--header-sync-playlists--pwa-sept-2026)
 
 ---
 
@@ -155,7 +156,7 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 
 ## 8. Mobile Responsiveness, Dark Theme & Keyboard Shortcuts
 - **Dark Mode / Light Mode Switcher**:
-  - Compact circular sun/moon emoji toggle (`🌙` / `☀️`) positioned directly to the left of the Hebrew date in the top navigation header.
+  - Compact sun/moon emoji toggle (`🌙` / `☀️`) in the header's left button flow (after the holiday badge); shown only when space allows, otherwise one tap away in the login menu. See §13 for the full priority rules.
   - Text-free emoji presentation with zero horizontal overflow on mobile screens.
   - Tailored high-contrast dark theme (`#0f141c` canvas, `#182232` cards, `#e7edf7` text, and accessible slate blue accents) with the top daily study box (Parsha, Daf Yomi, Mishna, Nach), collection tabs (Editor's Picks, Recently Uploaded, Most Popular, Daily Shiurim), and quick play badges fully adapted for dark mode.
   - Instant zero-flash rendering on load via `<head>` script that reads `localStorage.getItem('yutorah_theme')`.
@@ -207,13 +208,13 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 - [x] Playback speed URL parameter sync (`?speed=1.5`).
 - [x] Live daily YUTorah sponsorship banner sync & GiveCampus support link.
 - [x] Official pre-roll daily sponsorship audio clip with live countdown, skip button, and auto-sync.
-- [ ] **User Accounts & Persistent Login** *(In Planning — see [ROADMAP.md](ROADMAP.md))*:
-  - Stay logged in automatically for as long as possible (persistent long-lived cookies).
-  - Synchronized listening history of all shiurim played.
-  - Accurate progress tracking ("where you are up to in each shiur").
-  - Organized chronologically by date.
-- [ ] Multi-shiur playback queue ("Play Next" / Playlist mode).
-- [ ] Offline caching via Service Worker (PWA installable app).
+- [x] **User Accounts & Persistent Login** *(Shipped Sept 2026 — Google OAuth PKCE, see [docs/AUTH_SETUP.md](docs/AUTH_SETUP.md))*:
+  - Stay logged in via long-lived sessions (sliding refresh).
+  - Synchronized listening history of all shiurim played (tombstone deletes stick).
+  - Accurate progress tracking ("where you are up to in each shiur") with completion.
+  - Organized chronologically; History sorts by Last Listened or Shiur Date.
+- [x] Multi-shiur playback queue (queue singles/series, drag reorder, autoplay-next, Queue-to-Top).
+- [x] Offline-tolerant PWA (installable manifest + Service Worker shell/offline fallback; audio/API bypass cache).
 - [ ] Optional GitHub Pages static deployment fallback.
 
 ---
@@ -253,3 +254,38 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 - **History**: sort by 🕒 Last Listened vs 📅 Shiur Date; per-track progress/heartbeat/completion tracking in `localStorage`.
 - **Isolation**: all dev UI hidden + inert without Dev Mode (CSS kill-switch, `aria-hidden`, JS guards); `exit dev mode` fully reverses unlock including settings gear.
 
+
+---
+
+## 13. Recent Features — Header, Sync, Playlists & PWA (Sept 2026)
+
+> Shipped to production September 2026 (`feat/auth-d1` line, dual-reviewed). Live on both [production](https://yutorah-player.mrosensweig.workers.dev/) and [dev](https://yutorah-player-dev.mrosensweig.workers.dev/).
+
+### Header: single left-to-right button flow (no gaps)
+- **One packed row, left to right**: home (`🎧 YUTorah Enhanced PLAYER`) → login/settings (`👤 Sign in` / gear) → holiday/zman badge (e.g. Rosh Hashanah 🍎) → light/dark toggle (`🌙`/`☀️`) → `❤️ Support YUTorah` → Hebrew date badge (`📅`). Every icon starts immediately right of the last one — no awkward gap between groups.
+- **Login button guaranteed**: it sits directly after the brand in a non-shrinking cluster and the overflow logic forces it visible on every check, so it can never be pushed out of view. On ultra-narrow screens the brand text truncates with an ellipsis instead.
+- **Space-based priority (measured, no screen-size breakpoints)**: sacrifices happen lowest-priority-first — date badge, then support, then theme (core chrome outranks the donate CTA), then the zman badge shrinks to apple-only, then hides — with brand ellipsis as the absolute last resort. A refill pass re-shows anything that fits in freed space (e.g. the theme toggle reappears once the zman collapses to an apple), so mobile screens stay filled with every icon that fits.
+- **Theme toggle only when room allows**: on tight screens it hides (one tap away in the login menu under Light/Dark Mode, for guests and logged-in users alike) and reappears automatically when widened.
+- **Zman apple popover**: tapping the apple-only badge pops the full holiday title for ~4 seconds (auto re-shrink), dismissible via outside-click or `Escape`, with `aria-expanded` state. The wide version is never force-shrunk when it fits.
+- **Keyboard access**: date badge is `tabindex`/`role=button` with Enter/Space activation, matching the zman badge; DOM order equals visual order for a logical tab sequence.
+
+### History deletes that stick (tombstone sync)
+- **Removes survive reload/pull**: deleting from History (or any playlist) is permanent. Deletes travel to the cloud as explicit bounded tombstones (`deletedHistory`, max 200) rather than full-list replace — important because local history is an LRU window, so a replace would wipe older rows the device never saw.
+- **Delete lifecycle**: remove records the tombstone + clears the stale progress record + marks history dirty; re-listening revives the item (clears its tombstone); the tombstone clears only after the server acknowledges it (retained across failures for retry).
+- **Unload flush + boot retry**: pending syncs flush via `keepalive` POST on tab close/reload (covers the 2.5s debounce window); any leftover tombstones re-dirty on next boot and push within seconds.
+- **Why it was needed**: previously deletes touched only local storage while the server kept the rows, so every reload re-merged ("resurrected") them via union sync.
+
+### Playlists: queue-to-top, previews & sharing
+- **⏫ Queue to Top**: every playlist row (subscriptions, custom, system lists) has a Queue-to-Top button that prepends the whole playlist — in order, skipping already-queued items — to the top of the play queue. Series bundles are preserved as expandable queue entries; counts lectures added.
+- **Preview items with duration + upload date**: expanding a public playlist preview shows each shiur's duration and upload date; the preview endpoint was fixed (SQL columns) with instant client-side caching.
+- **Shareable playlist URLs**: the active playlist, public-search query, Teacher/Venue/Topic pills, scope checkboxes, and sort all live in namespaced URL params (`tab/pl/plq/plteachers/…`), so reload keeps your place and links share exact state. Player open/close carries the context; shiur search uses one-view-per-URL.
+- **Public search scope that only adds**: the "Shiurim inside the playlists" checkbox matches lecture titles/speakers/series contents (including series bundles via `items_json`) and can only ever widen results, never zero them (fixed a missing-column query + fallback).
+- **Playlists tab + display-name banner**: the collection tab is labeled `🎧 Playlists` with a `👤 Playlist Display Name:` banner linking to the rename modal.
+
+### PWA: installable app, authentic icons
+- **Installable PWA**: Web App Manifest (`/manifest.json`, standalone display, `any` + `maskable` icons) and Service Worker (`/sw.js`, network-first app shell with offline fallback; audio byte-ranges and `/api/*` always bypass cache). No install banners, no layout shifts.
+- **Centered authentic shield**: YU shield icons optically centered in the circular mask with safe-zone margins (no zoom/clipping on Android, no Chrome shortcut badge), white lettering and scroll colors restored.
+
+### Small fixes in the same batch
+- **No double calendar emoji**: the account-menu date stripped the header badge's leading 📅 before adding its own (both auth states, incl. variant-selector form).
+- **Settings/login menu date**: single 📅 prefix; menu calendar entry uses uniform item padding with icon containers.
