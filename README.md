@@ -1,27 +1,30 @@
-# 🎧 YUTorah Player — Cloudflare Worker Reverse Proxy
+# 🎧 YUTorah Player — Cloudflare Worker Reverse Proxy & PWA
+**Major Production Checkpoint (v1.0.0-perfect-checkpoint)**
 
-A zero-friction wrapper around YUTorah hosted as a **free Cloudflare Worker**.
+A zero-friction, ultra-fast progressive web app (PWA) and edge proxy around YUTorah hosted as a **Cloudflare Worker**.
 
-It serves the live YUTorah site under your own URL, removes frame and CORS restrictions, and injects an **Enhanced Audio Player** with tabs:
-
-- **[ 🎧 Enhanced Player ]** (Active by default) — Skip ±10s/±30s, direct speed dropdown (0.5x–3.0x), timestamp links (`?t=120`), scrubber, and mobile lock-screen controls.
-- **[ 📻 Standard Player ]** — Switch back to YUTorah's original player at any time.
+It serves the live YUTorah site under your own URL with zero frame or CORS restrictions, offering full offline caching, edge-accelerated Solr search, cloud sync with Google OAuth, rich playlist management, and an **Enhanced Audio & Article Player**.
 
 ---
 
-## Features
+## Key Features
 
-- **No Bookmarklets or Copy-Pasting Required:** Just visit your URL on your phone or computer.
-- **Tabs on every shiur page:** Toggle between the Enhanced Player and the original Standard Player seamlessly.
-- **Skip Back / Forward:** Dedicated buttons for **−30s**, **−10s**, **+10s**, **+30s**.
-- **Direct Speed Menu:** Instantly choose 0.5x, 0.75x, 1x, 1.25x, 1.5x, 1.75x, 2x, 2.5x, 3x without cycling through.
-- **Timestamp Sharing:** Click "📋 Copy Link @ Time" to get a shareable URL that starts at that exact second (e.g., `https://your-worker.dev/lectures/1187082?t=245`).
-- **Mobile Lock Screen & Background Play:** Full `MediaSession` integration with title, speaker, artwork, and lock-screen skip controls.
-- **Keyboard Shortcuts:** `Space` (play/pause), `←`/`→` (±10s), `Shift`+`←`/`→` (±30s), `[`/`]` (speed), `M` (mute).
+- **Progressive Web App (PWA):** Installs seamlessly on iOS and Android with authentic Yeshiva University shield icons, maskable launcher compliance (zero Chrome badge overlays), and background offline shell caching.
+- **Enhanced Audio Transport:** Skip ±10s/±30s buttons flanking Play/Pause, direct speed menu (0.5x–3.0x), continuous playback queue, lock-screen `MediaSession` integration with speaker artwork, and audio timestamp sharing (`?t=120`).
+- **Comprehensive Playlists Suite:**
+  - Pinned system lists: `History`, `Save for Later`, `Favorites`, `Play Queue`, and `+ New Playlist`.
+  - Staged `Add to Playlist` multi-select popup with live counter ticks (`+1` / `-1`) and explicit commit.
+  - Multi-criteria playlist sorting (`Date Added`, `Shiur Date Newest/Oldest`, `Last Listened`, and `Manual / Drag-and-Drop`).
+  - Public playlist sharing, taxonomy filtering, preview modal with duration and upload date, and live-sync subscription vs editable copy choices.
+- **User Accounts & Cloud Sync:** Native Google OAuth 2.0 with PKCE and Cloudflare D1 (Serverless SQLite) storage for cross-device listening history, saved positions, and custom playlists.
+- **Phonetic & Hebrew-English Search:** Algorithmic reverse transliteration (Ashkenazic & Sephardic spelling normalization, honorific stripping, synset expansion) and fuzzy suggest typeahead.
+- **Adaptive Theming:** Default dark mode for new users with seamless light/dark toggle, zero-flash pre-paint script, and responsive header overflow protection.
+- **Article Reader & Liquid Mode:** Interactive document reader with streaming PDF proxy, multi-column reconstruction, and font scaling.
 
 ---
 
 ## Quick Start & Local Testing
+
 
 1. **Install dependencies:**
    ```bash
