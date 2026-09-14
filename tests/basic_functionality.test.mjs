@@ -877,9 +877,11 @@ async function testZmanimIconShrinkAndSpacePreservation() {
   assert.ok(html.includes('.hebrew-date-badge.icon-only'), 'CSS must define .hebrew-date-badge.icon-only');
   assert.ok(html.includes('.hebrew-date-badge.icon-only .hebrew-date-text'), 'CSS must hide text in icon-only mode');
 
-  // 2. CSS contains .hebrew-date-badge.icon-only.expanded floating popover rules
-  assert.ok(html.includes('.hebrew-date-badge.icon-only.expanded .hebrew-date-text'), 'CSS must define expanded popover text styling');
+  // 2. CSS contains #hebrewDateBadge.expanded / .hebrew-date-badge.icon-only.expanded floating popover rules with high specificity
+  assert.ok(html.includes('#hebrewDateBadge.expanded .hebrew-date-text'), 'CSS must include #hebrewDateBadge.expanded with high specificity');
+  assert.ok(html.includes('#hebrewDateBadge:not(.expanded) .hebrew-date-text'), 'CSS must scope media query hide to :not(.expanded)');
   assert.ok(html.includes('animation: hebrewBadgePop'), 'Expanded popover must have hebrewBadgePop animation');
+  assert.ok(html.includes('aria-expanded'), 'Hebrew date badge must support aria-expanded state');
 
   // 3. pulseHebrewDate handles toggle and temporary expansion
   assert.ok(html.includes('pulseHebrewDate()'), 'Client JS must define pulseHebrewDate()');

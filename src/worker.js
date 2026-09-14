@@ -5522,8 +5522,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     .hebrew-date-badge.icon-only.expanded {
       background: rgba(255,255,255,0.22);
     }
+    #hebrewDateBadge.expanded .hebrew-date-text,
     .hebrew-date-badge.icon-only.expanded .hebrew-date-text {
-      display: block;
+      display: block !important;
       position: absolute;
       top: calc(100% + 8px);
       left: 50%;
@@ -5541,6 +5542,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       pointer-events: none;
       animation: hebrewBadgePop 0.18s cubic-bezier(0.16, 1, 0.3, 1);
     }
+    #hebrewDateBadge.expanded .hebrew-date-text::before,
     .hebrew-date-badge.icon-only.expanded .hebrew-date-text::before {
       content: '';
       position: absolute;
@@ -5551,6 +5553,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       border-right: 6px solid transparent;
       border-bottom: 6px solid var(--border-light, rgba(255,255,255,0.25));
     }
+    #hebrewDateBadge.expanded .hebrew-date-text::after,
     .hebrew-date-badge.icon-only.expanded .hebrew-date-text::after {
       content: '';
       position: absolute;
@@ -6016,7 +6019,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       display: inline-flex;
     }
     @media (max-width: 768px) {
-      #hebrewDateBadge .hebrew-date-text {
+      #hebrewDateBadge:not(.expanded) .hebrew-date-text {
         display: none;
       }
       #hebrewDateBadge {
@@ -6433,11 +6436,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         display: none !important;
       }
       /* Mobile: Hebrew date shrinks to icon-only; tap to temporarily view full text. */
-      .hebrew-date-badge .hebrew-date-text {
+      .hebrew-date-badge:not(.expanded) .hebrew-date-text {
         display: none;
       }
+      #hebrewDateBadge.expanded .hebrew-date-text,
       .hebrew-date-badge.expanded .hebrew-date-text {
-        display: block;
+        display: block !important;
       }
       .hebrew-date-badge:focus-visible {
         outline: 2px solid var(--primary) !important;
