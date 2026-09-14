@@ -646,6 +646,7 @@ async function testPlaylistsEnhancementsRound2() {
   assert.ok(html.includes('togglePlInfoTip(event, &quot;scope-shiurim&quot;)'), 'Shiurim scope must have an info button');
   assert.ok(html.includes('id="tip-scope-shiurim"'), 'Shiurim info tooltip must render');
   assert.ok(html.includes('only ever widens results'), 'Shiurim tooltip must explain additive scope');
+  assert.ok(html.includes('Shiurim inside the playlists</label>'), 'info button must sit OUTSIDE the label (taps must not flip the checkbox)');
 
   // Task 4: Playlist Reordering Direct Parity with Queue
   assert.ok(html.includes('const canReorder = !pl.isHistory && !pl.isSubscription;'), 'canReorder must allow direct reordering on all mutable user playlists');
@@ -1180,6 +1181,9 @@ async function testDafHub() {
   assert.ok(html.includes('id="dafFolio"'), '/daf must contain the folio input');
   assert.ok(html.includes('id="dafDate"'), '/daf must contain calendar nav');
   assert.ok(html.includes('id="dafShiurimLink"'), '/daf must link shiurim on the daf');
+  assert.ok(html.includes('overflow: auto; touch-action: pan-y'), '/daf text viewer must remain scrollable');
+  assert.ok(html.includes('id="dafViewPage"'), '/daf must offer a page-style view');
+  assert.ok(html.includes('function renderDafText()'), '/daf must render text and page views from loaded content');
 
   // Cycle math: 36 masechtot (no Shekalim), 2711 dafim, verified anchor.
   const workerSrc = fs.readFileSync(new URL('../src/worker.js', import.meta.url), 'utf8');
@@ -1194,7 +1198,24 @@ async function testDafHub() {
   assert.ok(workerSrc.includes('panning = true'), 'drag must pan while zoomed');
   assert.ok(workerSrc.includes('startScale * (dist('), 'pinch must scale around its center');
   assert.ok(workerSrc.includes('www.sefaria.org/api/texts/'), 'daf text must come from Sefaria');
-  assert.ok(workerSrc.includes('function dafImageUrl(m, d)'), 'image slot must exist for scan parity');
+  assert.ok(workerSrc.includes('function dafPdfUrl(m, d)'), 'scan adapter must exist for page parity');
+  assert.ok(workerSrc.includes('www.e-daf.com/index.asp?masechta=') && workerSrc.includes('&pdf=1'), 'Daf page must use the scanned PDF source');
+  assert.ok(workerSrc.includes('https://shas.org/daf-pdf/api/?masechta='), 'Daf PDF must prefer the direct Shas PDF API');
+  assert.ok(workerSrc.includes("url.pathname === '/api/daf-image'") && workerSrc.includes('cdnyutorah.cachefly.net/public/v3/daf'), 'Daf scan must use the verified YUTorah raster CDN');
+  assert.ok(workerSrc.includes("url.pathname === '/api/daf-pdf'") && workerSrc.includes('resolveDafPdf'), 'Daf PDF must use the server-side PDF resolver');
+  assert.ok(workerSrc.includes("if (state.view === 'page')") && workerSrc.includes('dafPdfEndpoint'), 'scan source must be isolated to the Daf PDF view');
+  assert.ok(workerSrc.includes("type.includes('application/pdf')"), 'Daf page must reject HTML source pages');
+  assert.ok(workerSrc.includes('Scanned Daf page') && workerSrc.includes('daf-image?masechta='), 'Daf scan must render as an inline image');
+  assert.ok(workerSrc.includes("url.searchParams.get('amud')") && workerSrc.includes("window.dafSetAmud"), 'Daf PDF must support selecting either or both amudim');
+  assert.ok(workerSrc.includes("state.amud === 'both' ? ['a', 'b']"), 'Daf PDF both-amud mode must render both pages');
+  assert.ok(workerSrc.includes('id="dafAmudToolbar"') && workerSrc.indexOf('id="dafAmudToolbar"') < workerSrc.indexOf('id="dafViewerToolbar"') && workerSrc.indexOf('id="dafAmudB"') < workerSrc.indexOf('id="dafAmudA"'), 'Daf amud selector must have its own section above the other controls');
+  assert.ok(workerSrc.includes("lang: 'both'") && workerSrc.includes('id="dafLangBoth" onclick="dafSetLang(\'both\')" aria-pressed="true">עברית + English</button>'), 'Daf text must default to Hebrew and English');
+  assert.ok(workerSrc.includes("state.view !== 'page') return;"), 'Daf text must not bind PDF tap-to-zoom gestures');
+  assert.ok(workerSrc.includes('class="daf-view-tabs"') && workerSrc.includes('role="tablist"'), 'Daf text and PDF must share a persistent top tab strip');
+  assert.ok(workerSrc.includes('id="dafViewerToolbar"') && workerSrc.includes('class="daf-text-control"'), 'Daf text controls must be below and scoped to the text tab');
+  assert.ok(workerSrc.includes('daf-pair-number') && workerSrc.includes('data-he-segment') && workerSrc.includes('data-en-segment'), 'aligned Daf text must render indexed phrase pairs');
+  assert.ok(workerSrc.includes('value.flat(Infinity)') && workerSrc.includes('daf-pair-label'), 'aligned Daf text must normalize and label each Hebrew/English pair');
+  assert.ok(workerSrc.includes('window.dafSetView'), 'Daf page/text toggle must be wired');
 
   // Entry point from the homepage.
   const homeRes = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/'), mockEnv, mockCtx);
@@ -1248,5 +1269,3 @@ async function runAll() {
 }
 
 runAll();
-
-

@@ -2561,17 +2561,92 @@ export default {
       themeMode = 'dark';
     }
 
-    // 4b. Daf Yomi Daily Study Hub: /daf (shareable ?m=&d=&date=)
+    // 4b. Daf Yomi Daily Study Hub: /daf (shareable ?m=&d=&date=).
+    // Params are validated server-side (client re-validates): unknown
+    // tractates, out-of-range folio, and impossible dates fall back to ''.
     if (url.pathname === '/daf' || url.pathname === '/daf/') {
+      let initM = '', initD = '', initDt = '';
+      try {
+        const rm = url.searchParams.get('m') || '';
+        const rd = url.searchParams.get('d') || '';
+        const idx = dafIndexForRefUTC(rm, rd);
+        if (idx >= 0) {
+          const ref = dafRefForIndexUTC(idx);
+          initM = ref.masechta;
+          initD = String(ref.daf);
+        }
+        const rdt = url.searchParams.get('date') || '';
+        if (dafValidDateISO(rdt)) initDt = rdt;
+      } catch (e) {}
       return new Response(renderDafPage({
         themeMode,
-        initMasechta: url.searchParams.get('m') || '',
-        initDaf: url.searchParams.get('d') || '',
-        initDate: url.searchParams.get('date') || ''
+        initMasechta: initM,
+        initDaf: initD,
+        initDate: initDt
       }), {
         headers: {
           'Content-Type': 'text/html; charset=utf-8',
           'Cache-Control': 'no-cache',
+        }
+      });
+    }
+
+    if (url.pathname === '/api/daf-pdf') {
+      const masechta = url.searchParams.get('m') || '';
+      const daf = url.searchParams.get('d') || '';
+      const amud = (url.searchParams.get('amud') || 'a').toLowerCase();
+      const idx = DAF_MASECHTOT.findIndex(([name]) => name.toLowerCase() === masechta.toLowerCase());
+      const folio = parseInt(daf, 10);
+      if (idx < 0 || !Number.isInteger(folio) || folio < 2 || folio > DAF_MASECHTOT[idx][1] + 1) {
+        return new Response('Invalid daf', { status: 400 });
+      }
+      const slug = masechta.toLowerCase().replace(/\s+/g, '-');
+      if (amud !== 'a' && amud !== 'b') return new Response('Invalid amud', { status: 400 });
+      const sources = [
+        `https://shas.org/daf-pdf/api/?masechta=${encodeURIComponent(slug)}&daf=${folio}&amud=${amud}`,
+        `https://www.e-daf.com/index.asp?masechta=${idx + 1}&daf=${folio}&size=30&pdf=1&amud=${amud}`
+      ];
+      try {
+        let pdf = null;
+        for (const source of sources) {
+          pdf = await resolveDafPdf(source);
+          if (pdf) break;
+        }
+        if (!pdf) return new Response('Daf PDF unavailable', { status: 404 });
+        return new Response(pdf.body, {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/pdf',
+            'Cache-Control': 'public, max-age=3600',
+            'Access-Control-Allow-Origin': '*'
+          }
+        });
+      } catch (e) {
+        return new Response('Daf PDF unavailable', { status: 502 });
+      }
+    }
+
+    if (url.pathname === '/api/daf-image') {
+      const masechta = url.searchParams.get('masechta') || '';
+      const daf = parseInt(url.searchParams.get('daf') || '', 10);
+      const amud = (url.searchParams.get('amud') || 'a').toLowerCase();
+      const imageName = dafImageMasechtaName(masechta);
+      const pair = DAF_MASECHTOT.find(([name]) => name.toLowerCase() === masechta.toLowerCase());
+      if (!imageName || !pair || !Number.isInteger(daf) || daf < 2 || daf > pair[1] + 1 || !['a', 'b'].includes(amud)) {
+        return new Response('Invalid daf image', { status: 400 });
+      }
+      const source = `https://cdnyutorah.cachefly.net/public/v3/daf/_images_Shas/${encodeURIComponent(imageName)}/gifs_new/${daf}${amud}.gif`;
+      const image = await fetch(source, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; YUTorah-Enhanced/1.0)' } });
+      const contentType = (image.headers.get('content-type') || '').toLowerCase();
+      if (!image.ok || !contentType.includes('image/gif')) {
+        return new Response('Daf image unavailable', { status: 404 });
+      }
+      return new Response(image.body, {
+        status: 200,
+        headers: {
+          'Content-Type': 'image/gif',
+          'Cache-Control': 'public, max-age=3600',
+          'Access-Control-Allow-Origin': '*'
         }
       });
     }
@@ -2796,9 +2871,10 @@ function extractSourceMaterials(s) {
     if (!m) continue;
     let url = m.viewerURL || m.viewerUrl || m.url || '';
     if (!url && m.materialURL) {
-      url = /^https?:\/\//i.test(m.materialURL)
-        ? m.materialURL
-        : ('https://www.yutorah.org' + (m.materialURL.startsWith('/') ? '' : '/') + m.materialURL);
+      const raw = String(m.materialURL);
+      url = /^https?:\/\//i.test(raw)
+        ? raw
+        : ('https://www.yutorah.org' + (raw.startsWith('/') ? '' : '/') + raw);
     }
     if (!url) continue;
     if (m.materialExists === false) continue;
@@ -5029,10 +5105,14 @@ function dafRefForIndexUTC(idx) {
   }
   return { masechta: 'Berachos', daf: 2, count: 64 };
 }
+function dafNormMasechta(s) {
+  return String(s || '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+}
 function dafIndexForRefUTC(masechta, daf) {
   let acc = 0;
+  const want = dafNormMasechta(masechta);
   for (const pair of DAF_MASECHTOT) {
-    if (pair[0].toLowerCase() === String(masechta || '').toLowerCase()) {
+    if (pair[0].toLowerCase() === want) {
       const n = parseInt(daf, 10);
       if (!isNaN(n) && n >= 2 && n <= pair[1] + 1) return acc + (n - 2);
       return -1;
@@ -5040,6 +5120,81 @@ function dafIndexForRefUTC(masechta, daf) {
     acc += pair[1];
   }
   return -1;
+}
+function dafValidDateISO(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || ''));
+  if (!m) return false;
+  const y = +m[1], mo = +m[2], d = +m[3];
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return false;
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d;
+}
+function dafImageMasechtaName(masechta) {
+  const names = {
+    'berachos': 'Berachot',
+    'shabbos': 'Shabbat',
+    'eruvin': 'Eruvin',
+    'pesachim': 'Pesachim',
+    'yoma': 'Yoma',
+    'sukkah': 'Sukkah',
+    'beitzah': 'Beitzah',
+    'rosh hashanah': 'Rosh_Hashanah',
+    'taanis': 'Taanit',
+    'megillah': 'Megillah',
+    'moed katan': 'Moed_Katan',
+    'chagigah': 'Chagigah',
+    'yevamos': 'Yevamot',
+    'kesubos': 'Ketubot',
+    'nedarim': 'Nedarim',
+    'nazir': 'Nazir',
+    'sotah': 'Sotah',
+    'gittin': 'Gittin',
+    'kiddushin': 'Kiddushin',
+    'bava kamma': 'Bava_Kamma',
+    'bava metzia': 'Bava_Metzia',
+    'bava basra': 'Bava_Batra',
+    'sanhedrin': 'Sanhedrin',
+    'makkos': 'Makkot',
+    'shevuos': 'Shevuot',
+    'avodah zarah': 'Avodah_Zarah',
+    'horayos': 'Horayot',
+    'zevachim': 'Zevachim',
+    'menachos': 'Menachot',
+    'chullin': 'Chullin',
+    'bechoros': 'Bekhorot',
+    'arachin': 'Arakhin',
+    'temurah': 'Temurah',
+    'kerisos': 'Keritot',
+    'meilah': 'Meilah',
+    'niddah': 'Niddah'
+  };
+  return names[String(masechta || '').trim().toLowerCase()] || '';
+}
+async function resolveDafPdf(source) {
+  const headers = {
+    'User-Agent': 'Mozilla/5.0 (compatible; YUTorah-Enhanced/1.0)',
+    'Accept': 'application/pdf,text/html;q=0.9,*/*;q=0.8'
+  };
+  const first = await fetch(source, { headers, redirect: 'follow' });
+  const firstType = (first.headers.get('content-type') || '').toLowerCase();
+  if (first.ok && firstType.includes('application/pdf')) return first;
+  if (!first.ok || !firstType.includes('text/html')) return null;
+  const html = await first.text();
+  const links = [];
+  const re = /(?:href|data-href|data-pdf)\s*=\s*["']([^"']+)["']/gi;
+  let match;
+  while ((match = re.exec(html)) !== null) {
+    const href = match[1].replace(/&amp;/g, '&');
+    if (/\.pdf(?:[?#]|$)/i.test(href) || /(?:pdf|download)/i.test(href)) {
+      try { links.push(new URL(href, first.url || source).toString()); } catch (e) {}
+    }
+  }
+  for (const link of [...new Set(links)]) {
+    const candidate = await fetch(link, { headers, redirect: 'follow' });
+    const type = (candidate.headers.get('content-type') || '').toLowerCase();
+    if (candidate.ok && type.includes('application/pdf')) return candidate;
+  }
+  return null;
 }
 
 function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', initDate = '' }) {
@@ -5135,16 +5290,33 @@ function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', in
       padding: 10px 14px; background: rgba(43, 76, 126, 0.05);
       border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px;
     }
+    #dafAmudToolbar {
+      display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+      padding: 10px 14px; background: rgba(43, 76, 126, 0.05);
+      border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px;
+    }
+    .daf-view-tabs {
+      display: flex; gap: 0; margin-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .daf-view-tabs .daf-btn {
+      border-radius: 10px 10px 0 0; border-bottom-width: 3px;
+      margin-bottom: -1px; min-width: 110px;
+    }
+    .pdf-control { display: none; }
     [data-theme="dark"] #dafViewerToolbar { background: rgba(92, 142, 204, 0.08); }
     .daf-viewer-hint { font-size: 12px; color: var(--text-muted); margin-left: auto; }
     #dafViewer {
-      position: relative; overflow: hidden; touch-action: none;
+      position: relative; overflow: auto; touch-action: pan-y;
       background: var(--card); border: 1px solid var(--border); border-radius: 12px;
       min-height: 320px; max-height: 75vh; user-select: none; -webkit-user-select: none;
     }
     #dafZoomContent { transform-origin: 0 0; will-change: transform; padding: 26px 30px; }
     #dafZoomContent.daf-img-mode { padding: 0; }
     #dafZoomContent img { display: block; width: 100%; height: auto; }
+    .daf-raster-page { background: #fff; margin: 0 auto 12px; }
+    .daf-raster-page img { display: block; width: 100%; height: auto; background: #fff; margin: 0 auto 12px; }
+    .daf-pdf-page-label { text-align: center; color: #334155; font: 700 12px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: 6px; background: #f8fafc; }
     .daf-seg { display: flex; gap: 14px; margin-bottom: 14px; line-height: 1.75; }
     .daf-seg-num {
       flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%;
@@ -5156,6 +5328,58 @@ function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', in
     .daf-seg-he { direction: rtl; text-align: right; font-size: 19px; line-height: 1.9; flex: 1;
       font-family: "SBL Hebrew", "David", "Taamey Frank CLM", "Times New Roman", serif; }
     .daf-seg-en { font-size: 15px; line-height: 1.7; flex: 1; color: var(--text); }
+    .daf-seg-both {
+      display: block; margin-bottom: 20px; line-height: 1.75;
+      padding-bottom: 14px; border-bottom: 1px solid var(--border-light);
+    }
+    .daf-pair-number {
+      display: inline-flex; width: 24px; height: 24px; border-radius: 50%;
+      align-items: center; justify-content: center; margin-bottom: 7px;
+      background: rgba(43, 76, 126, 0.1); color: var(--primary);
+      font: 800 11px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .daf-seg-both .daf-seg-he {
+      direction: rtl; text-align: right; font-size: 19px; line-height: 1.9;
+      font-family: "SBL Hebrew", "David", "Taamey Frank CLM", "Times New Roman", serif;
+    }
+    .daf-pair-label {
+      display: block; margin-bottom: 2px; color: var(--text-muted);
+      font: 800 10px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: .04em; text-transform: uppercase;
+    }
+    .daf-pair-en { margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--border-light); }
+    .daf-seg-both .daf-seg-en {
+      font-size: 15px; line-height: 1.7; color: var(--text);
+    }
+    .daf-page-surface {
+      max-width: 820px; min-height: 560px; margin: 0 auto; padding: 38px 42px;
+      background: #fffdf5; color: #2b241b; border: 1px solid #c9bfa8;
+      box-shadow: 0 2px 12px rgba(60, 45, 20, 0.16);
+      font-family: "SBL Hebrew", "David", "Taamey Frank CLM", "Times New Roman", serif;
+    }
+    [data-theme="dark"] .daf-page-surface {
+      background: #f7f0df; color: #2b241b; border-color: #9c9079;
+    }
+    .daf-page-heading {
+      text-align: center; font-size: 21px; font-weight: 800; margin-bottom: 24px;
+      border-bottom: 1px solid #b9aa8d; padding-bottom: 12px;
+    }
+    .daf-page-columns { column-count: 2; column-gap: 34px; direction: rtl; }
+    .daf-page-columns .daf-page-segment {
+      break-inside: avoid; margin: 0 0 13px; font-size: 19px; line-height: 1.9;
+    }
+    .daf-page-columns .daf-page-segment-en {
+      direction: ltr; text-align: left; font-family: Georgia, serif; font-size: 15px; line-height: 1.6;
+    }
+    .daf-page-note {
+      margin-top: 24px; padding-top: 10px; border-top: 1px solid #b9aa8d;
+      text-align: center; direction: ltr; font: 12px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #665b4c;
+    }
+    @media (max-width: 680px) {
+      .daf-page-surface { padding: 26px 20px; min-height: 500px; }
+      .daf-page-columns { column-count: 1; }
+    }
     .daf-loading, .daf-error { text-align: center; padding: 50px 20px; color: var(--text-muted); font-size: 14px; }
     .daf-error button { margin-top: 10px; }
     .daf-footer { text-align: center; color: var(--text-muted); font-size: 12.5px; margin-top: 18px; line-height: 1.7; }
@@ -5167,7 +5391,7 @@ function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', in
   <div class="daf-header-inner">
     <a href="/" class="daf-brand">🎧 YUTorah Enhanced <span>HUB</span></a>
     <span style="font-weight:700; font-size:16px;">📜 Daf Yomi</span>
-    <button type="button" class="daf-theme-btn" id="dafThemeBtn" onclick="dafToggleTheme()" title="Toggle Dark / Light Mode">☀️</button>
+    <button type="button" class="daf-theme-btn" id="dafThemeBtn" onclick="dafToggleTheme()" title="Toggle Dark / Light Mode" aria-label="Toggle Dark / Light Mode">☀️</button>
   </div>
 </header>
 <main>
@@ -5192,15 +5416,25 @@ function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', in
     </div>
   </div>
   <div class="daf-card">
+    <div class="daf-view-tabs" role="tablist" aria-label="Daf view">
+      <button type="button" class="daf-btn primary" id="dafViewText" onclick="dafSetView('text')" aria-pressed="true" role="tab">Daf text</button>
+      <button type="button" class="daf-btn" id="dafViewPage" onclick="dafSetView('page')" aria-pressed="false" role="tab">Daf PDF</button>
+    </div>
+    <div id="dafAmudToolbar" role="tablist" aria-label="Daf amud">
+      <button type="button" class="daf-btn" id="dafAmudB" onclick="dafSetAmud('b')" aria-pressed="false">עמוד ב</button>
+      <button type="button" class="daf-btn" id="dafAmudA" onclick="dafSetAmud('a')" aria-pressed="false">עמוד א</button>
+      <button type="button" class="daf-btn primary" id="dafAmudBoth" onclick="dafSetAmud('both')" aria-pressed="true">שני העמודים</button>
+    </div>
     <div id="dafViewerToolbar">
-      <button type="button" class="daf-btn" onclick="dafZoomStep(-0.6)" aria-label="Zoom out">−</button>
+      <span class="pdf-control"><button type="button" class="daf-btn" onclick="dafZoomStep(-0.6)" aria-label="Zoom out">−</button>
       <span id="dafZoomLabel" style="font-size:12.5px; font-weight:700; min-width:44px; text-align:center;">100%</span>
       <button type="button" class="daf-btn" onclick="dafZoomStep(0.6)" aria-label="Zoom in">+</button>
-      <button type="button" class="daf-btn" onclick="dafResetZoom()" title="Reset zoom">⤾</button>
-      <button type="button" class="daf-btn" id="dafLangHe" onclick="dafSetLang('he')">עברית</button>
-      <button type="button" class="daf-btn" id="dafLangEn" onclick="dafSetLang('en')">English</button>
-      <a class="daf-btn" id="dafShiurimLink" href="#" target="_blank" rel="noopener" title="Shiurim on this daf">🎧 Shiurim</a>
-      <span class="daf-viewer-hint">Tap daf to zoom where you press · drag to move</span>
+      <button type="button" class="daf-btn" onclick="dafResetZoom()" title="Reset zoom" aria-label="Reset zoom">⤾</button></span>
+      <span class="daf-text-control"><button type="button" class="daf-btn" id="dafLangHe" onclick="dafSetLang('he')" aria-pressed="false">עברית</button>
+      <button type="button" class="daf-btn" id="dafLangEn" onclick="dafSetLang('en')" aria-pressed="false">English</button>
+      <button type="button" class="daf-btn primary" id="dafLangBoth" onclick="dafSetLang('both')" aria-pressed="true">עברית + English</button></span>
+      <span class="daf-text-control"><a class="daf-btn" id="dafShiurimLink" href="#" target="_blank" rel="noopener" title="Shiurim on this daf">🎧 Shiurim</a></span>
+      <span class="daf-viewer-hint pdf-control">Tap daf to zoom where you press · drag to move</span>
     </div>
     <div id="dafViewer">
       <div id="dafZoomContent"></div>
@@ -5225,6 +5459,17 @@ function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', in
   }
   function stripTags(s) {
     return String(s == null ? '' : s).replace(/<[^>]*>/g, '');
+  }
+  function normMasechta(s) {
+    return String(s || '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+  }
+  function isValidDateISO(s) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || ''));
+    if (!m) return false;
+    var y = +m[1], mo = +m[2], d = +m[3];
+    if (mo < 1 || mo > 12 || d < 1 || d > 31) return false;
+    var dt = new Date(Date.UTC(y, mo - 1, d));
+    return dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d;
   }
   function dayIndexUTC(y, m, d) {
     var days = Math.floor((Date.UTC(y, m - 1, d) - ANCHOR_UTC) / DAY_MS);
@@ -5273,9 +5518,17 @@ function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', in
 
   // Scan-image slot: return a URL to render the daf as an image instead of
   // text, or '' to use the Sefaria text panel. Reserved for an image CDN.
-  function dafImageUrl(m, d) { return ''; }
+  // The original YUTorah page displays a scanned Vilna daf image with
+  // grab/touch zoom. E-Daf exposes the same scan by tractate number and daf;
+  // keep this adapter isolated from the Sefaria text modes.
+  function dafPdfUrl(m, d) {
+    var idx = MASECHTOT.indexOf(m);
+    if (idx < 0) return '';
+    return 'https://www.e-daf.com/index.asp?masechta=' + (idx + 1) + '&daf=' + encodeURIComponent(String(d)) + '&size=30&pdf=1';
+  }
 
-  var state = { m: 'Berachos', d: 2, dateISO: todayISO(), lang: 'he', loading: null };
+  var state = { m: 'Berachos', d: 2, dateISO: todayISO(), lang: 'both', view: 'text', amud: 'both', loading: null };
+  var dafTextData = null;
 
   function syncDafUrl() {
     try {
@@ -5327,7 +5580,7 @@ function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', in
 
   function dzBind() {
     var vp = dzViewer();
-    if (!vp || vp.dataset.dzBound) return;
+    if (!vp || vp.dataset.dzBound || state.view !== 'page') return;
     vp.dataset.dzBound = '1';
     var tapT = 0, tapX = 0, tapY = 0, panning = false, lastX = 0, lastY = 0;
     var pinching = false, startDist = 0, startScale = 1, baseL = 0, baseT = 0, startPx = 0, startPy = 0;
@@ -5336,6 +5589,7 @@ function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', in
       return Math.sqrt(dx * dx + dy * dy);
     }
     vp.addEventListener('touchstart', function(e) {
+      if (state.view !== 'page') return;
       if (e.touches.length >= 2) {
         e.preventDefault();
         pinching = true; panning = false;
@@ -5354,6 +5608,7 @@ function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', in
       }
     }, { passive: false });
     vp.addEventListener('touchmove', function(e) {
+      if (state.view !== 'page') return;
       if (pinching && e.touches.length >= 2) {
         e.preventDefault();
         var s = Math.max(1, Math.min(4, startScale * (dist(e.touches[0], e.touches[1]) / (startDist || 1))));
@@ -5373,6 +5628,7 @@ function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', in
       }
     }, { passive: false });
     vp.addEventListener('touchend', function(e) {
+      if (state.view !== 'page') return;
       if (e.touches.length < 2) pinching = false;
       if (e.touches.length === 0) {
         // Single quick tap (not a drag): toggle zoom anchored at the finger.
@@ -5389,6 +5645,7 @@ function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', in
       }
     }, { passive: true });
     vp.addEventListener('dblclick', function(e) {
+      if (state.view !== 'page') return;
       if (dz.scale > 1.2) dzReset();
       else dzZoomAt(e.clientX, e.clientY, 2.4);
     });
@@ -5418,8 +5675,9 @@ function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', in
   }
   function indexForRef(m, d) {
     var acc = 0;
+    var want = normMasechta(m);
     for (var i = 0; i < MASECHTOT.length; i++) {
-      if (MASECHTOT[i] === m) {
+      if (MASECHTOT[i].toLowerCase() === want) {
         var n = parseInt(d, 10);
         if (!isNaN(n) && n >= 2 && n <= DAF_COUNTS[i] + 1) return acc + (n - 2);
         return -1;
@@ -5433,24 +5691,28 @@ function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', in
     dzReset();
     var c = dzContent();
     if (!c) return;
-    var img = dafImageUrl(state.m, state.d);
-    if (img) {
+    if (state.view === 'page') {
       c.className = 'daf-img-mode';
-      c.innerHTML = '';
-      var el = document.createElement('img');
-      el.src = img;
-      el.alt = 'Daf ' + state.m + ' ' + state.d;
-      el.onerror = function() { loadDafText(); };
-      c.appendChild(el);
+      var requested = state.amud === 'both' ? ['a', 'b'] : [state.amud];
+      c.innerHTML = requested.map(function(amud) {
+        var label = amud === 'a' ? 'עמוד א' : 'עמוד ב';
+        return '<div class="daf-raster-page"><div class="daf-pdf-page-label">' + label + '</div><img title="Scanned Daf page ' + amud + '" alt="' + label + '" src="/api/daf-image?masechta=' + encodeURIComponent(state.m) + '&daf=' + encodeURIComponent(String(state.d)) + '&amud=' + amud + '" loading="eager"></div>';
+      }).join('');
+      dzBind();
       return;
     }
     loadDafText();
   }
+  function dafPdfEndpoint(amud) {
+    return '/api/daf-pdf?m=' + encodeURIComponent(state.m) + '&d=' + encodeURIComponent(String(state.d)) + '&amud=' + amud;
+  }
+  var dafReqSeq = 0;
   function loadDafText() {
     var c = dzContent();
     if (!c) return;
     c.className = '';
     c.innerHTML = '<div class="daf-loading">Loading ' + esc(state.m) + ' ' + esc(String(state.d)) + '…</div>';
+    var myReq = ++dafReqSeq;
     var ref = sefariaRef(state.m, state.d);
     fetch('https://www.sefaria.org/api/texts/' + encodeURIComponent(ref) + '?commentary=0&context=0')
       .then(function(r) {
@@ -5458,34 +5720,59 @@ function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', in
         return r.json();
       })
       .then(function(d) {
-        var he = Array.isArray(d.he) ? d.he : [];
-        var en = Array.isArray(d.text) ? d.text : [];
+        if (myReq !== dafReqSeq) return; // stale: user already moved on
+        function segments(value) {
+          return (Array.isArray(value) ? value.flat(Infinity) : [])
+            .map(function(part) { return String(part == null ? '' : part); });
+        }
+        var he = segments(d.he);
+        var en = segments(d.text);
         var n = Math.max(he.length, en.length);
         if (!n) throw new Error('empty');
-        var h = '';
-        if (d.heRef) h += '<div style="text-align:center; color:var(--text-muted); font-weight:800; margin-bottom:16px; font-size:20px;">' + esc(d.heRef) + '</div>';
-        for (var i = 0; i < n; i++) {
-          var hs = stripTags(he[i] || '');
-          var es = stripTags(en[i] || '');
+        dafTextData = { heRef: d.heRef || '', he: he, en: en };
+        renderDafText();
+      })
+      .catch(function() {
+        if (myReq !== dafReqSeq) return; // stale: user already moved on
+        c.innerHTML = '<div class="daf-error">Could not load this daf right now.<br><button type="button" class="daf-btn" onclick="loadDaf()">Retry</button></div>';
+      });
+  }
+  function renderDafText() {
+    var c = dzContent();
+    if (!c || !dafTextData) return;
+    var d = dafTextData, h = '';
+    if (state.view === 'page') {
+      h += '<div class="daf-page-surface"><div class="daf-page-heading">' + esc(d.heRef || state.m + ' ' + state.d) + '</div>';
+      h += '<div class="daf-page-note">The scanned Daf PDF is not available from the configured source yet.</div></div>';
+      c.className = 'daf-img-mode'; c.innerHTML = h; return;
+    }
+    c.className = '';
+    if (d.heRef) h += '<div style="text-align:center; color:var(--text-muted); font-weight:800; margin-bottom:16px; font-size:20px;">' + esc(d.heRef) + '</div>';
+    for (var i = 0; i < Math.max(d.he.length, d.en.length); i++) {
+          var hs = stripTags(d.he[i] || '');
+          var es = stripTags(d.en[i] || '');
           if (!hs && !es) continue;
+          if (state.lang === 'both') {
+            h += '<div class="daf-seg-both" data-seg="' + i + '" data-he-segment="' + i + '" data-en-segment="' + i + '">' +
+              '<span class="daf-pair-number" aria-label="Phrase ' + (i + 1) + '">' + (i + 1) + '</span>' +
+              '<div class="daf-pair-he"><span class="daf-pair-label">Gemara</span><div class="daf-seg-he">' + (hs ? esc(hs) : '<span style="color:var(--text-muted)">—</span>') + '</div></div>' +
+              '<div class="daf-pair-en"><span class="daf-pair-label">English</span><div class="daf-seg-en">' + (es ? esc(es) : '<span style="color:var(--text-muted)">—</span>') + '</div></div></div>';
+            continue;
+          }
           h += '<div class="daf-seg" data-seg="' + i + '">' +
             '<span class="daf-seg-num">' + (i + 1) + '</span>' +
             (hs ? '<div class="daf-seg-he" data-lang="he">' + esc(hs) + '</div>' : '') +
             (es ? '<div class="daf-seg-en" data-lang="en" style="display:none;">' + esc(es) + '</div>' : '') +
             '</div>';
-        }
-        c.innerHTML = h;
-        dafSetLang(state.lang, true);
-      })
-      .catch(function() {
-        c.innerHTML = '<div class="daf-error">Could not load this daf right now.<br><button type="button" class="daf-btn" onclick="loadDaf()">Retry</button></div>';
-      });
+    }
+    c.innerHTML = h;
   }
   window.loadDaf = loadDaf;
   window.dafSetLang = function(lang, silent) {
-    state.lang = (lang === 'en') ? 'en' : 'he';
+    state.lang = (lang === 'en' || lang === 'both') ? lang : 'he';
     var c = dzContent();
     if (c) {
+      renderDafText();
       var hes = c.querySelectorAll('[data-lang="he"]');
       var ens = c.querySelectorAll('[data-lang="en"]');
       for (var i = 0; i < hes.length; i++) hes[i].style.display = (state.lang === 'he') ? '' : 'none';
@@ -5493,8 +5780,40 @@ function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', in
     }
     var bh = document.getElementById('dafLangHe');
     var be = document.getElementById('dafLangEn');
-    if (bh) bh.className = 'daf-btn' + (state.lang === 'he' ? ' primary' : '');
-    if (be) be.className = 'daf-btn' + (state.lang === 'en' ? ' primary' : '');
+    var bb = document.getElementById('dafLangBoth');
+    if (bh) { bh.className = 'daf-btn' + (state.lang === 'he' ? ' primary' : ''); bh.setAttribute('aria-pressed', state.lang === 'he' ? 'true' : 'false'); }
+    if (be) { be.className = 'daf-btn' + (state.lang === 'en' ? ' primary' : ''); be.setAttribute('aria-pressed', state.lang === 'en' ? 'true' : 'false'); }
+    if (bb) { bb.className = 'daf-btn' + (state.lang === 'both' ? ' primary' : ''); bb.setAttribute('aria-pressed', state.lang === 'both' ? 'true' : 'false'); }
+  };
+  window.dafSetView = function(view) {
+    state.view = view === 'page' ? 'page' : 'text';
+    var bt = document.getElementById('dafViewText');
+    var bp = document.getElementById('dafViewPage');
+    if (bt) { bt.className = 'daf-btn' + (state.view === 'text' ? ' primary' : ''); bt.setAttribute('aria-pressed', state.view === 'text' ? 'true' : 'false'); }
+    if (bp) { bp.className = 'daf-btn' + (state.view === 'page' ? ' primary' : ''); bp.setAttribute('aria-pressed', state.view === 'page' ? 'true' : 'false'); }
+    var textControls = document.querySelectorAll('.daf-text-control');
+    for (var i = 0; i < textControls.length; i++) textControls[i].style.display = state.view === 'text' ? 'flex' : 'none';
+    var pdfControls = document.querySelectorAll('.pdf-control');
+    for (var j = 0; j < pdfControls.length; j++) pdfControls[j].style.display = state.view === 'page' ? 'flex' : 'none';
+    dzReset();
+    if (state.view === 'page') loadDaf();
+    else if (dafTextData) renderDafText();
+    else loadDafText();
+  };
+  window.dafSetAmud = function(amud) {
+    state.amud = (amud === 'a' || amud === 'b') ? amud : 'both';
+    var ids = { a: 'dafAmudA', b: 'dafAmudB', both: 'dafAmudBoth' };
+    Object.keys(ids).forEach(function(key) {
+      var button = document.getElementById(ids[key]);
+      if (button) {
+        button.className = 'daf-btn' + (state.amud === key ? ' primary' : '');
+        button.setAttribute('aria-pressed', state.amud === key ? 'true' : 'false');
+      }
+    });
+    if (state.view === 'page') {
+      dzReset();
+      loadDaf();
+    }
   };
   window.dafGoToday = function() {
     var t = todayISO().split('-');
@@ -5553,15 +5872,16 @@ function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', in
     var ok = false;
     if (sm && sd) {
       var mm = null;
+      var wantSm = normMasechta(sm);
       for (var i = 0; i < MASECHTOT.length; i++) {
-        if (MASECHTOT[i].toLowerCase() === String(sm).toLowerCase()) { mm = MASECHTOT[i]; break; }
+        if (MASECHTOT[i].toLowerCase() === wantSm) { mm = MASECHTOT[i]; break; }
       }
       var dd = parseInt(sd, 10);
       if (mm && !isNaN(dd)) {
         var idx = indexForRef(mm, dd);
         if (idx >= 0) {
           state.m = mm; state.d = dd; ok = true;
-          if (/^\\d{4}-\\d{2}-\\d{2}$/.test(sdate)) {
+          if (isValidDateISO(sdate)) {
             state.dateISO = sdate;
           } else {
             // No date given: point at the next upcoming occurrence.
@@ -5572,7 +5892,7 @@ function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', in
           }
         }
       }
-    } else if (/^\\d{4}-\\d{2}-\\d{2}$/.test(sdate)) {
+    } else if (isValidDateISO(sdate)) {
       var p = sdate.split('-');
       var idx2 = dayIndexUTC(parseInt(p[0], 10), parseInt(p[1], 10), parseInt(p[2], 10));
       var r2 = refForIndex(idx2);
@@ -5591,7 +5911,7 @@ function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', in
     var di = document.getElementById('dafDate');
     if (di) di.addEventListener('change', function() {
       var v = di.value;
-      if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(v)) return;
+      if (!isValidDateISO(v)) return;
       var p = v.split('-');
       var idx = dayIndexUTC(parseInt(p[0], 10), parseInt(p[1], 10), parseInt(p[2], 10));
       var r = refForIndex(idx);
@@ -7821,6 +8141,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       display: flex;
       align-items: center;
       gap: 8px;
+      /* Three action buttons (Copy Link, Download, Source Sheet) must wrap
+         on 320px viewports instead of overflowing the group. */
+      flex-wrap: wrap;
     }
     .ctrl-label {
       font-size: 12px;
@@ -11941,13 +12264,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         </a>
 
         <!-- 2. Daf Yomi (Gemara) -->
-        <a href="/?search=${encodeURIComponent(timely?.dafStr || 'Daf Yomi')}" class="timely-menu-card" data-query="${escapeHtml(timely?.dafStr || '')}" onclick="searchFor(this.dataset.query); closeTimelyDropdown(); return false;" title="Browse ${escapeHtml(timely?.dafStr || 'Daf Yomi')} shiurim">
+        <a href="/daf" class="timely-menu-card" onclick="window.location.href='/daf'; return false;" title="Open today&rsquo;s Daf Yomi page">
           <div class="timely-card-icon">📜</div>
           <div class="timely-card-body">
             <div class="timely-card-label">Daf Yomi (Gemara)</div>
             <div class="timely-card-val">${escapeHtml(timely?.dafStr || 'Today\'s Daf')}</div>
           </div>
-          <div class="timely-card-action">Browse →</div>
+          <div class="timely-card-action">Open Daf →</div>
         </a>
 
         <!-- 3. Mishna Yomi -->
@@ -15164,12 +15487,29 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     syncPlayerBottomPadding();
   }
 
+  // Shared viewer teardown: closing the player must not orphan the source
+  // sheet picker, its Escape listener, the toolbar close button, or the
+  // decoded PDF in memory (otherwise a later pick renders into a hidden
+  // card while audio state disagrees).
+  function teardownSourceSheetView() {
+    try {
+      sourceSheetMode = false;
+      if (typeof closeSourceSheetPicker === 'function') closeSourceSheetPicker();
+      const ssC = document.getElementById('sourceSheetCloseBtn');
+      if (ssC) ssC.style.display = 'none';
+      if (typeof pdfDoc !== 'undefined' && pdfDoc) {
+        try { pdfDoc.destroy(); } catch (e) {}
+      }
+      pdfDoc = null;
+    } catch (e) {}
+  }
   function closeMiniPlayer() {
     if (audio) audio.pause();
     hasAudio = false;
     isCurrentShiurArticle = false;
     currentArticlePdf = '';
     isManuallyMinimized = false;
+    teardownSourceSheetView();
     currentShiurId = '';
     const miniPlayer = document.getElementById('miniPlayer');
     if (miniPlayer) miniPlayer.classList.remove('visible');
@@ -17222,6 +17562,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   function closePlayer() {
     audio.pause();
     isManuallyMinimized = false;
+    teardownSourceSheetView();
     document.getElementById('playerCard').style.display = 'none';
     const miniPlayer = document.getElementById('miniPlayer');
     if (miniPlayer) miniPlayer.classList.remove('visible');
@@ -18925,7 +19266,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       '<label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; font-weight:600;">' +
       '<input type="checkbox" id="plScopeDesc"' + (plPublicScope.desc ? ' checked' : '') + ' style="accent-color:var(--primary); cursor:pointer;"> Playlist description</label>' +
       '<label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; font-weight:600;">' +
-      '<input type="checkbox" id="plScopeShiurim"' + (plPublicScope.shiurim ? ' checked' : '') + ' style="accent-color:var(--primary); cursor:pointer;"> Shiurim inside the playlists' +
+      '<input type="checkbox" id="plScopeShiurim"' + (plPublicScope.shiurim ? ' checked' : '') + ' style="accent-color:var(--primary); cursor:pointer;"> Shiurim inside the playlists</label>' +
       '<span class="pl-btn-with-info">' +
         '<button type="button" class="pl-info-btn" onclick="togglePlInfoTip(event, &quot;scope-shiurim&quot;)" aria-label="About Shiurim therein" title="About Shiurim therein" aria-expanded="false" aria-haspopup="true">ⓘ</button>' +
         '<div id="tip-scope-shiurim" class="pl-action-tooltip" style="display:none;" role="tooltip" onclick="event.stopPropagation()">' +
@@ -18935,7 +19276,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           '</div>' +
           '<div class="pl-action-tooltip-body">Also matches the lectures inside each playlist — titles, speakers, and series contents — so a playlist appears when any shiur it contains matches your search. This scope only ever widens results, never narrows them.</div>' +
         '</div>' +
-      '</span></label>' +
+      '</span>' +
       '</div>';
 
     qhtml += '<div id="plPublicActiveBar" style="grid-column:1/-1; display:contents;">' + plActiveFilterBarHtml() + '</div>';
@@ -24980,14 +25321,25 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     });
     document.body.appendChild(overlay);
     document.addEventListener('keydown', ssPickerEsc);
+    try {
+      const first = box.querySelector('[data-ss-idx]');
+      if (first) first.focus();
+    } catch (e) {}
   }
   function ssPickerEsc(e) {
     if (e && e.key === 'Escape') closeSourceSheetPicker();
   }
   function closeSourceSheetPicker() {
     const p = document.getElementById('sourceSheetPicker');
-    if (p) p.remove();
+    if (!p) return;
+    p.remove();
     try { document.removeEventListener('keydown', ssPickerEsc); } catch (e) {}
+    // Return focus to the invoker (no-op when nothing was open, e.g.
+    // track-switch cleanup, so typing elsewhere is never interrupted).
+    try {
+      const btn = document.getElementById('sourceSheetBtn');
+      if (btn) btn.focus();
+    } catch (e) {}
   }
   function openSourceSheet(idx) {
     const m = currentSourceMaterials[idx];

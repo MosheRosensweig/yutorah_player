@@ -299,14 +299,18 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 ### 📜 Daf Yomi Hub (/daf)
 - **Tractate/folio selector + calendar nav**: 36 masechtot with daf counts, folio input with per-tractate bounds, prev/today/next day stepping plus a date picker. Calendar dates resolve through exact client-side cycle math (2,711 dafim, no Shekalim, anchor 2019-12-28 = Berachos 2 — verified against Sefaria and dafyomi.org live); manual folio jumps forward to the next occurrence. State lives in shareable `?m=&d=&date=` params.
 - **OG-style daf viewer**: single tap zooms to 2.4x anchored exactly where the finger pressed, finger-drag pans while zoomed, pinch zooms 1–4x around its center, plus −/+/reset buttons, live % label, and double-click support on desktop. Same anchor math as the article canvas viewer, standalone state.
-- **Daf content**: bilingual Gemara text from Sefaria (CORS-open API; Hebrew default with English toggle, numbered segments, `heRef` header), loading/error/retry states. A `dafImageUrl()` slot is reserved so scan images can replace the text panel without touching gestures.
+- **Daf content**: bilingual Gemara text from Sefaria (CORS-open API; Hebrew default with English toggle, numbered segments, `heRef` header), loading/error/retry states. Text mode is vertically scrollable instead of clipping at the bottom.
+- **Daf scan view**: the separate **Daf PDF** tab now displays YUTorah’s verified raster GIF scans from `cdnyutorah.cachefly.net` through a same-origin `/api/daf-image` passthrough. It validates `image/gif`, stores nothing, and avoids Android’s PDF handoff. The view supports עמוד ב, עמוד א, or both amudim; the same selector is also available above the text-language controls in the Daf text tab, while Daf text remains isolated from scan tap-to-zoom gestures.
+- **Aligned bilingual text**: the `עברית + English` mode normalizes Sefaria’s segment arrays and renders every indexed segment as a numbered pair — labeled Hebrew Gemara immediately followed by its matching English phrase — then continues to the next pair (for example, all 22 pairs on a 22-segment daf).
+- **Daf text default**: the text tab opens in `עברית + English` mode by default. The amud selector has its own section above the separate zoom/language controls and remains available in both Daf tabs.
+- **Homepage integration**: selecting the Daf Yomi card from the Timely Study menu opens `/daf`, keeping the hub within the regular YUTorah Enhanced site navigation.
 - **Shiurim on this daf**: one tap opens a `?search=Masechta+Daf` results tab for related lectures. Entry via the 📖 Daf Hub quick chip; `themeMode` SSR + client toggle included; breakout-safe param embedding (`jsEmbed`).
 - **ℹ️ Shiurim-therein explainer** (companion, public playlists): info button beside the scope checkbox using the standard tooltip system; copy states the scope only widens results.
 
 ### 📄 Source Sheet button on audio shiurim
 - **Attached handouts, one tap away**: audio lectures with attached source sheets, packets, or marei-mekomos handouts (`shiurAdditionalMaterials`: title, type, `viewerURL`/`materialURL`, existence-checked) show a **📄 Source Sheet** action button in the player controls (with a `(N)` count when several are attached).
 - **Liquid Mode viewer without interrupting audio**: opening a sheet loads it through the existing Liquid Mode / Original Page pipeline (same PDF proxy, same toolbar, fullscreen, zoom) but explicitly skips the audio takeover — controls stay visible, playback never pauses or resets. A dedicated **✕ Close** toolbar button dismisses the sheet (never hiding a real article track).
-- **Multi-sheet chooser**: when several handouts are attached, a dialog lists them with type badges; `Escape`/outside-click dismisses. Opening a new track resets sheet state; direct-link loads hydrate the button too.
+- **Multi-sheet chooser**: when several handouts are attached, a dialog lists them with type labels (focus moves in, returns on close); `Escape`/outside-click dismisses. Opening a new track resets sheet state; direct-link loads hydrate the button too.
 - **Trust boundary**: sheet PDFs flow through `/api/pdf-proxy`, whose host allowlist now includes the materials CDN (`cdn.yutorah.net`).
 
 ---
@@ -339,4 +343,3 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 5. **Cloud Sync Merge State Integrity**:
    - `adoptCloudState()` spreads and preserves local metadata (`publicId`, `isPublic`, `tags`, `description`, `icon`) across cloud pull cycles and page reloads. A cloud sync merge will never strip `publicId` or erroneously re-tag a public playlist as private.
    - On account boot (`bootAuth()`), `plFetchMine()` automatically reconciles local playlists with `/api/playlists/mine`, restoring any public identifiers if a browser cache was cleared.
-

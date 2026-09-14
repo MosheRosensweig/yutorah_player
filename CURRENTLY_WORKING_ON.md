@@ -1,7 +1,7 @@
 # Currently Working On — Living Status & Activity Log
 
 Living status doc & audit log — updated on every milestone and user request.  
-Last updated: **2026-09-14, 09:48 ET**  
+Last updated: **2026-09-14, 12:25 ET**
 Current branch: `feat/auth-d1` (synchronized with `main`)  
 Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev) (`1c494f2b`)  
 Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://yutorah-player.mrosensweig.workers.dev) (`148e6dcb`)  
@@ -17,6 +17,29 @@ Per-user instruction: dev only (no prod), one feature at a time — quick review
   - OG-exact gestures (single-tap zoom at point, pan, pinch, buttons, dblclick), Sefaria bilingual text (CORS-open), image seam reserved.
   - Sefaria `?date=` ignored server-side → client-side math covers calendar nav. No scan-image source found (OG 403s, no Sefaria img API, e-daf/Commons unsystematic) — text-first, seam ready.
   - Quick-review catch fixed pre-deploy: init params now use `jsEmbed` (breakout-safe), not raw `JSON.stringify`.
+
+### Review follow-up — Daf hub integration and viewer usability
+- [x] Timely Study → Daf Yomi now opens the regular site’s `/daf` hub instead of a separate search destination.
+- [x] Daf text viewport now scrolls normally on phones and desktop; zoomed content still supports finger pan and pinch.
+- [x] Added an aligned Hebrew + English text mode, pairing Sefaria segments side by side.
+- [x] Replaced the synthetic Daf page surface with the scanned page route used for Vilna daf images (`e-daf.com`); the page tab is now an actual scan viewer, while Text remains Sefaria-backed.
+- [x] Dev deployment verified (`dba0c1c7-e4a3-41d1-b527-27c4669e1366`, HTTP 200 for `/daf`; live scan and bilingual markers present); production remains untouched.
+- [x] Review correction completed: the Daf page tab now opens the actual scanned Vilna page route instead of a synthetic text reconstruction; Sefaria Text and aligned Hebrew + English modes remain available.
+- [x] Regression fix: scan loading is now gated to the **Daf page** button only; Hebrew, English, aligned text, and Text mode no longer show the external scan site. Dev redeployed as `125f1bb9-5000-4f01-99c3-fba46d1fc717` and verified HTTP 200.
+- [x] Aligned text refined to phrase pairs (Hebrew phrase, then its English translation, then the next phrase). Daf page source now requests the document/PDF form (`pdf=1`) rather than the E-Daf HTML page.
+- [x] PDF-only guard added: the page tab accepts only `application/pdf`, renders a blob PDF, and never displays an HTML source page. Dev redeployed as `67dc7871-309c-457a-affa-822560d351a1` and verified HTTP 200.
+- [x] Follow-up completed locally: renamed the tabs to **Daf text** and **Daf PDF**; language controls are hidden in the PDF tab, and Sefaria both-mode now visibly numbers each Hebrew→English phrase pair. The browser calls a local server-side resolver that prefers the direct Shas PDF API, falls back to E-Daf/PDF-link discovery, and rejects HTML.
+- [x] Dev deployed as `59432696-029a-4dd5-9eb6-4dbef07eb4ee`: `/daf` returned HTTP 200, `/api/daf-pdf?m=Chullin&d=137` returned a valid `%PDF-1.6` response (`application/pdf`), and the full test suite passed. Production remains untouched.
+- [x] Third follow-up completed: paired mode normalizes nested Sefaria arrays and renders explicit indexed Gemara→English blocks with labels, so every returned segment is visibly one pair.
+- [x] Final dev deployment `b0a32737-6282-4c09-94f8-63e4ade5b152`: live `/daf` exposes both tabs and paired markers; live Chullin 137 PDF returned HTTP 200, `application/pdf`, `%PDF-`; full `npm test` passed. Production remains untouched.
+- [x] New follow-up completed: text mode no longer handles tap/double-tap/pinch zoom; validated Daf PDFs render inline through PDF.js for Pixel compatibility, with עמוד א / עמוד ב / both-amud controls.
+- [x] Dev deployment `bb71b238-1529-4f20-953c-20597386811b`: both live amud endpoints returned HTTP 200 `application/pdf` (`%PDF-`), inline PDF canvas markers are present, and the full test suite passed. Production remains untouched.
+- [x] Regression recovery: removed the broken client-side PDF.js renderer and restored the previously stable same-origin PDF embeds while retaining text gesture isolation and עמוד א / עמוד ב / both-amud selection. Dev redeployed as `66b97072-8af9-411d-8354-1cb13fa7149b`; both amud endpoints return valid PDFs and the full test suite passes. Production remains untouched.
+- [x] Current fix completed: kept the shared PDF/text toolbar mounted while scoping only the text controls, so the עמוד א / עמוד ב / both-amud selector is visible when Daf PDF is selected. Dev deployed as `e77a743c-edba-45ce-86b8-cd06983582c4`; live markup contains all three selectors and amud-B returns a valid PDF. Production remains untouched.
+- [x] Using verified YUTorah raster source: `/api/daf-image` now passes through `cdnyutorah.cachefly.net/.../gifs_new/{daf}{amud}.gif`, replacing mobile PDF handoff while preserving no-storage behavior. Dev deployment `0f16b068-dcb1-412e-96ef-1e4853941376`; live amud A/B responses returned `image/gif` with `GIF89a` signatures after recheck. Full test suite passed.
+- [x] Current Daf UX follow-up completed: paired Hebrew + English is now the default text mode; the עמוד ב / עמוד א / both selector is shared above the language controls in both tabs; and the button order is reversed. Full `npm test` passed and dev deployment `6012ee50-a340-4df5-a958-1d327451a26b` was verified live. Production remains untouched.
+- [x] Current Daf UX follow-up completed: separated the amud selector into its own control section above the other controls in both tabs. Targeted Daf tests passed, live markup was verified, and dev deployment `0310a4f1-8a6e-4614-ad10-1ebf8556fc2e` is live. Production remains untouched.
+- [x] Current Daf UX follow-up completed: removed “(paired)” from the visible Hebrew + English language button while retaining the phrase-by-phrase behavior. Targeted tests passed; cache-busted live dev verification shows `עברית + English`; deployment `7c985ad6-f2f4-43b2-8f25-88edb39b8e15` is active. Production remains untouched.
 
 ## 🔒 Standing Deployment & QA Invariants (Permanent Rule)
 1. **Dev-First Deployment Rule (MANDATORY)**:
