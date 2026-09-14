@@ -440,14 +440,25 @@ async function handleSyncRoutes(request, env, url) {
   // Profile + public-playlist routes live in this handler (after the guard).
   if (url.pathname !== '/api/sync' && url.pathname !== '/api/profile' &&
       !url.pathname.startsWith('/api/playlists/')) return null;
-  const noDb = requireEnvJson(env);
-  if (noDb) return noDb;
+  if (url.pathname === '/api/sync') {
+    const noDb = requireEnvJson(env);
+    if (noDb) return noDb;
+  }
   // ---- Public playlists: publish / browse / save ----
   // Publishing snapshots items and stores the owner's DISPLAY NAME only.
   if (url.pathname === '/api/playlists/public') {
     if (request.method === 'GET') {
       if (!env || !env.yutorah_db) {
-        return new Response(JSON.stringify({ playlists: [], total: 0 }), {
+        const seedList = (typeof DEV_PUBLIC_SEEDS !== 'undefined' ? DEV_PUBLIC_SEEDS : []).map(p => ({
+          id: p.id,
+          ownerName: p.ownerName || 'Community',
+          title: p.title,
+          description: p.description || '',
+          tags: p.tags || { teachers: [], venues: [], topics: [] },
+          saves: 0,
+          itemCount: (p.items || []).length
+        }));
+        return new Response(JSON.stringify({ playlists: seedList, total: seedList.length }), {
           headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
         });
       }
@@ -551,18 +562,50 @@ async function handleSyncRoutes(request, env, url) {
   }
 
   if (url.pathname === '/api/playlists/items') {
+    const pid = url.searchParams.get('id') || '';
+    const fallbackSeed = () => {
+      const seed = (typeof DEV_PUBLIC_SEEDS !== 'undefined') && DEV_PUBLIC_SEEDS.find(s => s.id === pid);
+      if (seed) {
+        return new Response(JSON.stringify({
+          playlist: {
+            id: seed.id,
+            title: seed.title,
+            description: seed.description || '',
+            icon: '📁',
+            tags: seed.tags || { teachers: [], venues: [], topics: [] },
+            ownerName: seed.ownerName || 'Community',
+            isPublic: true
+          },
+          items: seed.items || []
+        }), {
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+        });
+      }
+      return null;
+    };
+
     if (!env || !env.yutorah_db) {
+      const seedRes = fallbackSeed();
+      if (seedRes) return seedRes;
       return new Response(JSON.stringify({ items: [] }), {
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
       });
     }
-    const pid = url.searchParams.get('id') || '';
+
     let items = [];
     try {
       const r = await env.yutorah_db.prepare(
-        'SELECT p.id, p.title, p.description, p.icon, p.tags, p.is_public AS isPublic, p.owner_id AS ownerId, u.display_name AS ownerName FROM public_playlists p LEFT JOIN users u ON u.id = p.owner_id WHERE p.id = ?')
+        'SELECT p.id, p.title, p.description, p.tags_json AS tagsJson, p.is_public AS isPublic, p.owner_id AS ownerId, COALESCE(NULLIF(p.owner_name, ""), u.name, "Community") AS ownerName FROM public_playlists p LEFT JOIN users u ON u.id = p.owner_id WHERE p.id = ?')
         .bind(pid).first();
-      if (!r || (!r.isPublic && (await getSessionUser(request, env) || {}).id !== r.ownerId)) {
+      if (!r) {
+        const seedRes = fallbackSeed();
+        if (seedRes) return seedRes;
+        return new Response(JSON.stringify({ error: 'Playlist not found' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+        });
+      }
+      if (!r.isPublic && (await getSessionUser(request, env) || {}).id !== r.ownerId) {
         return new Response(JSON.stringify({ error: 'Playlist not found' }), {
           status: 404,
           headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
@@ -580,12 +623,12 @@ async function handleSyncRoutes(request, env, url) {
         return it;
       });
       let tags = { teachers: [], venues: [], topics: [] };
-      try { tags = typeof r.tags === 'string' ? JSON.parse(r.tags) : (r.tags || tags); } catch(e) {}
+      try { tags = typeof r.tagsJson === 'string' ? JSON.parse(r.tagsJson) : (r.tagsJson || tags); } catch(e) {}
       const playlist = {
         id: r.id,
         title: r.title,
         description: r.description || '',
-        icon: r.icon || '📁',
+        icon: '📁',
         tags: tags,
         ownerName: r.ownerName || 'Community',
         isPublic: !!r.isPublic
@@ -594,7 +637,9 @@ async function handleSyncRoutes(request, env, url) {
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
       });
     } catch (e) {
-      return new Response(JSON.stringify({ error: 'Database error' }), {
+      const seedRes = fallbackSeed();
+      if (seedRes) return seedRes;
+      return new Response(JSON.stringify({ error: 'Database error', message: String(e && e.message || e) }), {
         status: 500,
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
       });
@@ -17785,21 +17830,25 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     plSearchPublic();
   }
 
+  const plPreviewCache = {};
+
   async function plPublicToggle(id) {
     plPublicExpanded = (plPublicExpanded === id) ? null : id;
-    renderPlaylistsGrid();
+    if (document.getElementById('plPublicResultsWrap')) {
+      plPatchPublicResults();
+    } else {
+      renderPlaylistsGrid();
+    }
     if (plPublicExpanded) plPublicRenderItems(plPublicExpanded);
   }
 
   async function plPublicRenderItems(id) {
     const host = document.getElementById('plpub-' + id);
     if (!host) return;
-    try {
-      const res = await fetch('/api/playlists/items?id=' + encodeURIComponent(id));
-      const data = await res.json();
-      const items = (data && data.items) || [];
-      if (items.length === 0) {
-        host.innerHTML = '<div style="color:var(--text-muted); font-size:13px;">No previews available.</div>';
+
+    const renderData = (items) => {
+      if (!items || items.length === 0) {
+        host.innerHTML = '<div style="color:var(--text-muted); font-size:13px; padding:6px 0;">No previews available.</div>';
         return;
       }
       host.innerHTML = items.slice(0, 8).map(s => {
@@ -17815,8 +17864,30 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           '<a href="/' + String(s.id || '') + '" style="font-weight:700; color:var(--text);">' + escapeHtml(s.title || 'Untitled') + '</a>' +
           '<div style="font-size:11.5px; color:var(--text-muted); margin-top:2px;">' + escapeHtml(s.speaker || '') + '</div></div>';
       }).join('') + (items.length > 8 ? '<div style="font-size:12px; color:var(--text-muted); margin-top:6px;">+' + (items.length - 8) + ' more after saving</div>' : '');
+    };
+
+    if (plPreviewCache[id]) {
+      renderData(plPreviewCache[id]);
+      return;
+    }
+
+    if (typeof DEV_PUBLIC_SEEDS !== 'undefined') {
+      const seed = DEV_PUBLIC_SEEDS.find(s => s.id === id);
+      if (seed && Array.isArray(seed.items) && seed.items.length > 0) {
+        plPreviewCache[id] = seed.items;
+        renderData(seed.items);
+        return;
+      }
+    }
+
+    try {
+      const res = await fetch('/api/playlists/items?id=' + encodeURIComponent(id));
+      const data = await res.json();
+      const items = (data && data.items) || [];
+      plPreviewCache[id] = items;
+      renderData(items);
     } catch (e) {
-      host.innerHTML = '<div style="color:var(--text-muted); font-size:13px;">Could not load preview.</div>';
+      host.innerHTML = '<div style="color:var(--text-muted); font-size:13px; padding:6px 0;">Could not load preview.</div>';
     }
   }
 

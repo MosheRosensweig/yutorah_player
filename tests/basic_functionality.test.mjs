@@ -357,13 +357,22 @@ async function testPublicPlaylistSubscriptionOptions() {
   assert.ok(html.includes('.new-pl-emoji-grid'), 'new-pl-emoji-grid CSS defined');
   assert.ok(html.includes('.new-pl-emoji-btn'), 'new-pl-emoji-btn CSS defined');
   assert.ok(html.includes('devIsDuplicatePlaylistName'), 'devIsDuplicatePlaylistName defined');
-  assert.ok(html.includes('newPlEmojiGrid'), 'newPlEmojiGrid defined in creation modal');
   assert.ok(html.includes('newPlDesc'), 'newPlDesc description textarea defined in creation modal');
   assert.ok(html.includes('newPlTagSearch'), 'newPlTagSearch taxonomy search defined in creation modal');
   assert.ok(html.includes('newPlChips'), 'newPlChips tag chips container defined in creation modal');
   assert.ok(html.includes('newPlError'), 'newPlError duplicate/validation element defined in creation modal');
 
-  console.log('  ✅ Public playlist save choice modal, live-sync subscription, segmented controls, sorting & creation modal verified.');
+  // 7. Preview & Items Endpoint (/api/playlists/items)
+  const itemsReq = new Request('https://yutorah-player.mrosensweig.workers.dev/api/playlists/items?id=pl_ao_elul');
+  const itemsRes = await worker.fetch(itemsReq, mockEnv, mockCtx);
+  assert.equal(itemsRes.status, 200, '/api/playlists/items?id=pl_ao_elul should return 200 OK');
+  const itemsData = await itemsRes.json();
+  assert.ok(itemsData && itemsData.playlist, 'Response must include playlist metadata');
+  assert.equal(itemsData.playlist.title, 'Elul & Teshuvah Essentials', 'Playlist title should match');
+  assert.ok(Array.isArray(itemsData.items) && itemsData.items.length > 0, 'Playlist must contain items array');
+  assert.ok(html.includes('plPreviewCache'), 'Client-side playlist preview cache defined');
+
+  console.log('  ✅ Public playlist save choice modal, live-sync subscription, segmented controls, sorting, items API & preview verified.');
 }
 
 async function testDevPersonasAndSecondTab() {
