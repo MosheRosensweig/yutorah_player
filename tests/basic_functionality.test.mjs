@@ -868,41 +868,43 @@ async function testPlaylistsTabAndDisplayNameBanner() {
 }
 
 async function testZmanimIconShrinkAndSpacePreservation() {
-  console.log('23. Testing Zmanim Badge Icon Shrinking, Tap Expansion & Header Space Preservation...');
+  console.log('23. Testing Holiday Motif (Apple) Icon Shrinking, Tap Expansion & Header Space Preservation...');
   const homeReq = new Request('https://yutorah-player.mrosensweig.workers.dev/');
   const homeRes = await worker.fetch(homeReq, mockEnv, mockCtx);
   const html = await homeRes.text();
 
-  // 1. CSS contains .hebrew-date-badge.icon-only rules
-  assert.ok(html.includes('.hebrew-date-badge.icon-only'), 'CSS must define .hebrew-date-badge.icon-only');
-  assert.ok(html.includes('.hebrew-date-badge.icon-only .hebrew-date-text'), 'CSS must hide text in icon-only mode');
+  // 1. Hebrew date badge is hidden on mobile (<= 640px)
+  assert.ok(html.includes('#hebrewDateBadge {\n        display: none !important;'), 'Hebrew date badge must be hidden on mobile');
 
-  // 2. CSS contains #hebrewDateBadge.expanded / .hebrew-date-badge.icon-only.expanded floating popover rules with high specificity
-  assert.ok(html.includes('#hebrewDateBadge.expanded .hebrew-date-text'), 'CSS must include #hebrewDateBadge.expanded with high specificity');
-  assert.ok(html.includes('#hebrewDateBadge:not(.expanded) .hebrew-date-text'), 'CSS must scope media query hide to :not(.expanded)');
-  assert.ok(html.includes('animation: hebrewBadgePop'), 'Expanded popover must have hebrewBadgePop animation');
-  assert.ok(html.includes('aria-expanded'), 'Hebrew date badge must support aria-expanded state');
+  // 2. CSS contains .holiday-motif-wrap.icon-only rules
+  assert.ok(html.includes('.holiday-motif-wrap.icon-only'), 'CSS must define .holiday-motif-wrap.icon-only');
+  assert.ok(html.includes('.holiday-motif-wrap.icon-only:not(.expanded) .holiday-motif-title'), 'CSS must hide title in icon-only mode when not expanded');
 
-  // 3. pulseHebrewDate handles toggle and temporary expansion
-  assert.ok(html.includes('pulseHebrewDate()'), 'Client JS must define pulseHebrewDate()');
-  assert.ok(html.includes("badge.classList.contains('expanded')"), 'pulseHebrewDate must toggle expanded state');
-  assert.ok(html.includes('4000'), 'pulseHebrewDate must have 4000ms duration timer');
+  // 3. CSS contains #holidayMotifWrap.expanded floating popover rules with high specificity
+  assert.ok(html.includes('#holidayMotifWrap.expanded #holidayMotifTitle'), 'CSS must include #holidayMotifWrap.expanded #holidayMotifTitle with high specificity');
+  assert.ok(html.includes('animation: motifBadgePop'), 'Expanded popover must have motifBadgePop animation');
+  assert.ok(html.includes('id="holidayMotifWrap"') && html.includes('aria-expanded="false"'), 'Holiday motif badge must support aria-expanded state');
 
-  // 4. Document event listeners for outside click and Escape dismissal
-  assert.ok(html.includes("e.key === 'Escape'") && html.includes("badge.classList.remove('expanded')"),
-    'Client JS must dismiss expanded zmanim popover on Escape key');
+  // 4. toggleHolidayMotifExpand handles toggle and temporary expansion
+  assert.ok(html.includes('toggleHolidayMotifExpand()'), 'Client JS must define toggleHolidayMotifExpand()');
+  assert.ok(html.includes("wrap.classList.contains('expanded')"), 'toggleHolidayMotifExpand must toggle expanded state');
+  assert.ok(html.includes('4000'), 'toggleHolidayMotifExpand must have 4000ms duration timer');
 
-  // 5. checkHeaderOverflow shrinks zmanim badge to icon whenever space is tight or login would be cut off
-  assert.ok(html.includes('shouldShrink') && html.includes("badge.classList.add('icon-only')"),
-    'checkHeaderOverflow must dynamically shrink zmanim badge to icon-only');
+  // 5. Document event listeners for outside click and Escape dismissal
+  assert.ok(html.includes("e.key === 'Escape'") && html.includes("wrap.classList.remove('expanded')"),
+    'Client JS must dismiss expanded motif popover on Escape key');
+
+  // 6. checkHeaderOverflow shrinks holiday motif badge to icon whenever space is tight or login would be cut off
+  assert.ok(html.includes('shouldShrinkMotif') && html.includes("motif.classList.add('icon-only')"),
+    'checkHeaderOverflow must dynamically shrink holiday motif badge to icon-only');
   assert.ok(html.includes("authBtn.style.display = 'inline-flex'"),
     'checkHeaderOverflow must prioritize authBtn (login button) display');
 
-  // 6. Both login button and theme toggle are preserved in top banner
+  // 7. Both login button and theme toggle are preserved in top banner
   assert.ok(html.includes('id="authBtn"') && html.includes('id="themeToggleBtn"'),
     'Top banner must include both #authBtn and #themeToggleBtn');
 
-  console.log('  ✅ Zmanim badge shrinking to icon, temporary expansion on tap & space preservation verified.');
+  console.log('  ✅ Holiday motif (apple) shrinking to icon, temporary expansion on tap & space preservation verified.');
 }
 
 async function runAll() {

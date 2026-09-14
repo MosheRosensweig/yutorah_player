@@ -5487,86 +5487,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       cursor: pointer;
       user-select: none;
       -webkit-user-select: none;
-      transition: background 0.15s ease, padding 0.15s ease, transform 0.15s ease;
-      position: relative;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      line-height: 1;
-      flex-shrink: 0;
-      box-sizing: border-box;
+      transition: background 0.15s ease;
     }
     .hebrew-date-badge:hover {
-      background: rgba(0,0,0,0.24);
+      background: rgba(0,0,0,0.22);
     }
     .hebrew-date-badge:active {
-      background: rgba(0,0,0,0.32);
+      background: rgba(0,0,0,0.28);
     }
     .hebrew-date-badge:focus-visible {
       outline: 2px solid var(--primary) !important;
       outline-offset: 2px;
-    }
-    .hebrew-date-badge:not(.icon-only) .hebrew-date-text {
-      margin-left: 6px;
-    }
-    .hebrew-date-badge.icon-only {
-      padding: 4px 6px;
-      min-width: 32px;
-      width: 32px;
-      height: 32px;
-      border-radius: 50%;
-    }
-    .hebrew-date-badge.icon-only .hebrew-date-text {
-      display: none;
-    }
-    .hebrew-date-badge.icon-only.expanded {
-      background: rgba(255,255,255,0.22);
-    }
-    #hebrewDateBadge.expanded .hebrew-date-text,
-    .hebrew-date-badge.icon-only.expanded .hebrew-date-text {
-      display: block !important;
-      position: absolute;
-      top: calc(100% + 8px);
-      left: 50%;
-      transform: translateX(-50%);
-      background: var(--card, #1e293b);
-      color: var(--text, #ffffff);
-      border: 1.5px solid var(--border-light, rgba(255,255,255,0.25));
-      padding: 7px 14px;
-      border-radius: 8px;
-      box-shadow: 0 6px 20px rgba(0,0,0,0.35);
-      white-space: nowrap;
-      font-size: 12.5px;
-      font-weight: 700;
-      z-index: 10000;
-      pointer-events: none;
-      animation: hebrewBadgePop 0.18s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-    #hebrewDateBadge.expanded .hebrew-date-text::before,
-    .hebrew-date-badge.icon-only.expanded .hebrew-date-text::before {
-      content: '';
-      position: absolute;
-      top: -6px;
-      left: 50%;
-      transform: translateX(-50%);
-      border-left: 6px solid transparent;
-      border-right: 6px solid transparent;
-      border-bottom: 6px solid var(--border-light, rgba(255,255,255,0.25));
-    }
-    #hebrewDateBadge.expanded .hebrew-date-text::after,
-    .hebrew-date-badge.icon-only.expanded .hebrew-date-text::after {
-      content: '';
-      position: absolute;
-      top: -4.5px;
-      left: 50%;
-      transform: translateX(-50%);
-      border-left: 5px solid transparent;
-      border-right: 5px solid transparent;
-      border-bottom: 5px solid var(--card, #1e293b);
-    }
-    @keyframes hebrewBadgePop {
-      from { opacity: 0; transform: translate(-50%, -6px) scale(0.95); }
-      to { opacity: 1; transform: translate(-50%, 0) scale(1); }
     }
 
     /* Secret Pre-Roll Toggle Toast / Flash HUD */
@@ -6018,32 +5949,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       order: 10;
       display: inline-flex;
     }
-    @media (max-width: 768px) {
-      #hebrewDateBadge:not(.expanded) .hebrew-date-text {
-        display: none;
-      }
-      #hebrewDateBadge {
-        padding: 4px 6px;
-        min-width: 32px;
-        width: 32px;
-        height: 32px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 50%;
-      }
-    }
     @media (max-width: 640px) {
       .header-right {
         gap: 6px;
       }
+      #hebrewDateBadge {
+        display: none !important;
+      }
       .support-yutorah-btn {
         display: none !important;
       }
-      #hebrewDateBadge {
-        display: inline-flex;
-      }
-      /* On mobile, both login button and theme toggle have plenty of space alongside the shrunk date icon */
+      /* On mobile, both login button and theme toggle have plenty of space */
       body:not(.is-logged-in) #themeToggleBtn,
       body.is-logged-in #themeToggleBtn {
         display: inline-flex;
@@ -6287,19 +6203,117 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       font-size: 12px;
       font-weight: 700;
       color: var(--primary);
-      margin-left: 6px;
+      margin-left: 0;
       vertical-align: middle;
-      transition: all 0.3s ease;
+      transition: all 0.2s ease;
+      cursor: pointer;
+      user-select: none;
+      -webkit-user-select: none;
+      position: relative;
+      flex-shrink: 0;
+      box-sizing: border-box;
+    }
+    .holiday-motif-wrap:hover {
+      background: rgba(255, 255, 255, 0.88);
+    }
+    .holiday-motif-wrap:focus-visible {
+      outline: 2px solid var(--primary) !important;
+      outline-offset: 2px;
+    }
+    [data-theme="dark"] .holiday-motif-wrap {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(212, 163, 115, 0.45);
+      color: #fae4a5;
+    }
+    [data-theme="dark"] .holiday-motif-wrap:hover {
+      background: rgba(255, 255, 255, 0.16);
     }
     .holiday-motif-icon {
       width: 20px;
       height: 20px;
-      display: inline-block;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       vertical-align: middle;
       flex-shrink: 0;
     }
     .holiday-motif-title {
       white-space: nowrap;
+    }
+
+    /* Small screens / narrow viewports: just show the apple / holiday icon */
+    .holiday-motif-wrap.icon-only {
+      padding: 4px 6px;
+      min-width: 32px;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      justify-content: center;
+    }
+    .holiday-motif-wrap.icon-only:not(.expanded) .holiday-motif-title {
+      display: none;
+    }
+    @media (max-width: 768px) {
+      .holiday-motif-wrap:not(.expanded) .holiday-motif-title,
+      #holidayMotifWrap:not(.expanded) #holidayMotifTitle {
+        display: none;
+      }
+      .holiday-motif-wrap {
+        padding: 4px 6px;
+        min-width: 32px;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        justify-content: center;
+      }
+    }
+
+    /* Floating popover tap effect when expanded in icon-only state */
+    .holiday-motif-wrap.expanded .holiday-motif-title,
+    #holidayMotifWrap.expanded #holidayMotifTitle {
+      display: block !important;
+      position: absolute;
+      top: calc(100% + 8px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--card, #1e293b);
+      color: var(--text, #ffffff);
+      border: 1.5px solid var(--border-light, rgba(255, 255, 255, 0.25));
+      padding: 7px 14px;
+      border-radius: 8px;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+      white-space: nowrap;
+      font-size: 12.5px;
+      font-weight: 700;
+      z-index: 10000;
+      pointer-events: none;
+      animation: motifBadgePop 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .holiday-motif-wrap.expanded .holiday-motif-title::before,
+    #holidayMotifWrap.expanded #holidayMotifTitle::before {
+      content: '';
+      position: absolute;
+      top: -6px;
+      left: 50%;
+      transform: translateX(-50%);
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-bottom: 6px solid var(--border-light, rgba(255, 255, 255, 0.25));
+    }
+    .holiday-motif-wrap.expanded .holiday-motif-title::after,
+    #holidayMotifWrap.expanded #holidayMotifTitle::after {
+      content: '';
+      position: absolute;
+      top: -4.5px;
+      left: 50%;
+      transform: translateX(-50%);
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-bottom: 5px solid var(--card, #1e293b);
+    }
+    @keyframes motifBadgePop {
+      from { opacity: 0; transform: translate(-50%, -6px) scale(0.95); }
+      to { opacity: 1; transform: translate(-50%, 0) scale(1); }
     }
     .holiday-tagline-bar {
       text-align: center;
@@ -6315,11 +6329,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       background: rgba(20, 27, 38, 0.85);
       color: #fae4a5;
       border-bottom: 1px solid rgba(212, 163, 115, 0.25);
-    }
-    [data-theme="dark"] .holiday-motif-wrap {
-      background: rgba(255, 255, 255, 0.08);
-      border-color: rgba(212, 163, 115, 0.45);
-      color: #fae4a5;
     }
 
     /* Mode Switch Overlay ("CSR" / "MGR") */
@@ -6435,13 +6444,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       .support-yutorah-btn {
         display: none !important;
       }
-      /* Mobile: Hebrew date shrinks to icon-only; tap to temporarily view full text. */
-      .hebrew-date-badge:not(.expanded) .hebrew-date-text {
-        display: none;
-      }
-      #hebrewDateBadge.expanded .hebrew-date-text,
-      .hebrew-date-badge.expanded .hebrew-date-text {
-        display: block !important;
+      .hebrew-date-badge {
+        display: none !important;
       }
       .hebrew-date-badge:focus-visible {
         outline: 2px solid var(--primary) !important;
@@ -10787,7 +10791,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       🎧 YUTorah Enhanced <span>PLAYER</span>
     </a>
     <div class="header-right">
-      <div id="holidayMotifWrap" class="holiday-motif-wrap" onclick="handleCalendarSecretClick(event)" style="display: none;" title="">
+      <div id="holidayMotifWrap" class="holiday-motif-wrap" onclick="handleCalendarSecretClick(event); toggleHolidayMotifExpand();" tabindex="0" role="button" aria-label="Holiday theme" aria-expanded="false" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();handleCalendarSecretClick(event);toggleHolidayMotifExpand();}" style="display: none;" title="">
         <span id="holidayMotifIcon" class="holiday-motif-icon"></span>
         <span id="holidayMotifTitle" class="holiday-motif-title"></span>
       </div>
@@ -10865,7 +10869,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         </div>
       </div>
       <a href="https://www.givecampus.com/campaigns/50770/donations/new" target="_blank" rel="noopener noreferrer" class="support-yutorah-btn" title="Support YUTorah & Sponsor Learning (Opens in new window)">❤️ Support YUTorah</a>
-      <div class="hebrew-date-badge" id="hebrewDateBadge" onclick="handleCalendarSecretClick(event); pulseHebrewDate();" tabindex="0" role="button" aria-label="Hebrew date" aria-expanded="false" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();handleCalendarSecretClick(event);pulseHebrewDate();}" title="">📅<span class="hebrew-date-text">${escapeHtml(homepageData?.hebrewDateString || 'Calendar')}</span></div>
+      <div class="hebrew-date-badge" id="hebrewDateBadge" onclick="handleCalendarSecretClick(event)" title="Hebrew Calendar Date">📅<span class="hebrew-date-text">${escapeHtml(homepageData?.hebrewDateString || 'Calendar')}</span></div>
       <button type="button" id="authBtn" class="theme-toggle-btn auth-btn" onclick="toggleAuthMenu(event)" title="Sign in to sync across devices">
         <span class="auth-icon">👤</span><span class="auth-label"> Sign in</span>
       </button>
@@ -12093,24 +12097,24 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   let calendarClickTimer = null;
   let toastTimer = null;
 
-  let hebrewPulseTimer = null;
-  function pulseHebrewDate() {
+  let motifExpandTimer = null;
+  function toggleHolidayMotifExpand() {
     try {
-      const badge = document.getElementById('hebrewDateBadge');
-      if (!badge) return;
-      if (badge.classList.contains('expanded')) {
-        badge.classList.remove('expanded');
-        badge.setAttribute('aria-expanded', 'false');
-        clearTimeout(hebrewPulseTimer);
+      const wrap = document.getElementById('holidayMotifWrap');
+      if (!wrap) return;
+      if (wrap.classList.contains('expanded')) {
+        wrap.classList.remove('expanded');
+        wrap.setAttribute('aria-expanded', 'false');
+        clearTimeout(motifExpandTimer);
         return;
       }
-      badge.classList.add('expanded');
-      badge.setAttribute('aria-expanded', 'true');
-      clearTimeout(hebrewPulseTimer);
-      hebrewPulseTimer = setTimeout(() => {
-        if (badge) {
-          badge.classList.remove('expanded');
-          badge.setAttribute('aria-expanded', 'false');
+      wrap.classList.add('expanded');
+      wrap.setAttribute('aria-expanded', 'true');
+      clearTimeout(motifExpandTimer);
+      motifExpandTimer = setTimeout(() => {
+        if (wrap) {
+          wrap.classList.remove('expanded');
+          wrap.setAttribute('aria-expanded', 'false');
         }
       }, 4000);
     } catch (e) {}
@@ -21454,6 +21458,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     var wWidth = window.innerWidth || document.documentElement.clientWidth;
 
     var badge = document.getElementById('hebrewDateBadge');
+    var motif = document.getElementById('holidayMotifWrap');
     var authBtn = document.getElementById('authBtn');
     var themeBtn = document.getElementById('themeToggleBtn');
     var brand = header.querySelector('.brand');
@@ -21463,54 +21468,62 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     var isMobile = wWidth <= 640;
     var rowMaxTop = hRect.top + (isMobile ? 38 : 46);
 
-    // 1. Zmanim / Hebrew Date Badge Shrinking Logic:
-    // If screen width <= 768px, or if with full text the login button or theme button
-    // would be cut off, wrapped to a second line, or collide with the brand:
-    // shrink the zmanim badge to just be the icon!
-    var shouldShrink = wWidth <= 768;
-
+    // 1. Hebrew Calendar Date Badge: Hidden on mobile (<= 640px)
     if (badge) {
-      badge.style.display = 'inline-flex';
-      if (!shouldShrink) {
-        // Temporarily test with full text to see if login button or theme toggle would be cut off
-        badge.classList.remove('icon-only');
+      if (isMobile) {
+        badge.style.display = 'none';
+      } else {
+        badge.style.display = 'inline-flex';
         var bRect = badge.getBoundingClientRect();
+        if (bRect.right > maxRight - 4 || bRect.left < brandRight + 8 || bRect.top > rowMaxTop) {
+          badge.style.display = 'none';
+        } else {
+          badge.style.display = 'inline-flex';
+        }
+      }
+    }
+
+    // 2. Holiday Motif Badge (e.g. Rosh Hashanah apple):
+    // If screen is <= 768px or if full title would cause login button or theme toggle to cut off,
+    // shrink to just the icon (the apple)!
+    if (motif && motif.style.display !== 'none') {
+      var shouldShrinkMotif = wWidth <= 768;
+      if (!shouldShrinkMotif) {
+        motif.classList.remove('icon-only');
+        var mRect = motif.getBoundingClientRect();
         var aRect = authBtn ? authBtn.getBoundingClientRect() : null;
         var tRect = (themeBtn && themeBtn.style.display !== 'none') ? themeBtn.getBoundingClientRect() : null;
 
         var authCutOff = aRect && (aRect.right > maxRight - 4 || aRect.top > rowMaxTop || aRect.left < brandRight + 8);
         var themeCutOff = tRect && (tRect.right > maxRight - 4 || tRect.top > rowMaxTop || tRect.left < brandRight + 8);
-        var badgeCutOff = bRect.right > maxRight - 4 || bRect.left < brandRight + 8 || bRect.top > rowMaxTop;
+        var motifCutOff = mRect.right > maxRight - 4 || mRect.left < brandRight + 8 || mRect.top > rowMaxTop;
 
-        if (authCutOff || themeCutOff || badgeCutOff) {
-          shouldShrink = true;
+        if (authCutOff || themeCutOff || motifCutOff) {
+          shouldShrinkMotif = true;
         }
       }
 
-      if (shouldShrink) {
-        badge.classList.add('icon-only');
-        var dateText = badge.querySelector('.hebrew-date-text');
-        var rawText = dateText ? (dateText.textContent || '').trim() : '';
-        if (rawText) badge.title = rawText + ' (Tap to view)';
+      if (shouldShrinkMotif) {
+        motif.classList.add('icon-only');
+        var motifTitle = document.getElementById('holidayMotifTitle');
+        var titleText = motifTitle ? (motifTitle.textContent || '').trim() : '';
+        if (titleText) motif.title = titleText + ' (Tap to view)';
       } else {
-        badge.classList.remove('icon-only');
+        motif.classList.remove('icon-only');
       }
 
-      // Ultra-narrow viewport safeguard (<320px) if even icon collides
-      var bRectFinal = badge.getBoundingClientRect();
-      if (bRectFinal.left < brandRight + 4) {
-        badge.style.display = 'none';
-      } else {
-        badge.style.display = 'inline-flex';
+      var mRectFinal = motif.getBoundingClientRect();
+      if (mRectFinal.left < brandRight + 4) {
+        motif.style.display = 'none';
       }
     }
 
-    // 2. Ensure authBtn (login button) is visible and never cut off
+    // 3. Ensure authBtn (login button) is visible and never cut off
     if (authBtn) {
       authBtn.style.display = 'inline-flex';
     }
 
-    // 3. Theme Toggle Button check
+    // 4. Theme Toggle Button check
     if (themeBtn) {
       themeBtn.style.display = 'inline-flex';
       var tRectFinal = themeBtn.getBoundingClientRect();
@@ -21527,22 +21540,22 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
   }
 
-  // Dismiss expanded zmanim full text on document click outside or Escape
+  // Dismiss expanded holiday motif popup on document click outside or Escape
   document.addEventListener('click', function(e) {
-    var badge = document.getElementById('hebrewDateBadge');
-    if (badge && badge.classList.contains('expanded') && !badge.contains(e.target)) {
-      badge.classList.remove('expanded');
-      badge.setAttribute('aria-expanded', 'false');
-      if (typeof hebrewPulseTimer !== 'undefined') clearTimeout(hebrewPulseTimer);
+    var wrap = document.getElementById('holidayMotifWrap');
+    if (wrap && wrap.classList.contains('expanded') && !wrap.contains(e.target)) {
+      wrap.classList.remove('expanded');
+      wrap.setAttribute('aria-expanded', 'false');
+      if (typeof motifExpandTimer !== 'undefined') clearTimeout(motifExpandTimer);
     }
   });
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
-      var badge = document.getElementById('hebrewDateBadge');
-      if (badge && badge.classList.contains('expanded')) {
-        badge.classList.remove('expanded');
-        badge.setAttribute('aria-expanded', 'false');
-        if (typeof hebrewPulseTimer !== 'undefined') clearTimeout(hebrewPulseTimer);
+      var wrap = document.getElementById('holidayMotifWrap');
+      if (wrap && wrap.classList.contains('expanded')) {
+        wrap.classList.remove('expanded');
+        wrap.setAttribute('aria-expanded', 'false');
+        if (typeof motifExpandTimer !== 'undefined') clearTimeout(motifExpandTimer);
       }
     }
   });
