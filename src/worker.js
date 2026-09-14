@@ -21116,6 +21116,36 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   let activeThemeKey = 'auto';
   let activeVariant = 'a';
 
+  const HOLIDAY_TEXT_TIERS = {
+    rosh_chodesh: ['Rosh Chodesh', 'ראש חודש', 'ר״ח'],
+    rosh_chodesh_cheshvan: ['Rosh Chodesh Cheshvan', 'Rosh Chodesh', 'ראש חודש חשון', 'ר״ח חשון', 'ר״ח'],
+    elul: ['Chodesh Elul', 'Elul', 'חודש אלול', 'אלול'],
+    rosh_hashanah: ['Rosh Hashanah', 'ראש השנה', 'ר״ה'],
+    teshuva: ['Aseres Yemei Teshuva', 'עשרת ימי תשובה', 'עשי״ת'],
+    yom_kippur: ['Yom Kippur', 'יום כיפור', 'יוה״כ'],
+    sukkos: ['Chag HaSukkos', 'Sukkos', 'חג הסוכות', 'סוכות'],
+    hoshana_rabbah: ['Hoshana Rabbah', 'הושענא רבה', 'הו״ר'],
+    simchas_torah: ['Simchas Torah', 'שמחת תורה', 'שמח״ת'],
+    chanukah: ['Chanukah', 'חנוכה'],
+    tubshevat: ["Tu B'Shevat", 'ט״ו בשבט'],
+    adar_buildup: ['Chodesh Adar', 'Adar', 'חודש אדר', 'אדר'],
+    taanis_esther: ["Ta'anis Esther", 'תענית אסתר', 'תענ״א'],
+    purim: ['Purim Sameach', 'Purim', 'פורים שמח', 'פורים'],
+    nissan_buildup: ['Chodesh HaAviv', 'Nissan', 'חודש ניסן', 'ניסן'],
+    pesach: ['Chag HaPesach', 'Pesach', 'חג הפסח', 'פסח'],
+    omer: ['Sefiras HaOmer', 'Omer', 'ספירת העומר', 'עומר'],
+    yom_hazikaron: ['Yom HaZikaron', 'יום הזיכרון', 'יומה״ז'],
+    yom_haatzmaut: ['Yom HaAtzmaut', 'יום העצמאות', 'יומה״ע'],
+    lag_baomer: ['Lag BaOmer', 'ל״ג בעומר'],
+    yom_yerushalayim: ['Yom Yerushalayim', 'יום ירושלים', 'יו״י'],
+    shavuos: ['Chag HaShavuos', 'Shavuos', 'חג השבועות', 'שבועות'],
+    july4: ['July 4th', '4 ביולי'],
+    three_weeks: ['Bein HaMetzarim', 'Three Weeks', 'בין המצרים'],
+    nine_days: ['The Nine Days', 'Nine Days', 'תשעת הימים', 'ט׳ הימים'],
+    tisha_bav: ["Tisha B'Av", 'תשעה באב', 'ט״ב'],
+    tubav: ["Tu B'Av", 'ט״ו באב']
+  };
+
   const HOLIDAY_HEBREW_TITLES = {
     rosh_chodesh: 'ראש חודש',
     rosh_chodesh_cheshvan: 'ר״ח חשון',
@@ -21235,12 +21265,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       motifWrap.style.display = 'inline-flex';
       motifWrap.dataset.holiday = '1';
       motifIcon.innerHTML = '<img src="/assets/themes/' + variantData.icon + '" alt="icon" style="width:100%; height:100%; display:block;" onerror="this.style.display=&quot;none&quot;">';
-      const titleEn = (resolvedKey === 'chanukah' && chanukahDay)
-        ? ('Chanukah (Night ' + chanukahDay + ')')
-        : (themeDef.badge || themeDef.name || 'Holiday');
-      const titleHe = (resolvedKey === 'chanukah' && chanukahDay)
-        ? ('חנוכה (נר ' + chanukahDay + ')')
-        : (HOLIDAY_HEBREW_TITLES[resolvedKey] || 'מועד');
+      const tiers = (resolvedKey === 'chanukah' && chanukahDay)
+        ? ['Chanukah (Night ' + chanukahDay + ')', 'Chanukah', 'חנוכה (נר ' + chanukahDay + ')', 'חנוכה']
+        : (HOLIDAY_TEXT_TIERS[resolvedKey] || [themeDef.badge || themeDef.name || 'Holiday']);
+      motifWrap.dataset.tiers = JSON.stringify(tiers);
+      const titleEn = tiers[0];
+      const titleHe = tiers.find(t => /[\u0590-\u05FF]/.test(t)) || HOLIDAY_HEBREW_TITLES[resolvedKey] || titleEn;
       motifWrap.dataset.titleEn = titleEn;
       motifWrap.dataset.titleHe = titleHe;
       motifTitle.textContent = titleEn;
@@ -22146,6 +22176,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     var motifTitle = document.getElementById('holidayMotifTitle');
     var titleEn = (motif && motif.dataset.titleEn) || (motifTitle ? motifTitle.textContent : '');
     var titleHe = (motif && motif.dataset.titleHe) || '';
+    var tiers = [];
+    if (motif && motif.dataset.tiers) {
+      try { tiers = JSON.parse(motif.dataset.tiers); } catch (e) { tiers = []; }
+    }
+    if (!tiers.length) {
+      if (titleEn) tiers.push(titleEn);
+      if (titleHe && titleHe !== titleEn) tiers.push(titleHe);
+    }
 
     // Reset everything to maximum visibility first:
     header.classList.remove('cluster-tight');
@@ -22158,7 +22196,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (motifOn) {
         motif.style.display = 'inline-flex';
         motif.classList.remove('icon-only');
-        if (motifTitle && titleEn) motifTitle.textContent = titleEn;
+        if (motifTitle && (tiers[0] || titleEn)) motifTitle.textContent = tiers[0] || titleEn;
       } else {
         motif.style.display = 'none';
       }
@@ -22170,9 +22208,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       supportBtn.style.display = 'none';
     }
 
-    // Step 2: If overflowing, try zman in Hebrew (e.g. "ראש השנה" instead of "Rosh Hashanah")
-    if (motifOn && motif && motifTitle && titleHe && headerClusterOverflows()) {
-      motifTitle.textContent = titleHe;
+    // Step 2: Try progressively shorter zman text tiers (e.g. 'Rosh Hashanah' -> 'ראש השנה' -> 'ר״ה',
+    // or 'Chodesh Elul' -> 'Elul' -> 'חודש אלול' -> 'אלול') before falling back to icon-only
+    if (motifOn && motif && motifTitle && tiers.length > 1) {
+      for (var i = 1; i < tiers.length; i++) {
+        if (!headerClusterOverflows()) break;
+        motifTitle.textContent = tiers[i];
+      }
     }
 
     // Step 3: If still overflowing, try zman motif as icon-only (just the apple / holiday icon)
@@ -22191,8 +22233,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
     // Step 5: If still overflowing after date badge is hidden, ensure motif is compacted
     if (motifOn && motif && !motif.classList.contains('icon-only') && headerClusterOverflows()) {
-      if (motifTitle && titleHe && motifTitle.textContent !== titleHe) {
-        motifTitle.textContent = titleHe;
+      for (var j = 1; j < tiers.length; j++) {
+        if (!headerClusterOverflows()) break;
+        motifTitle.textContent = tiers[j];
       }
       if (headerClusterOverflows()) {
         motif.classList.add('icon-only');

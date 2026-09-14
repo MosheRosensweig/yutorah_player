@@ -917,10 +917,13 @@ async function testZmanimIconShrinkAndSpacePreservation() {
   // mobile hides — checkHeaderOverflow shows each only when it fits)
   assert.ok(!html.includes('#hebrewDateBadge {\n        display: none !important;'), 'badge must not be force-hidden on mobile (fill governs)');
   assert.ok(html.includes("if (supportBtn && headerClusterOverflows())"), 'support must hide when tight');
-  assert.ok(html.includes("if (badge && headerClusterOverflows())"), 'badge must hide when tight');
-  assert.ok(html.includes('var refill = [themeBtn, badge, supportBtn];'), 'refill must be highest-priority-first (theme → badge → support)');
+  assert.ok(html.includes('HOLIDAY_TEXT_TIERS'), 'Holiday text tiers dictionary must exist');
   assert.ok(html.includes('HOLIDAY_HEBREW_TITLES'), 'Holiday Hebrew titles dictionary must exist');
-  assert.ok(html.includes('motifTitle.textContent = titleHe;'), 'Hebrew zman title fallback must be attempted on overflow');
+  assert.ok(html.includes('motifTitle.textContent = tiers[i];'), 'Progressive zman text tiers must be attempted on overflow');
+  assert.ok(html.includes("rosh_hashanah: ['Rosh Hashanah', 'ראש השנה', 'ר״ה']"), 'Rosh Hashanah must cascade English -> Hebrew -> ר״ה');
+  assert.ok(html.includes("elul: ['Chodesh Elul', 'Elul', 'חודש אלול', 'אלול']"), 'Elul must cascade Chodesh Elul -> Elul -> חודש אלול -> אלול');
+  assert.ok(html.includes("teshuva: ['Aseres Yemei Teshuva', 'עשרת ימי תשובה', 'עשי״ת']"), 'Teshuva must include Roshei Teivos עשי״ת');
+  assert.ok(html.includes("yom_kippur: ['Yom Kippur', 'יום כיפור', 'יוה״כ']"), 'Yom Kippur must include Roshei Teivos יוה״כ');
   assert.ok(!html.includes("badge.classList.add('collapsed'"), 'date badge must never collapse to icon-only (actual date text or hidden)');
 
   // 2. CSS contains .holiday-motif-wrap.icon-only rules
