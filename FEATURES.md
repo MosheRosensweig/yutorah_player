@@ -305,6 +305,7 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 - **Daf text default**: the text tab opens in `עברית + English` mode by default. The amud selector has its own section above the separate zoom/language controls and remains available in both Daf tabs.
 - **Homepage integration**: selecting the Daf Yomi card from the Timely Study menu opens `/daf`, keeping the hub within the regular YUTorah Enhanced site navigation.
 - **Shiurim on this daf**: the 🎧 Shiurim button sits directly under **Today’s Daf** and opens a `?search=Masechta+Daf` results tab for related lectures. Entry via the 📖 Daf Hub quick chip; `themeMode` SSR + client toggle included; breakout-safe param embedding (`jsEmbed`).
+- **Daf-linked audio flow (dev)**: Daf is an in-app view inside the regular application shell, not a second HTML document. Daf search links stay in the same view and use the existing regular application's audio player and mini-player. Identifiable Daf shiurim expose an **📜 Open Daf** action in both the full and minimized regular players; that action swaps the view without creating a second audio element or Daf-specific mini-player. Detection uses explicit tractate/folio fields plus patterns in lecture title, description, series, keywords, and posted categories.
 - **ℹ️ Shiurim-therein explainer** (companion, public playlists): info button beside the scope checkbox using the standard tooltip system; copy states the scope only widens results.
 
 ### 📄 Source Sheet button on audio shiurim

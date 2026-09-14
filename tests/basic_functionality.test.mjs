@@ -1188,6 +1188,13 @@ async function testDafHub() {
 
   // Cycle math: 36 masechtot (no Shekalim), 2711 dafim, verified anchor.
   const workerSrc = fs.readFileSync(new URL('../src/worker.js', import.meta.url), 'utf8');
+  assert.ok(!workerSrc.includes('id="dafMiniPlayer"') && !workerSrc.includes('loadDafShiur'), 'Daf page must not render a second custom audio player');
+  assert.ok(workerSrc.includes('id="dafOpenBtn"') && workerSrc.includes('detectDafReference'), 'Audio player must expose Open Daf for identifiable Daf shiurim');
+  assert.ok(workerSrc.includes('saveDafHandoff(!audio.paused)') && workerSrc.includes('sessionStorage'), 'Regular player must persist the Daf handoff state');
+  assert.ok(workerSrc.includes('saveDafHandoff(!audio.paused)') && workerSrc.includes('id="returnToDafBtn"'), 'Normal player must persist handoff and expose Return to Daf');
+  assert.ok(!html.includes('id="dafShiurimLink" href="#" target="_blank"'), 'Daf Shiurim must stay in the same tab');
+  assert.ok(workerSrc.includes('id="miniDafBtn"') && workerSrc.includes('currentDafRef') && !workerSrc.includes("miniDafBtn.href = '/daf?m=' + encodeURIComponent(currentDafRef.m) + '&d=' + encodeURIComponent(String(currentDafRef.d)) + '&shiurId'"), 'Regular miniplayer must expose the Daf action without a second audio player handoff');
+  assert.ok(workerSrc.includes('currentDafRef = dafMatch || inheritedDafRef') && workerSrc.includes('if (currentDafRef) {'), 'Daf Shiurim selections must retain the originating Daf when metadata is incomplete');
   assert.ok(workerSrc.includes('const DAF_CYCLE_DAYS = 2711'), 'cycle must be 2711 dafim');
   assert.ok(workerSrc.includes('Date.UTC(2019, 11, 28)'), 'anchor must be 2019-12-28 (Berachos 2)');
   assert.ok(!workerSrc.includes("['Shekalim'"), 'Shekalim must be excluded from the Bavli cycle');
@@ -1221,7 +1228,9 @@ async function testDafHub() {
   // Entry point from the homepage.
   const homeRes = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/'), mockEnv, mockCtx);
   const homeHtml = await homeRes.text();
-  assert.ok(homeHtml.includes("window.location.href='/daf'"), 'homepage must link the Daf Hub');
+  assert.ok(homeHtml.includes('openDafView(event)'), 'homepage must open the Daf Hub as an in-app view');
+  assert.ok(html.includes('id="miniPlayer"') && html.includes('id="regularAppView"') && html.includes('id="dafAppView"'), 'Daf route must use the regular app shell and shared mini-player');
+  assert.ok(workerSrc.includes("if (dafView && regularView && dafView.style.display !== 'none')") && workerSrc.includes("regularView.style.display = '';"), 'Expanding the shared mini-player from Daf must reveal the regular player view');
 
   // Init params must use breakout-safe embedding (XSS).
   assert.ok(workerSrc.includes('var sm = ${jsEmbed(') || workerSrc.includes('var sm = ${ jsEmbed('),

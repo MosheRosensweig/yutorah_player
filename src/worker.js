@@ -2561,10 +2561,12 @@ export default {
       themeMode = 'dark';
     }
 
-    // 4b. Daf Yomi Daily Study Hub: /daf (shareable ?m=&d=&date=).
-    // Params are validated server-side (client re-validates): unknown
-    // tractates, out-of-range folio, and impossible dates fall back to ''.
-    if (url.pathname === '/daf' || url.pathname === '/daf/') {
+    // 4b. Daf Yomi is a view inside the regular application shell. Keeping
+    // this route in the normal render path preserves the shared audio element
+    // and standard mini-player when the URL is entered directly.
+    const isDafRoute = url.pathname === '/daf' || url.pathname === '/daf/';
+    let dafInit = null;
+    if (isDafRoute) {
       let initM = '', initD = '', initDt = '';
       try {
         const rm = url.searchParams.get('m') || '';
@@ -2578,17 +2580,7 @@ export default {
         const rdt = url.searchParams.get('date') || '';
         if (dafValidDateISO(rdt)) initDt = rdt;
       } catch (e) {}
-      return new Response(renderDafPage({
-        themeMode,
-        initMasechta: initM,
-        initDaf: initD,
-        initDate: initDt
-      }), {
-        headers: {
-          'Content-Type': 'text/html; charset=utf-8',
-          'Cache-Control': 'no-cache',
-        }
-      });
+      dafInit = { initMasechta: initM, initDaf: initD, initDate: initDt };
     }
 
     if (url.pathname === '/api/daf-pdf') {
@@ -2624,6 +2616,24 @@ export default {
       } catch (e) {
         return new Response('Daf PDF unavailable', { status: 502 });
       }
+    }
+
+    if (url.pathname === '/api/daf-view') {
+      let initM = '', initD = '', initDt = '';
+      try {
+        const idx = dafIndexForRefUTC(url.searchParams.get('m') || '', url.searchParams.get('d') || '');
+        if (idx >= 0) {
+          const ref = dafRefForIndexUTC(idx);
+          initM = ref.masechta;
+          initD = String(ref.daf);
+        }
+        const date = url.searchParams.get('date') || '';
+        if (dafValidDateISO(date)) initDt = date;
+      } catch (e) {}
+      const fragment = renderDafFragment({ themeMode, initMasechta: initM, initDaf: initD, initDate: initDt });
+      return new Response(JSON.stringify(fragment), {
+        headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache' }
+      });
     }
 
     if (url.pathname === '/api/daf-image') {
@@ -2684,7 +2694,7 @@ export default {
     // filter params like ?subCategoryId= from hero slides), not just ?search=.
     const hasFilterParams = ['teacherId', 'subCategoryId', 'locationId', 'seriesId', 'year', 'fromDate', 'toDate', 'minDuration', 'maxDuration', 'mediaType', 'sort']
       .some(k => url.searchParams.get(k));
-    if (!shiurData && (searchQuery || hasFilterParams)) {
+    if (!shiurData && !isDafRoute && (searchQuery || hasFilterParams)) {
       try {
         const searchPayload = await executeSearchInternal(url.searchParams);
         initialSearchResults = searchPayload?.response?.docs || [];
@@ -2728,7 +2738,8 @@ export default {
       initialRecentNumFound,
       initialQueryResolution,
       initialDidYouMean,
-      isClassicSearch
+      isClassicSearch,
+      dafInit
     }), {
       headers: {
         'Content-Type': 'text/html; charset=utf-8',
@@ -5170,6 +5181,34 @@ function dafImageMasechtaName(masechta) {
   };
   return names[String(masechta || '').trim().toLowerCase()] || '';
 }
+function extractDafReference(data) {
+  if (!data || typeof data !== 'object') return null;
+  const explicitM = data.masechta || data.tractate || data.dafMasechta || data.dafTractate;
+  const explicitD = data.daf || data.dafNumber || data.folio || data.dafPage;
+  if (explicitM && /^\d{1,3}$/.test(String(explicitD || ''))) {
+    const match = DAF_MASECHTOT.find(([name]) => name.toLowerCase() === String(explicitM).replace(/[_-]+/g, ' ').trim().toLowerCase());
+    if (match) return { m: match[0], d: parseInt(explicitD, 10), amud: String(data.amud || data.side || '').toLowerCase() };
+  }
+  const parts = [];
+  const add = value => { if (value) parts.push(String(value)); };
+  add(data.shiurTitle || data.title);
+  add(data.shiurDescription || data.description);
+  add(data.seriesName || data.seriesname);
+  if (Array.isArray(data.shiurKeywords)) data.shiurKeywords.forEach(k => add(k && (k.keywordTitle || k.title || k.name)));
+  if (data.postedInCategories && typeof data.postedInCategories === 'object') {
+    for (const group of Object.values(data.postedInCategories)) {
+      add(group && group.groupName);
+      if (group && Array.isArray(group.categories)) group.categories.forEach(c => add(c && (c.categoryName || c.name)));
+    }
+  }
+  const text = parts.join(' ').replace(/[״"']/g, ' ').replace(/\s+/g, ' ');
+  for (const [name] of DAF_MASECHTOT) {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const match = new RegExp('(?:^|\\W)' + escaped + '\\s*(\\d{1,3})(?:\\s*([ab]))?(?:\\W|$)', 'i').exec(text);
+    if (match) return { m: name, d: parseInt(match[1], 10), amud: (match[2] || '').toLowerCase() };
+  }
+  return null;
+}
 async function resolveDafPdf(source) {
   const headers = {
     'User-Agent': 'Mozilla/5.0 (compatible; YUTorah-Enhanced/1.0)',
@@ -5197,7 +5236,7 @@ async function resolveDafPdf(source) {
   return null;
 }
 
-function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', initDate = '' }) {
+function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', initDate = '', initShiurId = '' }) {
   const htmlThemeAttr = themeMode === 'dark' ? ' data-theme="dark"' : '';
   const optHtml = DAF_MASECHTOT.map(pair =>
     '<option value="' + pair[0] + '">' + pair[0] + ' (' + pair[1] + ')</option>').join('');
@@ -5399,7 +5438,7 @@ function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', in
     <h1 id="dafHeroTitle">📜 Loading today&rsquo;s daf…</h1>
     <div class="daf-date-line" id="dafHeroDate"></div>
     <button type="button" class="daf-btn" id="dafTodayBtn" onclick="dafGoToday()">Today&rsquo;s Daf</button>
-    <div style="margin-top: 10px;"><a class="daf-btn" id="dafShiurimLink" href="#" target="_blank" rel="noopener" title="Shiurim on this daf">🎧 Shiurim</a></div>
+    <div style="margin-top: 10px;"><a class="daf-btn" id="dafShiurimLink" href="#" onclick="dafOpenShiurim(event)" title="Shiurim on this daf">🎧 Shiurim</a></div>
   </div>
   <div class="daf-card">
     <div class="daf-controls">
@@ -5442,7 +5481,7 @@ function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', in
   </div>
   <div class="daf-footer">
     Daily learning computed from the fixed 2,711-daf cycle (36 masechtot, no Shekalim).<br>
-    Daf text: Sefaria (CC-BY). <a href="/">← Back to YUTorah Enhanced Player</a>
+    Daf text: Sefaria (CC-BY). <a href="/" onclick="goHome(event)">← Back to YUTorah Enhanced Player</a>
   </div>
 </main>
 <script>
@@ -5453,6 +5492,7 @@ function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', in
   var CYCLE_DAYS = 2711;
   var ANCHOR_UTC = Date.UTC(2019, 11, 28); // cycle-14 day 0 = Berachos 2
   var DAY_MS = 86400000;
+  var initialShiurId = ${JSON.stringify(String(initShiurId || ''))};
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -5515,6 +5555,23 @@ function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', in
   function sefariaRef(m, d) {
     return String(m).replace(/ /g, '_') + '.' + d;
   }
+  var state = { m: 'Berachos', d: 2, dateISO: todayISO(), lang: 'both', view: 'text', amud: 'both', loading: null };
+  function dafReturnUrl() {
+    return '/daf?m=' + encodeURIComponent(state.m) + '&d=' + encodeURIComponent(String(state.d)) + '&date=' + encodeURIComponent(state.dateISO);
+  }
+  window.dafOpenShiurim = function(e) {
+    if (e) e.preventDefault();
+    var link = document.getElementById('dafShiurimLink');
+    var href = link ? link.getAttribute('href') : '';
+    if (!href) return;
+    var u = new URL(href, window.location.origin);
+    var q = u.searchParams.get('search') || '';
+    if (typeof window.openSearchView === 'function') {
+      window.openSearchView(q, u.searchParams.get('return_to') || dafReturnUrl());
+    } else {
+      window.location.href = href;
+    }
+  };
 
   // Scan-image slot: return a URL to render the daf as an image instead of
   // text, or '' to use the Sefaria text panel. Reserved for an image CDN.
@@ -5527,7 +5584,6 @@ function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', in
     return 'https://www.e-daf.com/index.asp?masechta=' + (idx + 1) + '&daf=' + encodeURIComponent(String(d)) + '&size=30&pdf=1';
   }
 
-  var state = { m: 'Berachos', d: 2, dateISO: todayISO(), lang: 'both', view: 'text', amud: 'both', loading: null };
   var dafTextData = null;
 
   function syncDafUrl() {
@@ -5666,7 +5722,7 @@ function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', in
     var hint = document.getElementById('dafCycleHint');
     if (hint) hint.textContent = 'Day ' + (indexForRef(state.m, state.d) + 1) + ' of 2,711';
     var link = document.getElementById('dafShiurimLink');
-    if (link) link.href = '/?search=' + encodeURIComponent(state.m + ' ' + state.d);
+    if (link) link.href = '/?search=' + encodeURIComponent(state.m + ' ' + state.d) + '&return_to=' + encodeURIComponent(dafReturnUrl());
     syncDafUrl();
   }
   function indexMaxFor(m) {
@@ -5927,8 +5983,29 @@ function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', in
 </html>`;
 }
 
-function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpeed = '', themeMode = 'dark', homepageData, sponsorshipText = '', sponsorshipPlainText = '', sponsorshipAudioUrl = '', searchQuery, initialSearchResults, initialNumFound = 0, initialPhoneticExpansion = null, initialRecentDocs = [], initialRecentNumFound = 0, initialQueryResolution = null, initialDidYouMean = [], isClassicSearch = false }) {
+function renderDafFragment(opts = {}) {
+  const full = renderDafPage(opts);
+  const styleMatch = full.match(/<style>([\s\S]*?)<\/style>/i);
+  const bodyMatch = full.match(/<body[^>]*>([\s\S]*?)<script>([\s\S]*?)<\/script>\s*<\/body>/i);
+  if (!styleMatch || !bodyMatch) return { html: '', css: '', script: '' };
+  let css = styleMatch[1]
+    .replace(/:root\s*\{[\s\S]*?\}\s*/i, '')
+    .replace(/\[data-theme="dark"\]\s*\{[\s\S]*?\}\s*/gi, '')
+    .replace(/\*,\s*\*::before,\s*\*::after\s*\{[\s\S]*?\}\s*/i, '')
+    .replace(/body\s*\{[\s\S]*?\}\s*/i, '')
+    .replace(/header#dafHeader\s*\{[\s\S]*?\}\s*/i, '')
+    .replace(/main\s*\{[\s\S]*?\}\s*/i, '');
+  const mainMatch = bodyMatch[1].match(/<main>([\s\S]*?)<\/main>/i);
+  return {
+    html: mainMatch ? mainMatch[1] : bodyMatch[1],
+    css,
+    script: bodyMatch[2]
+  };
+}
+
+function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpeed = '', themeMode = 'dark', homepageData, sponsorshipText = '', sponsorshipPlainText = '', sponsorshipAudioUrl = '', searchQuery, initialSearchResults, initialNumFound = 0, initialPhoneticExpansion = null, initialRecentDocs = [], initialRecentNumFound = 0, initialQueryResolution = null, initialDidYouMean = [], isClassicSearch = false, dafInit = null }) {
   const isPlaying = Boolean(shiurData || directAudio);
+  const initialDafRef = extractDafReference(shiurData);
 
   const initialSearchTerms = [];
   if (searchQuery) {
@@ -6200,6 +6277,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }).join('\n          ');
 
   const htmlThemeAttr = themeMode === 'dark' ? ' data-theme="dark"' : '';
+  const dafFragment = dafInit ? renderDafFragment({
+    themeMode,
+    initMasechta: dafInit.initMasechta,
+    initDaf: dafInit.initDaf,
+    initDate: dafInit.initDate
+  }) : null;
 
   return `<!DOCTYPE html>
 <html lang="en"${htmlThemeAttr}>
@@ -12123,6 +12206,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       text-decoration: underline;
     }
   </style>
+  ${dafFragment ? `<style id="dafEmbeddedStyles">${dafFragment.css}</style>` : ''}
 </head>
 <body>
 
@@ -12233,6 +12317,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 <div id="holidayTaglineBar" class="holiday-tagline-bar" style="display: none;"></div>
 
 <main>
+  <div id="regularAppView"${dafFragment ? ' style="display:none;"' : ''}>
 
   <div class="timely-collapsible-wrap">
     <button type="button" class="timely-collapsible-trigger" id="timelyTriggerBtn" onclick="toggleTimelyCollapse()" aria-expanded="false" title="Click to view daily learning schedule">
@@ -12264,7 +12349,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         </a>
 
         <!-- 2. Daf Yomi (Gemara) -->
-        <a href="/daf" class="timely-menu-card" onclick="window.location.href='/daf'; return false;" title="Open today&rsquo;s Daf Yomi page">
+        <a href="/daf" class="timely-menu-card" onclick="openDafView(event); return false;" title="Open today&rsquo;s Daf Yomi page">
           <div class="timely-card-icon">📜</div>
           <div class="timely-card-body">
             <div class="timely-card-label">Daf Yomi (Gemara)</div>
@@ -12333,7 +12418,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       <button class="chip" onclick="searchFor('Rabbi Yaakov Neuburger')">👤 R' Neuburger</button>
       <button class="chip" onclick="searchFor('Rabbi Moshe Taragin')">👤 R' Taragin</button>
       <button class="chip" onclick="searchFor('Daf Yomi')">📜 Daf Yomi</button>
-      <button class="chip" onclick="window.location.href='/daf'" title="Open the Daf Yomi hub">📖 Daf Hub</button>
+      <button class="chip" onclick="openDafView(event)" title="Open the Daf Yomi hub">📖 Daf Hub</button>
     </div>
   </div>
 
@@ -12453,7 +12538,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   <!-- Audio Player Card (Active when playing) -->
   <div class="player-card" id="playerCard">
     <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
-      <a onclick="minimizePlayer()" class="player-nav-back" id="playerNavBackBtn" style="margin-bottom: 0; cursor: pointer;">${articlePdfUrl ? '← Browse Library While Reading' : '← Browse Library While Listening'}</a>
+      <a onclick="minimizePlayer()" class="player-nav-back" id="playerNavBackBtn" style="margin-bottom: 0; cursor: pointer;">${articlePdfUrl ? '← Browse Library While Reading' : '← Browse Library While Listening'}</a><a class="player-nav-back" id="returnToDafBtn" href="#" style="display:none; margin-left:12px;">📜 Return to Daf</a>
       <button type="button" class="mini-btn-pill" onclick="minimizePlayer()" title="Minimize to mini-player" style="background: #eef2f7; border: 1px solid #dbe2ed; color: var(--primary); font-size: 13px; font-weight: 700; padding: 5px 12px; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="pointer-events:none;"><path d="M7 10l5 5 5-5z"/></svg> Minimize</button>
     </div>
 
@@ -12524,6 +12609,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           <a class="action-btn" id="dlBtn" href="${escapeHtml(downloadUrl || audioUrl)}" target="_blank" ${downloadUrl || audioUrl ? '' : 'style="display:none;"'}>
             ⬇️ Download MP3
           </a>
+          <a class="action-btn" id="dafOpenBtn" onclick="saveDafHandoff(!audio.paused);" href="${initialDafRef ? '/daf?m=' + encodeURIComponent(initialDafRef.m) + '&d=' + encodeURIComponent(String(initialDafRef.d)) : '#'}" ${initialDafRef ? '' : 'style="display:none;"'} title="Open this shiur's Daf">📜 Open Daf</a>
           <button type="button" class="action-btn" id="sourceSheetBtn" onclick="openSourceSheetPicker()" style="display: none;" title="Open attached source sheet">
             📄 Source Sheet
           </button>
@@ -12766,6 +12852,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     </div>
   </div>
 
+  </div>
+  ${dafFragment ? `<section id="dafAppView" aria-label="Daf Yomi Hub">${dafFragment.html}</section>` : ''}
 </main>
 
 <!-- Floating Mini-Player (Persistent Bottom Bar across entire site) -->
@@ -12797,6 +12885,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         </svg>
       </button>
       <button type="button" class="mini-btn expand-btn" onclick="expandPlayer(); event.stopPropagation();" title="Expand Full Player">⤢</button>
+      <a class="mini-btn" id="miniDafBtn" href="#" onclick="event.stopPropagation();" title="Open Daf" style="display:none; text-decoration:none;">📜</a>
       <button type="button" class="mini-btn queue-btn acct-only" onclick="toggleQueuePopup(); event.stopPropagation();" title="Play Queue (Dev)">☰</button>
       <button type="button" class="mini-btn close-btn" onclick="closeMiniPlayer(); event.stopPropagation();" title="Stop & Close">✕</button>
     </div>
@@ -13228,9 +13317,50 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   let lastUrlUpdateSec = -1;
   let lastUrlUpdateTime = 0;
   let isManuallyMinimized = false;
+  let dafHandoffState = null;
+  function saveDafHandoff(playing) {
+    if (!currentShiurId) return;
+    try {
+      const u = new URL(window.location.href);
+      const returnTo = u.searchParams.get('return_to') || '';
+      if (!returnTo) return;
+      const r = new URL(returnTo, window.location.origin);
+      const m = r.searchParams.get('m');
+      const d = r.searchParams.get('d');
+      if (!m || !/^\d{1,3}$/.test(d || '')) return;
+      const state = { playing: !!playing, id: String(currentShiurId), m, d: Number(d), time: Number(audio && audio.currentTime || 0), savedAt: Date.now(), return_to: r.pathname + r.search };
+      sessionStorage.setItem('yutorah_daf_audio_state', JSON.stringify(state));
+    } catch (e) {}
+  }
+  try {
+    const u = new URL(window.location.href);
+    const returnTo = u.searchParams.get('return_to') || '';
+    if (returnTo) {
+      const r = new URL(returnTo, window.location.origin);
+      if (r.pathname === '/daf' && r.searchParams.get('m') && r.searchParams.get('d')) {
+        const saved = JSON.parse(sessionStorage.getItem('yutorah_daf_audio_state') || 'null');
+        if (saved && String(saved.id) === String(currentShiurId) && saved.return_to === r.pathname + r.search) dafHandoffState = saved;
+      }
+    }
+  } catch (e) {}
   let isExpandingUntil = 0;
   let currentSpeakerTeacherId = ${jsEmbed(currentTeacherId || '')};
   let currentSpeakerName = ${jsEmbed(speaker || '')};
+  let currentDafRef = ${jsEmbed(initialDafRef || null)};
+
+  function persistDafAudioState() {
+    if (!currentShiurId || !currentDafRef || !audio) return;
+    try {
+      sessionStorage.setItem('yutorah_daf_audio_state', JSON.stringify({
+        id: String(currentShiurId),
+        m: currentDafRef.m,
+        d: currentDafRef.d,
+        time: Number(audio.currentTime || 0),
+        savedAt: Date.now()
+      }));
+    } catch (e) {}
+  }
+  window.addEventListener('pagehide', persistDafAudioState);
 
   function handleSpeakerClick() {
     if (currentSpeakerTeacherId) {
@@ -13790,6 +13920,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const miniSpeaker = document.getElementById('miniSpeaker');
     const miniThumb = document.getElementById('miniThumb');
     const miniTime = document.getElementById('miniTime');
+    const miniDafBtn = document.getElementById('miniDafBtn');
     if (miniTitle) miniTitle.textContent = shiurObj.title;
     if (miniSpeaker) miniSpeaker.textContent = (shiurObj.speaker ? shiurObj.speaker + ' · ' : '') + "🎙️ Playing Sponsor Dedication";
     if (miniThumb) {
@@ -13893,6 +14024,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (miniSpeaker) miniSpeaker.textContent = shiurObj.speaker;
     if (miniThumb) miniThumb.src = shiurObj.photo || 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/_default.jpg';
     if (miniTime) miniTime.textContent = '0:00 / ' + (shiurObj.duration || '0:00');
+    if (miniDafBtn) {
+      if (currentDafRef) {
+        miniDafBtn.href = '/daf?m=' + encodeURIComponent(currentDafRef.m) + '&d=' + encodeURIComponent(String(currentDafRef.d));
+        miniDafBtn.style.display = 'inline-flex';
+      } else {
+        miniDafBtn.style.display = 'none';
+      }
+    }
 
     if ('mediaSession' in navigator) {
       updateMediaSession(shiurObj.title, shiurObj.speaker, shiurObj.photo);
@@ -15153,6 +15292,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   function goHome(e) {
     if (e) e.preventDefault();
 
+    const dafView = document.getElementById('dafAppView');
+    const regularView = document.getElementById('regularAppView');
+    if (dafView && regularView) {
+      dafView.style.display = 'none';
+      regularView.style.display = '';
+    }
+
     if (hasAudio || isCurrentShiurArticle) {
       minimizePlayer();
     }
@@ -15182,6 +15328,63 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
+
+  async function openDafView(e) {
+    if (e) e.preventDefault();
+    const regularView = document.getElementById('regularAppView');
+    let dafView = document.getElementById('dafAppView');
+    const target = new URL(e && e.currentTarget && e.currentTarget.href ? e.currentTarget.href : '/daf', window.location.origin);
+    if (!dafView) {
+      const qs = target.search ? target.search : '';
+      try {
+        const response = await fetch('/api/daf-view' + qs);
+        if (!response.ok) throw new Error('Daf view request failed');
+        const fragment = await response.json();
+        const style = document.createElement('style');
+        style.id = 'dafEmbeddedStyles';
+        style.textContent = fragment.css || '';
+        document.head.appendChild(style);
+        dafView = document.createElement('section');
+        dafView.id = 'dafAppView';
+        dafView.setAttribute('aria-label', 'Daf Yomi Hub');
+        dafView.innerHTML = fragment.html || '';
+        const main = document.querySelector('main');
+        if (!main) throw new Error('Application main view is unavailable');
+        main.appendChild(dafView);
+        const script = document.createElement('script');
+        script.id = 'dafEmbeddedScript';
+        script.textContent = fragment.script || '';
+        document.body.appendChild(script);
+      } catch (err) {
+        console.error('Unable to open Daf view:', err);
+        window.location.href = target.pathname + target.search;
+        return;
+      }
+    }
+    if (regularView) regularView.style.display = 'none';
+    dafView.style.display = '';
+    history.pushState({}, '', target.pathname + target.search);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  window.openDafView = openDafView;
+
+  function openSearchView(query, returnTo) {
+    const dafView = document.getElementById('dafAppView');
+    const regularView = document.getElementById('regularAppView');
+    if (dafView && regularView) {
+      dafView.style.display = 'none';
+      regularView.style.display = '';
+    }
+    const next = new URL(window.location.href);
+    next.pathname = '/';
+    next.search = '';
+    if (query) next.searchParams.set('search', query);
+    if (returnTo) next.searchParams.set('return_to', returnTo);
+    history.pushState({}, '', next.pathname + next.search);
+    if (typeof searchFor === 'function') searchFor(query || '');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  window.openSearchView = openSearchView;
 
   function toggleBioCollapse() {
     const text = document.getElementById('bioText');
@@ -15476,6 +15679,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   function expandPlayer() {
     isManuallyMinimized = false;
     isExpandingUntil = Date.now() + 800;
+    // Daf is rendered as a sibling view inside the same app shell. Reveal
+    // the regular shell before expanding so its player card is not hidden by
+    // the Daf view's parent.
+    const dafView = document.getElementById('dafAppView');
+    const regularView = document.getElementById('regularAppView');
+    if (dafView && regularView && dafView.style.display !== 'none') {
+      dafView.style.display = 'none';
+      regularView.style.display = '';
+    }
     const playerCard = document.getElementById('playerCard');
     const miniPlayer = document.getElementById('miniPlayer');
     if (playerCard) {
@@ -17218,6 +17430,54 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     } catch (e) {}
   }
 
+  function detectDafReference(data) {
+    var names = [
+      ['Berachos', 'Berachos'], ['Shabbos', 'Shabbos'], ['Eruvin', 'Eruvin'],
+      ['Pesachim', 'Pesachim'], ['Yoma', 'Yoma'], ['Sukkah', 'Sukkah'],
+      ['Beitzah', 'Beitzah'], ['Rosh Hashanah', 'Rosh Hashanah'],
+      ['Taanis', 'Taanis'], ['Megillah', 'Megillah'], ['Moed Katan', 'Moed Katan'],
+      ['Chagigah', 'Chagigah'], ['Yevamos', 'Yevamos'], ['Kesubos', 'Kesubos'],
+      ['Nedarim', 'Nedarim'], ['Nazir', 'Nazir'], ['Sotah', 'Sotah'],
+      ['Gittin', 'Gittin'], ['Kiddushin', 'Kiddushin'], ['Bava Kamma', 'Bava Kamma'],
+      ['Bava Metzia', 'Bava Metzia'], ['Bava Basra', 'Bava Basra'],
+      ['Sanhedrin', 'Sanhedrin'], ['Makkos', 'Makkos'], ['Shevuos', 'Shevuos'],
+      ['Avodah Zarah', 'Avodah Zarah'], ['Horayos', 'Horayos'],
+      ['Zevachim', 'Zevachim'], ['Menachos', 'Menachos'], ['Chullin', 'Chullin'],
+      ['Bechoros', 'Bechoros'], ['Arachin', 'Arachin'], ['Temurah', 'Temurah'],
+      ['Kerisos', 'Kerisos'], ['Meilah', 'Meilah'], ['Niddah', 'Niddah']
+    ];
+    var bits = [];
+    function add(v) { if (v) bits.push(String(v)); }
+    add(data && (data.shiurTitle || data.title));
+    add(data && (data.shiurDescription || data.description));
+    add(data && data.seriesName);
+    if (Array.isArray(data && data.shiurKeywords)) data.shiurKeywords.forEach(function(k) { add(k && (k.keywordTitle || k.title || k.name)); });
+    if (data && data.postedInCategories && typeof data.postedInCategories === 'object') {
+      Object.keys(data.postedInCategories).forEach(function(k) {
+        var group = data.postedInCategories[k];
+        add(group && group.groupName);
+        if (group && Array.isArray(group.categories)) group.categories.forEach(function(c) { add(c && (c.categoryName || c.name)); });
+      });
+    }
+    var text = bits.join(' ').replace(/[״"']/g, ' ').replace(/\s+/g, ' ');
+    var aliases = [
+      ['Berachos', 'Berachos'], ['Berachot', 'Berachos'], ['Brachos', 'Berachos'],
+      ['Shabbos', 'Shabbos'], ['Shabbat', 'Shabbos'], ['Chulin', 'Chullin'],
+      ['Chullin', 'Chullin'], ['Taanit', 'Taanis'],
+      ['Yevamot', 'Yevamos'], ['Ketubot', 'Kesubos'], ['Makkot', 'Makkos'],
+      ['Shevuot', 'Shevuos'], ['Bekhorot', 'Bechoros'], ['Arakhin', 'Arachin'],
+      ['Keritot', 'Kerisos'], ['Horayot', 'Horayos']
+    ];
+    names = names.concat(aliases);
+    for (var i = 0; i < names.length; i++) {
+      var escaped = names[i][0].replace(/[.*+?^\${}()|[\]\\]/g, '\\$&');
+      var re = new RegExp('(?:^|\\W)' + escaped + '(?:\\s+|\\s*[,.:\\-]\\s*)(\\d{1,3})(?:\\s*([ab])(?:\\b|$))?', 'i');
+      var m = re.exec(text);
+      if (m) return { m: names[i][1], d: parseInt(m[1], 10), amud: (m[2] || '').toLowerCase() };
+    }
+    return null;
+  }
+
   async function playShiurById(e, id, stayMini) {
     if (e) e.preventDefault();
     // Text selection wins over card click: dragging to select title/speaker
@@ -17258,6 +17518,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     currentShiurId = id;
     hasAudio = true;
     initialTimeApplied = false;
+    let inheritedDafRef = currentDafRef;
 
     // Reset UI while loading
     document.getElementById('shiurTitle').textContent = 'Loading shiur #' + id + '...';
@@ -17276,6 +17537,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       newUrl.searchParams.set('speed', currentPlaybackRate);
     }
     const curParams = new URL(window.location.href).searchParams;
+    try {
+      const returnTo = curParams.get('return_to') || '';
+      const returnUrl = new URL(returnTo, window.location.origin);
+      const rm = returnUrl.searchParams.get('m');
+      const rd = returnUrl.searchParams.get('d');
+      if (rm && /^\d{1,3}$/.test(rd || '')) {
+        inheritedDafRef = { m: rm, d: parseInt(rd, 10), amud: returnUrl.searchParams.get('amud') || '' };
+        currentDafRef = inheritedDafRef;
+      }
+    } catch (e) {}
     const activeTheme = curParams.get('theme') || curParams.get('mode');
     if (activeTheme) {
       const k = curParams.has('theme') ? 'theme' : 'mode';
@@ -17287,7 +17558,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       ['tab', 'pl', 'plq', 'plteachers', 'plvenues', 'pltopics', 'plscope', 'plsort'].forEach(k => {
         curParams.getAll(k).forEach(v => newUrl.searchParams.append(k, v));
       });
+      if (curParams.get('return_to')) newUrl.searchParams.set('return_to', curParams.get('return_to'));
     } catch (e) {}
+    saveDafHandoff(!audio.paused);
     history.pushState({ shiurId: id }, '', newUrl.pathname + newUrl.search);
 
     try {
@@ -17362,6 +17635,35 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (dlSrc) {
         dlBtn.href = dlSrc;
         dlBtn.style.display = 'inline-flex';
+      }
+      var dafMatch = detectDafReference(data);
+      currentDafRef = dafMatch || inheritedDafRef;
+      if (!currentDafRef) {
+        try {
+          const handoffUrl = new URL(new URL(window.location.href).searchParams.get('return_to') || '', window.location.origin);
+          const handoffM = handoffUrl.searchParams.get('m');
+          const handoffD = handoffUrl.searchParams.get('d');
+          if (handoffM && /^\d{1,3}$/.test(handoffD || '')) {
+            currentDafRef = { m: handoffM, d: parseInt(handoffD, 10), amud: handoffUrl.searchParams.get('amud') || '' };
+          }
+        } catch (e) {}
+      }
+      var dafBtn = document.getElementById('dafOpenBtn');
+      if (dafBtn) {
+        if (currentDafRef) {
+          dafBtn.href = '/daf?m=' + encodeURIComponent(currentDafRef.m) + '&d=' + encodeURIComponent(String(currentDafRef.d));
+          dafBtn.style.display = 'inline-flex';
+        } else {
+          dafBtn.style.display = 'none';
+        }
+      }
+
+      const returnDafBtn = document.getElementById('returnToDafBtn');
+      if (returnDafBtn) {
+        if (dafHandoffState && dafHandoffState.return_to) {
+          returnDafBtn.href = dafHandoffState.return_to;
+          returnDafBtn.style.display = 'inline-flex';
+        } else returnDafBtn.style.display = 'none';
       }
 
       // A new track owns a new sheet: drop any open viewer state now;
@@ -17446,6 +17748,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         const p = parseFloat(urlT);
         if (!isNaN(p) && p > 0) resumeSec = p;
       }
+      if (dafHandoffState && Number.isFinite(Number(dafHandoffState.time))) resumeSec = Math.max(0, Number(dafHandoffState.time));
 
       initialTimestamp = resumeSec ? String(resumeSec) : '';
 
@@ -25498,6 +25801,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 </script>
 
+${dafFragment ? `<script id="dafEmbeddedScript">${dafFragment.script}</script>` : ''}
 </body>
 </html>
 `;
