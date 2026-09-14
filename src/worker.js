@@ -9886,6 +9886,127 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
       background: #1f2b3e;
     }
+    .pl-btn-with-info {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+    }
+    .pl-info-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 17px;
+      height: 17px;
+      border-radius: 50%;
+      border: 1.5px solid var(--border, #cbd5e1);
+      background: var(--card, #fff);
+      color: var(--text-muted, #64748b);
+      font-size: 11px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-weight: 700;
+      font-style: normal;
+      cursor: pointer;
+      padding: 0;
+      margin-left: 1px;
+      user-select: none;
+      transition: all 0.15s ease;
+      vertical-align: middle;
+      line-height: 1;
+    }
+    .pl-info-btn:hover {
+      background: var(--primary, #2b4c7e);
+      color: #ffffff;
+      border-color: var(--primary, #2b4c7e);
+      transform: scale(1.1);
+    }
+    .pl-info-btn:focus-visible {
+      outline: 2px solid var(--primary) !important;
+      outline-offset: 1px;
+    }
+    [data-theme="dark"] .pl-info-btn {
+      border-color: #3b4b60;
+      background: #1a2332;
+      color: #94a3b8;
+    }
+    [data-theme="dark"] .pl-info-btn:hover {
+      background: #3b82f6;
+      color: #ffffff;
+      border-color: #3b82f6;
+    }
+    .pl-action-tooltip {
+      position: absolute;
+      bottom: calc(100% + 8px);
+      left: 0;
+      z-index: 1200;
+      width: 250px;
+      max-width: 82vw;
+      background: var(--card, #ffffff);
+      border: 1px solid var(--border, #cbd5e1);
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+      border-radius: 10px;
+      padding: 10px 12px;
+      text-align: left;
+      cursor: default;
+      animation: tooltipPopIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .pl-action-tooltip::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 18px;
+      border-width: 6px;
+      border-style: solid;
+      border-color: var(--card, #ffffff) transparent transparent transparent;
+    }
+    .pl-action-tooltip-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border-light, #e2e8f0);
+      padding-bottom: 4px;
+      margin-bottom: 6px;
+    }
+    .pl-action-tooltip-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text, #1e293b);
+    }
+    .pl-action-tooltip-close {
+      background: none;
+      border: none;
+      font-size: 15px;
+      line-height: 1;
+      cursor: pointer;
+      color: var(--text-muted, #64748b);
+      padding: 0 2px;
+      border-radius: 4px;
+    }
+    .pl-action-tooltip-close:hover {
+      color: var(--text, #0f172a);
+    }
+    .pl-action-tooltip-body {
+      font-size: 11.5px;
+      line-height: 1.4;
+      color: var(--text-muted, #475569);
+    }
+    [data-theme="dark"] .pl-action-tooltip {
+      background: #1e293b;
+      border-color: #334155;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+    }
+    [data-theme="dark"] .pl-action-tooltip::after {
+      border-color: #1e293b transparent transparent transparent;
+    }
+    [data-theme="dark"] .pl-action-tooltip-header {
+      border-bottom-color: #334155;
+    }
+    [data-theme="dark"] .pl-action-tooltip-title {
+      color: #f1f5f9;
+    }
+    [data-theme="dark"] .pl-action-tooltip-body {
+      color: #cbd5e1;
+    }
     .card-progress-track {
       height: 4px;
       background: #e4e8ef;
@@ -10059,6 +10180,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       display: none;
       flex-direction: column;
       box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.2);
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+      box-sizing: border-box;
     }
     #miniPlayer.visible { display: flex; }
     .mini-progress-track {
@@ -10241,7 +10364,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     .mini-btn.close-btn:hover { opacity: 1; }
 
     body.mini-player-active {
-      padding-bottom: 64px;
+      padding-bottom: calc(var(--player-height, 68px) + env(safe-area-inset-bottom, 0px) + 16px);
+    }
+    body.mini-player-active .results-container,
+    body.mini-player-active .playlists-view,
+    body.mini-player-active .collection-content,
+    body.mini-player-active #collectionsSection,
+    body.mini-player-active #grid-playlists {
+      padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
     }
 
     /* Purim Venahafoch Hu Shtick: Invert header to bottom */
@@ -10342,6 +10472,54 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       .mini-time { display: none; }
       .mini-content { padding: 6px 8px; gap: 8px; }
       .mini-thumb { width: 34px; height: 34px; }
+    }
+
+    @media (max-width: 480px) {
+      body.mini-player-active {
+        padding-bottom: calc(var(--player-height, 74px) + env(safe-area-inset-bottom, 0px) + 20px);
+      }
+      .mini-controls {
+        gap: 6px;
+      }
+      .mini-btn.skip-btn svg {
+        width: 38px;
+        height: 24px;
+      }
+    }
+
+    @media (max-width: 375px) {
+      body.mini-player-active {
+        padding-bottom: calc(var(--player-height, 80px) + env(safe-area-inset-bottom, 0px) + 24px);
+      }
+      .mini-content {
+        padding: 5px 6px;
+        gap: 6px;
+      }
+      .mini-thumb {
+        width: 30px;
+        height: 30px;
+      }
+      .mini-title {
+        font-size: 12px;
+      }
+      .mini-speaker {
+        font-size: 10.5px;
+      }
+      .mini-controls {
+        gap: 4px;
+      }
+      .mini-btn.skip-btn svg {
+        width: 33px;
+        height: 22px;
+      }
+      .mini-play-btn {
+        width: 30px;
+        height: 30px;
+      }
+      .mini-btn.expand-btn, .mini-btn.close-btn, .mini-btn.queue-btn {
+        font-size: 13px;
+        padding: 2px;
+      }
     }
 
     /* Advanced Search Modal & Filter Pills */
@@ -14167,6 +14345,21 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   let scrollCheckScheduled = false;
+  function syncPlayerBottomPadding() {
+    try {
+      const mini = document.getElementById('miniPlayer');
+      if (mini && (mini.classList.contains('visible') || mini.style.display === 'flex')) {
+        const h = mini.offsetHeight;
+        if (h > 0) {
+          document.documentElement.style.setProperty('--player-height', h + 'px');
+        }
+      } else {
+        document.documentElement.style.removeProperty('--player-height');
+      }
+    } catch (e) {}
+  }
+  window.addEventListener('resize', syncPlayerBottomPadding);
+
   function handleScrollAutoMiniPlayer() {
     if (!hasAudio || isManuallyMinimized || Date.now() < isExpandingUntil) return;
     const visible = isPlayerCardInViewport();
@@ -14177,11 +14370,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (!miniPlayer.classList.contains('visible')) {
         miniPlayer.classList.add('visible');
         document.body.classList.add('mini-player-active');
+        syncPlayerBottomPadding();
       }
     } else {
       if (miniPlayer.classList.contains('visible')) {
         miniPlayer.classList.remove('visible');
         document.body.classList.remove('mini-player-active');
+        syncPlayerBottomPadding();
       }
     }
   }
@@ -14217,6 +14412,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         skipBtns.forEach(b => b.style.display = 'block');
       }
       miniPlayer.classList.add('visible');
+      syncPlayerBottomPadding();
+      setTimeout(syncPlayerBottomPadding, 60);
     }
     document.body.classList.add('mini-player-active');
 
@@ -14241,6 +14438,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     if (miniPlayer) miniPlayer.classList.remove('visible');
     document.body.classList.remove('mini-player-active');
+    syncPlayerBottomPadding();
   }
 
   function closeMiniPlayer() {
@@ -14253,6 +14451,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const miniPlayer = document.getElementById('miniPlayer');
     if (miniPlayer) miniPlayer.classList.remove('visible');
     document.body.classList.remove('mini-player-active');
+    syncPlayerBottomPadding();
     const playerCard = document.getElementById('playerCard');
     if (playerCard) playerCard.style.display = 'none';
     const newUrl = new URL(window.location.href);
@@ -17514,9 +17713,32 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           '<button type="button" class="card-mini-btn" onclick="plPublicToggle(&quot;' + escapeHtml(p.id) + '&quot;)">' + (open ? 'Hide shiurim ▲' : 'Preview shiurim ▼') + '</button>' +
           (isAuthor
             ? (authoredCustomId ? '<button type="button" class="card-mini-btn active-save" onclick="devSelectPlaylist(&quot;' + escapeHtml(authoredCustomId) + '&quot;)">🎧 Open in My Playlists</button>' : '')
-            : (isSub
-              ? '<button type="button" class="card-mini-btn active-save" onclick="devOpenSubscribedPlaylist(&quot;' + escapeHtml(p.id) + '&quot;)">🎧 Open in My Playlists</button>'
-              : '<button type="button" class="card-mini-btn" onclick="plPromptSavePublic(&quot;' + escapeHtml(p.id) + '&quot;, &quot;' + escapeHtml((p.title || 'Shared playlist').replace(/"/g, '&quot;')) + '&quot;)">💾 Save to my playlists</button>'
+            : (
+              '<span class="pl-btn-with-info">' +
+                (isSub
+                  ? '<button type="button" class="card-mini-btn active-save" onclick="devOpenSubscribedPlaylist(&quot;' + escapeHtml(p.id) + '&quot;)">📡 Subscribed · Open</button>'
+                  : '<button type="button" class="card-mini-btn" onclick="plExecuteSave(&quot;' + escapeHtml(p.id) + '&quot;, &apos;subscribe&apos;)">📡 Subscribe</button>'
+                ) +
+                '<button type="button" class="pl-info-btn" onclick="togglePlInfoTip(event, &quot;sub-' + escapeHtml(p.id) + '&quot;)" aria-label="About Subscribing" title="About Subscribing">ⓘ</button>' +
+                '<div id="tip-sub-' + escapeHtml(p.id) + '" class="pl-action-tooltip" style="display:none;" onclick="event.stopPropagation()">' +
+                  '<div class="pl-action-tooltip-header">' +
+                    '<span class="pl-action-tooltip-title">📡 Subscribing</span>' +
+                    '<button type="button" class="pl-action-tooltip-close" onclick="closePlInfoTip(event, &quot;sub-' + escapeHtml(p.id) + '&quot;)">×</button>' +
+                  '</div>' +
+                  '<div class="pl-action-tooltip-body">Subscribing means that you&apos;re following this playlist. As the owner makes updates, you&apos;ll see those updates.</div>' +
+                '</div>' +
+              '</span>' +
+              '<span class="pl-btn-with-info">' +
+                '<button type="button" class="card-mini-btn" onclick="plExecuteSave(&quot;' + escapeHtml(p.id) + '&quot;, &apos;copy&apos;)">📋 Copy</button>' +
+                '<button type="button" class="pl-info-btn" onclick="togglePlInfoTip(event, &quot;copy-' + escapeHtml(p.id) + '&quot;)" aria-label="About Copying" title="About Copying">ⓘ</button>' +
+                '<div id="tip-copy-' + escapeHtml(p.id) + '" class="pl-action-tooltip" style="display:none;" onclick="event.stopPropagation()">' +
+                  '<div class="pl-action-tooltip-header">' +
+                    '<span class="pl-action-tooltip-title">📋 Copying</span>' +
+                    '<button type="button" class="pl-action-tooltip-close" onclick="closePlInfoTip(event, &quot;copy-' + escapeHtml(p.id) + '&quot;)">×</button>' +
+                  '</div>' +
+                  '<div class="pl-action-tooltip-body">Copy means that you&apos;re copying the playlist to then modify and make your own.</div>' +
+                '</div>' +
+              '</span>'
             )
           ) +
           (!isAuthor ? '<button type="button" class="card-mini-btn" onclick="plUnsavePublic(&quot;' + escapeHtml(p.id) + '&quot;)">Remove save ♥</button>' : '') +
@@ -19351,6 +19573,39 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   window.plPromptSavePublic = plPromptSavePublic;
   window.plSavePublic = plPromptSavePublic;
 
+  function closeAllPlInfoTips() {
+    document.querySelectorAll('.pl-action-tooltip').forEach(el => el.style.display = 'none');
+  }
+  function togglePlInfoTip(e, tipId) {
+    if (e) e.stopPropagation();
+    const tip = document.getElementById('tip-' + tipId);
+    if (!tip) return;
+    const isVisible = tip.style.display !== 'none';
+    closeAllPlInfoTips();
+    if (!isVisible) {
+      tip.style.display = 'block';
+    }
+  }
+  function closePlInfoTip(e, tipId) {
+    if (e) e.stopPropagation();
+    const tip = document.getElementById('tip-' + tipId);
+    if (tip) tip.style.display = 'none';
+  }
+  window.togglePlInfoTip = togglePlInfoTip;
+  window.closePlInfoTip = closePlInfoTip;
+  window.closeAllPlInfoTips = closeAllPlInfoTips;
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest || !e.target.closest('.pl-btn-with-info')) {
+      closeAllPlInfoTips();
+    }
+  });
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      closeAllPlInfoTips();
+    }
+  });
+
   async function plExecuteSave(id, mode) {
     if (!playlistsEnabled()) {
       flashToast('🔑 Log in to save public playlists', true, false);
@@ -19388,6 +19643,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         saveDevStore(store);
         activeDevPlaylistId = subId;
         renderPlaylistsGrid();
+        if (typeof plPatchPublicResults === 'function') plPatchPublicResults();
         const el = document.getElementById('collectionsSection');
         if (el) el.scrollIntoView({ behavior: 'smooth' });
         flashToast('📡 Subscribed! Stays in sync with public playlist', false, false);
@@ -19404,6 +19660,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           saveDevStore(store);
           activeDevPlaylistId = nid;
           renderPlaylistsGrid();
+          if (typeof plPatchPublicResults === 'function') plPatchPublicResults();
           const el = document.getElementById('collectionsSection');
           if (el) el.scrollIntoView({ behavior: 'smooth' });
           flashToast('📋 Editable copy saved to your playlists', false, false);

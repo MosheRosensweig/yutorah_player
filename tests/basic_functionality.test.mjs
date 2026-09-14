@@ -978,6 +978,40 @@ async function testZmanimIconShrinkAndSpacePreservation() {
   console.log('  ✅ Holiday motif (apple) shrinking to icon, temporary expansion on tap & space preservation verified.');
 }
 
+async function testMobileDockingAndPublicPlaylistButtons() {
+  console.log('24. Testing Mobile Player Docking Clearance & Public Playlist Subscribe vs Copy Buttons...');
+  const homeReq = new Request('https://yutorah-player.mrosensweig.workers.dev/');
+  const homeRes = await worker.fetch(homeReq, mockEnv, mockCtx);
+  const html = await homeRes.text();
+
+  // 1. Mobile Player Docking Clearance & Safe-Area Padding
+  assert.ok(html.includes('#miniPlayer {') && html.includes('padding-bottom: env(safe-area-inset-bottom, 0px);'),
+    '#miniPlayer must respect env(safe-area-inset-bottom)');
+  assert.ok(html.includes('body.mini-player-active {') && html.includes('var(--player-height'),
+    'body.mini-player-active must dynamically size bottom padding with --player-height');
+  assert.ok(html.includes('@media (max-width: 375px)'),
+    'CSS must include compact mobile breakpoint for <= 375px screens');
+  assert.ok(html.includes('function syncPlayerBottomPadding()'),
+    'Client JS must define syncPlayerBottomPadding()');
+  assert.ok(html.includes("document.documentElement.style.setProperty('--player-height'"),
+    'syncPlayerBottomPadding must set --player-height CSS variable');
+
+  // 2. Public Playlist Direct Subscribe vs Copy Buttons & Tooltips
+  assert.ok(html.includes('.pl-btn-with-info'), 'pl-btn-with-info CSS class must exist');
+  assert.ok(html.includes('.pl-info-btn'), 'pl-info-btn CSS class must exist');
+  assert.ok(html.includes('.pl-action-tooltip'), 'pl-action-tooltip CSS class must exist');
+  assert.ok(html.includes('📡 Subscribe</button>'), 'Public playlist must render direct Subscribe button');
+  assert.ok(html.includes('📋 Copy</button>'), 'Public playlist must render direct Copy button');
+  assert.ok(html.includes('togglePlInfoTip(event, &quot;sub-'), 'Subscribe info button must toggle tooltip');
+  assert.ok(html.includes('togglePlInfoTip(event, &quot;copy-'), 'Copy info button must toggle tooltip');
+  assert.ok(html.includes("Subscribing means that you&apos;re following this playlist"),
+    'Subscribe tooltip must explain following and owner updates');
+  assert.ok(html.includes("Copy means that you&apos;re copying the playlist to then modify and make your own"),
+    'Copy tooltip must explain copying and modifying');
+
+  console.log('  ✅ Mobile player docking clearance & Public Playlist Subscribe vs Copy buttons verified.');
+}
+
 async function runAll() {
   try {
     await testHomepage();
@@ -1003,6 +1037,7 @@ async function runAll() {
     await testPwaIntegration();
     await testPlaylistsTabAndDisplayNameBanner();
     await testZmanimIconShrinkAndSpacePreservation();
+    await testMobileDockingAndPublicPlaylistButtons();
     console.log('\n🎉 ALL BASIC FUNCTIONALITY, ARTICLE READER & LIQUID MODE TESTS PASSED SUCCESSFULLY!');
   } catch (err) {
     console.error('\n❌ Test failed:', err);

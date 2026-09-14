@@ -150,11 +150,11 @@ High-leverage strategic features:
 
 | Priority | Feature | Category | Effort | User Impact | Status |
 | :---: | :--- | :--- | :---: | :---: | :--- |
-| **P1** | **Progressive Web App (PWA) Engine** | Primary Category | Med (~2h) | **High** | **In Progress (Milestone 1)** |
-| **P2** | **Docking on Small Devices ($\le 375\text{px}$)** | Primary Category | Low (~1h) | **High** | **Queued (Next)** |
-| **P3** | **Source Material Availability on Audio** | Primary Category | Low-Med (~2h) | **Very High** | **Queued** |
+| **P1** | **Progressive Web App (PWA) Engine** | Primary Category | Med (~2h) | **High** | **Completed ✅** |
+| **P2** | **Docking on Small Devices ($\le 375\text{px}$)** | Primary Category | Low (~1h) | **High** | **Completed ✅** |
+| **P3** | **Source Material Availability on Audio** | Primary Category | Low-Med (~2h) | **Very High** | **Queued (Next)** |
 | **P4** | **"Shiurim therein" Informational "ℹ️" Button** | Primary Category | Very Low (~30m) | **Medium** | **Queued** |
-| **P5** | **Public Playlists Dual Buttons (Follow / Copy)** | Primary Category | Low (~1h) | **High** | **Queued** |
+| **P5** | **Public Playlists Dual Buttons (Subscribe / Copy)** | Primary Category | Low (~1h) | **High** | **Completed ✅** |
 | **P6** | **Custom Typable Playback Speed** | Primary Category | Low (~45m) | **Medium** | **Queued** |
 | **P7** | **Desktop On-Screen Volume Slider** | Primary Category | Very Low (~30m) | **High** | **Queued** |
 | **P8** | **Sleep Timer** (15m, 30m, End of Track + Fade) | Modern Audio Standard | Low (~1h) | **Very High** | Future Milestone |

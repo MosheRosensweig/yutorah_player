@@ -92,6 +92,19 @@ Production status: **DEPLOYED & VERIFIED (HTTP 200 on both Dev & Prod)**
 
 ## 🕒 Chronological Activity Log
 
+### [2026-09-14 ET] — Mobile Docking Clearance & Public Playlist Subscribe vs Copy Buttons
+- `[DONE]` **Public Playlist Direct Actions**: Replaced the single save button with direct `📡 Subscribe` and `📋 Copy` buttons on public playlist cards.
+- `[DONE]` **Interactive Info Circle Tooltips**: Added `ⓘ` button next to each action with floating explanation popovers:
+  - Subscribe: *"Subscribing means that you're following this playlist. As the owner makes updates, you'll see those updates."*
+  - Copy: *"Copy means that you're copying the playlist to then modify and make your own."*
+  - Supports click dismissal, outside-click closing, and Escape key dismissal.
+- `[DONE]` **Mobile Docking Clearance & Safe-Area Padding (<=375px)**:
+  - Added `padding-bottom: env(safe-area-inset-bottom, 0px)` and `box-sizing: border-box` to `#miniPlayer`.
+  - Added dynamic `--player-height` sync in `syncPlayerBottomPadding()`, bound to resize and mini-player visibility changes.
+  - Sized container bottom offsets to guarantee that the last card, "Load More" button, and pagination controls are never obscured on compact viewports.
+  - Added specific compact scaling rules for max-width 480px and 375px.
+- `[DONE]` **Automated Testing**: Added Test #24 to `tests/basic_functionality.test.mjs`. All 5 test suites (24/24 basic functionality tests) pass 100% green.
+
 ### [2026-09-14 ET] — Motif Tap Guard + 7-Tap Dev Toggle + Install App + Badge Buffer (dual-reviewed, dev `c4fa1f53`, prod `f8bff5c3`)
 - `[DONE]` **Full-width motif taps never shrink**: popover CSS scoped to `.icon-only.expanded` + toggle early-return; duplicate floating title glitch gone. Pre-roll stays 3 taps on the apple (title copy fixed 7→3).
 - `[DONE]` **7-tap dev-mode toggle**: Hebrew date badge (+ menu calendar rows) count dev taps on a separate counter — 7 to enable, 7 to disable, symmetric toasts, 2s reset. Typed `dev mode` flow unchanged.

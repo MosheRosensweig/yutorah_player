@@ -1,6 +1,10 @@
 {
   "entries": [
     {
+      "date": "2026-09-14T08:15:00-04:00",
+      "message": "Public playlist Subscribe vs. Copy buttons with interactive explanation popovers, plus mobile docking clearance & safe-area padding: replaced the modal save button with direct '📡 Subscribe' and '📋 Copy' actions with (i) tooltips explaining live sync vs. personal cloning; added env(safe-area-inset-bottom) and dynamic --player-height clearance to protect compact mobile devices (<=375px) from player overlap."
+    },
+    {
       "date": "2026-09-14T00:35:00-04:00",
       "message": "Header motif tap guard, 7-tap dev-mode toggle, Install App menu item, and calendar buffer: full-width holiday taps no longer shrink the badge; 7 taps on the date badge toggles Dev Mode on/off (pre-roll stays 3 taps on the apple); settings menu offers Install App only when not installed; 6px gap between calendar icon and date."
     },
