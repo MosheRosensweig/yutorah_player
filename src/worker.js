@@ -2496,6 +2496,7 @@ export default {
           'www.yutorah.org',
           'yutorah.org',
           'api.yutorah.org',
+          'cdn.yutorah.net',
           'cdnyutorah.cachefly.net'
         ];
         const isAllowed = allowedHosts.includes(parsedTarget.hostname.toLowerCase()) ||
@@ -2768,6 +2769,29 @@ function formatDate(dateStr) {
   return formatShiurDate(dateStr);
 }
 
+// Attached source sheets / handouts (PDF packets, marei mekomos).
+// Upstream shape: [{ materialMediaTypeName, materialTitle, materialID,
+// materialExists, materialURL (relative), viewerURL (absolute) }].
+// A client-side twin lives in the browser script for the player button.
+function extractSourceMaterials(s) {
+  const raw = (s && (s.shiurAdditionalMaterials || s.attachments || s.materials)) || [];
+  const list = Array.isArray(raw) ? raw : [];
+  const out = [];
+  for (const m of list) {
+    if (!m) continue;
+    let url = m.viewerURL || m.viewerUrl || m.url || '';
+    if (!url && m.materialURL) {
+      url = /^https?:\/\//i.test(m.materialURL)
+        ? m.materialURL
+        : ('https://www.yutorah.org' + (m.materialURL.startsWith('/') ? '' : '/') + m.materialURL);
+    }
+    if (!url) continue;
+    if (m.materialExists === false) continue;
+    out.push({ title: m.materialTitle || m.title || 'Source Sheet', type: m.materialMediaTypeName || m.type || '', url: url });
+  }
+  return out;
+}
+
 function normalizeShiur(s) {
   const id = s.shiurID || s.shiurid || s.id;
   const title = s.shiurTitle || s.shiurtitle || s.title || 'Untitled Shiur';
@@ -2816,7 +2840,7 @@ function normalizeShiur(s) {
   const series = Array.isArray(s.seriesname) ? s.seriesname.join(', ') : (s.seriesname || s.series || '');
   const location = Array.isArray(s.location) ? s.location.join(', ') : (s.location || '');
 
-  return { id, title, speaker, photo, duration, date, category, isNew, description, keywords, series, location };
+  return { id, title, speaker, photo, duration, date, category, isNew, description, keywords, series, location, materials: extractSourceMaterials(s) };
 }
 
 const DEV_PUBLIC_SEEDS = [
@@ -11549,6 +11573,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           <a class="action-btn" id="dlBtn" href="${escapeHtml(downloadUrl || audioUrl)}" target="_blank" ${downloadUrl || audioUrl ? '' : 'style="display:none;"'}>
             ⬇️ Download MP3
           </a>
+          <button type="button" class="action-btn" id="sourceSheetBtn" onclick="openSourceSheetPicker()" style="display: none;" title="Open attached source sheet">
+            📄 Source Sheet
+          </button>
         </div>
       </div>
 
@@ -11583,6 +11610,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           <span class="article-page-info" id="continuousPageNum" aria-live="polite" style="display: inline-block;">Page 1 of 1</span>
         </div>
         <div class="article-toolbar-right">
+          <button type="button" class="article-btn" id="sourceSheetCloseBtn" onclick="closeSourceSheet()" style="display: none;" title="Close source sheet, keep listening" aria-label="Close source sheet">✕ Close</button>
           <button type="button" class="article-btn" id="zoomOutBtn" onclick="adjustArticleZoom(-0.2)" title="Zoom out" aria-label="Zoom out" style="display: none;">🔍 -</button>
           <button type="button" class="article-btn" id="zoomInBtn" onclick="adjustArticleZoom(0.2)" title="Zoom in" aria-label="Zoom in" style="display: none;">🔍 +</button>
           <a class="article-btn" id="dlPdfBtn" href="${escapeHtml(downloadUrl || articlePdfUrl)}" target="_blank" download title="Download PDF document" aria-label="Download PDF">⬇️ PDF</a>
@@ -15015,6 +15043,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           if (!data || String(currentShiurId) !== String(data.shiurID || '')) return;
           lastLectureData = data;
           renderMetadataBox(data);
+          try { if (typeof updateSourceSheetButton === 'function') updateSourceSheetButton(data); } catch (e) {}
           const rawD = data.shiurDateFormatted || data.shiurDate || '';
           fetchUploadDate(String(currentShiurId), rawD ? formatShiurDate(rawD) : '');
         }).catch(() => {});
@@ -16367,6 +16396,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         dlBtn.style.display = 'inline-flex';
       }
 
+      // A new track owns a new sheet: drop any open viewer state now;
+      // updateSourceSheetButton() below re-arms it for this shiur.
+      sourceSheetMode = false;
+      closeSourceSheetPicker();
+      const ssClose0 = document.getElementById('sourceSheetCloseBtn');
+      if (ssClose0) ssClose0.style.display = 'none';
+      const ssBtn0 = document.getElementById('sourceSheetBtn');
+      if (ssBtn0) ssBtn0.style.display = 'none';
+
       currentShiurId = id;
       initialTimeApplied = false;
       lastUrlUpdateSec = -1;
@@ -16392,6 +16430,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
       // Render rich metadata immediately
       renderMetadataBox(data);
+      updateSourceSheetButton(data);
 
       const audioWrap = document.getElementById('audioControlsWrap');
       const articleWrap = document.getElementById('articleViewerContainer');
@@ -24232,20 +24271,128 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
   }
 
-  async function loadArticlePdf(rawUrl) {
+  // Attached source sheets on audio shiurim (client twin of the
+  // server-side extractSourceMaterials above).
+  let currentSourceMaterials = [];
+  let sourceSheetMode = false;
+  function extractClientSourceMaterials(data) {
+    const raw = (data && (data.shiurAdditionalMaterials || data.attachments || data.materials)) || [];
+    const list = Array.isArray(raw) ? raw : [];
+    const out = [];
+    for (const m of list) {
+      if (!m) continue;
+      let url = m.viewerURL || m.viewerUrl || m.url || '';
+      if (!url && m.materialURL) {
+        url = /^https?:\/\//i.test(m.materialURL)
+          ? m.materialURL
+          : ('https://www.yutorah.org' + (String(m.materialURL).startsWith('/') ? '' : '/') + m.materialURL);
+      }
+      if (!url || m.materialExists === false) continue;
+      out.push({ title: m.materialTitle || m.title || 'Source Sheet', type: m.materialMediaTypeName || m.type || '', url: url });
+    }
+    return out;
+  }
+  // Refresh the player Source Sheet button from fresh lecture data.
+  // Shown only for audio shiurim that actually have attachments.
+  function updateSourceSheetButton(data) {
+    const btn = document.getElementById('sourceSheetBtn');
+    if (!btn) return;
+    currentSourceMaterials = extractClientSourceMaterials(data);
+    const show = !isCurrentShiurArticle && currentSourceMaterials.length > 0;
+    btn.style.display = show ? 'inline-flex' : 'none';
+    if (show) {
+      btn.innerHTML = '📄 Source Sheet' + (currentSourceMaterials.length > 1 ? ' (' + currentSourceMaterials.length + ')' : '');
+    }
+  }
+  function openSourceSheetPicker() {
+    if (sourceSheetMode) {
+      closeSourceSheet();
+      return;
+    }
+    if (currentSourceMaterials.length === 0) return;
+    if (currentSourceMaterials.length === 1) {
+      openSourceSheet(0);
+      return;
+    }
+    closeSourceSheetPicker();
+    const overlay = document.createElement('div');
+    overlay.id = 'sourceSheetPicker';
+    overlay.style.cssText = 'position:fixed; inset:0; z-index:10000; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; padding:16px;';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', 'Choose a source sheet');
+    const box = document.createElement('div');
+    box.style.cssText = 'background:var(--card,#fff); color:var(--text,#111); border-radius:14px; max-width:420px; width:100%; max-height:70vh; overflow-y:auto; padding:18px; border:1px solid var(--border-light); box-shadow:0 12px 36px rgba(0,0,0,0.25);';
+    box.innerHTML = '<div style="font-weight:800; font-size:16px; margin-bottom:12px;">📄 Attached Source Sheets</div>' +
+      currentSourceMaterials.map((m, i) =>
+        '<button type="button" class="card-mini-btn" data-ss-idx="' + i + '" style="display:flex; width:100%; justify-content:flex-start; text-align:left; margin-bottom:6px; gap:8px;">' +
+        '<span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + escapeHtml(m.title) + '</span>' +
+        (m.type ? '<span style="font-size:11px; color:var(--text-muted);">' + escapeHtml(m.type) + '</span>' : '') +
+        '</button>'
+      ).join('');
+    overlay.appendChild(box);
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) closeSourceSheetPicker();
+      const btn = e.target.closest ? e.target.closest('[data-ss-idx]') : null;
+      if (btn) {
+        const idx = parseInt(btn.getAttribute('data-ss-idx'), 10);
+        closeSourceSheetPicker();
+        if (!isNaN(idx)) openSourceSheet(idx);
+      }
+    });
+    document.body.appendChild(overlay);
+    document.addEventListener('keydown', ssPickerEsc);
+  }
+  function ssPickerEsc(e) {
+    if (e && e.key === 'Escape') closeSourceSheetPicker();
+  }
+  function closeSourceSheetPicker() {
+    const p = document.getElementById('sourceSheetPicker');
+    if (p) p.remove();
+    try { document.removeEventListener('keydown', ssPickerEsc); } catch (e) {}
+  }
+  function openSourceSheet(idx) {
+    const m = currentSourceMaterials[idx];
+    if (!m || !m.url) return;
+    sourceSheetMode = true;
+    const closeBtn = document.getElementById('sourceSheetCloseBtn');
+    if (closeBtn) closeBtn.style.display = 'inline-flex';
+    loadArticlePdf(m.url, { keepAudio: true });
+    try {
+      const container = document.getElementById('articleViewerContainer');
+      if (container) container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch (e) {}
+  }
+  function closeSourceSheet() {
+    closeSourceSheetPicker();
+    sourceSheetMode = false;
+    const closeBtn = document.getElementById('sourceSheetCloseBtn');
+    if (closeBtn) closeBtn.style.display = 'none';
+    // Never hide the viewer out from under a real article shiur.
+    if (!isCurrentShiurArticle) {
+      const container = document.getElementById('articleViewerContainer');
+      if (container) container.style.display = 'none';
+    }
+  }
+  async function loadArticlePdf(rawUrl, opts) {
     if (!rawUrl) return;
     const container = document.getElementById('articleViewerContainer');
     if (container) container.style.display = 'block';
 
-    const audioWrap = document.getElementById('audioControlsWrap');
-    if (audioWrap) audioWrap.style.display = 'none';
+    // Source-sheet mode: the reader opens UNDER the running audio —
+    // never hide the controls, never pause, never clear the stream.
+    const keepAudio = !!(opts && opts.keepAudio);
+    if (!keepAudio) {
+      const audioWrap = document.getElementById('audioControlsWrap');
+      if (audioWrap) audioWrap.style.display = 'none';
 
-    // Pause audio if playing and clear src so background playback does not trigger
-    if (audio) {
-      if (!audio.paused) audio.pause();
-      try { audio.src = ''; audio.load(); } catch(e){}
+      // Pause audio if playing and clear src so background playback does not trigger
+      if (audio) {
+        if (!audio.paused) audio.pause();
+        try { audio.src = ''; audio.load(); } catch(e){}
+      }
+      hasAudio = false;
     }
-    hasAudio = false;
 
     // Clean up previous pdfDoc to release memory and web worker
     if (pdfDoc) {

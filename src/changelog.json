@@ -1,6 +1,10 @@
 {
   "entries": [
     {
+      "date": "2026-09-14T10:00:00-04:00",
+      "message": "Source Sheet button on audio shiurim: attached handouts open in the Liquid Mode viewer without interrupting playback (multi-sheet chooser, per-track reset, materials-CDN proxy allowlist)."
+    },
+    {
       "date": "2026-09-14T08:44:00-04:00",
       "message": "Public playlist copy tooltip placement & subscription/copy persistence fix: pop-up explanation tooltips dynamically detect viewport boundaries, anchor right (.align-right) on cards and narrow viewports with speech arrow pointing to the info button, and flip below (.arrow-top) near headers to guarantee 0 clipping; subscriptions and copied playlists are now permanently preserved against cloud sync purges with server-side playlist_saves integration and explicit copy labeling."
     },
@@ -10,7 +14,7 @@
     },
     {
       "date": "2026-09-14T08:15:00-04:00",
-      "message": "Public playlist Subscribe vs. Copy buttons with interactive explanation popovers, plus mobile docking clearance & safe-area padding: replaced the modal save button with direct '📡 Subscribe' and '📋 Copy' actions with (i) tooltips explaining live sync vs. personal cloning; added env(safe-area-inset-bottom) and dynamic --player-height clearance to protect compact mobile devices (<=375px) from player overlap."
+      "message": "Public playlist Subscribe vs. Copy buttons with interactive explanation popovers, plus mobile docking clearance & safe-area padding: replaced the modal save button with direct '\ud83d\udce1 Subscribe' and '\ud83d\udccb Copy' actions with (i) tooltips explaining live sync vs. personal cloning; added env(safe-area-inset-bottom) and dynamic --player-height clearance to protect compact mobile devices (<=375px) from player overlap."
     },
     {
       "date": "2026-09-14T00:35:00-04:00",

@@ -1,12 +1,18 @@
 # Currently Working On — Living Status & Activity Log
 
 Living status doc & audit log — updated on every milestone and user request.  
-Last updated: **2026-09-11, 15:52 ET**  
+Last updated: **2026-09-14, 09:48 ET**  
 Current branch: `feat/auth-d1` (synchronized with `main`)  
-Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev) (`f5991dfa`)  
-Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://yutorah-player.mrosensweig.workers.dev) (`483533b5`)  
-Tests: **5/5 test suites passing (100% green, 20/20 basic functionality checks)**  
+Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev) (`1c494f2b`)  
+Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://yutorah-player.mrosensweig.workers.dev) (`148e6dcb`)  
+Tests: **5/5 test suites passing (100% green, 27/27 basic functionality checks)**  
 Production status: **DEPLOYED & VERIFIED (HTTP 200 on both Dev & Prod)**
+
+## 🎯 In Progress: Dev-Only Trio (Source Sheets → Shiurim-Info → /daf Hub)
+Per-user instruction: dev only (no prod), one feature at a time — quick review + FEATURES.md + dev deploy each — notes throughout, final dual review at the end.
+- [x] **Feature 1: 📄 Source Sheet button on audio shiurim** — extraction (`shiurAdditionalMaterials` → title/type/URL, relative-URL + existence handling), player action button (count badge, audio-only, per-track reset, direct-link hydrate), keep-audio Liquid Mode path with ✕ Close, multi-sheet chooser, `cdn.yutorah.net` proxy allowlist. Test #26. *Status: implemented + tested, awaiting dev deploy below.*
+- [ ] **Feature 2: Shiurim-therein ℹ️ info button**
+- [ ] **Feature 3: /daf Daily Study Hub (OG-parity viewer with touch zoom/pan)**
 
 ## 🔒 Standing Deployment & QA Invariants (Permanent Rule)
 1. **Dev-First Deployment Rule (MANDATORY)**:
@@ -15,20 +21,15 @@ Production status: **DEPLOYED & VERIFIED (HTTP 200 on both Dev & Prod)**
    - Only **AFTER** Dev is fully deployed, validated, and approved may the version be promoted to **Production** (`https://yutorah-player.mrosensweig.workers.dev` via `npx wrangler deploy`).
    - Dev and Prod must always remain strictly synchronized. Never push directly to Prod without the preceding Dev deployment.
 
-## 🎯 ACTIVE TASK: Public Playlist Copy Tooltip Clipping & Subscribed/Copied Playlist Disappearance Fix
+## 🎯 Completed Task: Public Playlist Copy Tooltip Clipping & Subscribed/Copied Playlist Disappearance Fix
 - **User Request**:
   1. **Tooltip Clipping**: When clicking the `ⓘ` info button on the `📋 Copy` button on public playlist cards, the pop-up explanation tooltip gets cut off on the right side of the screen. Ensure the pop-up never gets cut off and always shows up in a spot that is helpful to see the full window on all devices (mobile, tablet, desktop).
   2. **Playlist Disappearance Bug**: When subscribing or copying a playlist, it shows up in blue in the user's list for a few moments and then disappears. Fix this bug immediately so subscribed and copied playlists persist permanently.
-- **Root Causes Identified**:
-  1. **Tooltip Clipping**: `.pl-action-tooltip` has `left: 0; width: 250px;`. Because the `📋 Copy` button is the 3rd button in the card row, it sits near the right edge of the card/viewport. An anchored `left: 0` tooltip pushes 250px outward to the right, easily clipping outside the viewport. Needs dynamic boundary detection (`getBoundingClientRect()`), right-anchoring (`align-right` / `right: 0`), top/bottom auto-flip, and containment within viewport padding (`max-width: min(280px, calc(100vw - 24px))`).
-  2. **Playlist Disappearance Bug**:
-     - When subscribing or copying any public playlist (especially curated ones authored by Andrew Ohiliote, Moshe Mendelwitz, Rachel Sternbach, Dev or titled with names in `DEV_SEED_PLAYLIST_TITLES`), `saveDevStore()` schedules cloud sync with a 2.5s debounce.
-     - After 2.5s, `cloudPush()` calls `adoptCloudState()` which runs `cleanDevSeedsFromUserAccount()`.
-     - `cleanDevSeedsFromUserAccount()` checks `isDevSeedPlaylist(pid, pl)`.
-     - Because `pl.ownerName` matched seed authors or `pl.name` matched `DEV_SEED_PLAYLIST_TITLES`, `isDevSeedPlaylist()` returned `true` and **deleted** the user's subscribed or copied playlist from `store.custom`!
-     - In addition, copies of public playlists should be named `Title (Copy)` and flagged as user copies (`isUserCopy: true`), and `isDevSeedPlaylist()` must NEVER flag any `isSubscription: true`, `sid.startsWith('sub_')`, or `isUserCopy` as a dev seed.
-     - Furthermore, `pullUserState` should include user subscriptions from `playlist_saves` so subscriptions persist across reloads and multi-device sync.
-- **Status**: Root causes identified. Implementing fixes in `src/worker.js`, adding regression test coverage in `tests/basic_functionality.test.mjs`, and verifying all 5 test suites.
+- **Review Remediation (Blockers Fixed)**:
+  - **BLOCKER 1.1 FIXED**: Tooltip arrow now defaults to `right: 5px` (right-aligned), centering over the 17px `ⓘ` button instead of pointing at the Subscribe label. Renamed CSS class from `align-right` → `align-left` as the fallback.
+  - **BLOCKER 3.1 FIXED**: Added ARIA: `aria-expanded`/`aria-haspopup` on triggers, `role="tooltip"` on containers, `aria-label="Close"` on close buttons. JS toggles `aria-expanded` on open/close.
+  - **Bonus**: Added `window.addEventListener('resize', closeAllPlInfoTips)` so tooltips close on viewport resize.
+- **Status**: ✅ COMPLETED. Tests: 26/26 green. Dual review blockers remediated. Deployed to Dev (`1c494f2b`) and Prod (`148e6dcb`). Git commit `838e05b`, pushed to `feat/auth-d1`.
 
 ## 🎯 Completed Task: Public Playlist Publishing, Deletion, Privacy Toggle & Content Synchronization
 - **User Request**:

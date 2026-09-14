@@ -1134,6 +1134,39 @@ async function testPublicPlaylistCopyTooltipAndSubscriptionPersistence() {
   console.log('  ✅ Public Playlist Copy Tooltip Placement & Subscription/Copy Persistence verified.');
 }
 
+async function testSourceSheetButton() {
+  console.log('26. Testing Source Sheet Button on Audio Shiurim...');
+  const homeRes = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/'), mockEnv, mockCtx);
+  const html = await homeRes.text();
+  const workerSrc = fs.readFileSync(new URL('../src/worker.js', import.meta.url), 'utf8');
+
+  // 1. Player chrome: hidden-by-default Source Sheet action + viewer close
+  assert.ok(html.includes('id="sourceSheetBtn"'), 'Player must contain #sourceSheetBtn');
+  assert.ok(html.includes('onclick="openSourceSheetPicker()"'), 'Source Sheet button must open the picker');
+  assert.ok(html.includes('id="sourceSheetCloseBtn"'), 'Article toolbar must contain #sourceSheetCloseBtn');
+  assert.ok(html.includes('onclick="closeSourceSheet()"'), 'Close button must dismiss without touching audio');
+
+  // 2. Extraction covers upstream shapes (viewerURL absolute, materialURL relative, skips)
+  assert.ok(workerSrc.includes('function extractSourceMaterials(s)'), 'Server normalize path must extract materials');
+  assert.ok(workerSrc.includes('shiurAdditionalMaterials'), 'Extraction must read shiurAdditionalMaterials');
+  assert.ok(workerSrc.includes('materialExists === false'), 'Extraction must skip missing materials');
+  assert.ok(workerSrc.includes('https://www.yutorah.org'), 'Relative materialURL must resolve against origin');
+
+  // 3. Viewer keeps audio alive in source-sheet mode
+  assert.ok(workerSrc.includes('function updateSourceSheetButton(data)'), 'updateSourceSheetButton must exist');
+  assert.ok(workerSrc.includes('keepAudio: true'), 'Source sheet must load the viewer with keepAudio');
+  assert.ok(workerSrc.includes('const keepAudio = !!(opts && opts.keepAudio)'), 'loadArticlePdf must honor keepAudio');
+  assert.ok(workerSrc.includes('if (!isCurrentShiurArticle)'), 'Viewer close must not hide real article tracks');
+
+  // 4. Wired into track lifecycle (reset on new track, hydrate on direct link)
+  assert.ok(workerSrc.includes('updateSourceSheetButton(data);'), 'playShiurById must refresh the button per track');
+
+  // 5. PDF proxy must allow the materials CDN (viewerURL host)
+  assert.ok(workerSrc.includes("'cdn.yutorah.net'"), 'pdf-proxy allowlist must include cdn.yutorah.net');
+
+  console.log('  ✅ Source Sheet button, keep-audio viewer path & extraction verified.');
+}
+
 async function runAll() {
   try {
     await testHomepage();
@@ -1162,6 +1195,7 @@ async function runAll() {
     await testMobileDockingAndPublicPlaylistButtons();
     await testPublicPlaylistPublishingAndSyncLifecycle();
     await testPublicPlaylistCopyTooltipAndSubscriptionPersistence();
+    await testSourceSheetButton();
     console.log('\n🎉 ALL BASIC FUNCTIONALITY, ARTICLE READER & LIQUID MODE TESTS PASSED SUCCESSFULLY!');
   } catch (err) {
     console.error('\n❌ Test failed:', err);

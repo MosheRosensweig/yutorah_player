@@ -295,6 +295,12 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 - **No double calendar emoji**: the account-menu date stripped the header badge's leading 📅 before adding its own (both auth states, incl. variant-selector form).
 - **Settings/login menu date**: single 📅 prefix; menu calendar entry uses uniform item padding with icon containers.
 
+### 📄 Source Sheet button on audio shiurim
+- **Attached handouts, one tap away**: audio lectures with attached source sheets, packets, or marei-mekomos handouts (`shiurAdditionalMaterials`: title, type, `viewerURL`/`materialURL`, existence-checked) show a **📄 Source Sheet** action button in the player controls (with a `(N)` count when several are attached).
+- **Liquid Mode viewer without interrupting audio**: opening a sheet loads it through the existing Liquid Mode / Original Page pipeline (same PDF proxy, same toolbar, fullscreen, zoom) but explicitly skips the audio takeover — controls stay visible, playback never pauses or resets. A dedicated **✕ Close** toolbar button dismisses the sheet (never hiding a real article track).
+- **Multi-sheet chooser**: when several handouts are attached, a dialog lists them with type badges; `Escape`/outside-click dismisses. Opening a new track resets sheet state; direct-link loads hydrate the button too.
+- **Trust boundary**: sheet PDFs flow through `/api/pdf-proxy`, whose host allowlist now includes the materials CDN (`cdn.yutorah.net`).
+
 ---
 
 ## 14. Public Playlist Publishing, Live-Sync, Deletion & Privacy Lifecycle
