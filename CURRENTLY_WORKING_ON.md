@@ -92,6 +92,14 @@ Production status: **DEPLOYED & VERIFIED (HTTP 200 on both Dev & Prod)**
 
 ## 🕒 Chronological Activity Log
 
+### [2026-09-14 ET] — Header Single-Flow + Permanent Deletes (dual-reviewed, dev `e706f730`, prod `3b8df141`)
+- `[DONE]` **Single left-to-right header flow**: brand → login → zman → theme → support → date badge packed left (`flex-start`, no gap); login guaranteed; measurement-based sacrifice (badge → support → theme → motif apple → motif hidden) + highest-first refill + brand-ellipsis last resort; theme only when room allows (menu fallback); keyboard-accessible date badge.
+- `[DONE]` **Permanent deletes**: history removes sync as explicit bounded tombstones (`deletedHistory`) with revive-on-relisten, ack-clearing, unload `keepalive` flush, and boot re-dirty retry; full-list replace rejected (would wipe truncated rows). Non-history deletes already synced.
+- `[DONE]` **Dual review**: initial FAIL (brand pill scoping, tombstone-vs-replace design, priority order) → all fixed → re-review PASS/PASS. All 5 test suites green (new header-order + delete-stickiness regression tests).
+- `[DONE]` **Docs**: FEATURES.md §13 (Sept batch in detail) + new TALKING_POINTS.md (top 5/10, new-vs-OG, parity, full list); roadmap checkboxes updated (accounts, queue, PWA shipped).
+- `[DONE]` **Changelog**: `src/changelog.json` newest-first entries dated `2026-09-14`.
+- `[NOTE]` Concurrent-agent collision: branch picked up sibling commit `6d15940` mid-session; verified full change set intact across `6d15940`+`885851d` (299 insertions, all markers + tests green).
+
 ### [2026-09-11 14:45 ET] — Header Theme Toggle: Logged-Out Access on Right-Hand Side
 - `[DONE]` **DOM Header Restructuring**:
   - Reordered `.header-right`: `support-yutorah-btn` -> `hebrewDateBadge` -> `authBtn` -> `authMenu` -> `themeToggleBtn`.
