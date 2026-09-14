@@ -1073,6 +1073,31 @@ async function handleSyncRoutes(request, env, url) {
       }
     }
 
+    if (Array.isArray(body.deletedPlaylistItems)) {
+      for (const item of body.deletedPlaylistItems.slice(0, 500)) {
+        if (item && item.playlist && item.shiur_id) {
+          try {
+            const sid = String(item.shiur_id);
+            const pl = String(item.playlist);
+            const altPl = pl.startsWith('custom:') ? pl.slice(7) : ('custom:' + pl);
+            await db.prepare('DELETE FROM playlist_items WHERE user_id = ? AND (playlist = ? OR playlist = ?) AND shiur_id = ?')
+              .bind(user.id, pl, altPl, sid).run();
+          } catch (e) {}
+        }
+      }
+    }
+    if (Array.isArray(body.deletedPlaylists)) {
+      for (const pl of body.deletedPlaylists.slice(0, 100)) {
+        if (typeof pl === 'string' && pl) {
+          try {
+            const key = pl.startsWith('custom:') ? pl : ('custom:' + pl);
+            await db.prepare('DELETE FROM playlist_items WHERE user_id = ? AND (playlist = ? OR playlist = ?)')
+              .bind(user.id, key, pl).run();
+          } catch (e) {}
+        }
+      }
+    }
+
     // Playlists + queue: ONLY collections named in body.dirty are touched.
     // A dirty key is authoritative for that list (delete-missing + upsert);
     // anything else leaves server rows alone. Without an explicit dirty
@@ -5609,6 +5634,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     .hebrew-date-badge:focus-visible {
       outline: 2px solid var(--primary) !important;
       outline-offset: 2px;
+    }
+    .hebrew-date-badge.collapsed .hebrew-date-text,
+    .hebrew-date-badge.icon-only .hebrew-date-text {
+      display: none;
+    }
+    .hebrew-date-badge.collapsed,
+    .hebrew-date-badge.icon-only {
+      padding: 4px 8px;
     }
 
     /* Secret Pre-Roll Toggle Toast / Flash HUD */
@@ -10896,8 +10929,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         <span id="holidayMotifTitle" class="holiday-motif-title"></span>
       </div>
       <button type="button" id="themeToggleBtn" class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Dark / Light Mode">${themeMode === 'light' ? '🌙' : '☀️'}</button>
-      <a href="https://www.givecampus.com/campaigns/50770/donations/new" target="_blank" rel="noopener noreferrer" class="support-yutorah-btn" title="Support YUTorah & Sponsor Learning (Opens in new window)">❤️ Support YUTorah</a>
       <div class="hebrew-date-badge" id="hebrewDateBadge" onclick="handleDevModeSecretTap(event)" tabindex="0" role="button" aria-label="Hebrew Calendar Date" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();handleDevModeSecretTap(event);}" title="Hebrew Calendar Date">📅<span class="hebrew-date-text">${escapeHtml(homepageData?.hebrewDateString || 'Calendar')}</span></div>
+      <a href="https://www.givecampus.com/campaigns/50770/donations/new" target="_blank" rel="noopener noreferrer" class="support-yutorah-btn" title="Support YUTorah & Sponsor Learning (Opens in new window)">❤️ Support YUTorah</a>
       <div id="authMenu" class="auth-menu" style="display: none;" role="menu" aria-label="Account"></div>
     </div>
     <div class="header-right">
@@ -12249,19 +12282,27 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       // Full-width motif has nothing to expand: tapping it is a no-op
       // (the popover exists only for the apple-only state).
       if (!wrap.classList.contains('icon-only')) return;
+      const titleEl = document.getElementById('holidayMotifTitle');
       if (wrap.classList.contains('expanded')) {
         wrap.classList.remove('expanded');
         wrap.setAttribute('aria-expanded', 'false');
+        if (titleEl) titleEl.textContent = wrap.dataset.titleEn || wrap.dataset.titleHe || '';
         clearTimeout(motifExpandTimer);
         return;
       }
       wrap.classList.add('expanded');
       wrap.setAttribute('aria-expanded', 'true');
+      if (titleEl && wrap.dataset.titleEn) {
+        titleEl.textContent = (wrap.dataset.titleEn && wrap.dataset.titleHe)
+          ? (wrap.dataset.titleEn + ' · ' + wrap.dataset.titleHe)
+          : wrap.dataset.titleEn;
+      }
       clearTimeout(motifExpandTimer);
       motifExpandTimer = setTimeout(() => {
         if (wrap) {
           wrap.classList.remove('expanded');
           wrap.setAttribute('aria-expanded', 'false');
+          if (titleEl) titleEl.textContent = wrap.dataset.titleEn || wrap.dataset.titleHe || '';
         }
       }, 4000);
     } catch (e) {}
@@ -16315,6 +16356,112 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     } catch (e) {}
   }
 
+  // =========================================================================
+  // Playlist Deletions: tombstones for items deleted from playlists and
+  // deleted custom playlists. Prevents items from popping back in when
+  // adoptCloudState runs or when in-flight sync responses arrive.
+  // =========================================================================
+  function getPlaylistTombstones() {
+    try {
+      const o = JSON.parse(localStorage.getItem('yutorah_playlist_tombstones') || '{}');
+      return (o && typeof o === 'object') ? o : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function addPlaylistItemTombstone(pid, id) {
+    try {
+      const sid = String(id || '');
+      const spid = String(pid || '');
+      if (!sid || !spid) return;
+      const ts = getPlaylistTombstones();
+      ts[spid + '|' + sid] = Date.now();
+      const keys = Object.keys(ts);
+      if (keys.length > 500) {
+        keys.slice(0, keys.length - 500).forEach(k => delete ts[k]);
+      }
+      localStorage.setItem('yutorah_playlist_tombstones', JSON.stringify(ts));
+    } catch (e) {}
+  }
+
+  function addPlaylistDeletedTombstone(nameOrPid) {
+    try {
+      const s = String(nameOrPid || '').trim().toLowerCase();
+      if (!s) return;
+      const ts = getPlaylistTombstones();
+      ts['pl_del:' + s] = Date.now();
+      localStorage.setItem('yutorah_playlist_tombstones', JSON.stringify(ts));
+    } catch (e) {}
+  }
+
+  function isPlaylistItemTombstoned(pid, id, addedAt) {
+    try {
+      const ts = getPlaylistTombstones();
+      const sid = String(id || '');
+      const spid = String(pid || '');
+      let tombAt = ts[spid + '|' + sid];
+      if (!tombAt) {
+        if (spid.startsWith('custom:')) {
+          tombAt = ts[spid.slice(7) + '|' + sid];
+        } else {
+          tombAt = ts['custom:' + spid + '|' + sid];
+        }
+      }
+      if (!tombAt) return false;
+      if (addedAt && Number(addedAt) > Number(tombAt)) return false;
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function isPlaylistDeletedTombstoned(nameOrPid) {
+    try {
+      const ts = getPlaylistTombstones();
+      const s = String(nameOrPid || '').trim().toLowerCase();
+      if (!s) return false;
+      if (ts['pl_del:' + s]) return true;
+      if (s.startsWith('custom:') && ts['pl_del:' + s.slice(7)]) return true;
+      if (!s.startsWith('custom:') && ts['pl_del:custom:' + s]) return true;
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function clearPlaylistItemTombstone(pid, id) {
+    try {
+      const ts = getPlaylistTombstones();
+      const sid = String(id || '');
+      const spid = String(pid || '');
+      let modified = false;
+      if (ts[spid + '|' + sid]) { delete ts[spid + '|' + sid]; modified = true; }
+      if (spid.startsWith('custom:')) {
+        if (ts[spid.slice(7) + '|' + sid]) { delete ts[spid.slice(7) + '|' + sid]; modified = true; }
+      } else {
+        if (ts['custom:' + spid + '|' + sid]) { delete ts['custom:' + spid + '|' + sid]; modified = true; }
+      }
+      if (modified) localStorage.setItem('yutorah_playlist_tombstones', JSON.stringify(ts));
+    } catch (e) {}
+  }
+
+  function clearPlaylistDeletedTombstone(nameOrPid) {
+    try {
+      const ts = getPlaylistTombstones();
+      const s = String(nameOrPid || '').trim().toLowerCase();
+      if (!s) return;
+      let modified = false;
+      if (ts['pl_del:' + s]) { delete ts['pl_del:' + s]; modified = true; }
+      if (s.startsWith('custom:')) {
+        if (ts['pl_del:' + s.slice(7)]) { delete ts['pl_del:' + s.slice(7)]; modified = true; }
+      } else {
+        if (ts['pl_del:custom:' + s]) { delete ts['pl_del:custom:' + s]; modified = true; }
+      }
+      if (modified) localStorage.setItem('yutorah_playlist_tombstones', JSON.stringify(ts));
+    } catch (e) {}
+  }
+
   function addRecentHistory(shiur) {
     if (!shiur || !shiur.id) return;
     // Never pollute a logged-in user's account with dev seed shiurim!
@@ -16611,11 +16758,21 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (!pl || pl.isSubscription) return false;
     const has = pl.items.some(item => String(item.id) === String(id));
     if (want && !has) {
+      clearPlaylistItemTombstone(pid, id);
+      if (pl.name) {
+        clearPlaylistItemTombstone(pl.name, id);
+        clearPlaylistItemTombstone('custom:' + pl.name, id);
+      }
       const snap = devSnapshot(id);
       if (!snap) return false;
       snap.addedAt = Date.now();
       pl.items.unshift(snap);
     } else if (!want && has) {
+      addPlaylistItemTombstone(pid, id);
+      if (pl.name) {
+        addPlaylistItemTombstone(pl.name, id);
+        addPlaylistItemTombstone('custom:' + pl.name, id);
+      }
       pl.items = pl.items.filter(item => String(item.id) !== String(id));
     } else {
       return true;
@@ -17002,7 +17159,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       // them via union merge (same dirty discipline as addRecentHistory).
       try {
         if (typeof markCloudDirty === 'function') markCloudDirty('history');
-        if (typeof scheduleCloudSync === 'function') scheduleCloudSync();
+        if (typeof cloudPush === 'function' && cloudEnabled()) {
+          clearTimeout(cloudSyncTimer);
+          cloudPush().catch(() => {});
+        } else if (typeof scheduleCloudSync === 'function') {
+          scheduleCloudSync();
+        }
       } catch (e) {}
     } else {
       const store = getDevStore();
@@ -17012,9 +17174,20 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         return;
       }
       if (pl) {
+        addPlaylistItemTombstone(pid, id);
+        if (pl.name) {
+          addPlaylistItemTombstone(pl.name, id);
+          addPlaylistItemTombstone('custom:' + pl.name, id);
+        }
         pl.items = pl.items.filter(item => String(item.id) !== String(id));
         saveDevStore(store);
       }
+      try {
+        if (typeof cloudPush === 'function' && cloudEnabled()) {
+          clearTimeout(cloudSyncTimer);
+          cloudPush().catch(() => {});
+        }
+      } catch (e) {}
     }
     devRefreshCardButtons();
     renderPlaylistsGrid();
@@ -17034,8 +17207,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   function devCreatePlaylist(name, icon, desc, tags) {
     name = String(name || '').trim().slice(0, 60);
     if (!name) return null;
+    clearPlaylistDeletedTombstone(name);
     const store = getDevStore();
     const id = 'pl_' + Date.now().toString(36);
+    clearPlaylistDeletedTombstone(id);
     store.custom[id] = {
       id: id,
       name: name,
@@ -19288,11 +19463,19 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         if (pl.subscribedPublicId) {
           try { plUnsavePublic(pl.subscribedPublicId); } catch (e) {}
         }
+        addPlaylistDeletedTombstone(pl.name);
+        addPlaylistDeletedTombstone(pid);
         delete store.custom[pid];
         saveDevStore(store);
         activeDevPlaylistId = 'history';
         renderPlaylistsGrid();
         flashToast('👋 Unfollowed playlist', false, false);
+        try {
+          if (typeof cloudPush === 'function' && cloudEnabled()) {
+            clearTimeout(cloudSyncTimer);
+            cloudPush().catch(() => {});
+          }
+        } catch (e) {}
       }
     });
   }
@@ -19344,15 +19527,28 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   // Dirty collections: only these keys are sent on push (absent keys leave
   // server rows untouched — an empty device can never wipe the cloud).
   let cloudDirty = { playlists: false, queue: false, history: false };
+  let playlistEditVersion = 0;
+  let queueEditVersion = 0;
+  let historyEditVersion = 0;
   function markCloudDirty(which) {
-    if (which === 'playlists') cloudDirty.playlists = true;
-    else if (which === 'queue') cloudDirty.queue = true;
-    else if (which === 'history' || which === 'progress') cloudDirty.history = true;
+    if (which === 'playlists') {
+      cloudDirty.playlists = true;
+      playlistEditVersion++;
+    } else if (which === 'queue') {
+      cloudDirty.queue = true;
+      queueEditVersion++;
+    } else if (which === 'history' || which === 'progress') {
+      cloudDirty.history = true;
+      historyEditVersion++;
+    }
   }
   function markCloudAllDirty() {
     cloudDirty.playlists = true;
     cloudDirty.queue = true;
     cloudDirty.history = true;
+    playlistEditVersion++;
+    queueEditVersion++;
+    historyEditVersion++;
   }
 
   function cloudEnabled() {
@@ -19713,6 +19909,21 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         }
       }
       body.playlists = playlists;
+      try {
+        const pTombs = getPlaylistTombstones();
+        const deletedPlaylistItems = [];
+        const deletedPlaylists = [];
+        for (const [k, tombAt] of Object.entries(pTombs)) {
+          if (k.startsWith('pl_del:')) {
+            deletedPlaylists.push(k.slice(7));
+          } else if (k.includes('|')) {
+            const [pid, sid] = k.split('|');
+            if (pid && sid) deletedPlaylistItems.push({ playlist: pid, shiur_id: sid });
+          }
+        }
+        if (deletedPlaylistItems.length > 0) body.deletedPlaylistItems = deletedPlaylistItems.slice(0, 500);
+        if (deletedPlaylists.length > 0) body.deletedPlaylists = deletedPlaylists.slice(0, 100);
+      } catch (e) {}
     }
     if (cloudDirty.queue) {
       let queue = [];
@@ -19739,8 +19950,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         try { local = JSON.parse(localStorage.getItem('yutorah_recent_history') || '[]'); } catch (e) {}
         const byId = new Map();
         for (const h of local) byId.set(String(h.id), h);
+        const hTombs = new Set(getHistoryTombstones().map(String));
         for (const h of s.history) {
           const k = String(h.id);
+          if (hTombs.has(k)) continue;
+          if (cloudDirty.history && !byId.has(k)) continue;
           if (cloudUser && cloudUser.id !== 'dev' && DEV_SEED_SHIUR_IDS.indexOf(k) !== -1) continue;
           const prev = byId.get(k);
           if (!prev || Number(h.listenedAt || 0) >= Number(prev.listenedAt || 0)) byId.set(k, h);
@@ -19754,18 +19968,21 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       }
       if (s.playlists) {
         const store = getDevStore();
-        const mergeItems = (localItems, serverItems) => {
+        const mergeItems = (localItems, serverItems, pid, altPid) => {
           const byId = new Map();
           for (const it of (localItems || [])) byId.set(String(it.id), it);
           for (const it of (serverItems || [])) {
             const k = String(it.id);
+            if (pid && isPlaylistItemTombstoned(pid, k, it.addedAt)) continue;
+            if (altPid && isPlaylistItemTombstoned(altPid, k, it.addedAt)) continue;
+            if (cloudDirty.playlists && !byId.has(k)) continue;
             const prev = byId.get(k);
             if (!prev || Number(it.addedAt || 0) >= Number(prev.addedAt || 0)) byId.set(k, it);
           }
           return [...byId.values()];
         };
-        store.system.save_for_later.items = mergeItems(store.system.save_for_later.items, s.playlists.save_for_later);
-        store.system.favorites.items = mergeItems(store.system.favorites.items, s.playlists.favorites);
+        store.system.save_for_later.items = mergeItems(store.system.save_for_later.items, s.playlists.save_for_later, 'save_for_later');
+        store.system.favorites.items = mergeItems(store.system.favorites.items, s.playlists.favorites, 'favorites');
         // Match customs by name (keep local id + icon); adopt unknown names.
         const icons = {};
         try { Object.assign(icons, JSON.parse(localStorage.getItem('yutorah_custom_icons') || '{}')); } catch (e) {}
@@ -19778,13 +19995,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         }
         for (const [name, items] of Object.entries(s.playlists.custom || {})) {
           if (cloudUser && cloudUser.id !== 'dev' && DEV_SEED_PLAYLIST_TITLES.indexOf(String(name).toLowerCase()) !== -1) continue;
+          if (isPlaylistDeletedTombstoned(name)) continue;
           const pid = byName.get(name) || slugPid(name);
+          if (isPlaylistDeletedTombstoned(pid)) continue;
+          if (cloudDirty.playlists && !store.custom[pid]) continue;
           const existing = store.custom[pid];
           if (existing && existing.isSubscription) continue;
           const prev = (store.custom[pid] && store.custom[pid].items) || [];
           store.custom[pid] = {
             id: pid, name, icon: icons[name] || '📁',
-            items: mergeItems(prev, items)
+            items: mergeItems(prev, items, pid, name)
           };
         }
         try { localStorage.setItem('yutorah_custom_icons', JSON.stringify(icons)); } catch (e) {}
@@ -19861,8 +20081,20 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     } catch (e) {}
   }
 
+  let cloudPushInFlight = false;
+  let cloudPushPending = false;
+
   async function cloudPush() {
     if (!cloudEnabled()) return null;
+    if (cloudPushInFlight) {
+      cloudPushPending = true;
+      return null;
+    }
+    cloudPushInFlight = true;
+    const vPlaylists = playlistEditVersion;
+    const vQueue = queueEditVersion;
+    const vHistory = historyEditVersion;
+
     const payload = collectLocalState();
     const sent = {
       playlists: Boolean(payload.playlists),
@@ -19876,9 +20108,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         body: JSON.stringify(payload)
       });
       if (!res.ok) return null;
-      if (sent.playlists) cloudDirty.playlists = false;
-      if (sent.queue) cloudDirty.queue = false;
-      if (sent.history) cloudDirty.history = false;
+      if (sent.playlists && playlistEditVersion === vPlaylists) cloudDirty.playlists = false;
+      if (sent.queue && queueEditVersion === vQueue) cloudDirty.queue = false;
+      if (sent.history && historyEditVersion === vHistory) cloudDirty.history = false;
       // Server honored the tombstones we sent: drop exactly those so a
       // later push cannot re-delete something re-added since. Retained on
       // failure for retry.
@@ -19890,6 +20122,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       return state;
     } catch (e) {
       return null;
+    } finally {
+      cloudPushInFlight = false;
+      if (cloudPushPending) {
+        cloudPushPending = false;
+        cloudPush().catch(() => {});
+      }
     }
   }
 
@@ -20089,10 +20327,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       confirmLabel: '🗑️ Delete',
       onConfirm: () => {
         const s = getDevStore();
+        addPlaylistDeletedTombstone(pl.name);
+        addPlaylistDeletedTombstone(activeDevPlaylistId);
         delete s.custom[activeDevPlaylistId];
         activeDevPlaylistId = 'history';
         saveDevStore(s);
         renderPlaylistsGrid();
+        try {
+          if (typeof cloudPush === 'function' && cloudEnabled()) {
+            clearTimeout(cloudSyncTimer);
+            cloudPush().catch(() => {});
+          }
+        } catch (e) {}
       }
     });
   }
@@ -20878,6 +21124,36 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   let activeThemeKey = 'auto';
   let activeVariant = 'a';
 
+  const HOLIDAY_HEBREW_TITLES = {
+    rosh_chodesh: 'ראש חודש',
+    rosh_chodesh_cheshvan: 'ר״ח חשון',
+    elul: 'חודש אלול',
+    rosh_hashanah: 'ראש השנה',
+    teshuva: 'עשרת ימי תשובה',
+    yom_kippur: 'יום כיפור',
+    sukkos: 'סוכות',
+    hoshana_rabbah: 'הושענא רבה',
+    simchas_torah: 'שמחת תורה',
+    chanukah: 'חנוכה',
+    tubshevat: 'ט״ו בשבט',
+    adar_buildup: 'חודש אדר',
+    taanis_esther: 'תענית אסתר',
+    purim: 'פורים',
+    nissan_buildup: 'חודש ניסן',
+    pesach: 'פסח',
+    omer: 'ספירת העומר',
+    yom_hazikaron: 'יום הזיכרון',
+    yom_haatzmaut: 'יום העצמאות',
+    lag_baomer: 'ל״ג בעומר',
+    yom_yerushalayim: 'יום ירושלים',
+    shavuos: 'שבועות',
+    july4: '4 ביולי',
+    three_weeks: 'בין המצרים',
+    nine_days: 'תשעת הימים',
+    tisha_bav: 'תשעה באב',
+    tubav: 'ט״ו באב'
+  };
+
   function applyHolidayTheme() {
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     const motifWrap = document.getElementById('holidayMotifWrap');
@@ -20967,7 +21243,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       motifWrap.style.display = 'inline-flex';
       motifWrap.dataset.holiday = '1';
       motifIcon.innerHTML = '<img src="/assets/themes/' + variantData.icon + '" alt="icon" style="width:100%; height:100%; display:block;" onerror="this.style.display=&quot;none&quot;">';
-      motifTitle.textContent = themeDef.badge || themeDef.name;
+      const titleEn = (resolvedKey === 'chanukah' && chanukahDay)
+        ? ('Chanukah (Night ' + chanukahDay + ')')
+        : (themeDef.badge || themeDef.name || 'Holiday');
+      const titleHe = (resolvedKey === 'chanukah' && chanukahDay)
+        ? ('חנוכה (נר ' + chanukahDay + ')')
+        : (HOLIDAY_HEBREW_TITLES[resolvedKey] || 'מועד');
+      motifWrap.dataset.titleEn = titleEn;
+      motifWrap.dataset.titleHe = titleHe;
+      motifTitle.textContent = titleEn;
       motifWrap.title = variantData.title + ' (Tap 3 times to toggle pre-roll)';
     }
 
@@ -21845,12 +22129,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   // Header priority, single left-to-right flow with no gaps:
-  // brand + login/settings (always) → zman apple (full, else apple-only)
-  // → light/dark → support → date badge, each shown only when it fits.
-  // Sacrifices happen lowest-priority-first (badge, support, theme — core
-  // chrome outranks the donate CTA); a refill pass then re-shows anything
-  // that fits in freed space (e.g. theme after the motif shrinks to an
-  // apple). Fully re-derived every run: widening auto-restores.
+  // brand + login/settings (always) → zman motif (English -> Hebrew -> icon-only)
+  // → light/dark → date badge (uncollapsed, else collapsed icon-only) → support (only if room).
+  // Sacrifices happen lowest-priority-first (support first so date badge stays uncollapsed,
+  // then zman English -> Hebrew -> icon-only, then date badge uncollapsed -> collapsed,
+  // then date badge, zman, theme). Fully re-derived every run: widening auto-restores.
   function checkHeaderOverflow() {
     var header = document.getElementById('mainHeader');
     if (!header) return;
@@ -21866,43 +22149,89 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       authBtn.style.display = 'inline-flex';
     }
 
+    var motifOn = motif && motif.dataset.holiday === '1';
+    var motifTitle = document.getElementById('holidayMotifTitle');
+    var titleEn = (motif && motif.dataset.titleEn) || (motifTitle ? motifTitle.textContent : '');
+    var titleHe = (motif && motif.dataset.titleHe) || '';
+
     // Reset to full visibility first (motif expanded when a holiday is
     // active; dataset.holiday is the source of truth since display is
     // toggled below for space).
-    var motifOn = motif && motif.dataset.holiday === '1';
+    header.classList.remove('cluster-tight');
     if (themeBtn) themeBtn.style.display = 'inline-flex';
     if (supportBtn) supportBtn.style.display = 'inline-flex';
-    if (badge) badge.style.display = 'inline-flex';
+    if (badge) {
+      badge.style.display = 'inline-flex';
+      badge.classList.remove('collapsed', 'icon-only');
+    }
     if (motif) {
       if (motifOn) {
         motif.style.display = 'inline-flex';
         motif.classList.remove('icon-only');
+        if (motifTitle && titleEn) motifTitle.textContent = titleEn;
       } else {
         motif.style.display = 'none';
       }
     }
-    header.classList.remove('cluster-tight');
 
-    // Sacrifice lowest-priority-first while overflowing: date badge,
-    // then support, then theme (core chrome outranks the donate CTA).
-    if (badge && headerClusterOverflows()) {
-      badge.style.display = 'none';
-    }
+    // Step 1: Support button is lowest priority — sacrifice support first so it
+    // never steals space from the date badge or core controls.
     if (supportBtn && headerClusterOverflows()) {
       supportBtn.style.display = 'none';
     }
-    if (themeBtn && headerClusterOverflows()) {
-      themeBtn.style.display = 'none';
+
+    // Step 2: If overflowing, try zman in Hebrew (e.g. "ראש השנה" instead of "Rosh Hashanah")
+    if (motifOn && motif && motifTitle && titleHe && headerClusterOverflows()) {
+      motifTitle.textContent = titleHe;
     }
+
+    // Step 3: If still overflowing, try Hebrew date badge collapsed (icon-only 📅)
+    if (badge && headerClusterOverflows()) {
+      badge.classList.add('collapsed', 'icon-only');
+    }
+
+    // Step 4: If still overflowing, try zman motif as icon-only (just the apple / holiday icon)
     if (motifOn && motif && headerClusterOverflows()) {
       motif.classList.add('icon-only');
-      var motifTitle = document.getElementById('holidayMotifTitle');
-      var titleText = motifTitle ? (motifTitle.textContent || '').trim() : '';
+      var titleText = titleEn || titleHe || (motifTitle ? motifTitle.textContent : '');
       if (titleText) motif.title = titleText + ' (Tap to view)';
     }
+
+    // Step 5: If shrinking zman to icon-only freed up space, can Hebrew date now expand uncollapsed?
+    if (badge && badge.classList.contains('collapsed')) {
+      badge.classList.remove('collapsed', 'icon-only');
+      if (headerClusterOverflows()) {
+        badge.classList.add('collapsed', 'icon-only');
+      }
+    }
+
+    // Step 6: If still overflowing, hide the date badge completely
+    if (badge && headerClusterOverflows()) {
+      badge.style.display = 'none';
+    }
+
+    // Step 7: If still overflowing after date badge is hidden, ensure motif is compacted
+    if (motifOn && motif && !motif.classList.contains('icon-only') && headerClusterOverflows()) {
+      if (motifTitle && titleHe && motifTitle.textContent !== titleHe) {
+        motifTitle.textContent = titleHe;
+      }
+      if (headerClusterOverflows()) {
+        motif.classList.add('icon-only');
+        var tText = titleEn || titleHe;
+        if (tText) motif.title = tText + ' (Tap to view)';
+      }
+    }
+
+    // Step 8: If still overflowing, hide zman motif completely
     if (motifOn && motif && headerClusterOverflows()) {
       motif.style.display = 'none';
     }
+
+    // Step 9: If still overflowing, hide themeBtn (light/dark)
+    if (themeBtn && headerClusterOverflows()) {
+      themeBtn.style.display = 'none';
+    }
+
     // Wide motif has no popover: clear any lingering expanded state so a
     // stale class can never resurface untappably later.
     if (motif && motif.style.display !== 'none' && !motif.classList.contains('icon-only') && motif.classList.contains('expanded')) {
@@ -21910,15 +22239,31 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       motif.setAttribute('aria-expanded', 'false');
     }
 
-    // Refill (highest-priority-first): shrinkage above may have freed room
-    // for items hidden earlier — re-show each one that now fits.
-    var refill = [themeBtn, supportBtn, badge];
-    for (var ri = 0; ri < refill.length; ri++) {
-      var el = refill[ri];
-      if (!el || el.style.display !== 'none') continue;
-      el.style.display = 'inline-flex';
+    // Refill (highest-priority-first): themeBtn → date badge (uncollapsed, else collapsed) → support
+    var refill = [themeBtn, badge, supportBtn];
+    if (themeBtn && themeBtn.style.display === 'none') {
+      themeBtn.style.display = 'inline-flex';
+      if (headerClusterOverflows()) themeBtn.style.display = 'none';
+    }
+    if (badge && badge.style.display === 'none') {
+      badge.style.display = 'inline-flex';
+      badge.classList.remove('collapsed', 'icon-only');
       if (headerClusterOverflows()) {
-        el.style.display = 'none';
+        badge.classList.add('collapsed', 'icon-only');
+        if (headerClusterOverflows()) {
+          badge.style.display = 'none';
+        }
+      }
+    } else if (badge && badge.style.display !== 'none' && badge.classList.contains('collapsed')) {
+      badge.classList.remove('collapsed', 'icon-only');
+      if (headerClusterOverflows()) {
+        badge.classList.add('collapsed', 'icon-only');
+      }
+    }
+    if (supportBtn && supportBtn.style.display === 'none') {
+      supportBtn.style.display = 'inline-flex';
+      if (headerClusterOverflows()) {
+        supportBtn.style.display = 'none';
       }
     }
 

@@ -34,8 +34,8 @@ async function testHomepage() {
   const rightIdx = html.indexOf('<div class="header-right">');
   assert.ok(brandIdx !== -1 && authIdx > brandIdx && motifIdx > authIdx && themeIdx > motifIdx,
     'header left cluster must be brand → login → zman → theme');
-  assert.ok(supportIdx > themeIdx && badgeIdx > supportIdx && rightIdx > badgeIdx,
-    'support + date badge must continue the left flow with no gap (all before header-right)');
+  assert.ok(badgeIdx > themeIdx && supportIdx > badgeIdx && rightIdx > supportIdx,
+    'date badge + support must continue the left flow with no gap (all before header-right)');
   assert.ok(html.includes('function headerClusterOverflows()'), 'overflow measurement helper must exist');
   assert.ok(html.includes("dataset.holiday"), 'motif holiday-active flag must exist');
   assert.ok(html.includes('.brand > span:last-child'), 'PLAYER pill style must be scoped (brand text stays plain)');
@@ -754,9 +754,9 @@ async function testLoggedOutHeaderThemeToggle() {
   assert.ok(brandIndex < authBtnIndex, '#authBtn must be rendered next after .brand in header');
   assert.ok(authBtnIndex < motifIndex, 'zman motif must be rendered after #authBtn in DOM (left flow, no gap)');
   assert.ok(motifIndex < themeToggleIndex, '#themeToggleBtn must be rendered after the zman motif in DOM (left flow, no gap)');
-  assert.ok(themeToggleIndex < supportIndex, 'support button must continue the left flow after theme');
-  assert.ok(supportIndex < hebrewDateIndex, 'date badge must continue the left flow after support');
-  assert.ok(hebrewDateIndex < headerRightIndex, 'entire icon flow must precede header-right');
+  assert.ok(themeToggleIndex < hebrewDateIndex, 'date badge must continue the left flow after theme');
+  assert.ok(hebrewDateIndex < supportIndex, 'support button must continue the left flow after date badge');
+  assert.ok(supportIndex < headerRightIndex, 'entire icon flow must precede header-right');
   assert.ok(html.includes('.header-left'), 'CSS must include .header-left layout styling');
   assert.ok(html.includes('justify-content: flex-start'), 'header-inner must pack left with no gap');
 
@@ -918,7 +918,10 @@ async function testZmanimIconShrinkAndSpacePreservation() {
   assert.ok(!html.includes('#hebrewDateBadge {\n        display: none !important;'), 'badge must not be force-hidden on mobile (fill governs)');
   assert.ok(html.includes("if (supportBtn && headerClusterOverflows())"), 'support must hide when tight');
   assert.ok(html.includes("if (badge && headerClusterOverflows())"), 'badge must hide when tight');
-  assert.ok(html.includes('var refill = [themeBtn, supportBtn, badge];'), 'refill must be highest-priority-first (theme → support → badge)');
+  assert.ok(html.includes('var refill = [themeBtn, badge, supportBtn];'), 'refill must be highest-priority-first (theme → badge → support)');
+  assert.ok(html.includes('HOLIDAY_HEBREW_TITLES'), 'Holiday Hebrew titles dictionary must exist');
+  assert.ok(html.includes('motifTitle.textContent = titleHe;'), 'Hebrew zman title fallback must be attempted on overflow');
+  assert.ok(html.includes('.hebrew-date-badge.collapsed .hebrew-date-text'), 'CSS must define collapsed date badge rule');
 
   // 2. CSS contains .holiday-motif-wrap.icon-only rules
   assert.ok(html.includes('.holiday-motif-wrap.icon-only'), 'CSS must define .holiday-motif-wrap.icon-only');

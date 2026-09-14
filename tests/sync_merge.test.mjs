@@ -106,6 +106,20 @@ function makeDb() {
                   items.delete(k);
                 }
               }
+            } else if (p.length === 4) {
+              const [uid, pl1, pl2, sid] = p;
+              for (const [k, v] of [...items.entries()]) {
+                if (v.user_id === uid && (v.playlist === pl1 || v.playlist === pl2) && String(v.shiur_id) === String(sid)) {
+                  items.delete(k);
+                }
+              }
+            } else if (p.length === 3 && q.includes('OR playlist = ?')) {
+              const [uid, pl1, pl2] = p;
+              for (const [k, v] of [...items.entries()]) {
+                if (v.user_id === uid && (v.playlist === pl1 || v.playlist === pl2)) {
+                  items.delete(k);
+                }
+              }
             } else if (p.length === 2) {
               for (const k of [...items.keys()]) {
                 if (k.startsWith(p[0] + '|' + p[1] + '|')) items.delete(k);
@@ -277,5 +291,35 @@ await api('/api/sync', {
 assert.ok(!db._items.has('u1|Elul & Teshuvah Essentials|1053000'), 'pushed dev seed playlist dropped');
 assert.ok(!db._hist.has('u1|1053000'), 'pushed dev seed shiur dropped');
 console.log('  ✅ Dev seed playlists and history strictly isolated & purged for real user accounts.');
+
+// 7. Playlist item deletes and custom playlist deletes stick past pull/sync:
+await api('/api/sync', {
+  dirty: { playlists: true },
+  playlists: {
+    save_for_later: [{ id: 'keep1', title: 'Keep Item' }, { id: 'drop1', title: 'Drop Item' }],
+    favorites: [],
+    custom: { 'My Custom List': [{ id: 'c1', title: 'C1' }] }
+  }
+});
+r = await api('/api/sync');
+assert.ok((r.body.playlists.save_for_later || []).some(x => x.id === 'drop1'), 'item was seeded');
+assert.ok(((r.body.playlists && r.body.playlists.custom) || {})['My Custom List'], 'custom list was seeded');
+
+// Delete item via deletedPlaylistItems and custom playlist via deletedPlaylists:
+await api('/api/sync', {
+  dirty: { playlists: true },
+  playlists: {
+    save_for_later: [{ id: 'keep1', title: 'Keep Item' }],
+    favorites: [],
+    custom: {}
+  },
+  deletedPlaylistItems: [{ playlist: 'save_for_later', shiur_id: 'drop1' }],
+  deletedPlaylists: ['My Custom List']
+});
+r = await api('/api/sync');
+assert.ok(!(r.body.playlists.save_for_later || []).some(x => x.id === 'drop1'), 'deleted item does not resurrect on pull');
+assert.ok((r.body.playlists.save_for_later || []).some(x => x.id === 'keep1'), 'kept item survives');
+assert.ok(!((r.body.playlists && r.body.playlists.custom) || {})['My Custom List'], 'deleted custom playlist does not resurrect');
+console.log('  ✅ Playlist item deletes and custom playlist deletes stick permanently past pull/sync.');
 
 console.log('\n🎉 ALL SYNC MERGE TESTS PASSED SUCCESSFULLY!');
