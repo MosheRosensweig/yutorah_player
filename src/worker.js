@@ -5471,7 +5471,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       margin: 0 auto;
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      /* Single left-to-right flow: every icon starts immediately right of
+         the last one — no gap between groups. */
+      justify-content: flex-start;
       gap: 12px;
       width: 100%;
     }
@@ -5530,6 +5532,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       padding: 4px 12px;
       border-radius: 20px;
       white-space: nowrap;
+      flex-shrink: 0;
       cursor: pointer;
       user-select: none;
       -webkit-user-select: none;
@@ -5998,14 +6001,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       .header-right {
         gap: 6px;
       }
-      #hebrewDateBadge {
-        display: none !important;
-      }
-      .support-yutorah-btn {
-        display: none !important;
-      }
-      /* Theme toggle visibility is governed by checkHeaderOverflow()
-         measurement (shown only when space allows) — no forced display. */
+      /* Support button, date badge, and theme toggle are governed by
+         checkHeaderOverflow() fill (shown whenever space allows, hidden
+         when tight) — no forced display here. */
     }
     .support-yutorah-btn {
       display: inline-flex;
@@ -6468,12 +6466,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       .header-right {
         gap: 5px;
       }
-      .support-yutorah-btn {
-        display: none !important;
-      }
-      .hebrew-date-badge {
-        display: none !important;
-      }
+      /* Support button + date badge are governed by checkHeaderOverflow()
+         fill (shown whenever space allows, hidden when tight) — no forced
+         display here. */
       .hebrew-date-badge:focus-visible {
         outline: 2px solid var(--primary) !important;
         outline-offset: 2px;
@@ -10837,6 +10832,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         <span id="holidayMotifTitle" class="holiday-motif-title"></span>
       </div>
       <button type="button" id="themeToggleBtn" class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Dark / Light Mode">${themeMode === 'light' ? '🌙' : '☀️'}</button>
+      <a href="https://www.givecampus.com/campaigns/50770/donations/new" target="_blank" rel="noopener noreferrer" class="support-yutorah-btn" title="Support YUTorah & Sponsor Learning (Opens in new window)">❤️ Support YUTorah</a>
+      <div class="hebrew-date-badge" id="hebrewDateBadge" onclick="handleCalendarSecretClick(event)" tabindex="0" role="button" aria-label="Hebrew Calendar Date" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();handleCalendarSecretClick(event);}" title="Hebrew Calendar Date">📅<span class="hebrew-date-text">${escapeHtml(homepageData?.hebrewDateString || 'Calendar')}</span></div>
       <div id="authMenu" class="auth-menu" style="display: none;" role="menu" aria-label="Account"></div>
     </div>
     <div class="header-right">
@@ -10913,8 +10910,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           </div>
         </div>
       </div>
-      <a href="https://www.givecampus.com/campaigns/50770/donations/new" target="_blank" rel="noopener noreferrer" class="support-yutorah-btn" title="Support YUTorah & Sponsor Learning (Opens in new window)">❤️ Support YUTorah</a>
-      <div class="hebrew-date-badge" id="hebrewDateBadge" onclick="handleCalendarSecretClick(event)" title="Hebrew Calendar Date">📅<span class="hebrew-date-text">${escapeHtml(homepageData?.hebrewDateString || 'Calendar')}</span></div>
     </div>
   </div>
 </header>
@@ -21602,52 +21597,35 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     return inner.scrollWidth > inner.clientWidth + 2;
   }
 
-  // Header priority, left to right with no gaps:
-  // brand + login/settings (always) → zman apple (full, else apple-only,
-  // else hidden) → light/dark (only when room remains). Sacrifices happen
-  // lowest-priority-first: theme, then motif, then (last resort) brand.
+  // Header priority, single left-to-right flow with no gaps:
+  // brand + login/settings (always) → zman apple (full, else apple-only)
+  // → light/dark → support → date badge, each shown only when it fits.
+  // Sacrifices happen lowest-priority-first (badge, support, theme — core
+  // chrome outranks the donate CTA); a refill pass then re-shows anything
+  // that fits in freed space (e.g. theme after the motif shrinks to an
+  // apple). Fully re-derived every run: widening auto-restores.
   function checkHeaderOverflow() {
     var header = document.getElementById('mainHeader');
     if (!header) return;
-    var wWidth = window.innerWidth || document.documentElement.clientWidth;
 
     var badge = document.getElementById('hebrewDateBadge');
     var motif = document.getElementById('holidayMotifWrap');
     var authBtn = document.getElementById('authBtn');
     var themeBtn = document.getElementById('themeToggleBtn');
-    var brand = header.querySelector('.brand');
-    var hRect = header.getBoundingClientRect();
-    var maxRight = Math.min(wWidth, hRect.right);
-    var brandRight = brand ? brand.getBoundingClientRect().right : 0;
-    var authRight = authBtn ? authBtn.getBoundingClientRect().right : brandRight;
-    var leftBoundary = Math.max(brandRight, authRight);
-    var isMobile = wWidth <= 640;
-    var rowMaxTop = hRect.top + (isMobile ? 38 : 46);
+    var supportBtn = header.querySelector('.support-yutorah-btn');
 
     // 0. Login/settings button: always visible, guaranteed after the brand.
     if (authBtn) {
       authBtn.style.display = 'inline-flex';
     }
 
-    // 1. Hebrew Calendar Date Badge: Hidden on mobile (<= 640px)
-    if (badge) {
-      if (isMobile) {
-        badge.style.display = 'none';
-      } else {
-        badge.style.display = 'inline-flex';
-        var bRect = badge.getBoundingClientRect();
-        if (bRect.right > maxRight - 4 || bRect.left < leftBoundary + 8 || bRect.top > rowMaxTop) {
-          badge.style.display = 'none';
-        } else {
-          badge.style.display = 'inline-flex';
-        }
-      }
-    }
-
-    // Reset to full visibility first so every run re-derives state from
-    // scratch (widening auto-restores; no oscillation between runs).
+    // Reset to full visibility first (motif expanded when a holiday is
+    // active; dataset.holiday is the source of truth since display is
+    // toggled below for space).
     var motifOn = motif && motif.dataset.holiday === '1';
     if (themeBtn) themeBtn.style.display = 'inline-flex';
+    if (supportBtn) supportBtn.style.display = 'inline-flex';
+    if (badge) badge.style.display = 'inline-flex';
     if (motif) {
       if (motifOn) {
         motif.style.display = 'inline-flex';
@@ -21658,25 +21636,40 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     header.classList.remove('cluster-tight');
 
-    // 2. Theme Toggle Button (lowest priority): hidden first when tight.
+    // Sacrifice lowest-priority-first while overflowing: date badge,
+    // then support, then theme (core chrome outranks the donate CTA).
+    if (badge && headerClusterOverflows()) {
+      badge.style.display = 'none';
+    }
+    if (supportBtn && headerClusterOverflows()) {
+      supportBtn.style.display = 'none';
+    }
     if (themeBtn && headerClusterOverflows()) {
       themeBtn.style.display = 'none';
     }
-
-    // 3. Holiday Motif Badge (e.g. Rosh Hashanah apple): apple-only when
-    // tight, hidden only when even the apple won't fit. Purely
-    // measurement-based — no screen-size breakpoints.
     if (motifOn && motif && headerClusterOverflows()) {
       motif.classList.add('icon-only');
       var motifTitle = document.getElementById('holidayMotifTitle');
       var titleText = motifTitle ? (motifTitle.textContent || '').trim() : '';
       if (titleText) motif.title = titleText + ' (Tap to view)';
+    }
+    if (motifOn && motif && headerClusterOverflows()) {
+      motif.style.display = 'none';
+    }
+
+    // Refill (highest-priority-first): shrinkage above may have freed room
+    // for items hidden earlier — re-show each one that now fits.
+    var refill = [themeBtn, supportBtn, badge];
+    for (var ri = 0; ri < refill.length; ri++) {
+      var el = refill[ri];
+      if (!el || el.style.display !== 'none') continue;
+      el.style.display = 'inline-flex';
       if (headerClusterOverflows()) {
-        motif.style.display = 'none';
+        el.style.display = 'none';
       }
     }
 
-    // 4. Last resort: let the brand text ellipsis so the login button is
+    // Last resort: let the brand text ellipsis so the login button is
     // never pushed out on ultra-narrow screens.
     header.classList.toggle('cluster-tight', headerClusterOverflows());
   }

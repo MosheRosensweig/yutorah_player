@@ -29,8 +29,13 @@ async function testHomepage() {
   const authIdx = html.indexOf('id="authBtn"');
   const motifIdx = html.indexOf('id="holidayMotifWrap"');
   const themeIdx = html.indexOf('id="themeToggleBtn"');
+  const supportIdx = html.indexOf('class="support-yutorah-btn"');
+  const badgeIdx = html.indexOf('id="hebrewDateBadge"');
+  const rightIdx = html.indexOf('<div class="header-right">');
   assert.ok(brandIdx !== -1 && authIdx > brandIdx && motifIdx > authIdx && themeIdx > motifIdx,
     'header left cluster must be brand → login → zman → theme');
+  assert.ok(supportIdx > themeIdx && badgeIdx > supportIdx && rightIdx > badgeIdx,
+    'support + date badge must continue the left flow with no gap (all before header-right)');
   assert.ok(html.includes('function headerClusterOverflows()'), 'overflow measurement helper must exist');
   assert.ok(html.includes("dataset.holiday"), 'motif holiday-active flag must exist');
   assert.ok(html.includes('.brand > span:last-child'), 'PLAYER pill style must be scoped (brand text stays plain)');
@@ -731,22 +736,29 @@ async function testLoggedOutHeaderThemeToggle() {
   assert.equal(res.status, 200, 'Homepage SSR must return 200 OK');
   const html = await res.text();
 
-  // 1. Left cluster order in header HTML: brand → #authBtn → zman motif → #themeToggleBtn (no gaps)
+  // 1. Single left flow in header HTML: brand → #authBtn → zman motif →
+  // #themeToggleBtn → support → date badge (no gaps, all before header-right)
   const brandIndex = html.indexOf('class="brand"');
   const authBtnIndex = html.indexOf('id="authBtn"');
   const motifIndex = html.indexOf('id="holidayMotifWrap"');
   const themeToggleIndex = html.indexOf('id="themeToggleBtn"');
+  const supportIndex = html.indexOf('class="support-yutorah-btn"');
   const hebrewDateIndex = html.indexOf('id="hebrewDateBadge"');
+  const headerRightIndex = html.indexOf('<div class="header-right">');
   assert.ok(brandIndex !== -1, 'Header must contain .brand');
   assert.ok(authBtnIndex !== -1, 'Header must contain #authBtn');
   assert.ok(motifIndex !== -1, 'Header must contain #holidayMotifWrap');
   assert.ok(themeToggleIndex !== -1, 'Header must contain #themeToggleBtn');
+  assert.ok(supportIndex !== -1, 'Header must contain support button in left flow');
   assert.ok(hebrewDateIndex !== -1, 'Header must contain #hebrewDateBadge');
   assert.ok(brandIndex < authBtnIndex, '#authBtn must be rendered next after .brand in header');
-  assert.ok(authBtnIndex < motifIndex, 'zman motif must be rendered after #authBtn in DOM (left cluster, no gap)');
-  assert.ok(motifIndex < themeToggleIndex, '#themeToggleBtn must be rendered after the zman motif in DOM (left cluster, no gap)');
-  assert.ok(themeToggleIndex < hebrewDateIndex, 'left cluster (incl. theme) must precede the right-hand date badge');
+  assert.ok(authBtnIndex < motifIndex, 'zman motif must be rendered after #authBtn in DOM (left flow, no gap)');
+  assert.ok(motifIndex < themeToggleIndex, '#themeToggleBtn must be rendered after the zman motif in DOM (left flow, no gap)');
+  assert.ok(themeToggleIndex < supportIndex, 'support button must continue the left flow after theme');
+  assert.ok(supportIndex < hebrewDateIndex, 'date badge must continue the left flow after support');
+  assert.ok(hebrewDateIndex < headerRightIndex, 'entire icon flow must precede header-right');
   assert.ok(html.includes('.header-left'), 'CSS must include .header-left layout styling');
+  assert.ok(html.includes('justify-content: flex-start'), 'header-inner must pack left with no gap');
 
   // 2. Theme toggle lives in the left cluster (no right-hand order rule)
   assert.ok(!html.includes('.header-right #themeToggleBtn'), 'theme toggle must not be styled into .header-right');
@@ -901,8 +913,12 @@ async function testZmanimIconShrinkAndSpacePreservation() {
   const homeRes = await worker.fetch(homeReq, mockEnv, mockCtx);
   const html = await homeRes.text();
 
-  // 1. Hebrew date badge is hidden on mobile (<= 640px)
-  assert.ok(html.includes('#hebrewDateBadge {\n        display: none !important;'), 'Hebrew date badge must be hidden on mobile');
+  // 1. Date badge + support fill by measurement on all sizes (no forced
+  // mobile hides — checkHeaderOverflow shows each only when it fits)
+  assert.ok(!html.includes('#hebrewDateBadge {\n        display: none !important;'), 'badge must not be force-hidden on mobile (fill governs)');
+  assert.ok(html.includes("if (supportBtn && headerClusterOverflows())"), 'support must hide when tight');
+  assert.ok(html.includes("if (badge && headerClusterOverflows())"), 'badge must hide when tight');
+  assert.ok(html.includes('var refill = [themeBtn, supportBtn, badge];'), 'refill must be highest-priority-first (theme → support → badge)');
 
   // 2. CSS contains .holiday-motif-wrap.icon-only rules
   assert.ok(html.includes('.holiday-motif-wrap.icon-only'), 'CSS must define .holiday-motif-wrap.icon-only');
