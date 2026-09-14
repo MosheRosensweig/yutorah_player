@@ -5487,10 +5487,80 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       cursor: pointer;
       user-select: none;
       -webkit-user-select: none;
-      transition: background 0.15s ease;
+      transition: background 0.15s ease, padding 0.15s ease, transform 0.15s ease;
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+      flex-shrink: 0;
+      box-sizing: border-box;
+    }
+    .hebrew-date-badge:hover {
+      background: rgba(0,0,0,0.24);
     }
     .hebrew-date-badge:active {
-      background: rgba(0,0,0,0.28);
+      background: rgba(0,0,0,0.32);
+    }
+    .hebrew-date-badge:focus-visible {
+      outline: 2px solid var(--primary) !important;
+      outline-offset: 2px;
+    }
+    .hebrew-date-badge.icon-only {
+      padding: 4px 6px;
+      min-width: 32px;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+    }
+    .hebrew-date-badge.icon-only .hebrew-date-text {
+      display: none;
+    }
+    .hebrew-date-badge.icon-only.expanded {
+      background: rgba(255,255,255,0.22);
+    }
+    .hebrew-date-badge.icon-only.expanded .hebrew-date-text {
+      display: block;
+      position: absolute;
+      top: calc(100% + 8px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--card, #1e293b);
+      color: var(--text, #ffffff);
+      border: 1.5px solid var(--border-light, rgba(255,255,255,0.25));
+      padding: 7px 14px;
+      border-radius: 8px;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.35);
+      white-space: nowrap;
+      font-size: 12.5px;
+      font-weight: 700;
+      z-index: 10000;
+      pointer-events: none;
+      animation: hebrewBadgePop 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .hebrew-date-badge.icon-only.expanded .hebrew-date-text::before {
+      content: '';
+      position: absolute;
+      top: -6px;
+      left: 50%;
+      transform: translateX(-50%);
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-bottom: 6px solid var(--border-light, rgba(255,255,255,0.25));
+    }
+    .hebrew-date-badge.icon-only.expanded .hebrew-date-text::after {
+      content: '';
+      position: absolute;
+      top: -4.5px;
+      left: 50%;
+      transform: translateX(-50%);
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-bottom: 5px solid var(--card, #1e293b);
+    }
+    @keyframes hebrewBadgePop {
+      from { opacity: 0; transform: translate(-50%, -6px) scale(0.95); }
+      to { opacity: 1; transform: translate(-50%, 0) scale(1); }
     }
 
     /* Secret Pre-Roll Toggle Toast / Flash HUD */
@@ -5940,26 +6010,37 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     .header-right #themeToggleBtn {
       order: 10;
+      display: inline-flex;
+    }
+    @media (max-width: 768px) {
+      #hebrewDateBadge .hebrew-date-text {
+        display: none;
+      }
+      #hebrewDateBadge {
+        padding: 4px 6px;
+        min-width: 32px;
+        width: 32px;
+        height: 32px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+      }
     }
     @media (max-width: 640px) {
+      .header-right {
+        gap: 6px;
+      }
+      .support-yutorah-btn {
+        display: none !important;
+      }
       #hebrewDateBadge {
-        display: none !important;
-      }
-      /* When logged in on mobile, theme toggle is accessible via the settings gear dropdown */
-      body.is-logged-in #themeToggleBtn,
-      .auth-btn.logged-in ~ #themeToggleBtn {
-        display: none !important;
-      }
-      /* On intermediate mobile screens (521px-640px) for non-logged-in users, display by default without !important so JS overflow check can hide it if cut off */
-      body:not(.is-logged-in) #themeToggleBtn {
         display: inline-flex;
       }
-    }
-    /* On narrow mobile screens (<= 520px), suppress header theme toggle to prevent any clipping/overflow. */
-    /* Theme toggling remains fully accessible via the settings/account dropdown (#authMenu) for all users! */
-    @media (max-width: 520px) {
-      #themeToggleBtn {
-        display: none !important;
+      /* On mobile, both login button and theme toggle have plenty of space alongside the shrunk date icon */
+      body:not(.is-logged-in) #themeToggleBtn,
+      body.is-logged-in #themeToggleBtn {
+        display: inline-flex;
       }
     }
     .support-yutorah-btn {
@@ -6348,9 +6429,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       .support-yutorah-btn {
         display: none !important;
       }
-      /* Mobile: Hebrew date stays fully expanded; swipe the header to reach it. */
+      /* Mobile: Hebrew date shrinks to icon-only; tap to temporarily view full text. */
       .hebrew-date-badge .hebrew-date-text {
-        display: inline;
+        display: none;
+      }
+      .hebrew-date-badge.expanded .hebrew-date-text {
+        display: block;
       }
       .hebrew-date-badge:focus-visible {
         outline: 2px solid var(--primary) !important;
@@ -12007,9 +12091,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     try {
       const badge = document.getElementById('hebrewDateBadge');
       if (!badge) return;
+      if (badge.classList.contains('expanded')) {
+        badge.classList.remove('expanded');
+        clearTimeout(hebrewPulseTimer);
+        return;
+      }
       badge.classList.add('expanded');
       clearTimeout(hebrewPulseTimer);
-      hebrewPulseTimer = setTimeout(() => badge.classList.remove('expanded'), 2200);
+      hebrewPulseTimer = setTimeout(() => {
+        if (badge) badge.classList.remove('expanded');
+      }, 4000);
     } catch (e) {}
   }
 
@@ -21350,53 +21441,97 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (!header) return;
     var wWidth = window.innerWidth || document.documentElement.clientWidth;
 
-    // 1. Hebrew Calendar Badge Check (hide on mobile or when clipped)
     var badge = document.getElementById('hebrewDateBadge');
+    var authBtn = document.getElementById('authBtn');
+    var themeBtn = document.getElementById('themeToggleBtn');
+    var brand = header.querySelector('.brand');
+    var hRect = header.getBoundingClientRect();
+    var maxRight = Math.min(wWidth, hRect.right);
+    var brandRight = brand ? brand.getBoundingClientRect().right : 0;
+    var isMobile = wWidth <= 640;
+    var rowMaxTop = hRect.top + (isMobile ? 38 : 46);
+
+    // 1. Zmanim / Hebrew Date Badge Shrinking Logic:
+    // If screen width <= 768px, or if with full text the login button or theme button
+    // would be cut off, wrapped to a second line, or collide with the brand:
+    // shrink the zmanim badge to just be the icon!
+    var shouldShrink = wWidth <= 768;
+
     if (badge) {
-      if (wWidth <= 640) {
+      badge.style.display = 'inline-flex';
+      if (!shouldShrink) {
+        // Temporarily test with full text to see if login button or theme toggle would be cut off
+        badge.classList.remove('icon-only');
+        var bRect = badge.getBoundingClientRect();
+        var aRect = authBtn ? authBtn.getBoundingClientRect() : null;
+        var tRect = (themeBtn && themeBtn.style.display !== 'none') ? themeBtn.getBoundingClientRect() : null;
+
+        var authCutOff = aRect && (aRect.right > maxRight - 4 || aRect.top > rowMaxTop || aRect.left < brandRight + 8);
+        var themeCutOff = tRect && (tRect.right > maxRight - 4 || tRect.top > rowMaxTop || tRect.left < brandRight + 8);
+        var badgeCutOff = bRect.right > maxRight - 4 || bRect.left < brandRight + 8 || bRect.top > rowMaxTop;
+
+        if (authCutOff || themeCutOff || badgeCutOff) {
+          shouldShrink = true;
+        }
+      }
+
+      if (shouldShrink) {
+        badge.classList.add('icon-only');
+        var dateText = badge.querySelector('.hebrew-date-text');
+        var rawText = dateText ? (dateText.textContent || '').trim() : '';
+        if (rawText) badge.title = rawText + ' (Tap to view)';
+      } else {
+        badge.classList.remove('icon-only');
+      }
+
+      // Ultra-narrow viewport safeguard (<320px) if even icon collides
+      var bRectFinal = badge.getBoundingClientRect();
+      if (bRectFinal.left < brandRight + 4) {
         badge.style.display = 'none';
       } else {
         badge.style.display = 'inline-flex';
-        var bRect = badge.getBoundingClientRect();
-        var hRect = header.getBoundingClientRect();
-        if (bRect.right > wWidth - 8 || bRect.right > hRect.right - 6 || bRect.left < 0 || bRect.top > hRect.top + 45) {
-          badge.style.display = 'none';
-        } else {
-          badge.style.display = 'inline-flex';
-        }
       }
     }
 
-    // 2. Theme Toggle Button Check: Suppress from header if it would get cut off, wrapped, or collide with brand
-    var themeBtn = document.getElementById('themeToggleBtn');
-    if (themeBtn) {
-      var isNarrow = wWidth <= 520;
-      var isLoggedIn = document.body.classList.contains('is-logged-in');
-      var isMobile = wWidth <= 640;
+    // 2. Ensure authBtn (login button) is visible and never cut off
+    if (authBtn) {
+      authBtn.style.display = 'inline-flex';
+    }
 
-      // On narrow mobile screens (<= 520px) or when logged in on mobile, suppress from header
-      if (isNarrow || (isMobile && isLoggedIn)) {
+    // 3. Theme Toggle Button check
+    if (themeBtn) {
+      themeBtn.style.display = 'inline-flex';
+      var tRectFinal = themeBtn.getBoundingClientRect();
+      var aRectFinal = authBtn ? authBtn.getBoundingClientRect() : null;
+      var isCutOff = tRectFinal.right > maxRight - 4 ||
+                     tRectFinal.top > rowMaxTop ||
+                     tRectFinal.left < brandRight + 6 ||
+                     (aRectFinal && aRectFinal.right > maxRight - 4);
+      if (isCutOff) {
         themeBtn.style.display = 'none';
       } else {
-        // Measure button bounds to ensure it is not cut off, wrapped, or colliding with brand
         themeBtn.style.display = 'inline-flex';
-        var tRect = themeBtn.getBoundingClientRect();
-        var hRect = header.getBoundingClientRect();
-        var brand = header.querySelector('.brand');
-        var brandRect = brand ? brand.getBoundingClientRect() : { right: 0 };
-        var maxRight = Math.min(wWidth, hRect.right);
-
-        var isCutOff = tRect.right > maxRight - 6 ||
-                       tRect.top > hRect.top + (isMobile ? 38 : 46) ||
-                       tRect.left < (brandRect.right || 0) + 8;
-        if (isCutOff) {
-          themeBtn.style.display = 'none';
-        } else {
-          themeBtn.style.display = 'inline-flex';
-        }
       }
     }
   }
+
+  // Dismiss expanded zmanim full text on document click outside or Escape
+  document.addEventListener('click', function(e) {
+    var badge = document.getElementById('hebrewDateBadge');
+    if (badge && badge.classList.contains('expanded') && !badge.contains(e.target)) {
+      badge.classList.remove('expanded');
+      if (typeof hebrewPulseTimer !== 'undefined') clearTimeout(hebrewPulseTimer);
+    }
+  });
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      var badge = document.getElementById('hebrewDateBadge');
+      if (badge && badge.classList.contains('expanded')) {
+        badge.classList.remove('expanded');
+        if (typeof hebrewPulseTimer !== 'undefined') clearTimeout(hebrewPulseTimer);
+      }
+    }
+  });
 
   function checkCalendarOverflow() {
     checkHeaderOverflow();

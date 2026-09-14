@@ -725,29 +725,22 @@ async function testLoggedOutHeaderThemeToggle() {
   assert.ok(html.includes('.header-right #themeToggleBtn'), 'CSS must specify .header-right #themeToggleBtn styling');
   assert.ok(html.includes('order: 10'), '#themeToggleBtn must have order: 10 in CSS');
 
-  // 3. Mobile media query keeps theme toggle visible in header for logged-out / guest users on intermediate screens (521px-640px)
-  assert.ok(html.includes('body:not(.is-logged-in) #themeToggleBtn'), 'CSS must specify themeToggleBtn for non-logged-in users on mobile');
-  assert.ok(html.includes('display: inline-flex;'), 'Non-logged-in theme toggle displays inline-flex by default without !important so JS overflow can hide it');
+  // 3. Mobile media query keeps theme toggle and zmanim icon visible in header
+  assert.ok(html.includes('.header-right #themeToggleBtn'), 'CSS must specify themeToggleBtn in .header-right');
+  assert.ok(html.includes('display: inline-flex;'), 'Theme toggle displays inline-flex by default');
 
-  // 4. Narrow mobile screens (<= 520px) suppress theme toggle to prevent cut-off
-  assert.ok(html.includes('@media (max-width: 520px)'), 'CSS must define max-width 520px breakpoint');
-  assert.ok(html.includes('#themeToggleBtn') && html.includes('display: none !important'), 'CSS must suppress header themeToggleBtn on <= 520px screens');
-
-  // 5. Mobile media query hides theme toggle when logged in (accessible via gear settings menu)
-  assert.ok(html.includes('body.is-logged-in #themeToggleBtn'), 'CSS must hide header themeToggleBtn when logged in on mobile');
-
-  // 6. Dynamic overflow detection suppresses theme toggle if it would be cut off or collide
+  // 4. Dynamic overflow detection suppresses theme toggle if it would be cut off or collide
   assert.ok(html.includes('function checkHeaderOverflow()'), 'checkHeaderOverflow must be defined in client JS');
   assert.ok(html.includes('isCutOff') && html.includes("themeBtn.style.display = 'none'"), 'checkHeaderOverflow must hide theme toggle if cut off');
 
-  // 7. Settings dropdown menu includes theme toggle fallback for all users (logged-in and guest)
+  // 5. Settings dropdown menu includes theme toggle fallback for all users (logged-in and guest)
   assert.ok(html.includes('menu-theme-toggle-btn'), 'Settings menu must provide theme toggle fallback for all users');
 
-  // 8. Client-side renderAuthBtn updates is-logged-in class on document.body
+  // 6. Client-side renderAuthBtn updates is-logged-in class on document.body
   assert.ok(html.includes("document.body.classList.add('is-logged-in')"), 'renderAuthBtn must add is-logged-in to body when user is logged in');
   assert.ok(html.includes("document.body.classList.remove('is-logged-in')"), 'renderAuthBtn must remove is-logged-in from body when user is logged out');
 
-  // 9. Settings dropdown menu icons and calendar date vertical alignment
+  // 7. Settings dropdown menu icons and calendar date vertical alignment
   assert.ok(html.includes('.menu-item-icon') && html.includes('.menu-cal-icon'), 'CSS must define .menu-item-icon and .menu-cal-icon for standardized icon container alignment');
   assert.ok(html.includes('class="settings-menu-item auth-cal-mobile"'), 'Settings menu must render calendar date as settings-menu-item for uniform padding and icon alignment');
 
@@ -874,6 +867,42 @@ async function testPlaylistsTabAndDisplayNameBanner() {
   console.log('  ✅ Playlists tab labeled "🎧 Playlists", segmented controls preserved, and display name banner verified.');
 }
 
+async function testZmanimIconShrinkAndSpacePreservation() {
+  console.log('23. Testing Zmanim Badge Icon Shrinking, Tap Expansion & Header Space Preservation...');
+  const homeReq = new Request('https://yutorah-player.mrosensweig.workers.dev/');
+  const homeRes = await worker.fetch(homeReq, mockEnv, mockCtx);
+  const html = await homeRes.text();
+
+  // 1. CSS contains .hebrew-date-badge.icon-only rules
+  assert.ok(html.includes('.hebrew-date-badge.icon-only'), 'CSS must define .hebrew-date-badge.icon-only');
+  assert.ok(html.includes('.hebrew-date-badge.icon-only .hebrew-date-text'), 'CSS must hide text in icon-only mode');
+
+  // 2. CSS contains .hebrew-date-badge.icon-only.expanded floating popover rules
+  assert.ok(html.includes('.hebrew-date-badge.icon-only.expanded .hebrew-date-text'), 'CSS must define expanded popover text styling');
+  assert.ok(html.includes('animation: hebrewBadgePop'), 'Expanded popover must have hebrewBadgePop animation');
+
+  // 3. pulseHebrewDate handles toggle and temporary expansion
+  assert.ok(html.includes('pulseHebrewDate()'), 'Client JS must define pulseHebrewDate()');
+  assert.ok(html.includes("badge.classList.contains('expanded')"), 'pulseHebrewDate must toggle expanded state');
+  assert.ok(html.includes('4000'), 'pulseHebrewDate must have 4000ms duration timer');
+
+  // 4. Document event listeners for outside click and Escape dismissal
+  assert.ok(html.includes("e.key === 'Escape'") && html.includes("badge.classList.remove('expanded')"),
+    'Client JS must dismiss expanded zmanim popover on Escape key');
+
+  // 5. checkHeaderOverflow shrinks zmanim badge to icon whenever space is tight or login would be cut off
+  assert.ok(html.includes('shouldShrink') && html.includes("badge.classList.add('icon-only')"),
+    'checkHeaderOverflow must dynamically shrink zmanim badge to icon-only');
+  assert.ok(html.includes("authBtn.style.display = 'inline-flex'"),
+    'checkHeaderOverflow must prioritize authBtn (login button) display');
+
+  // 6. Both login button and theme toggle are preserved in top banner
+  assert.ok(html.includes('id="authBtn"') && html.includes('id="themeToggleBtn"'),
+    'Top banner must include both #authBtn and #themeToggleBtn');
+
+  console.log('  ✅ Zmanim badge shrinking to icon, temporary expansion on tap & space preservation verified.');
+}
+
 async function runAll() {
   try {
     await testHomepage();
@@ -898,6 +927,7 @@ async function runAll() {
     await testLoggedOutHeaderThemeToggle();
     await testPwaIntegration();
     await testPlaylistsTabAndDisplayNameBanner();
+    await testZmanimIconShrinkAndSpacePreservation();
     console.log('\n🎉 ALL BASIC FUNCTIONALITY, ARTICLE READER & LIQUID MODE TESTS PASSED SUCCESSFULLY!');
   } catch (err) {
     console.error('\n❌ Test failed:', err);
