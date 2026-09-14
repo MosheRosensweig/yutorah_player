@@ -11,8 +11,8 @@ Production status: **DEPLOYED & VERIFIED (HTTP 200 on both Dev & Prod)**
 ## 🎯 In Progress: Dev-Only Trio (Source Sheets → Shiurim-Info → /daf Hub)
 Per-user instruction: dev only (no prod), one feature at a time — quick review + FEATURES.md + dev deploy each — notes throughout, final dual review at the end.
 - [x] **Feature 1: 📄 Source Sheet button on audio shiurim** — extraction (`shiurAdditionalMaterials` → title/type/URL, relative-URL + existence handling), player action button (count badge, audio-only, per-track reset, direct-link hydrate), keep-audio Liquid Mode path with ✕ Close, multi-sheet chooser, `cdn.yutorah.net` proxy allowlist. Test #26. *Status: ✅ dev-deployed (`2cb8d502`, HTTP 200, markers live).*
-- [ ] **Feature 2: Shiurim-therein ℹ️ info button**
-- [ ] **Feature 3: /daf Daily Study Hub (OG-parity viewer with touch zoom/pan)**
+- [x] **Feature 2: Shiurim-therein ℹ️ info button** *(dev-deployed, HTTP 200, markers live)*
+- [ ] **Feature 3: /daf Daily Study Hub (OG-parity viewer with touch zoom/pan)** *(IN PROGRESS)*
 
 ## 🔒 Standing Deployment & QA Invariants (Permanent Rule)
 1. **Dev-First Deployment Rule (MANDATORY)**:

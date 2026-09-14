@@ -296,6 +296,13 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 - **No double calendar emoji**: the account-menu date stripped the header badge's leading 📅 before adding its own (both auth states, incl. variant-selector form).
 - **Settings/login menu date**: single 📅 prefix; menu calendar entry uses uniform item padding with icon containers.
 
+### 📜 Daf Yomi Hub (/daf)
+- **Tractate/folio selector + calendar nav**: 36 masechtot with daf counts, folio input with per-tractate bounds, prev/today/next day stepping plus a date picker. Calendar dates resolve through exact client-side cycle math (2,711 dafim, no Shekalim, anchor 2019-12-28 = Berachos 2 — verified against Sefaria and dafyomi.org live); manual folio jumps forward to the next occurrence. State lives in shareable `?m=&d=&date=` params.
+- **OG-style daf viewer**: single tap zooms to 2.4x anchored exactly where the finger pressed, finger-drag pans while zoomed, pinch zooms 1–4x around its center, plus −/+/reset buttons, live % label, and double-click support on desktop. Same anchor math as the article canvas viewer, standalone state.
+- **Daf content**: bilingual Gemara text from Sefaria (CORS-open API; Hebrew default with English toggle, numbered segments, `heRef` header), loading/error/retry states. A `dafImageUrl()` slot is reserved so scan images can replace the text panel without touching gestures.
+- **Shiurim on this daf**: one tap opens a `?search=Masechta+Daf` results tab for related lectures. Entry via the 📖 Daf Hub quick chip; `themeMode` SSR + client toggle included; breakout-safe param embedding (`jsEmbed`).
+- **ℹ️ Shiurim-therein explainer** (companion, public playlists): info button beside the scope checkbox using the standard tooltip system; copy states the scope only widens results.
+
 ### 📄 Source Sheet button on audio shiurim
 - **Attached handouts, one tap away**: audio lectures with attached source sheets, packets, or marei-mekomos handouts (`shiurAdditionalMaterials`: title, type, `viewerURL`/`materialURL`, existence-checked) show a **📄 Source Sheet** action button in the player controls (with a `(N)` count when several are attached).
 - **Liquid Mode viewer without interrupting audio**: opening a sheet loads it through the existing Liquid Mode / Original Page pipeline (same PDF proxy, same toolbar, fullscreen, zoom) but explicitly skips the audio takeover — controls stay visible, playback never pauses or resets. A dedicated **✕ Close** toolbar button dismisses the sheet (never hiding a real article track).

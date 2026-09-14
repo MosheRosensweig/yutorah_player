@@ -1170,6 +1170,46 @@ async function testSourceSheetButton() {
   console.log('  ✅ Source Sheet button, keep-audio viewer path & extraction verified.');
 }
 
+async function testDafHub() {
+  console.log('27. Testing Daf Yomi Hub (/daf)...');
+  const res = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/daf'), mockEnv, mockCtx);
+  assert.equal(res.status, 200, '/daf should return 200 OK');
+  const html = await res.text();
+  assert.ok(html.includes('id="dafViewer"'), '/daf must contain the viewer');
+  assert.ok(html.includes('id="dafMasechta"'), '/daf must contain the tractate selector');
+  assert.ok(html.includes('id="dafFolio"'), '/daf must contain the folio input');
+  assert.ok(html.includes('id="dafDate"'), '/daf must contain calendar nav');
+  assert.ok(html.includes('id="dafShiurimLink"'), '/daf must link shiurim on the daf');
+
+  // Cycle math: 36 masechtot (no Shekalim), 2711 dafim, verified anchor.
+  const workerSrc = fs.readFileSync(new URL('../src/worker.js', import.meta.url), 'utf8');
+  assert.ok(workerSrc.includes('const DAF_CYCLE_DAYS = 2711'), 'cycle must be 2711 dafim');
+  assert.ok(workerSrc.includes('Date.UTC(2019, 11, 28)'), 'anchor must be 2019-12-28 (Berachos 2)');
+  assert.ok(!workerSrc.includes("['Shekalim'"), 'Shekalim must be excluded from the Bavli cycle');
+  assert.ok(workerSrc.includes('function dafIndexForDateUTC'), 'date→index math must exist');
+  assert.ok(workerSrc.includes('function dafRefForIndexUTC'), 'index→ref math must exist');
+
+  // OG-style gestures: single-tap zoom at point, pan, pinch, buttons.
+  assert.ok(workerSrc.includes('dzZoomAt(ch.clientX, ch.clientY, 2.4)'), 'single tap must zoom at the touch point');
+  assert.ok(workerSrc.includes('panning = true'), 'drag must pan while zoomed');
+  assert.ok(workerSrc.includes('startScale * (dist('), 'pinch must scale around its center');
+  assert.ok(workerSrc.includes('www.sefaria.org/api/texts/'), 'daf text must come from Sefaria');
+  assert.ok(workerSrc.includes('function dafImageUrl(m, d)'), 'image slot must exist for scan parity');
+
+  // Entry point from the homepage.
+  const homeRes = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/'), mockEnv, mockCtx);
+  const homeHtml = await homeRes.text();
+  assert.ok(homeHtml.includes("window.location.href='/daf'"), 'homepage must link the Daf Hub');
+
+  // Init params must use breakout-safe embedding (XSS).
+  assert.ok(workerSrc.includes('var sm = ${jsEmbed(') || workerSrc.includes('var sm = ${ jsEmbed('),
+    'daf init params must use jsEmbed');
+  assert.ok(!workerSrc.includes('var sm = ${JSON.stringify(String(initMasechta'),
+    'daf init params must not use raw JSON.stringify');
+
+  console.log('  ✅ Daf hub route, cycle math, OG-style viewer & entry chip verified.');
+}
+
 async function runAll() {
   try {
     await testHomepage();
@@ -1199,6 +1239,7 @@ async function runAll() {
     await testPublicPlaylistPublishingAndSyncLifecycle();
     await testPublicPlaylistCopyTooltipAndSubscriptionPersistence();
     await testSourceSheetButton();
+    await testDafHub();
     console.log('\n🎉 ALL BASIC FUNCTIONALITY, ARTICLE READER & LIQUID MODE TESTS PASSED SUCCESSFULLY!');
   } catch (err) {
     console.error('\n❌ Test failed:', err);

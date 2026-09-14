@@ -1,6 +1,10 @@
 {
   "entries": [
     {
+      "date": "2026-09-14T10:40:00-04:00",
+      "message": "Daf Yomi hub (/daf): tractate/folio selector, calendar nav over the verified 2,711-day cycle, OG-style tap-to-zoom daf viewer with bilingual Sefaria text and shiurim links."
+    },
+    {
       "date": "2026-09-14T10:20:00-04:00",
       "message": "Shiurim-therein info button: an explainer tooltip beside the public-playlist scope checkbox (standard tooltip system, additive-scope copy)."
     },

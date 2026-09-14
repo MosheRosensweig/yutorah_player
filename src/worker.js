@@ -2561,6 +2561,21 @@ export default {
       themeMode = 'dark';
     }
 
+    // 4b. Daf Yomi Daily Study Hub: /daf (shareable ?m=&d=&date=)
+    if (url.pathname === '/daf' || url.pathname === '/daf/') {
+      return new Response(renderDafPage({
+        themeMode,
+        initMasechta: url.searchParams.get('m') || '',
+        initDaf: url.searchParams.get('d') || '',
+        initDate: url.searchParams.get('date') || ''
+      }), {
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-cache',
+        }
+      });
+    }
+
     // 5. If a shiurId is requested, pre-fetch metadata
     let shiurData = null;
     if (shiurId) {
@@ -4979,6 +4994,618 @@ const DEV_PUBLIC_SEEDS = [
     ]
   }
 ];
+
+// ==========================================================================
+// Daf Yomi Daily Study Hub (/daf): tractate/folio selector, calendar nav,
+// and an OG-style daf viewer — single tap zooms at the touch point, finger
+// drag pans while zoomed, pinch zooms. Daf text via Sefaria (CORS-open);
+// scan-image slot (dafImageUrl) reserved for a future image CDN.
+// Cycle math verified: 36 masechtot (no Shekalim), 2711 dafim, anchor
+// 2019-12-28 = Berachos 2 (matches Sefaria + dafyomi.org live).
+// ==========================================================================
+const DAF_MASECHTOT = [
+  ['Berachos', 64], ['Shabbos', 157], ['Eruvin', 105], ['Pesachim', 121],
+  ['Yoma', 88], ['Sukkah', 56], ['Beitzah', 40], ['Rosh Hashanah', 35],
+  ['Taanis', 31], ['Megillah', 32], ['Moed Katan', 29], ['Chagigah', 27],
+  ['Yevamos', 122], ['Kesubos', 112], ['Nedarim', 91], ['Nazir', 66],
+  ['Sotah', 49], ['Gittin', 90], ['Kiddushin', 82], ['Bava Kamma', 119],
+  ['Bava Metzia', 119], ['Bava Basra', 176], ['Sanhedrin', 113], ['Makkos', 24],
+  ['Shevuos', 49], ['Avodah Zarah', 76], ['Horayos', 14], ['Zevachim', 120],
+  ['Menachos', 110], ['Chullin', 142], ['Bechoros', 61], ['Arachin', 34],
+  ['Temurah', 34], ['Kerisos', 28], ['Meilah', 22], ['Niddah', 73]
+];
+const DAF_CYCLE_DAYS = 2711;
+const DAF_ANCHOR_UTC = Date.UTC(2019, 11, 28); // cycle-14 day 0 = Berachos 2
+// Server-side mirror of the client cycle math (used to validate ?m=&d=&date=).
+function dafIndexForDateUTC(y, m, d) {
+  const days = Math.floor((Date.UTC(y, m - 1, d) - DAF_ANCHOR_UTC) / 86400000);
+  return ((days % DAF_CYCLE_DAYS) + DAF_CYCLE_DAYS) % DAF_CYCLE_DAYS;
+}
+function dafRefForIndexUTC(idx) {
+  let rest = idx;
+  for (const pair of DAF_MASECHTOT) {
+    if (rest < pair[1]) return { masechta: pair[0], daf: rest + 2, count: pair[1] };
+    rest -= pair[1];
+  }
+  return { masechta: 'Berachos', daf: 2, count: 64 };
+}
+function dafIndexForRefUTC(masechta, daf) {
+  let acc = 0;
+  for (const pair of DAF_MASECHTOT) {
+    if (pair[0].toLowerCase() === String(masechta || '').toLowerCase()) {
+      const n = parseInt(daf, 10);
+      if (!isNaN(n) && n >= 2 && n <= pair[1] + 1) return acc + (n - 2);
+      return -1;
+    }
+    acc += pair[1];
+  }
+  return -1;
+}
+
+function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', initDate = '' }) {
+  const htmlThemeAttr = themeMode === 'dark' ? ' data-theme="dark"' : '';
+  const optHtml = DAF_MASECHTOT.map(pair =>
+    '<option value="' + pair[0] + '">' + pair[0] + ' (' + pair[1] + ')</option>').join('');
+  return `<!DOCTYPE html>
+<html lang="en"${htmlThemeAttr}>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>📜 Daf Yomi Hub — YUTorah Enhanced</title>
+  <link rel="icon" type="image/png" href="https://cdnyutorah.cachefly.net/public/v3/images/logo-university-2x.png">
+  <script>
+    (function() {
+      try {
+        var p = new URLSearchParams(window.location.search);
+        var urlTheme = (p.get('theme') || p.get('mode') || '').toLowerCase();
+        var saved = null;
+        try { saved = localStorage.getItem('yutorah_theme'); } catch (e) {}
+        var dark = true;
+        if (urlTheme === 'light' || p.get('dark') === '0' || p.get('light') === '1') dark = false;
+        else if (urlTheme === 'dark' || p.get('dark') === '1') dark = true;
+        else if (saved) dark = (saved === 'dark');
+        if (dark) document.documentElement.setAttribute('data-theme', 'dark');
+        else document.documentElement.removeAttribute('data-theme');
+      } catch (e) {}
+    })();
+  </script>
+  <style>
+    :root {
+      --primary: #2b4c7e; --primary-dark: #1b3356; --primary-light: #436ea8;
+      --bg: #f4f6f9; --card: #ffffff; --text: #1e2530; --text-muted: #5e6978;
+      --border: #cbd5e1; --border-light: #e2e8f0;
+      --shadow: 0 4px 18px rgba(0, 0, 0, 0.06);
+    }
+    [data-theme="dark"] {
+      --primary: #5c8ecc; --primary-dark: #121b2a; --primary-light: #7ca5de;
+      --bg: #0f141c; --card: #182232; --text: #e7edf7; --text-muted: #94a3b8;
+      --border: #28364d; --border-light: #1e2a3c;
+      --shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg); color: var(--text); min-height: 100vh;
+    }
+    header#dafHeader {
+      position: sticky; top: 0; z-index: 1000;
+      background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%);
+      color: #fff; padding: 10px 16px; box-shadow: 0 2px 10px rgba(0,0,0,0.12);
+    }
+    .daf-header-inner {
+      max-width: 960px; margin: 0 auto; display: flex; align-items: center;
+      justify-content: flex-start; gap: 10px; width: 100%;
+    }
+    .daf-brand {
+      display: flex; align-items: center; gap: 8px; text-decoration: none;
+      color: #fff; font-weight: 700; font-size: 16px; white-space: nowrap;
+    }
+    .daf-brand span {
+      background: rgba(255,255,255,0.22); padding: 2px 7px; border-radius: 4px;
+      font-size: 11px; font-weight: 600; letter-spacing: 0.5px;
+    }
+    .daf-theme-btn {
+      background: none; border: none; color: #fff; font-size: 20px;
+      cursor: pointer; padding: 4px; line-height: 1; margin-left: auto;
+    }
+    main { max-width: 960px; margin: 0 auto; padding: 20px 16px 80px; width: 100%; }
+    .daf-card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+      padding: 18px; box-shadow: var(--shadow); margin-bottom: 16px;
+    }
+    .daf-today-hero { text-align: center; }
+    .daf-today-hero h1 { font-size: 24px; font-weight: 800; margin-bottom: 4px; }
+    .daf-today-hero .daf-date-line { color: var(--text-muted); font-size: 14px; margin-bottom: 12px; }
+    .daf-controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .daf-controls label { font-size: 12px; font-weight: 700; color: var(--text-muted); }
+    .daf-controls select, .daf-controls input {
+      padding: 8px 10px; border-radius: 8px; border: 1.5px solid var(--border);
+      background: var(--card); color: var(--text); font-size: 14px; max-width: 100%;
+    }
+    .daf-btn {
+      padding: 8px 14px; border-radius: 8px; border: 1.5px solid var(--border);
+      background: var(--card); color: var(--text); font-size: 13px; font-weight: 700;
+      cursor: pointer; white-space: nowrap;
+    }
+    .daf-btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+    .daf-btn:active { transform: scale(0.96); }
+    .daf-cal-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+    #dafViewerToolbar {
+      display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+      padding: 10px 14px; background: rgba(43, 76, 126, 0.05);
+      border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px;
+    }
+    [data-theme="dark"] #dafViewerToolbar { background: rgba(92, 142, 204, 0.08); }
+    .daf-viewer-hint { font-size: 12px; color: var(--text-muted); margin-left: auto; }
+    #dafViewer {
+      position: relative; overflow: hidden; touch-action: none;
+      background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+      min-height: 320px; max-height: 75vh; user-select: none; -webkit-user-select: none;
+    }
+    #dafZoomContent { transform-origin: 0 0; will-change: transform; padding: 26px 30px; }
+    #dafZoomContent.daf-img-mode { padding: 0; }
+    #dafZoomContent img { display: block; width: 100%; height: auto; }
+    .daf-seg { display: flex; gap: 14px; margin-bottom: 14px; line-height: 1.75; }
+    .daf-seg-num {
+      flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%;
+      background: rgba(43, 76, 126, 0.1); color: var(--primary);
+      font-size: 12px; font-weight: 800; display: flex; align-items: center;
+      justify-content: center; margin-top: 3px;
+    }
+    [data-theme="dark"] .daf-seg-num { background: rgba(92, 142, 204, 0.15); color: var(--primary-light); }
+    .daf-seg-he { direction: rtl; text-align: right; font-size: 19px; line-height: 1.9; flex: 1;
+      font-family: "SBL Hebrew", "David", "Taamey Frank CLM", "Times New Roman", serif; }
+    .daf-seg-en { font-size: 15px; line-height: 1.7; flex: 1; color: var(--text); }
+    .daf-loading, .daf-error { text-align: center; padding: 50px 20px; color: var(--text-muted); font-size: 14px; }
+    .daf-error button { margin-top: 10px; }
+    .daf-footer { text-align: center; color: var(--text-muted); font-size: 12.5px; margin-top: 18px; line-height: 1.7; }
+    .daf-footer a { color: var(--primary); font-weight: 700; }
+  </style>
+</head>
+<body>
+<header id="dafHeader">
+  <div class="daf-header-inner">
+    <a href="/" class="daf-brand">🎧 YUTorah Enhanced <span>HUB</span></a>
+    <span style="font-weight:700; font-size:16px;">📜 Daf Yomi</span>
+    <button type="button" class="daf-theme-btn" id="dafThemeBtn" onclick="dafToggleTheme()" title="Toggle Dark / Light Mode">☀️</button>
+  </div>
+</header>
+<main>
+  <div class="daf-card daf-today-hero">
+    <h1 id="dafHeroTitle">📜 Loading today&rsquo;s daf…</h1>
+    <div class="daf-date-line" id="dafHeroDate"></div>
+    <button type="button" class="daf-btn" id="dafTodayBtn" onclick="dafGoToday()">Today&rsquo;s Daf</button>
+  </div>
+  <div class="daf-card">
+    <div class="daf-controls">
+      <label for="dafMasechta">Tractate</label>
+      <select id="dafMasechta">${optHtml}</select>
+      <label for="dafFolio">Daf</label>
+      <input id="dafFolio" type="number" min="2" value="2" style="width: 76px;">
+      <button type="button" class="daf-btn primary" onclick="dafGoSelector()">Go</button>
+    </div>
+    <div class="daf-cal-row">
+      <button type="button" class="daf-btn" onclick="dafStepDay(-1)" aria-label="Previous day">‹ Prev</button>
+      <input id="dafDate" type="date" aria-label="Pick a date">
+      <button type="button" class="daf-btn" onclick="dafStepDay(1)" aria-label="Next day">Next ›</button>
+      <span class="daf-viewer-hint" id="dafCycleHint"></span>
+    </div>
+  </div>
+  <div class="daf-card">
+    <div id="dafViewerToolbar">
+      <button type="button" class="daf-btn" onclick="dafZoomStep(-0.6)" aria-label="Zoom out">−</button>
+      <span id="dafZoomLabel" style="font-size:12.5px; font-weight:700; min-width:44px; text-align:center;">100%</span>
+      <button type="button" class="daf-btn" onclick="dafZoomStep(0.6)" aria-label="Zoom in">+</button>
+      <button type="button" class="daf-btn" onclick="dafResetZoom()" title="Reset zoom">⤾</button>
+      <button type="button" class="daf-btn" id="dafLangHe" onclick="dafSetLang('he')">עברית</button>
+      <button type="button" class="daf-btn" id="dafLangEn" onclick="dafSetLang('en')">English</button>
+      <a class="daf-btn" id="dafShiurimLink" href="#" target="_blank" rel="noopener" title="Shiurim on this daf">🎧 Shiurim</a>
+      <span class="daf-viewer-hint">Tap daf to zoom where you press · drag to move</span>
+    </div>
+    <div id="dafViewer">
+      <div id="dafZoomContent"></div>
+    </div>
+  </div>
+  <div class="daf-footer">
+    Daily learning computed from the fixed 2,711-daf cycle (36 masechtot, no Shekalim).<br>
+    Daf text: Sefaria (CC-BY). <a href="/">← Back to YUTorah Enhanced Player</a>
+  </div>
+</main>
+<script>
+(function() {
+  'use strict';
+  var MASECHTOT = ${JSON.stringify(DAF_MASECHTOT.map(p => p[0]))};
+  var DAF_COUNTS = ${JSON.stringify(DAF_MASECHTOT.map(p => p[1]))};
+  var CYCLE_DAYS = 2711;
+  var ANCHOR_UTC = Date.UTC(2019, 11, 28); // cycle-14 day 0 = Berachos 2
+  var DAY_MS = 86400000;
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function stripTags(s) {
+    return String(s == null ? '' : s).replace(/<[^>]*>/g, '');
+  }
+  function dayIndexUTC(y, m, d) {
+    var days = Math.floor((Date.UTC(y, m - 1, d) - ANCHOR_UTC) / DAY_MS);
+    return ((days % CYCLE_DAYS) + CYCLE_DAYS) % CYCLE_DAYS;
+  }
+  function refForIndex(idx) {
+    var rest = idx;
+    for (var i = 0; i < MASECHTOT.length; i++) {
+      if (rest < DAF_COUNTS[i]) return { m: MASECHTOT[i], d: rest + 2, count: DAF_COUNTS[i] };
+      rest -= DAF_COUNTS[i];
+    }
+    return { m: 'Berachos', d: 2, count: 64 };
+  }
+  function indexForRef(m, d) {
+    var acc = 0;
+    for (var i = 0; i < MASECHTOT.length; i++) {
+      if (MASECHTOT[i].toLowerCase() === String(m || '').toLowerCase()) {
+        var n = parseInt(d, 10);
+        if (!isNaN(n) && n >= 2 && n <= DAF_COUNTS[i] + 1) return acc + (n - 2);
+        return -1;
+      }
+      acc += DAF_COUNTS[i];
+    }
+    return -1;
+  }
+  function dateForIndex(idx) {
+    return new Date(ANCHOR_UTC + idx * DAY_MS);
+  }
+  function isoForIndex(idx) {
+    var t = dateForIndex(idx);
+    return t.getUTCFullYear() + '-' + String(t.getUTCMonth() + 1).padStart(2, '0') + '-' + String(t.getUTCDate()).padStart(2, '0');
+  }
+  function prettyDateISO(iso) {
+    var parts = String(iso || '').split('-');
+    if (parts.length !== 3) return '';
+    var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    return months[parseInt(parts[1], 10) - 1] + ' ' + parseInt(parts[2], 10) + ', ' + parts[0];
+  }
+  function todayISO() {
+    var n = new Date();
+    return n.getFullYear() + '-' + String(n.getMonth() + 1).padStart(2, '0') + '-' + String(n.getDate()).padStart(2, '0');
+  }
+  function sefariaRef(m, d) {
+    return String(m).replace(/ /g, '_') + '.' + d;
+  }
+
+  // Scan-image slot: return a URL to render the daf as an image instead of
+  // text, or '' to use the Sefaria text panel. Reserved for an image CDN.
+  function dafImageUrl(m, d) { return ''; }
+
+  var state = { m: 'Berachos', d: 2, dateISO: todayISO(), lang: 'he', loading: null };
+
+  function syncDafUrl() {
+    try {
+      var u = new URL(window.location.href);
+      u.searchParams.set('m', state.m);
+      u.searchParams.set('d', String(state.d));
+      u.searchParams.set('date', state.dateISO);
+      history.replaceState(history.state, '', u.toString());
+    } catch (e) {}
+  }
+
+  // ---- Viewer: OG-style tap-to-zoom at the touch point + pan + pinch ----
+  var dz = { scale: 1, x: 0, y: 0 };
+  function dzContent() { return document.getElementById('dafZoomContent'); }
+  function dzViewer() { return document.getElementById('dafViewer'); }
+  function dzLabel() {
+    var el = document.getElementById('dafZoomLabel');
+    if (el) el.textContent = Math.round(dz.scale * 100) + '%';
+  }
+  function dzApply() {
+    var c = dzContent();
+    if (!c) return;
+    c.style.transform = (dz.scale === 1 && dz.x === 0 && dz.y === 0)
+      ? '' : 'translate3d(' + Math.round(dz.x) + 'px,' + Math.round(dz.y) + 'px,0) scale(' + dz.scale.toFixed(3) + ')';
+    dzLabel();
+  }
+  function dzReset() { dz.scale = 1; dz.x = 0; dz.y = 0; dzApply(); }
+  function dzZoomAt(cx, cy, target) {
+    var vp = dzViewer(), c = dzContent();
+    if (!vp || !c) return;
+    var vRect = vp.getBoundingClientRect();
+    var cRect = c.getBoundingClientRect();
+    var baseLeft = cRect.left - dz.x, baseTop = cRect.top - dz.y;
+    var px = (cx - baseLeft - dz.x) / (dz.scale || 1);
+    var py = (cy - baseTop - dz.y) / (dz.scale || 1);
+    dz.scale = Math.max(1, Math.min(4, target));
+    if (dz.scale <= 1.02) { dzReset(); return; }
+    dz.x = (cx - baseLeft) - px * dz.scale;
+    dz.y = (cy - baseTop) - py * dz.scale;
+    dzApply();
+  }
+  window.dafZoomStep = function(delta) {
+    var vp = dzViewer();
+    var cx = vp ? vp.getBoundingClientRect().left + vp.getBoundingClientRect().width / 2 : window.innerWidth / 2;
+    var cy = vp ? vp.getBoundingClientRect().top + Math.min(vp.getBoundingClientRect().height / 2, 300) : 300;
+    dzZoomAt(cx, cy, dz.scale + delta);
+  };
+  window.dafResetZoom = function() { dzReset(); };
+
+  function dzBind() {
+    var vp = dzViewer();
+    if (!vp || vp.dataset.dzBound) return;
+    vp.dataset.dzBound = '1';
+    var tapT = 0, tapX = 0, tapY = 0, panning = false, lastX = 0, lastY = 0;
+    var pinching = false, startDist = 0, startScale = 1, baseL = 0, baseT = 0, startPx = 0, startPy = 0;
+    function dist(a, b) {
+      var dx = a.clientX - b.clientX, dy = a.clientY - b.clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+    vp.addEventListener('touchstart', function(e) {
+      if (e.touches.length >= 2) {
+        e.preventDefault();
+        pinching = true; panning = false;
+        startDist = dist(e.touches[0], e.touches[1]) || 1;
+        startScale = dz.scale;
+        var mx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        var my = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        var c = dzContent(), r = c ? c.getBoundingClientRect() : vp.getBoundingClientRect();
+        baseL = r.left - dz.x; baseT = r.top - dz.y;
+        startPx = (mx - baseL - dz.x) / (dz.scale || 1);
+        startPy = (my - baseT - dz.y) / (dz.scale || 1);
+      } else if (e.touches.length === 1) {
+        var now = Date.now(), t = e.touches[0];
+        tapT = now; tapX = t.clientX; tapY = t.clientY;
+        if (dz.scale > 1.05) { panning = true; lastX = t.clientX; lastY = t.clientY; }
+      }
+    }, { passive: false });
+    vp.addEventListener('touchmove', function(e) {
+      if (pinching && e.touches.length >= 2) {
+        e.preventDefault();
+        var s = Math.max(1, Math.min(4, startScale * (dist(e.touches[0], e.touches[1]) / (startDist || 1))));
+        if (s <= 1.02) { dzReset(); return; }
+        var mx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        var my = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        dz.scale = s;
+        dz.x = (mx - baseL) - startPx * s;
+        dz.y = (my - baseT) - startPy * s;
+        dzApply();
+      } else if (panning && e.touches.length === 1) {
+        e.preventDefault();
+        var t = e.touches[0];
+        dz.x += t.clientX - lastX; dz.y += t.clientY - lastY;
+        lastX = t.clientX; lastY = t.clientY;
+        dzApply();
+      }
+    }, { passive: false });
+    vp.addEventListener('touchend', function(e) {
+      if (e.touches.length < 2) pinching = false;
+      if (e.touches.length === 0) {
+        // Single quick tap (not a drag): toggle zoom anchored at the finger.
+        if (panning === false && tapT && (Date.now() - tapT) < 300) {
+          var ch = e.changedTouches && e.changedTouches[0];
+          if (ch && Math.abs(ch.clientX - tapX) < 12 && Math.abs(ch.clientY - tapY) < 12) {
+            if (dz.scale > 1.2) dzReset();
+            else dzZoomAt(ch.clientX, ch.clientY, 2.4);
+          }
+        }
+        panning = false;
+        tapT = 0;
+        if (dz.scale <= 1.05) dzReset();
+      }
+    }, { passive: true });
+    vp.addEventListener('dblclick', function(e) {
+      if (dz.scale > 1.2) dzReset();
+      else dzZoomAt(e.clientX, e.clientY, 2.4);
+    });
+  }
+
+  // ---- Daf loading ----
+  function renderDafChrome() {
+    var hero = document.getElementById('dafHeroTitle');
+    if (hero) hero.textContent = '📜 ' + state.m + ' ' + state.d;
+    var hd = document.getElementById('dafHeroDate');
+    if (hd) hd.textContent = prettyDateISO(state.dateISO) + (state.dateISO === todayISO() ? ' · Today’s Daf' : '');
+    var sel = document.getElementById('dafMasechta');
+    if (sel) sel.value = state.m;
+    var fol = document.getElementById('dafFolio');
+    if (fol) { fol.value = state.d; fol.max = indexMaxFor(state.m) + 1; }
+    var di = document.getElementById('dafDate');
+    if (di) di.value = state.dateISO;
+    var hint = document.getElementById('dafCycleHint');
+    if (hint) hint.textContent = 'Day ' + (indexForRef(state.m, state.d) + 1) + ' of 2,711';
+    var link = document.getElementById('dafShiurimLink');
+    if (link) link.href = '/?search=' + encodeURIComponent(state.m + ' ' + state.d);
+    syncDafUrl();
+  }
+  function indexMaxFor(m) {
+    for (var i = 0; i < MASECHTOT.length; i++) if (MASECHTOT[i] === m) return DAF_COUNTS[i];
+    return 64;
+  }
+  function indexForRef(m, d) {
+    var acc = 0;
+    for (var i = 0; i < MASECHTOT.length; i++) {
+      if (MASECHTOT[i] === m) {
+        var n = parseInt(d, 10);
+        if (!isNaN(n) && n >= 2 && n <= DAF_COUNTS[i] + 1) return acc + (n - 2);
+        return -1;
+      }
+      acc += DAF_COUNTS[i];
+    }
+    return -1;
+  }
+  function loadDaf() {
+    renderDafChrome();
+    dzReset();
+    var c = dzContent();
+    if (!c) return;
+    var img = dafImageUrl(state.m, state.d);
+    if (img) {
+      c.className = 'daf-img-mode';
+      c.innerHTML = '';
+      var el = document.createElement('img');
+      el.src = img;
+      el.alt = 'Daf ' + state.m + ' ' + state.d;
+      el.onerror = function() { loadDafText(); };
+      c.appendChild(el);
+      return;
+    }
+    loadDafText();
+  }
+  function loadDafText() {
+    var c = dzContent();
+    if (!c) return;
+    c.className = '';
+    c.innerHTML = '<div class="daf-loading">Loading ' + esc(state.m) + ' ' + esc(String(state.d)) + '…</div>';
+    var ref = sefariaRef(state.m, state.d);
+    fetch('https://www.sefaria.org/api/texts/' + encodeURIComponent(ref) + '?commentary=0&context=0')
+      .then(function(r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function(d) {
+        var he = Array.isArray(d.he) ? d.he : [];
+        var en = Array.isArray(d.text) ? d.text : [];
+        var n = Math.max(he.length, en.length);
+        if (!n) throw new Error('empty');
+        var h = '';
+        if (d.heRef) h += '<div style="text-align:center; color:var(--text-muted); font-weight:800; margin-bottom:16px; font-size:20px;">' + esc(d.heRef) + '</div>';
+        for (var i = 0; i < n; i++) {
+          var hs = stripTags(he[i] || '');
+          var es = stripTags(en[i] || '');
+          if (!hs && !es) continue;
+          h += '<div class="daf-seg" data-seg="' + i + '">' +
+            '<span class="daf-seg-num">' + (i + 1) + '</span>' +
+            (hs ? '<div class="daf-seg-he" data-lang="he">' + esc(hs) + '</div>' : '') +
+            (es ? '<div class="daf-seg-en" data-lang="en" style="display:none;">' + esc(es) + '</div>' : '') +
+            '</div>';
+        }
+        c.innerHTML = h;
+        dafSetLang(state.lang, true);
+      })
+      .catch(function() {
+        c.innerHTML = '<div class="daf-error">Could not load this daf right now.<br><button type="button" class="daf-btn" onclick="loadDaf()">Retry</button></div>';
+      });
+  }
+  window.loadDaf = loadDaf;
+  window.dafSetLang = function(lang, silent) {
+    state.lang = (lang === 'en') ? 'en' : 'he';
+    var c = dzContent();
+    if (c) {
+      var hes = c.querySelectorAll('[data-lang="he"]');
+      var ens = c.querySelectorAll('[data-lang="en"]');
+      for (var i = 0; i < hes.length; i++) hes[i].style.display = (state.lang === 'he') ? '' : 'none';
+      for (var j = 0; j < ens.length; j++) ens[j].style.display = (state.lang === 'en') ? '' : 'none';
+    }
+    var bh = document.getElementById('dafLangHe');
+    var be = document.getElementById('dafLangEn');
+    if (bh) bh.className = 'daf-btn' + (state.lang === 'he' ? ' primary' : '');
+    if (be) be.className = 'daf-btn' + (state.lang === 'en' ? ' primary' : '');
+  };
+  window.dafGoToday = function() {
+    var t = todayISO().split('-');
+    var idx = dayIndexUTC(parseInt(t[0], 10), parseInt(t[1], 10), parseInt(t[2], 10));
+    var r = refForIndex(idx);
+    state.m = r.m; state.d = r.d; state.dateISO = todayISO();
+    loadDaf();
+  };
+  window.dafStepDay = function(delta) {
+    var parts = state.dateISO.split('-');
+    var dt = new Date(Date.UTC(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10)) + delta * DAY_MS);
+    var iso = dt.getUTCFullYear() + '-' + String(dt.getUTCMonth() + 1).padStart(2, '0') + '-' + String(dt.getUTCDate()).padStart(2, '0');
+    var idx = dayIndexUTC(dt.getUTCFullYear(), dt.getUTCMonth() + 1, dt.getUTCDate());
+    var r = refForIndex(idx);
+    state.m = r.m; state.d = r.d; state.dateISO = iso;
+    loadDaf();
+  };
+  window.dafGoSelector = function() {
+    var sel = document.getElementById('dafMasechta');
+    var fol = document.getElementById('dafFolio');
+    var m = sel ? sel.value : state.m;
+    var maxDaf = indexMaxFor(m) + 1;
+    var d = fol ? parseInt(fol.value, 10) : state.d;
+    if (isNaN(d)) d = state.d;
+    d = Math.max(2, Math.min(maxDaf, d));
+    // Jump forward to the next occurrence of this daf in the cycle.
+    var cur = indexForRef(state.m, state.d);
+    var tgt = indexForRef(m, d);
+    if (cur < 0) cur = 0;
+    var delta = (tgt - cur + CYCLE_DAYS) % CYCLE_DAYS;
+    var parts = state.dateISO.split('-');
+    var base = Date.UTC(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10)) + delta * DAY_MS;
+    var dt = new Date(base);
+    state.m = m; state.d = d;
+    state.dateISO = dt.getUTCFullYear() + '-' + String(dt.getUTCMonth() + 1).padStart(2, '0') + '-' + String(dt.getUTCDate()).padStart(2, '0');
+    loadDaf();
+  };
+  window.dafToggleTheme = function() {
+    var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    if (dark) {
+      document.documentElement.removeAttribute('data-theme');
+      try { localStorage.setItem('yutorah_theme', 'light'); } catch (e) {}
+    } else {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      try { localStorage.setItem('yutorah_theme', 'dark'); } catch (e) {}
+    }
+    var b = document.getElementById('dafThemeBtn');
+    if (b) b.textContent = dark ? '🌙' : '☀️';
+  };
+
+  // Boot: server-validated params win, else today's daf.
+  (function dafBoot() {
+    var sm = ${jsEmbed(String(initMasechta || ''))};
+    var sd = ${jsEmbed(String(initDaf || ''))};
+    var sdate = ${jsEmbed(String(initDate || ''))};
+    var ok = false;
+    if (sm && sd) {
+      var mm = null;
+      for (var i = 0; i < MASECHTOT.length; i++) {
+        if (MASECHTOT[i].toLowerCase() === String(sm).toLowerCase()) { mm = MASECHTOT[i]; break; }
+      }
+      var dd = parseInt(sd, 10);
+      if (mm && !isNaN(dd)) {
+        var idx = indexForRef(mm, dd);
+        if (idx >= 0) {
+          state.m = mm; state.d = dd; ok = true;
+          if (/^\\d{4}-\\d{2}-\\d{2}$/.test(sdate)) {
+            state.dateISO = sdate;
+          } else {
+            // No date given: point at the next upcoming occurrence.
+            var tp = todayISO().split('-');
+            var curIdx = dayIndexUTC(parseInt(tp[0], 10), parseInt(tp[1], 10), parseInt(tp[2], 10));
+            var dt = new Date(Date.UTC(parseInt(tp[0], 10), parseInt(tp[1], 10) - 1, parseInt(tp[2], 10)) + ((idx - curIdx + CYCLE_DAYS) % CYCLE_DAYS) * DAY_MS);
+            state.dateISO = dt.getUTCFullYear() + '-' + String(dt.getUTCMonth() + 1).padStart(2, '0') + '-' + String(dt.getUTCDate()).padStart(2, '0');
+          }
+        }
+      }
+    } else if (/^\\d{4}-\\d{2}-\\d{2}$/.test(sdate)) {
+      var p = sdate.split('-');
+      var idx2 = dayIndexUTC(parseInt(p[0], 10), parseInt(p[1], 10), parseInt(p[2], 10));
+      var r2 = refForIndex(idx2);
+      state.m = r2.m; state.d = r2.d; state.dateISO = sdate;
+      ok = true;
+    }
+    if (!ok) {
+      var t = todayISO().split('-');
+      var idx3 = dayIndexUTC(parseInt(t[0], 10), parseInt(t[1], 10), parseInt(t[2], 10));
+      var r3 = refForIndex(idx3);
+      state.m = r3.m; state.d = r3.d; state.dateISO = todayISO();
+    }
+    var tb = document.getElementById('dafThemeBtn');
+    var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    if (tb) tb.textContent = isDark ? '☀️' : '🌙';
+    var di = document.getElementById('dafDate');
+    if (di) di.addEventListener('change', function() {
+      var v = di.value;
+      if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(v)) return;
+      var p = v.split('-');
+      var idx = dayIndexUTC(parseInt(p[0], 10), parseInt(p[1], 10), parseInt(p[2], 10));
+      var r = refForIndex(idx);
+      state.m = r.m; state.d = r.d; state.dateISO = v;
+      loadDaf();
+    });
+    dzBind();
+    loadDaf();
+  })();
+})();
+</script>
+</body>
+</html>`;
+}
 
 function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpeed = '', themeMode = 'dark', homepageData, sponsorshipText = '', sponsorshipPlainText = '', sponsorshipAudioUrl = '', searchQuery, initialSearchResults, initialNumFound = 0, initialPhoneticExpansion = null, initialRecentDocs = [], initialRecentNumFound = 0, initialQueryResolution = null, initialDidYouMean = [], isClassicSearch = false }) {
   const isPlaying = Boolean(shiurData || directAudio);
@@ -11383,6 +12010,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       <button class="chip" onclick="searchFor('Rabbi Yaakov Neuburger')">👤 R' Neuburger</button>
       <button class="chip" onclick="searchFor('Rabbi Moshe Taragin')">👤 R' Taragin</button>
       <button class="chip" onclick="searchFor('Daf Yomi')">📜 Daf Yomi</button>
+      <button class="chip" onclick="window.location.href='/daf'" title="Open the Daf Yomi hub">📖 Daf Hub</button>
     </div>
   </div>
 

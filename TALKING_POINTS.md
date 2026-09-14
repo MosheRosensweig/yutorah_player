@@ -108,6 +108,9 @@
 - **Play queue** — Queue singles or whole series, drag/▲▼ reorder, autoplay-next, clear-with-confirm, Queue-to-Top.
 - **Public playlists** — Publish, browse with live Teacher/Venue/Topic dropdowns + scope checkboxes, preview with durations, save or live-subscribe.
 - **Shareable playlist links** — Filters, query, scope, sort, and active list encoded in the URL.
+- **Daf Yomi hub (/daf)** — Tractate/folio picker, calendar nav over the exact 2,711-day cycle, tap-to-zoom daf viewer, bilingual text, shiurim links.
+- **Source sheets on audio** — Attached handouts open in Liquid Mode without pausing; multi-sheet chooser.
+- **Install App menu item** — Settings offers install only when not installed.
 - **Progress + completion** — Per-shiur position heartbeat, resume prompts, completion states.
 - **PWA install** — Manifest + Service Worker (offline shell; audio/API bypass cache), authentic centered shield icons.
 - **Install App menu item** — Settings dropdown offers install only when not installed; deferred prompt or manual hint.
