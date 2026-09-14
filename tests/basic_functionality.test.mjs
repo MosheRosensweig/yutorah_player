@@ -921,7 +921,7 @@ async function testZmanimIconShrinkAndSpacePreservation() {
   assert.ok(html.includes('var refill = [themeBtn, badge, supportBtn];'), 'refill must be highest-priority-first (theme → badge → support)');
   assert.ok(html.includes('HOLIDAY_HEBREW_TITLES'), 'Holiday Hebrew titles dictionary must exist');
   assert.ok(html.includes('motifTitle.textContent = titleHe;'), 'Hebrew zman title fallback must be attempted on overflow');
-  assert.ok(html.includes('.hebrew-date-badge.collapsed .hebrew-date-text'), 'CSS must define collapsed date badge rule');
+  assert.ok(!html.includes("badge.classList.add('collapsed'"), 'date badge must never collapse to icon-only (actual date text or hidden)');
 
   // 2. CSS contains .holiday-motif-wrap.icon-only rules
   assert.ok(html.includes('.holiday-motif-wrap.icon-only'), 'CSS must define .holiday-motif-wrap.icon-only');

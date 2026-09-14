@@ -5635,14 +5635,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       outline: 2px solid var(--primary) !important;
       outline-offset: 2px;
     }
-    .hebrew-date-badge.collapsed .hebrew-date-text,
-    .hebrew-date-badge.icon-only .hebrew-date-text {
-      display: none;
-    }
-    .hebrew-date-badge.collapsed,
-    .hebrew-date-badge.icon-only {
-      padding: 4px 8px;
-    }
 
     /* Secret Pre-Roll Toggle Toast / Flash HUD */
     .secret-toast {
@@ -22130,10 +22122,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   // Header priority, single left-to-right flow with no gaps:
   // brand + login/settings (always) → zman motif (English -> Hebrew -> icon-only)
-  // → light/dark → date badge (uncollapsed, else collapsed icon-only) → support (only if room).
-  // Sacrifices happen lowest-priority-first (support first so date badge stays uncollapsed,
-  // then zman English -> Hebrew -> icon-only, then date badge uncollapsed -> collapsed,
-  // then date badge, zman, theme). Fully re-derived every run: widening auto-restores.
+  // → light/dark → date badge (only with full date text, else hidden) → support (only if room).
+  // Sacrifices happen lowest-priority-first: support first so date badge stays visible with text,
+  // then zman English -> Hebrew -> icon-only to make room for full date text,
+  // then date badge (hidden if date text cannot fit; never icon-only),
+  // then zman, theme. Fully re-derived every run: widening auto-restores.
   function checkHeaderOverflow() {
     var header = document.getElementById('mainHeader');
     if (!header) return;
@@ -22154,15 +22147,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     var titleEn = (motif && motif.dataset.titleEn) || (motifTitle ? motifTitle.textContent : '');
     var titleHe = (motif && motif.dataset.titleHe) || '';
 
-    // Reset to full visibility first (motif expanded when a holiday is
-    // active; dataset.holiday is the source of truth since display is
-    // toggled below for space).
+    // Reset everything to maximum visibility first:
     header.classList.remove('cluster-tight');
     if (themeBtn) themeBtn.style.display = 'inline-flex';
     if (supportBtn) supportBtn.style.display = 'inline-flex';
     if (badge) {
       badge.style.display = 'inline-flex';
-      badge.classList.remove('collapsed', 'icon-only');
     }
     if (motif) {
       if (motifOn) {
@@ -22185,32 +22175,21 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       motifTitle.textContent = titleHe;
     }
 
-    // Step 3: If still overflowing, try Hebrew date badge collapsed (icon-only 📅)
-    if (badge && headerClusterOverflows()) {
-      badge.classList.add('collapsed', 'icon-only');
-    }
-
-    // Step 4: If still overflowing, try zman motif as icon-only (just the apple / holiday icon)
+    // Step 3: If still overflowing, try zman motif as icon-only (just the apple / holiday icon)
+    // to give the Hebrew date badge maximum space to fit with its actual date text.
     if (motifOn && motif && headerClusterOverflows()) {
       motif.classList.add('icon-only');
       var titleText = titleEn || titleHe || (motifTitle ? motifTitle.textContent : '');
       if (titleText) motif.title = titleText + ' (Tap to view)';
     }
 
-    // Step 5: If shrinking zman to icon-only freed up space, can Hebrew date now expand uncollapsed?
-    if (badge && badge.classList.contains('collapsed')) {
-      badge.classList.remove('collapsed', 'icon-only');
-      if (headerClusterOverflows()) {
-        badge.classList.add('collapsed', 'icon-only');
-      }
-    }
-
-    // Step 6: If still overflowing, hide the date badge completely
+    // Step 4: If still overflowing, the date badge cannot fit its actual date text.
+    // Per design: only show calendar if actual date fits; never show just the icon.
     if (badge && headerClusterOverflows()) {
       badge.style.display = 'none';
     }
 
-    // Step 7: If still overflowing after date badge is hidden, ensure motif is compacted
+    // Step 5: If still overflowing after date badge is hidden, ensure motif is compacted
     if (motifOn && motif && !motif.classList.contains('icon-only') && headerClusterOverflows()) {
       if (motifTitle && titleHe && motifTitle.textContent !== titleHe) {
         motifTitle.textContent = titleHe;
@@ -22222,12 +22201,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       }
     }
 
-    // Step 8: If still overflowing, hide zman motif completely
+    // Step 6: If still overflowing, hide zman motif completely
     if (motifOn && motif && headerClusterOverflows()) {
       motif.style.display = 'none';
     }
 
-    // Step 9: If still overflowing, hide themeBtn (light/dark)
+    // Step 7: If still overflowing, hide themeBtn (light/dark)
     if (themeBtn && headerClusterOverflows()) {
       themeBtn.style.display = 'none';
     }
@@ -22239,25 +22218,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       motif.setAttribute('aria-expanded', 'false');
     }
 
-    // Refill (highest-priority-first): themeBtn → date badge (uncollapsed, else collapsed) → support
+    // Refill (highest-priority-first): themeBtn → date badge (full date text only) → support
     var refill = [themeBtn, badge, supportBtn];
     if (themeBtn && themeBtn.style.display === 'none') {
       themeBtn.style.display = 'inline-flex';
       if (headerClusterOverflows()) themeBtn.style.display = 'none';
     }
+    // Only restore date badge if full date text fits (never icon-only)
     if (badge && badge.style.display === 'none') {
       badge.style.display = 'inline-flex';
-      badge.classList.remove('collapsed', 'icon-only');
       if (headerClusterOverflows()) {
-        badge.classList.add('collapsed', 'icon-only');
-        if (headerClusterOverflows()) {
-          badge.style.display = 'none';
-        }
-      }
-    } else if (badge && badge.style.display !== 'none' && badge.classList.contains('collapsed')) {
-      badge.classList.remove('collapsed', 'icon-only');
-      if (headerClusterOverflows()) {
-        badge.classList.add('collapsed', 'icon-only');
+        badge.style.display = 'none';
       }
     }
     if (supportBtn && supportBtn.style.display === 'none') {
