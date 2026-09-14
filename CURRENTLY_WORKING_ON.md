@@ -12,7 +12,11 @@ Production status: **DEPLOYED & VERIFIED (HTTP 200 on both Dev & Prod)**
 Per-user instruction: dev only (no prod), one feature at a time — quick review + FEATURES.md + dev deploy each — notes throughout, final dual review at the end.
 - [x] **Feature 1: 📄 Source Sheet button on audio shiurim** — extraction (`shiurAdditionalMaterials` → title/type/URL, relative-URL + existence handling), player action button (count badge, audio-only, per-track reset, direct-link hydrate), keep-audio Liquid Mode path with ✕ Close, multi-sheet chooser, `cdn.yutorah.net` proxy allowlist. Test #26. *Status: ✅ dev-deployed (`2cb8d502`, HTTP 200, markers live).*
 - [x] **Feature 2: Shiurim-therein ℹ️ info button** *(dev-deployed, HTTP 200, markers live)*
-- [ ] **Feature 3: /daf Daily Study Hub (OG-parity viewer with touch zoom/pan)** *(IN PROGRESS)*
+- [x] **Feature 3: /daf Daily Study Hub (OG-parity viewer with touch zoom/pan)** *(dev-deployed `0ca57320`, /daf 200, markers + params route live)*
+  - Cycle math verified 3 ways (Sefaria + dafyomi.org + Gittin-May-2023 checkpoint): 36 masechtot, 2711 dafim, anchor 2019-12-28 (initial 2020-01-05 hypothesis was 8 days off — corrected).
+  - OG-exact gestures (single-tap zoom at point, pan, pinch, buttons, dblclick), Sefaria bilingual text (CORS-open), image seam reserved.
+  - Sefaria `?date=` ignored server-side → client-side math covers calendar nav. No scan-image source found (OG 403s, no Sefaria img API, e-daf/Commons unsystematic) — text-first, seam ready.
+  - Quick-review catch fixed pre-deploy: init params now use `jsEmbed` (breakout-safe), not raw `JSON.stringify`.
 
 ## 🔒 Standing Deployment & QA Invariants (Permanent Rule)
 1. **Dev-First Deployment Rule (MANDATORY)**:
