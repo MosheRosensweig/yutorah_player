@@ -43,6 +43,33 @@ const DEV_SEED_ITEM_METAS = {
   "1052910": { date: "2022-12-25", duration: "46 min" }
 };
 
+const DEV_SEED_SHIUR_IDS = [
+  "1053000", "1052980", "979218", "1052970", "1052960", "1052950",
+  "979219", "1052940", "1052930", "1052990", "1052920", "1052910"
+];
+
+const DEV_SEED_PLAYLIST_IDS = [
+  "pl_ao_elul", "pl_ao_shabbos", "pl_ao_ethics", "pl_ao_tefillah", "pl_ao_kashrus",
+  "pl_ao_business", "pl_ao_berachos", "pl_ao_brisker", "pl_ao_devarim", "pl_ao_aveilus",
+  "pl_mm_rh", "pl_mm_daf", "pl_mm_parsha", "pl_mm_rav", "pl_mm_moadim",
+  "pl_mm_chanukah", "pl_mm_purim", "pl_mm_pesach", "pl_mm_omer", "pl_mm_shavuos",
+  "pl_rs_semichas", "pl_rs_women", "pl_rs_rambam", "pl_rs_bereishis", "pl_rs_ruth",
+  "pl_rs_kinot", "pl_rs_bioethics", "pl_rs_parenting", "pl_rs_musar", "pl_rs_israel"
+];
+
+const DEV_SEED_PLAYLIST_TITLES = [
+  "elul & teshuvah essentials", "foundations of shabbos & muktzah", "contemporary halacha & medical ethics",
+  "tefillah: meaning, structure & kavana", "kashrus in the modern kitchen", "business ethics & choshen mishpat",
+  "hilchos berachos & daily living", "talmudic methodology: the brisker derech", "sefer devarim: covenant and memory",
+  "hilchos aveilus & consolation", "rosh hashanah machzor insights", "daf yomi: sukkah & pesachim in-depth",
+  "parshas hashavua masterclasses", "meshel harav: soloveitchik legacy shiurim", "moadim: sukkos & simchas torah",
+  "chanukah: light, miracles & sovereignty", "purim: megillat esther & hidden providence", "pesach seder: halacha & haggadah insights",
+  "sefiras haomer & personal growth", "shavuos: matan torah & revelation", "semichas chaver program highlights",
+  "women in jewish law & leadership", "jewish philosophy: rambam’s moreh nevukhim", "biblical narrative: the matriarchs of genesis",
+  "megillat ruth: chesed and kingship", "kinot of tisha b’av: history and grief", "jewish bioethics: genetics and halacha",
+  "parenting & chinuch in contemporary times", "musar & character development: mesillas yesharim", "the land of israel: halachic and historical dimensions"
+];
+
 // =========================================================================
 // Auth + cloud sync (Google OAuth 2.0 code flow + D1). Phase 2.
 // Setup: GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET (wrangler secret), and an
@@ -381,6 +408,25 @@ function queueEntriesToRows(userId, queue) {
 }
 
 async function pullUserState(db, userId) {
+  // If this is a real user (not the anonymous dev user), purge any dev seed playlists or dev seed history
+  // that may have leaked into their account when previously entering dev mode.
+  if (userId && userId !== 'dev') {
+    try {
+      for (const title of DEV_SEED_PLAYLIST_TITLES) {
+        await db.prepare("DELETE FROM playlist_items WHERE user_id = ? AND (LOWER(playlist) = ? OR LOWER(playlist) = ?)")
+          .bind(userId, 'custom:' + title, title).run();
+      }
+      for (const pid of DEV_SEED_PLAYLIST_IDS) {
+        await db.prepare("DELETE FROM playlist_items WHERE user_id = ? AND (LOWER(playlist) = ? OR LOWER(playlist) = ?)")
+          .bind(userId, 'custom:' + pid, pid).run();
+      }
+      for (const sid of DEV_SEED_SHIUR_IDS) {
+        await db.prepare("DELETE FROM listening_history WHERE user_id = ? AND shiur_id = ?")
+          .bind(userId, sid).run();
+      }
+    } catch (e) {}
+  }
+
   const hist = await db.prepare(
     'SELECT shiur_id AS id, title, speaker, photo, duration, date_iso AS dateISO, date_display AS dateDisplay, ' +
     'category, is_article AS isArticle, ' +
@@ -408,6 +454,9 @@ async function pullUserState(db, userId) {
     else if (r.playlist === 'queue') queueFlat.push(snap);
     else if (String(r.playlist).startsWith('custom:')) {
       const name = String(r.playlist).slice(7);
+      if (userId !== 'dev' && (DEV_SEED_PLAYLIST_TITLES.includes(name.toLowerCase()) || DEV_SEED_PLAYLIST_IDS.includes(name.toLowerCase()))) {
+        continue;
+      }
       if (!playlists.custom[name]) playlists.custom[name] = [];
       playlists.custom[name].push(snap);
     }
@@ -432,14 +481,17 @@ async function pullUserState(db, userId) {
   for (const q of queue) {
     if (q.items && !q.id) q.kind = 'series';
   }
-  const history = (hist.results || []).map(h => ({
-    id: h.id, title: h.title, speaker: h.speaker, photo: h.photo,
-    duration: h.duration, date: h.dateDisplay || '', dateISO: h.dateISO || '',
-    category: h.category || '', isArticle: Boolean(h.isArticle),
-    listenedAt: h.lastListened
-  }));
+  const history = (hist.results || [])
+    .filter(h => userId === 'dev' || !DEV_SEED_SHIUR_IDS.includes(String(h.id)))
+    .map(h => ({
+      id: h.id, title: h.title, speaker: h.speaker, photo: h.photo,
+      duration: h.duration, date: h.dateDisplay || '', dateISO: h.dateISO || '',
+      category: h.category || '', isArticle: Boolean(h.isArticle),
+      listenedAt: h.lastListened
+    }));
   const progress = {};
   for (const h of (hist.results || [])) {
+    if (userId !== 'dev' && DEV_SEED_SHIUR_IDS.includes(String(h.id))) continue;
     if ((h.progressSec || 0) > 0 || h.completed) {
       progress[h.id] = {
         shiurId: h.id,
@@ -970,6 +1022,9 @@ async function handleSyncRoutes(request, env, url) {
       for (const h of body.history.slice(0, 500)) {
         if (!h || !h.id) continue;
         const sid = String(h.id);
+        if (user.id !== 'dev' && DEV_SEED_SHIUR_IDS.includes(sid)) {
+          continue;
+        }
         const pr = prog[sid] || {};
         const lastListened = Number(h.listenedAt || pr.lastListened || now);
         const existing = await db.prepare(
@@ -1048,6 +1103,9 @@ async function handleSyncRoutes(request, env, url) {
         if (pls.custom && typeof pls.custom === 'object') {
           for (const [name, arr] of Object.entries(pls.custom)) {
             if (typeof name !== 'string' || !name) continue;
+            if (user.id !== 'dev' && (DEV_SEED_PLAYLIST_TITLES.includes(name.toLowerCase()) || DEV_SEED_PLAYLIST_IDS.includes(name.toLowerCase()))) {
+              continue;
+            }
             if (customTotal + (Array.isArray(arr) ? arr.length : 0) > 2000) break;
             customTotal += Array.isArray(arr) ? arr.length : 0;
             pushList('custom:' + name.slice(0, 60), arr);
@@ -12008,6 +12066,20 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (plTab) plTab.removeAttribute('aria-hidden');
       const plGrid = document.getElementById('grid-playlists');
       if (plGrid) plGrid.removeAttribute('aria-hidden');
+      const devTab = document.getElementById('tab-dev-playlists');
+      if (devTab) {
+        devTab.removeAttribute('aria-hidden');
+        devTab.style.display = '';
+      }
+      const devGrid = document.getElementById('grid-dev-playlists');
+      if (devGrid) devGrid.removeAttribute('aria-hidden');
+      if (typeof renderDevCuratedGrid === 'function') {
+        renderDevCuratedGrid();
+      }
+    } catch (e) {}
+
+    try {
+      if (typeof cleanDevSeedsFromUserAccount === 'function') cleanDevSeedsFromUserAccount();
     } catch (e) {}
 
     // ROADMAP §8.4: player-header quick actions — Later, Fav, Queue, Playlist.
@@ -12126,6 +12198,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         switchCollection('editors');
       }
       renderCurrentSearchResults();
+    } catch (e) {}
+    try {
+      if (typeof cleanDevSeedsFromUserAccount === 'function') cleanDevSeedsFromUserAccount();
     } catch (e) {}
     try { if (typeof renderAccountMode === 'function') renderAccountMode(); } catch (e) {}
     return true;
@@ -16242,6 +16317,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   function addRecentHistory(shiur) {
     if (!shiur || !shiur.id) return;
+    // Never pollute a logged-in user's account with dev seed shiurim!
+    if (typeof cloudUser !== 'undefined' && cloudUser && typeof DEV_SEED_SHIUR_IDS !== 'undefined' && DEV_SEED_SHIUR_IDS.indexOf(String(shiur.id)) !== -1) {
+      return;
+    }
     // Re-listening revives the item: drop any pending delete for it so a
     // later push cannot delete the just re-added row.
     clearHistoryTombstones([shiur.id]);
@@ -16335,6 +16414,57 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   var devProgressCache = null;
 
   var DEV_PUBLIC_SEEDS = ${JSON.stringify(DEV_PUBLIC_SEEDS).replace(/</g, "\\u003c")};
+  var DEV_SEED_SHIUR_IDS = ${JSON.stringify(DEV_SEED_SHIUR_IDS)};
+  var DEV_SEED_PLAYLIST_IDS = ${JSON.stringify(DEV_SEED_PLAYLIST_IDS)};
+  var DEV_SEED_PLAYLIST_TITLES = ${JSON.stringify(DEV_SEED_PLAYLIST_TITLES)};
+
+  function isDevSeedPlaylist(pid, pl) {
+    if (!pid) return false;
+    const sid = String(pid);
+    if (sid.startsWith('pl_ao_') || sid.startsWith('pl_mm_') || sid.startsWith('pl_rs_') || sid.startsWith('pl_seed_') || sid.startsWith('pl_dev_')) return true;
+    if (DEV_SEED_PLAYLIST_IDS.indexOf(sid) !== -1) return true;
+    if (pl && pl.isDevOwned) return true;
+    if (pl && pl.ownerName && ['Andrew Ohiliote', 'Moshe Mendelwitz', 'Rachel Sternbach', 'Dev'].indexOf(pl.ownerName) !== -1) return true;
+    if (pl && pl.name && DEV_SEED_PLAYLIST_TITLES.indexOf(String(pl.name).toLowerCase()) !== -1) return true;
+    return false;
+  }
+  window.isDevSeedPlaylist = isDevSeedPlaylist;
+
+  function cleanDevSeedsFromUserAccount() {
+    let histChanged = false;
+    try {
+      let history = getRecentHistory();
+      const cleaned = history.filter(item => DEV_SEED_SHIUR_IDS.indexOf(String(item.id)) === -1);
+      if (cleaned.length !== history.length) {
+        const removed = history.filter(item => DEV_SEED_SHIUR_IDS.indexOf(String(item.id)) !== -1).map(i => String(i.id));
+        localStorage.setItem('yutorah_recent_history', JSON.stringify(cleaned));
+        removed.forEach(id => addHistoryTombstone(id));
+        histChanged = true;
+      }
+    } catch (e) {}
+
+    try {
+      const store = getDevStore();
+      let plChanged = false;
+      for (const k of Object.keys(store.custom || {})) {
+        if (isDevSeedPlaylist(k, store.custom[k])) {
+          delete store.custom[k];
+          plChanged = true;
+        }
+      }
+      if (plChanged) {
+        saveDevStore(store);
+      }
+    } catch (e) {}
+
+    if (histChanged && cloudUser) {
+      try {
+        if (typeof markCloudDirty === 'function') markCloudDirty('history');
+        if (typeof scheduleCloudSync === 'function') scheduleCloudSync();
+      } catch (e) {}
+    }
+  }
+  window.cleanDevSeedsFromUserAccount = cleanDevSeedsFromUserAccount;
 
   function devDefaultStore() {
     return {
@@ -16361,31 +16491,20 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (!s.system.save_for_later) s.system.save_for_later = { id: 'save_for_later', name: 'Save for Later', icon: '🕒', items: [] };
       if (!s.system.favorites) s.system.favorites = { id: 'favorites', name: 'Favorites', icon: '⭐', items: [] };
       if (!s.custom) s.custom = {};
-      if (typeof isDevMode !== 'undefined' && isDevMode) {
-        // Purge legacy pl_dev_ entries so they don't linger in localStorage
-        for (const k of Object.keys(s.custom)) {
-          if (k.startsWith('pl_dev_')) delete s.custom[k];
-        }
-        for (let i = 0; i < DEV_PUBLIC_SEEDS.length; i++) {
-          const p = DEV_PUBLIC_SEEDS[i];
-          if (!s.custom[p.id]) {
-            s.custom[p.id] = {
-              id: p.id,
-              name: p.title,
-              ownerName: p.ownerName,
-              description: p.description,
-              tags: p.tags,
-              publicId: p.id,
-              isPublic: true,
-              isDevOwned: true,
-              icon: '📁',
-              items: p.items || []
-            };
-          } else if (s.custom[p.id].isDevOwned && (!s.custom[p.id].ownerName || s.custom[p.id].ownerName === 'Dev')) {
-            s.custom[p.id].ownerName = p.ownerName;
-          }
+
+      // ALWAYS purge dev seed playlists from custom store so they never leak into user's account!
+      // Curated dev playlists live strictly in the "🛠️ Dev Playlists" tab.
+      let purgedAny = false;
+      for (const k of Object.keys(s.custom)) {
+        if (isDevSeedPlaylist(k, s.custom[k])) {
+          delete s.custom[k];
+          purgedAny = true;
         }
       }
+      if (purgedAny) {
+        try { localStorage.setItem(DEV_PLAYLISTS_KEY, JSON.stringify(s)); } catch (e) {}
+      }
+
       devStoreCache = s;
       return s;
     } catch (e) {
@@ -16413,8 +16532,20 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (pid === 'history') {
       return { id: 'history', name: 'History', icon: '📜', isHistory: true, items: getRecentHistory() };
     }
-    if (store.system[pid]) return store.system[pid];
-    if (store.custom[pid]) return store.custom[pid];
+    if (store && store.system && store.system[pid]) return store.system[pid];
+    if (store && store.custom && store.custom[pid]) return store.custom[pid];
+    if (typeof DEV_PUBLIC_SEEDS !== 'undefined') {
+      const found = DEV_PUBLIC_SEEDS.find(p => p.id === pid);
+      if (found) {
+        return {
+          id: found.id,
+          name: found.title || found.name,
+          icon: '📁',
+          items: found.items || [],
+          isPublic: true
+        };
+      }
+    }
     return null;
   }
 
@@ -18894,6 +19025,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   function devEditPublicPlaylist(id) {
+    if (cloudUser && cloudUser.id !== 'dev') {
+      flashToast('⚠️ Curated seed playlists are read-only for user accounts', true, false);
+      return;
+    }
     const store = getDevStore();
     if (!store.custom[id]) {
       const found = (typeof DEV_PUBLIC_SEEDS !== 'undefined' && DEV_PUBLIC_SEEDS.find(p => p.id === id)) ||
@@ -19606,10 +19741,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         for (const h of local) byId.set(String(h.id), h);
         for (const h of s.history) {
           const k = String(h.id);
+          if (cloudUser && cloudUser.id !== 'dev' && DEV_SEED_SHIUR_IDS.indexOf(k) !== -1) continue;
           const prev = byId.get(k);
           if (!prev || Number(h.listenedAt || 0) >= Number(prev.listenedAt || 0)) byId.set(k, h);
         }
-        const merged = [...byId.values()].sort((a, b) => Number(b.listenedAt || 0) - Number(a.listenedAt || 0)).slice(0, 100);
+        let merged = [...byId.values()].sort((a, b) => Number(b.listenedAt || 0) - Number(a.listenedAt || 0));
+        if (cloudUser && cloudUser.id !== 'dev') {
+          merged = merged.filter(item => DEV_SEED_SHIUR_IDS.indexOf(String(item.id)) === -1);
+        }
+        merged = merged.slice(0, 100);
         localStorage.setItem('yutorah_recent_history', JSON.stringify(merged));
       }
       if (s.playlists) {
@@ -19637,6 +19777,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           }
         }
         for (const [name, items] of Object.entries(s.playlists.custom || {})) {
+          if (cloudUser && cloudUser.id !== 'dev' && DEV_SEED_PLAYLIST_TITLES.indexOf(String(name).toLowerCase()) !== -1) continue;
           const pid = byName.get(name) || slugPid(name);
           const existing = store.custom[pid];
           if (existing && existing.isSubscription) continue;
@@ -19684,6 +19825,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           localStorage.setItem(DEV_PROGRESS_KEY, JSON.stringify(merged));
           devProgressCache = merged;
         } catch (e) {}
+      }
+      if (cloudUser && cloudUser.id !== 'dev' && typeof cleanDevSeedsFromUserAccount === 'function') {
+        cleanDevSeedsFromUserAccount();
       }
       renderQueuePopup();
       devRefreshCardButtons();
@@ -19796,6 +19940,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       }
       if (data && data.user) {
         cloudUser = data.user;
+        if (cloudUser.id !== 'dev' && typeof cleanDevSeedsFromUserAccount === 'function') {
+          try { cleanDevSeedsFromUserAccount(); } catch (e) {}
+        }
         renderAuthBtn();
         try { if (typeof renderAccountMode === 'function') renderAccountMode(); } catch (e) {}
         if (authStatus === 'ok') {
@@ -19827,6 +19974,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           }
         } else {
           await cloudPull();
+        }
+        if (cloudUser && cloudUser.id !== 'dev' && typeof cleanDevSeedsFromUserAccount === 'function') {
+          try { cleanDevSeedsFromUserAccount(); } catch (e) {}
         }
         // Pending delete intents (e.g. unload flush failed): re-dirty so
         // they push on the debounce instead of waiting for the next edit.
@@ -21112,15 +21262,28 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     renderDevCuratedGrid();
   };
   window.devPlayCuratedAll = function(id) {
-    const store = getDevStore();
-    if (!store.custom[id]) {
-      devEditPublicPlaylist(id);
+    const found = (typeof DEV_PUBLIC_SEEDS !== 'undefined' && DEV_PUBLIC_SEEDS.find(p => p.id === id));
+    if (found && Array.isArray(found.items) && found.items.length > 0) {
+      activeDevPlaylistId = id;
+      playShiurById(null, String(found.items[0].id));
+      return;
     }
-    activeDevPlaylistId = id;
-    switchCollection('playlists');
-    playDevPlaylistAll();
+    const store = getDevStore();
+    if (store && store.custom && store.custom[id]) {
+      activeDevPlaylistId = id;
+      switchCollection('playlists');
+      playDevPlaylistAll();
+    }
   };
   window.devOpenInMyPlaylists = function(id) {
+    if (cloudUser && cloudUser.id !== 'dev') {
+      const found = (typeof DEV_PUBLIC_SEEDS !== 'undefined' && DEV_PUBLIC_SEEDS.find(p => p.id === id));
+      const title = (found && (found.title || found.name)) || 'Curated Playlist';
+      if (typeof plPromptSavePublic === 'function') {
+        plPromptSavePublic(id, title);
+      }
+      return;
+    }
     const store = getDevStore();
     if (!store.custom[id]) {
       const found = (typeof DEV_PUBLIC_SEEDS !== 'undefined' && DEV_PUBLIC_SEEDS.find(p => p.id === id));

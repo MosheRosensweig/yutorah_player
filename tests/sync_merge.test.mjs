@@ -98,7 +98,21 @@ function makeDb() {
             return {};
           }
           if (q.startsWith('DELETE FROM playlist_items')) {
-            items.delete(p[0] + '|' + p[1] + '|' + p[2]);
+            if (q.includes('LOWER(')) {
+              const uid = p[0];
+              const targets = p.slice(1).map(x => String(x).toLowerCase());
+              for (const [k, v] of [...items.entries()]) {
+                if (v.user_id === uid && targets.includes(String(v.playlist).toLowerCase())) {
+                  items.delete(k);
+                }
+              }
+            } else if (p.length === 2) {
+              for (const k of [...items.keys()]) {
+                if (k.startsWith(p[0] + '|' + p[1] + '|')) items.delete(k);
+              }
+            } else {
+              items.delete(p[0] + '|' + p[1] + '|' + p[2]);
+            }
             return {};
           }
           if (q.startsWith('DELETE FROM listening_history')) {
@@ -227,5 +241,41 @@ r = await api('/api/sync');
 assert.ok(!(r.body.history || []).some(x => x.id === 'k2'), 'deleted item stays gone on pull');
 assert.ok((r.body.history || []).some(x => x.id === 'k1'), 'kept item still pulls');
 console.log('  ✅ History deletes stick past reload/pull.');
+
+// 6. Dev seed data isolation and automatic purge for real user accounts:
+//    - Dev seed shiurim and playlists pushed by non-dev user are ignored.
+//    - Any dev seed data existing in DB for non-dev user is purged on pull.
+db._items.set('u1|Elul & Teshuvah Essentials|1053000', {
+  user_id: 'u1', playlist: 'Elul & Teshuvah Essentials', shiur_id: '1053000',
+  position: 0, title: 'Seed Shiur', speaker: '', photo: '', duration: '',
+  date_display: '', category: '', is_article: 0, series_title: '', cover_id: '',
+  kind: 'shiur', added_at: 1000
+});
+db._hist.set('u1|1053000', {
+  user_id: 'u1', shiur_id: '1053000', title: 'Seed Shiur', speaker: '', photo: '',
+  duration: '', date_iso: '', date_display: '', category: '', is_article: 0,
+  progress_seconds: 0, duration_seconds: 0, completed: 0, last_listened_at: 1000,
+  listen_count: 1
+});
+
+// Pulling state as real user u1 must purge leaked dev seed items from DB
+r = await api('/api/sync');
+assert.ok(!db._items.has('u1|Elul & Teshuvah Essentials|1053000'), 'leaked dev seed playlist item purged from DB on pull');
+assert.ok(!db._hist.has('u1|1053000'), 'leaked dev seed shiur purged from DB history on pull');
+assert.ok(!((r.body.playlists && r.body.playlists.custom) || {})['Elul & Teshuvah Essentials'], 'seed playlist filtered from pulled payload');
+assert.ok(!(r.body.history || []).some(x => x.id === '1053000'), 'seed shiur filtered from pulled history payload');
+
+// Pushing dev seeds as non-dev user must be rejected / ignored
+await api('/api/sync', {
+  dirty: { history: true, playlists: true },
+  history: [{ id: '1053000', title: 'Seed', listenedAt: 5000 }],
+  playlists: {
+    save_for_later: [], favorites: [],
+    custom: { 'Elul & Teshuvah Essentials': [{ id: '1053000', title: 'Seed' }] }
+  }
+});
+assert.ok(!db._items.has('u1|Elul & Teshuvah Essentials|1053000'), 'pushed dev seed playlist dropped');
+assert.ok(!db._hist.has('u1|1053000'), 'pushed dev seed shiur dropped');
+console.log('  ✅ Dev seed playlists and history strictly isolated & purged for real user accounts.');
 
 console.log('\n🎉 ALL SYNC MERGE TESTS PASSED SUCCESSFULLY!');
