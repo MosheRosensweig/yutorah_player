@@ -1,6 +1,10 @@
 {
   "entries": [
     {
+      "date": "2026-09-14T08:44:00-04:00",
+      "message": "Public playlist copy tooltip placement & subscription/copy persistence fix: pop-up explanation tooltips dynamically detect viewport boundaries, anchor right (.align-right) on cards and narrow viewports with speech arrow pointing to the info button, and flip below (.arrow-top) near headers to guarantee 0 clipping; subscriptions and copied playlists are now permanently preserved against cloud sync purges with server-side playlist_saves integration and explicit copy labeling."
+    },
+    {
       "date": "2026-09-14T08:35:00-04:00",
       "message": "Public playlist publishing, deletion cascade, live-sync, and privacy lifecycle: deleting a playlist privately immediately deletes its public registry entry from D1; toggling public/private immediately updates pills and card badges; modifying, adding, or deleting shiurim in a public playlist auto-syncs the public snapshot and preview; backend supports 0-item snapshot updates; search queries bypass stale caching with no-cache; cloud sync merge preserves publicId and isPublic."
     },

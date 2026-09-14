@@ -15,7 +15,22 @@ Production status: **DEPLOYED & VERIFIED (HTTP 200 on both Dev & Prod)**
    - Only **AFTER** Dev is fully deployed, validated, and approved may the version be promoted to **Production** (`https://yutorah-player.mrosensweig.workers.dev` via `npx wrangler deploy`).
    - Dev and Prod must always remain strictly synchronized. Never push directly to Prod without the preceding Dev deployment.
 
-## 🎯 ACTIVE TASK: Public Playlist Publishing, Deletion, Privacy Toggle & Content Synchronization
+## 🎯 ACTIVE TASK: Public Playlist Copy Tooltip Clipping & Subscribed/Copied Playlist Disappearance Fix
+- **User Request**:
+  1. **Tooltip Clipping**: When clicking the `ⓘ` info button on the `📋 Copy` button on public playlist cards, the pop-up explanation tooltip gets cut off on the right side of the screen. Ensure the pop-up never gets cut off and always shows up in a spot that is helpful to see the full window on all devices (mobile, tablet, desktop).
+  2. **Playlist Disappearance Bug**: When subscribing or copying a playlist, it shows up in blue in the user's list for a few moments and then disappears. Fix this bug immediately so subscribed and copied playlists persist permanently.
+- **Root Causes Identified**:
+  1. **Tooltip Clipping**: `.pl-action-tooltip` has `left: 0; width: 250px;`. Because the `📋 Copy` button is the 3rd button in the card row, it sits near the right edge of the card/viewport. An anchored `left: 0` tooltip pushes 250px outward to the right, easily clipping outside the viewport. Needs dynamic boundary detection (`getBoundingClientRect()`), right-anchoring (`align-right` / `right: 0`), top/bottom auto-flip, and containment within viewport padding (`max-width: min(280px, calc(100vw - 24px))`).
+  2. **Playlist Disappearance Bug**:
+     - When subscribing or copying any public playlist (especially curated ones authored by Andrew Ohiliote, Moshe Mendelwitz, Rachel Sternbach, Dev or titled with names in `DEV_SEED_PLAYLIST_TITLES`), `saveDevStore()` schedules cloud sync with a 2.5s debounce.
+     - After 2.5s, `cloudPush()` calls `adoptCloudState()` which runs `cleanDevSeedsFromUserAccount()`.
+     - `cleanDevSeedsFromUserAccount()` checks `isDevSeedPlaylist(pid, pl)`.
+     - Because `pl.ownerName` matched seed authors or `pl.name` matched `DEV_SEED_PLAYLIST_TITLES`, `isDevSeedPlaylist()` returned `true` and **deleted** the user's subscribed or copied playlist from `store.custom`!
+     - In addition, copies of public playlists should be named `Title (Copy)` and flagged as user copies (`isUserCopy: true`), and `isDevSeedPlaylist()` must NEVER flag any `isSubscription: true`, `sid.startsWith('sub_')`, or `isUserCopy` as a dev seed.
+     - Furthermore, `pullUserState` should include user subscriptions from `playlist_saves` so subscriptions persist across reloads and multi-device sync.
+- **Status**: Root causes identified. Implementing fixes in `src/worker.js`, adding regression test coverage in `tests/basic_functionality.test.mjs`, and verifying all 5 test suites.
+
+## 🎯 Completed Task: Public Playlist Publishing, Deletion, Privacy Toggle & Content Synchronization
 - **User Request**:
   - Fix publishing and unpublishing lifecycle for public playlists:
     1. **Immediate deletion of orphaned public listing**: Playlist called "amazing 🔥" (or any deleted playlist) that no longer exists privately must be removed from the public listing immediately. Public listings must strictly reflect private listings; the owner can delete any playlist at any time.
@@ -23,7 +38,7 @@ Production status: **DEPLOYED & VERIFIED (HTTP 200 on both Dev & Prod)**
     3. **Search availability sync**: When toggled to public, it should be immediately searchable and available in public listings. When toggled to private, it must be removed from public listings/search immediately.
     4. **Content edit sync**: When the owner modifies, adds, or deletes shiurim in a published playlist, the public search/listing and public playlist preview must reflect those changes immediately (including when all items are deleted, or items are removed).
     5. **Documentation**: Write in detail in the feature document (`FEATURES.md` and related docs) how this is supposed to work.
-- **Status**: Implementation complete & all 5 test suites (25/25 checks) passing 100% green. Preparing for dual review and Dev-First deployment.
+- **Dual Review Verdict**: **PASS** (Correctness QA: PASS, 0 Blockers; Style & Theme: PASS, 0 Blockers). Deployed to Dev (`459d642f`) and Prod (`b0cd625e`). All 5 test suites (25/25 checks) passing 100% green.
 
 ## 🎯 Completed Task: Settings Menu Icon & Calendar Date Vertical Alignment
 - **User Request**: In the settings menu, all the icons are aligned one on top of the other on the left-hand side except for the calendar date which was not aligned. Make the calendar date come into alignment with all the icons and push to both Dev and Production.

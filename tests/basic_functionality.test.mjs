@@ -1063,6 +1063,77 @@ async function testPublicPlaylistPublishingAndSyncLifecycle() {
   console.log('  ✅ Public Playlist Publishing, Live-Sync, Deletion & Privacy Lifecycle verified.');
 }
 
+async function testPublicPlaylistCopyTooltipAndSubscriptionPersistence() {
+  console.log('26. Testing Public Playlist Copy Tooltip Placement & Subscription/Copy Persistence...');
+  const res = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/'));
+  const html = await res.text();
+  const workerSrc = fs.readFileSync(new URL('../src/worker.js', import.meta.url), 'utf8');
+
+  // 1. Tooltip CSS boundary protection: default right-aligned, box-sizing, .align-left fallback & .arrow-top classes
+  assert.ok(html.includes('max-width: min(280px, calc(100vw - 24px));'), 'Tooltip CSS must contain max-width within viewport bounds');
+  // Default positioning is right-aligned (left: auto; right: 0 in .pl-action-tooltip)
+  assert.ok(html.includes('.pl-action-tooltip {') && html.includes('right: 0;') && html.includes('left: auto;'),
+    'Default tooltip positioning must be right-aligned');
+  // Arrow defaults to right: 5px (centers over 17px info button)
+  assert.ok(html.includes('right: 5px;'), 'Default arrow must be at right: 5px to center over info button');
+  // .align-left fallback class exists
+  assert.ok(html.includes('.pl-action-tooltip.align-left {'), '.align-left fallback class must exist for left-overflow case');
+  assert.ok(html.includes('.pl-action-tooltip.arrow-top {'), '.arrow-top class must flip tooltip below button');
+  assert.ok(html.includes('[data-theme="dark"] .pl-action-tooltip.arrow-top::after {'), 'Dark theme must support flipped tooltip arrow');
+
+  // 2. Dynamic boundary detection in togglePlInfoTip — now defaults right, falls back to align-left
+  assert.ok(html.includes("tip.classList.add('align-left')"), 'togglePlInfoTip must add align-left class when near left edge');
+  assert.ok(html.includes("rect.top < 65") && html.includes("tip.classList.add('arrow-top')"),
+    'togglePlInfoTip must flip below button when header clearance is tight');
+
+  // 3. ARIA attributes on tooltip triggers, containers, and close buttons
+  assert.ok(html.includes('aria-expanded="false"') && html.includes('aria-haspopup="true"'),
+    'Info buttons must have aria-expanded and aria-haspopup attributes');
+  assert.ok(html.includes('role="tooltip"'), 'Tooltip containers must have role="tooltip"');
+  assert.ok(html.includes('aria-label="Close"'), 'Close buttons must have aria-label="Close"');
+  // JS must toggle aria-expanded
+  assert.ok(html.includes("trigger.setAttribute('aria-expanded', 'true')"),
+    'togglePlInfoTip must set aria-expanded to true when opening');
+  assert.ok(html.includes("trigger.setAttribute('aria-expanded', 'false')"),
+    'closePlInfoTip must reset aria-expanded to false when closing');
+
+  // 4. Window resize closes tooltips
+  assert.ok(html.includes("window.addEventListener('resize', closeAllPlInfoTips)"),
+    'Tooltips must close on window resize');
+
+  // 5. Subscriptions protected from dev-seed purges
+  assert.ok(html.includes("if (sid.startsWith('sub_')) return false;"),
+    'isDevSeedPlaylist must never flag sub_* as dev seeds');
+  assert.ok(html.includes("if (pl && (pl.isSubscription || pl.isUserCopy || pl.isUserCreated || pl.copiedFrom)) return false;"),
+    'isDevSeedPlaylist must protect user subscriptions, copies, and created playlists');
+  assert.ok(html.includes("if (sid.startsWith('pl_') && !sid.startsWith('pl_ao_') && !sid.startsWith('pl_mm_') && !sid.startsWith('pl_rs_') && !sid.startsWith('pl_seed_') && !sid.startsWith('pl_dev_'))"),
+    'isDevSeedPlaylist must protect user-generated playlist IDs pl_* matching seed titles');
+
+  // 6. Copy naming and tracking in plExecuteSave
+  assert.ok(html.includes("let name = baseName.slice(0, 52) + ' (Copy)';"),
+    'plExecuteSave must name copies with (Copy) suffix');
+  assert.ok(html.includes("store.custom[nid].isUserCopy = true;"),
+    'plExecuteSave must tag copied playlists with isUserCopy');
+  assert.ok(html.includes("store.custom[nid].copiedFrom = id;"),
+    'plExecuteSave must track copiedFrom public ID');
+
+  // 7. Subscription persistence in pullUserState and adoptCloudState
+  assert.ok(workerSrc.includes("FROM playlist_saves s JOIN public_playlists p ON p.id = s.playlist_id"),
+    'pullUserState must query playlist_saves to fetch user subscriptions');
+  assert.ok(workerSrc.includes("playlists.subscriptions = subscriptions;"),
+    'pullUserState must expose subscriptions array in state');
+  assert.ok(html.includes("if (s.playlists && Array.isArray(s.playlists.subscriptions))"),
+    'adoptCloudState must restore subscribed playlists from cloud state');
+  assert.ok(html.includes("devSyncSubscribedPlaylist(subId, false);"),
+    'adoptCloudState must trigger sync for newly adopted subscriptions');
+
+  // 8. Subscription deletion cascades to /api/playlists/unsave
+  assert.ok(html.includes("fetch('/api/playlists/unsave'"),
+    'devDeletePlaylist must call /api/playlists/unsave on subscription delete');
+
+  console.log('  ✅ Public Playlist Copy Tooltip Placement & Subscription/Copy Persistence verified.');
+}
+
 async function runAll() {
   try {
     await testHomepage();
@@ -1090,6 +1161,7 @@ async function runAll() {
     await testZmanimIconShrinkAndSpacePreservation();
     await testMobileDockingAndPublicPlaylistButtons();
     await testPublicPlaylistPublishingAndSyncLifecycle();
+    await testPublicPlaylistCopyTooltipAndSubscriptionPersistence();
     console.log('\n🎉 ALL BASIC FUNCTIONALITY, ARTICLE READER & LIQUID MODE TESTS PASSED SUCCESSFULLY!');
   } catch (err) {
     console.error('\n❌ Test failed:', err);

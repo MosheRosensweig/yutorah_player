@@ -461,6 +461,16 @@ async function pullUserState(db, userId) {
       playlists.custom[name].push(snap);
     }
   }
+  let subscriptions = [];
+  try {
+    const saves = await db.prepare(
+      'SELECT s.playlist_id AS id, p.title, p.description, p.owner_name AS ownerName, ' +
+      '(SELECT COUNT(*) FROM public_playlist_items i WHERE i.playlist_id = p.id) AS itemCount ' +
+      'FROM playlist_saves s JOIN public_playlists p ON p.id = s.playlist_id ' +
+      'WHERE s.user_id = ? AND p.is_public = 1 ORDER BY s.created_at DESC').bind(userId).all();
+    subscriptions = (saves && saves.results) || [];
+  } catch (e) {}
+  playlists.subscriptions = subscriptions;
   // Regroup queue series members back into collapsed series wrappers.
   const queue = [];
   const seriesGroups = new Map();
@@ -9972,10 +9982,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     .pl-action-tooltip {
       position: absolute;
       bottom: calc(100% + 8px);
-      left: 0;
+      left: auto;
+      right: 0;
       z-index: 1200;
       width: 250px;
-      max-width: 82vw;
+      max-width: min(280px, calc(100vw - 24px));
       background: var(--card, #ffffff);
       border: 1px solid var(--border, #cbd5e1);
       box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
@@ -9984,15 +9995,33 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       text-align: left;
       cursor: default;
       animation: tooltipPopIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+      box-sizing: border-box;
+    }
+    .pl-action-tooltip.align-left {
+      left: 0;
+      right: auto;
     }
     .pl-action-tooltip::after {
       content: '';
       position: absolute;
       top: 100%;
-      left: 18px;
+      right: 5px;
       border-width: 6px;
       border-style: solid;
       border-color: var(--card, #ffffff) transparent transparent transparent;
+    }
+    .pl-action-tooltip.align-left::after {
+      right: auto;
+      left: 18px;
+    }
+    .pl-action-tooltip.arrow-top {
+      bottom: auto;
+      top: calc(100% + 8px);
+    }
+    .pl-action-tooltip.arrow-top::after {
+      top: auto;
+      bottom: 100%;
+      border-color: transparent transparent var(--card, #ffffff) transparent;
     }
     .pl-action-tooltip-header {
       display: flex;
@@ -10032,6 +10061,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     [data-theme="dark"] .pl-action-tooltip::after {
       border-color: #1e293b transparent transparent transparent;
+    }
+    [data-theme="dark"] .pl-action-tooltip.arrow-top::after {
+      border-color: transparent transparent #1e293b transparent;
     }
     [data-theme="dark"] .pl-action-tooltip-header {
       border-bottom-color: #334155;
@@ -16794,11 +16826,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   function isDevSeedPlaylist(pid, pl) {
     if (!pid) return false;
     const sid = String(pid);
+    if (sid.startsWith('sub_')) return false;
+    if (pl && (pl.isSubscription || pl.isUserCopy || pl.isUserCreated || pl.copiedFrom)) return false;
     if (sid.startsWith('pl_ao_') || sid.startsWith('pl_mm_') || sid.startsWith('pl_rs_') || sid.startsWith('pl_seed_') || sid.startsWith('pl_dev_')) return true;
     if (DEV_SEED_PLAYLIST_IDS.indexOf(sid) !== -1) return true;
     if (pl && pl.isDevOwned) return true;
     if (pl && pl.ownerName && ['Andrew Ohiliote', 'Moshe Mendelwitz', 'Rachel Sternbach', 'Dev'].indexOf(pl.ownerName) !== -1) return true;
-    if (pl && pl.name && DEV_SEED_PLAYLIST_TITLES.indexOf(String(pl.name).toLowerCase()) !== -1) return true;
+    if (pl && pl.name && DEV_SEED_PLAYLIST_TITLES.indexOf(String(pl.name).toLowerCase()) !== -1) {
+      if (sid.startsWith('pl_') && !sid.startsWith('pl_ao_') && !sid.startsWith('pl_mm_') && !sid.startsWith('pl_rs_') && !sid.startsWith('pl_seed_') && !sid.startsWith('pl_dev_')) {
+        return false;
+      }
+      return true;
+    }
     return false;
   }
   window.isDevSeedPlaylist = isDevSeedPlaylist;
@@ -17760,22 +17799,22 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
                   ? '<button type="button" class="card-mini-btn active-save" onclick="devOpenSubscribedPlaylist(&quot;' + escapeHtml(p.id) + '&quot;)">📡 Subscribed · Open</button>'
                   : '<button type="button" class="card-mini-btn" onclick="plExecuteSave(&quot;' + escapeHtml(p.id) + '&quot;, &apos;subscribe&apos;)">📡 Subscribe</button>'
                 ) +
-                '<button type="button" class="pl-info-btn" onclick="togglePlInfoTip(event, &quot;sub-' + escapeHtml(p.id) + '&quot;)" aria-label="About Subscribing" title="About Subscribing">ⓘ</button>' +
-                '<div id="tip-sub-' + escapeHtml(p.id) + '" class="pl-action-tooltip" style="display:none;" onclick="event.stopPropagation()">' +
+                '<button type="button" class="pl-info-btn" onclick="togglePlInfoTip(event, &quot;sub-' + escapeHtml(p.id) + '&quot;)" aria-label="About Subscribing" title="About Subscribing" aria-expanded="false" aria-haspopup="true">ⓘ</button>' +
+                '<div id="tip-sub-' + escapeHtml(p.id) + '" class="pl-action-tooltip" style="display:none;" role="tooltip" onclick="event.stopPropagation()">' +
                   '<div class="pl-action-tooltip-header">' +
                     '<span class="pl-action-tooltip-title">📡 Subscribing</span>' +
-                    '<button type="button" class="pl-action-tooltip-close" onclick="closePlInfoTip(event, &quot;sub-' + escapeHtml(p.id) + '&quot;)">×</button>' +
+                    '<button type="button" class="pl-action-tooltip-close" onclick="closePlInfoTip(event, &quot;sub-' + escapeHtml(p.id) + '&quot;)" aria-label="Close">×</button>' +
                   '</div>' +
                   '<div class="pl-action-tooltip-body">Subscribing means that you&apos;re following this playlist. As the owner makes updates, you&apos;ll see those updates.</div>' +
                 '</div>' +
               '</span>' +
               '<span class="pl-btn-with-info">' +
                 '<button type="button" class="card-mini-btn" onclick="plExecuteSave(&quot;' + escapeHtml(p.id) + '&quot;, &apos;copy&apos;)">📋 Copy</button>' +
-                '<button type="button" class="pl-info-btn" onclick="togglePlInfoTip(event, &quot;copy-' + escapeHtml(p.id) + '&quot;)" aria-label="About Copying" title="About Copying">ⓘ</button>' +
-                '<div id="tip-copy-' + escapeHtml(p.id) + '" class="pl-action-tooltip" style="display:none;" onclick="event.stopPropagation()">' +
+                '<button type="button" class="pl-info-btn" onclick="togglePlInfoTip(event, &quot;copy-' + escapeHtml(p.id) + '&quot;)" aria-label="About Copying" title="About Copying" aria-expanded="false" aria-haspopup="true">ⓘ</button>' +
+                '<div id="tip-copy-' + escapeHtml(p.id) + '" class="pl-action-tooltip" style="display:none;" role="tooltip" onclick="event.stopPropagation()">' +
                   '<div class="pl-action-tooltip-header">' +
                     '<span class="pl-action-tooltip-title">📋 Copying</span>' +
-                    '<button type="button" class="pl-action-tooltip-close" onclick="closePlInfoTip(event, &quot;copy-' + escapeHtml(p.id) + '&quot;)">×</button>' +
+                    '<button type="button" class="pl-action-tooltip-close" onclick="closePlInfoTip(event, &quot;copy-' + escapeHtml(p.id) + '&quot;)" aria-label="Close">×</button>' +
                   '</div>' +
                   '<div class="pl-action-tooltip-body">Copy means that you&apos;re copying the playlist to then modify and make your own.</div>' +
                 '</div>' +
@@ -19685,7 +19724,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   window.plSavePublic = plPromptSavePublic;
 
   function closeAllPlInfoTips() {
-    document.querySelectorAll('.pl-action-tooltip').forEach(el => el.style.display = 'none');
+    document.querySelectorAll('.pl-action-tooltip').forEach(el => {
+      el.style.display = 'none';
+      // Reset aria-expanded on the trigger button (previous sibling)
+      const trigger = el.previousElementSibling;
+      if (trigger && trigger.classList.contains('pl-info-btn')) {
+        trigger.setAttribute('aria-expanded', 'false');
+      }
+    });
   }
   function togglePlInfoTip(e, tipId) {
     if (e) e.stopPropagation();
@@ -19694,13 +19740,75 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const isVisible = tip.style.display !== 'none';
     closeAllPlInfoTips();
     if (!isVisible) {
+      // Find the trigger button to set aria-expanded
+      const trigger = tip.previousElementSibling;
+      if (trigger && trigger.classList.contains('pl-info-btn')) {
+        trigger.setAttribute('aria-expanded', 'true');
+      }
+
       tip.style.display = 'block';
+      // Default: right-aligned (arrow points at ⓘ button)
+      tip.style.left = 'auto';
+      tip.style.right = '0';
+      tip.style.top = 'auto';
+      tip.style.bottom = 'calc(100% + 8px)';
+      tip.classList.remove('align-left');
+      tip.classList.remove('arrow-top');
+
+      const pad = 10;
+      let rect = tip.getBoundingClientRect();
+      // If it overflows the left edge, flip to left-aligned:
+      if (rect.left < pad) {
+        tip.classList.add('align-left');
+        tip.style.left = '0';
+        tip.style.right = 'auto';
+        rect = tip.getBoundingClientRect();
+      }
+      // If it still overflows the right edge on narrow screens:
+      if (rect.right > window.innerWidth - pad) {
+        const shiftR = Math.round(rect.right - (window.innerWidth - pad));
+        if (tip.classList.contains('align-left')) {
+          tip.style.left = (parseInt(tip.style.left || '0', 10) - shiftR) + 'px';
+        } else {
+          tip.style.right = shiftR + 'px';
+        }
+        rect = tip.getBoundingClientRect();
+      }
+      // If it still overflows the left edge after right-shift:
+      if (rect.left < pad) {
+        const shift = Math.round(pad - rect.left);
+        if (tip.classList.contains('align-left')) {
+          tip.style.left = shift + 'px';
+        } else {
+          tip.style.right = (parseInt(tip.style.right || '0', 10) - shift) + 'px';
+        }
+        rect = tip.getBoundingClientRect();
+      }
+      // If it overflows near the top under fixed headers, flip below:
+      if (rect.top < 65) {
+        tip.classList.add('arrow-top');
+        tip.style.bottom = 'auto';
+        tip.style.top = 'calc(100% + 8px)';
+      }
     }
   }
   function closePlInfoTip(e, tipId) {
     if (e) e.stopPropagation();
     const tip = document.getElementById('tip-' + tipId);
-    if (tip) tip.style.display = 'none';
+    if (tip) {
+      tip.style.display = 'none';
+      tip.classList.remove('align-left');
+      tip.classList.remove('arrow-top');
+      tip.style.left = '';
+      tip.style.right = '';
+      tip.style.top = '';
+      tip.style.bottom = '';
+      // Reset aria-expanded on the trigger button
+      const trigger = tip.previousElementSibling;
+      if (trigger && trigger.classList.contains('pl-info-btn')) {
+        trigger.setAttribute('aria-expanded', 'false');
+      }
+    }
   }
   window.togglePlInfoTip = togglePlInfoTip;
   window.closePlInfoTip = closePlInfoTip;
@@ -19716,6 +19824,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       closeAllPlInfoTips();
     }
   });
+  window.addEventListener('resize', closeAllPlInfoTips);
 
   async function plExecuteSave(id, mode) {
     if (!playlistsEnabled()) {
@@ -19740,6 +19849,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
       if (mode === 'subscribe') {
         const subId = 'sub_' + id;
+        clearPlaylistDeletedTombstone(subId);
+        clearPlaylistDeletedTombstone(baseName);
         store.custom[subId] = {
           id: subId,
           name: baseName,
@@ -19759,15 +19870,19 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         if (el) el.scrollIntoView({ behavior: 'smooth' });
         flashToast('📡 Subscribed! Stays in sync with public playlist', false, false);
       } else {
-        let name = baseName;
+        let name = baseName.slice(0, 52) + ' (Copy)';
         let n = 2;
         const taken = new Set(Object.values(store.custom || {}).map(p => p.name));
-        while (taken.has(name)) name = baseName.slice(0, 54) + ' (' + (n++) + ')';
+        while (taken.has(name)) name = baseName.slice(0, 48) + ' (Copy ' + (n++) + ')';
         const nid = devCreatePlaylist(name);
         if (nid && store.custom[nid]) {
           store.custom[nid].items = data.playlist.items || [];
           store.custom[nid].description = String(data.playlist.description || '').slice(0, 500);
           store.custom[nid].isSubscription = false;
+          store.custom[nid].isUserCopy = true;
+          store.custom[nid].copiedFrom = id;
+          delete store.custom[nid].isDevOwned;
+          delete store.custom[nid].ownerName;
           saveDevStore(store);
           activeDevPlaylistId = nid;
           renderPlaylistsGrid();
@@ -20370,6 +20485,29 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
             items: mergeItems(prev, items, pid, name)
           };
         }
+        if (s.playlists && Array.isArray(s.playlists.subscriptions)) {
+          for (const sub of s.playlists.subscriptions) {
+            if (!sub || !sub.id) continue;
+            const subId = 'sub_' + sub.id;
+            if (isPlaylistDeletedTombstoned(subId)) continue;
+            if (!store.custom[subId]) {
+              store.custom[subId] = {
+                id: subId,
+                name: sub.title || 'Shared playlist',
+                icon: '📡',
+                description: sub.description || '',
+                items: [],
+                isSubscription: true,
+                subscribedPublicId: sub.id,
+                ownerName: sub.ownerName || '',
+                lastSyncedAt: 0
+              };
+              if (typeof devSyncSubscribedPlaylist === 'function') {
+                devSyncSubscribedPlaylist(subId, false);
+              }
+            }
+          }
+        }
         try { localStorage.setItem('yutorah_custom_icons', JSON.stringify(icons)); } catch (e) {}
         if (!getDevPlaylist(store, activeDevPlaylistId)) activeDevPlaylistId = 'history';
         devStoreCache = null;
@@ -20713,6 +20851,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
               body: JSON.stringify({ id: pubId })
             }).catch(() => {});
             if (typeof plMineCache !== 'undefined') plMineCache.at = 0;
+          } catch (e) {}
+        }
+        if (pl.isSubscription && pl.subscribedPublicId) {
+          try {
+            const headers = { 'Content-Type': 'application/json' };
+            if (typeof isDevMode !== 'undefined' && isDevMode) headers['X-Dev-Mode'] = '1';
+            fetch('/api/playlists/unsave', {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({ id: pl.subscribedPublicId })
+            }).catch(() => {});
           } catch (e) {}
         }
         try {
