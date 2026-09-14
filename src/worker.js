@@ -5399,6 +5399,7 @@ function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', in
     <h1 id="dafHeroTitle">📜 Loading today&rsquo;s daf…</h1>
     <div class="daf-date-line" id="dafHeroDate"></div>
     <button type="button" class="daf-btn" id="dafTodayBtn" onclick="dafGoToday()">Today&rsquo;s Daf</button>
+    <div style="margin-top: 10px;"><a class="daf-btn" id="dafShiurimLink" href="#" target="_blank" rel="noopener" title="Shiurim on this daf">🎧 Shiurim</a></div>
   </div>
   <div class="daf-card">
     <div class="daf-controls">
@@ -5433,7 +5434,6 @@ function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', in
       <span class="daf-text-control"><button type="button" class="daf-btn" id="dafLangHe" onclick="dafSetLang('he')" aria-pressed="false">עברית</button>
       <button type="button" class="daf-btn" id="dafLangEn" onclick="dafSetLang('en')" aria-pressed="false">English</button>
       <button type="button" class="daf-btn primary" id="dafLangBoth" onclick="dafSetLang('both')" aria-pressed="true">עברית + English</button></span>
-      <span class="daf-text-control"><a class="daf-btn" id="dafShiurimLink" href="#" target="_blank" rel="noopener" title="Shiurim on this daf">🎧 Shiurim</a></span>
       <span class="daf-viewer-hint pdf-control">Tap daf to zoom where you press · drag to move</span>
     </div>
     <div id="dafViewer">

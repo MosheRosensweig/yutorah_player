@@ -1181,6 +1181,7 @@ async function testDafHub() {
   assert.ok(html.includes('id="dafFolio"'), '/daf must contain the folio input');
   assert.ok(html.includes('id="dafDate"'), '/daf must contain calendar nav');
   assert.ok(html.includes('id="dafShiurimLink"'), '/daf must link shiurim on the daf');
+  assert.ok(html.indexOf('id="dafTodayBtn"') < html.indexOf('id="dafShiurimLink"') && html.indexOf('id="dafShiurimLink"') < html.indexOf('id="dafMasechta"'), 'Daf shiurim link must appear under Today’s Daf before the selector card');
   assert.ok(html.includes('overflow: auto; touch-action: pan-y'), '/daf text viewer must remain scrollable');
   assert.ok(html.includes('id="dafViewPage"'), '/daf must offer a page-style view');
   assert.ok(html.includes('function renderDafText()'), '/daf must render text and page views from loaded content');

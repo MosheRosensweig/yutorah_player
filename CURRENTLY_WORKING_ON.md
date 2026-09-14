@@ -40,6 +40,7 @@ Per-user instruction: dev only (no prod), one feature at a time — quick review
 - [x] Current Daf UX follow-up completed: paired Hebrew + English is now the default text mode; the עמוד ב / עמוד א / both selector is shared above the language controls in both tabs; and the button order is reversed. Full `npm test` passed and dev deployment `6012ee50-a340-4df5-a958-1d327451a26b` was verified live. Production remains untouched.
 - [x] Current Daf UX follow-up completed: separated the amud selector into its own control section above the other controls in both tabs. Targeted Daf tests passed, live markup was verified, and dev deployment `0310a4f1-8a6e-4614-ad10-1ebf8556fc2e` is live. Production remains untouched.
 - [x] Current Daf UX follow-up completed: removed “(paired)” from the visible Hebrew + English language button while retaining the phrase-by-phrase behavior. Targeted tests passed; cache-busted live dev verification shows `עברית + English`; deployment `7c985ad6-f2f4-43b2-8f25-88edb39b8e15` is active. Production remains untouched.
+- [x] Current Daf UX follow-up completed: moved the Shiurim link from the Daf text toolbar to directly below Today’s Daf. Targeted tests passed, live placement was verified, and dev deployment `c3f40562-d332-4637-9fa4-64b87a1c62ea` is active. Production remains unchanged.
 
 ## 🔒 Standing Deployment & QA Invariants (Permanent Rule)
 1. **Dev-First Deployment Rule (MANDATORY)**:

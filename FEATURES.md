@@ -304,7 +304,7 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 - **Aligned bilingual text**: the `עברית + English` mode normalizes Sefaria’s segment arrays and renders every indexed segment as a numbered pair — labeled Hebrew Gemara immediately followed by its matching English phrase — then continues to the next pair (for example, all 22 pairs on a 22-segment daf).
 - **Daf text default**: the text tab opens in `עברית + English` mode by default. The amud selector has its own section above the separate zoom/language controls and remains available in both Daf tabs.
 - **Homepage integration**: selecting the Daf Yomi card from the Timely Study menu opens `/daf`, keeping the hub within the regular YUTorah Enhanced site navigation.
-- **Shiurim on this daf**: one tap opens a `?search=Masechta+Daf` results tab for related lectures. Entry via the 📖 Daf Hub quick chip; `themeMode` SSR + client toggle included; breakout-safe param embedding (`jsEmbed`).
+- **Shiurim on this daf**: the 🎧 Shiurim button sits directly under **Today’s Daf** and opens a `?search=Masechta+Daf` results tab for related lectures. Entry via the 📖 Daf Hub quick chip; `themeMode` SSR + client toggle included; breakout-safe param embedding (`jsEmbed`).
 - **ℹ️ Shiurim-therein explainer** (companion, public playlists): info button beside the scope checkbox using the standard tooltip system; copy states the scope only widens results.
 
 ### 📄 Source Sheet button on audio shiurim
