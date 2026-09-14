@@ -1000,6 +1000,22 @@ async function handleSyncRoutes(request, env, url) {
             finalProgSec, finalDurSec, finalCompleted,
             lastListened).run();
       }
+      // Explicit history tombstones (bounded, idempotent): delete exactly
+      // the rows the client removed. This is safe where a full-list
+      // delete-missing is not — the local history is an LRU window capped
+      // far below what the server may hold, so a replace would wipe rows
+      // the client merely truncated and never saw. Legacy clients never
+      // send this key, so presence semantics for them are unchanged.
+      if (Array.isArray(body.deletedHistory)) {
+        for (const rawId of body.deletedHistory.slice(0, 200)) {
+          const sid = String(rawId || '');
+          if (!sid) continue;
+          try {
+            await db.prepare('DELETE FROM listening_history WHERE user_id = ? AND shiur_id = ?')
+              .bind(user.id, sid).run();
+          } catch (e) {}
+        }
+      }
     }
 
     // Playlists + queue: ONLY collections named in body.dirty are touched.
@@ -5474,15 +5490,38 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       color: #fff;
       font-weight: 700;
       font-size: 18px;
+      /* Rigid by default so measurement-based priority (theme → zman →
+         brand) decides what yields. Only under .cluster-tight (last
+         resort) may the brand yield width so the login button after it
+         is never pushed out of view. */
       flex-shrink: 0;
+      min-width: 0;
+      overflow: hidden;
     }
-    .brand span {
+    .brand-text {
+      background: none !important;
+      padding: 0 !important;
+      font-size: inherit !important;
+      font-weight: inherit !important;
+      letter-spacing: normal !important;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+    }
+    .brand > span:last-child {
       background: rgba(255,255,255,0.22);
       padding: 2px 7px;
       border-radius: 4px;
       font-size: 11px;
       font-weight: 600;
       letter-spacing: 0.5px;
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+    /* Last-resort brand shrink (toggled by checkHeaderOverflow). */
+    #mainHeader.cluster-tight .brand {
+      flex-shrink: 1;
     }
     .hebrew-date-badge {
       font-size: 13px;
@@ -5952,10 +5991,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       gap: 8px;
       flex-shrink: 0;
     }
-    .header-right #themeToggleBtn {
-      order: 10;
-      display: inline-flex;
-    }
     @media (max-width: 640px) {
       .header-left {
         gap: 6px;
@@ -5969,11 +6004,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       .support-yutorah-btn {
         display: none !important;
       }
-      /* On mobile, both login button and theme toggle have plenty of space */
-      body:not(.is-logged-in) #themeToggleBtn,
-      body.is-logged-in #themeToggleBtn {
-        display: inline-flex;
-      }
+      /* Theme toggle visibility is governed by checkHeaderOverflow()
+         measurement (shown only when space allows) — no forced display. */
     }
     .support-yutorah-btn {
       display: inline-flex;
@@ -6227,7 +6259,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       background: rgba(255, 255, 255, 0.88);
     }
     .holiday-motif-wrap:focus-visible {
-      outline: 2px solid var(--primary) !important;
+      outline: 2px solid #ffffff !important;
       outline-offset: 2px;
     }
     [data-theme="dark"] .holiday-motif-wrap {
@@ -6263,21 +6295,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     .holiday-motif-wrap.icon-only:not(.expanded) .holiday-motif-title {
       display: none;
     }
-    @media (max-width: 768px) {
-      .holiday-motif-wrap:not(.expanded) .holiday-motif-title,
-      #holidayMotifWrap:not(.expanded) #holidayMotifTitle {
-        display: none;
-      }
-      .holiday-motif-wrap {
-        padding: 4px 6px;
-        min-width: 32px;
-        width: 32px;
-        height: 32px;
-        border-radius: 50%;
-        justify-content: center;
-      }
-    }
-
     /* Floating popover tap effect when expanded in icon-only state */
     .holiday-motif-wrap.expanded .holiday-motif-title,
     #holidayMotifWrap.expanded #holidayMotifTitle {
@@ -6442,7 +6459,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         font-size: 14px;
         gap: 5px;
       }
-      .brand span {
+      .brand > span:last-child {
         display: inline-block;
         font-size: 9px;
         padding: 2px 5px;
@@ -10810,18 +10827,19 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   <div class="header-inner">
     <div class="header-left">
       <a href="/" class="brand" onclick="goHome(event)">
-        🎧 YUTorah Enhanced <span>PLAYER</span>
+        <span class="brand-text">🎧 YUTorah Enhanced</span> <span>PLAYER</span>
       </a>
       <button type="button" id="authBtn" class="theme-toggle-btn auth-btn" onclick="toggleAuthMenu(event)" title="Sign in to sync across devices">
         <span class="auth-icon">👤</span><span class="auth-label"> Sign in</span>
       </button>
-      <div id="authMenu" class="auth-menu" style="display: none;" role="menu" aria-label="Account"></div>
-    </div>
-    <div class="header-right">
       <div id="holidayMotifWrap" class="holiday-motif-wrap" onclick="handleCalendarSecretClick(event); toggleHolidayMotifExpand();" tabindex="0" role="button" aria-label="Holiday theme" aria-expanded="false" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();handleCalendarSecretClick(event);toggleHolidayMotifExpand();}" style="display: none;" title="">
         <span id="holidayMotifIcon" class="holiday-motif-icon"></span>
         <span id="holidayMotifTitle" class="holiday-motif-title"></span>
       </div>
+      <button type="button" id="themeToggleBtn" class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Dark / Light Mode">${themeMode === 'light' ? '🌙' : '☀️'}</button>
+      <div id="authMenu" class="auth-menu" style="display: none;" role="menu" aria-label="Account"></div>
+    </div>
+    <div class="header-right">
       <!-- [DEAD CODE / TEMPORARILY HIDDEN] Settings button, Simple View switch, and Holiday Theme preview picker -->
       <div class="settings-wrapper" style="display: none !important;" aria-hidden="true">
         <button type="button" id="settingsBtn" class="theme-toggle-btn settings-btn" onclick="toggleSettingsMenu(event)" title="Settings" style="display: none !important;">⚙️</button>
@@ -10897,7 +10915,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       </div>
       <a href="https://www.givecampus.com/campaigns/50770/donations/new" target="_blank" rel="noopener noreferrer" class="support-yutorah-btn" title="Support YUTorah & Sponsor Learning (Opens in new window)">❤️ Support YUTorah</a>
       <div class="hebrew-date-badge" id="hebrewDateBadge" onclick="handleCalendarSecretClick(event)" title="Hebrew Calendar Date">📅<span class="hebrew-date-text">${escapeHtml(homepageData?.hebrewDateString || 'Calendar')}</span></div>
-      <button type="button" id="themeToggleBtn" class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Dark / Light Mode">${themeMode === 'light' ? '🌙' : '☀️'}</button>
     </div>
   </div>
 </header>
@@ -16125,8 +16142,40 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
   }
 
+  // Explicit delete intents for history. The local list is an LRU window
+  // (capped far below what the server may hold), so deletes travel as
+  // tombstones — a full-list replace would wipe rows the client merely
+  // truncated and never saw.
+  function getHistoryTombstones() {
+    try {
+      const a = JSON.parse(localStorage.getItem('yutorah_history_tombstones') || '[]');
+      return Array.isArray(a) ? a.map(s => String(s)).filter(Boolean) : [];
+    } catch (e) {
+      return [];
+    }
+  }
+  function addHistoryTombstone(id) {
+    try {
+      const sid = String(id || '');
+      if (!sid) return;
+      const ts = getHistoryTombstones().filter(t => t !== sid);
+      ts.push(sid);
+      localStorage.setItem('yutorah_history_tombstones', JSON.stringify(ts.slice(-200)));
+    } catch (e) {}
+  }
+  function clearHistoryTombstones(ids) {
+    try {
+      const drop = new Set((ids || []).map(s => String(s)));
+      const ts = getHistoryTombstones().filter(t => !drop.has(t));
+      localStorage.setItem('yutorah_history_tombstones', JSON.stringify(ts));
+    } catch (e) {}
+  }
+
   function addRecentHistory(shiur) {
     if (!shiur || !shiur.id) return;
+    // Re-listening revives the item: drop any pending delete for it so a
+    // later push cannot delete the just re-added row.
+    clearHistoryTombstones([shiur.id]);
     try {
       let history = getRecentHistory();
       history = history.filter(item => String(item.id) !== String(shiur.id));
@@ -16737,6 +16786,23 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       try {
         let history = getRecentHistory().filter(item => String(item.id) !== String(id));
         localStorage.setItem('yutorah_recent_history', JSON.stringify(history));
+      } catch (e) {}
+      // Record an explicit delete intent (tombstone) so the remove survives
+      // the union merge on pull/reload, and drop any stale progress record.
+      try {
+        addHistoryTombstone(id);
+        const pkey = (typeof DEV_PROGRESS_KEY !== 'undefined' && DEV_PROGRESS_KEY) ? DEV_PROGRESS_KEY : 'yutorah_playback_progress';
+        const prog = JSON.parse(localStorage.getItem(pkey) || '{}');
+        if (prog && Object.prototype.hasOwnProperty.call(prog, String(id))) {
+          delete prog[String(id)];
+          localStorage.setItem(pkey, JSON.stringify(prog));
+        }
+      } catch (e) {}
+      // Deletes must reach the cloud or the next pull/reload resurrects
+      // them via union merge (same dirty discipline as addRecentHistory).
+      try {
+        if (typeof markCloudDirty === 'function') markCloudDirty('history');
+        if (typeof scheduleCloudSync === 'function') scheduleCloudSync();
       } catch (e) {}
     } else {
       const store = getDevStore();
@@ -19418,6 +19484,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         return { ...h, progressSec: pr.progressSec || 0, durationSec: pr.durationSec || 0, completed: Boolean(pr.completed) };
       });
       body.progress = progress;
+      const tombstones = getHistoryTombstones();
+      if (tombstones.length > 0) body.deletedHistory = tombstones.slice(0, 200);
     }
     if (cloudDirty.playlists) {
       let store = null;
@@ -19552,6 +19620,24 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     } catch (e) {}
   }
 
+  // Best-effort flush of pending dirty state on unload: covers the case
+  // where the user reloads/closes inside the scheduleCloudSync() debounce
+  // window (in-memory dirty flags would otherwise be lost and the next
+  // boot pull would resurrect just-deleted items).
+  function flushCloudSync() {
+    if (!cloudEnabled()) return;
+    try {
+      if (!cloudDirty.playlists && !cloudDirty.queue && !cloudDirty.history) return;
+      const payload = collectLocalState();
+      fetch('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        keepalive: true
+      }).catch(() => {});
+    } catch (e) {}
+  }
+
   async function cloudPush() {
     if (!cloudEnabled()) return null;
     const payload = collectLocalState();
@@ -19570,6 +19656,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (sent.playlists) cloudDirty.playlists = false;
       if (sent.queue) cloudDirty.queue = false;
       if (sent.history) cloudDirty.history = false;
+      // Server honored the tombstones we sent: drop exactly those so a
+      // later push cannot re-delete something re-added since. Retained on
+      // failure for retry.
+      if (sent.history && Array.isArray(payload.deletedHistory)) {
+        clearHistoryTombstones(payload.deletedHistory);
+      }
       const state = await res.json();
       adoptCloudState(state);
       return state;
@@ -19657,6 +19749,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         } else {
           await cloudPull();
         }
+        // Pending delete intents (e.g. unload flush failed): re-dirty so
+        // they push on the debounce instead of waiting for the next edit.
+        try {
+          if (typeof getHistoryTombstones === 'function' && getHistoryTombstones().length > 0) {
+            markCloudDirty('history');
+            scheduleCloudSync();
+          }
+        } catch (e) {}
       }
     } catch (e) {}
   }
@@ -20574,7 +20674,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
 
     if (!resolvedKey || resolvedKey === 'default' || !clientThemes[resolvedKey]) {
-      if (motifWrap) motifWrap.style.display = 'none';
+      if (motifWrap) { motifWrap.style.display = 'none'; motifWrap.dataset.holiday = '0'; }
       if (taglineBar) taglineBar.style.display = 'none';
       document.body.classList.remove('is-purim-theme');
       checkCalendarOverflow();
@@ -20617,7 +20717,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       variantData = themeDef.variants[effectiveVariant] || themeDef.variants['a'];
     }
 
-    if (!variantData) return;
+    if (!variantData) {
+      // No theme resolved: clear any stale holiday flag so the header
+      // overflow check cannot show a ghost motif badge.
+      if (motifWrap) { motifWrap.dataset.holiday = '0'; motifWrap.style.display = 'none'; }
+      return;
+    }
 
     // Apply CSS Variables to root (light mode only)
     if (!isDark) {
@@ -20626,9 +20731,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (variantData.bannerBg) document.documentElement.style.setProperty('--banner-bg', variantData.bannerBg);
     }
 
-    // Render Motif Badge in Header (both light and dark mode)
+    // Render Motif Badge in Header (both light and dark mode).
+    // dataset.holiday marks "a holiday is active" separately from the
+    // inline display style, which checkHeaderOverflow() may toggle for space.
     if (motifWrap && motifIcon && motifTitle) {
       motifWrap.style.display = 'inline-flex';
+      motifWrap.dataset.holiday = '1';
       motifIcon.innerHTML = '<img src="/assets/themes/' + variantData.icon + '" alt="icon" style="width:100%; height:100%; display:block;" onerror="this.style.display=&quot;none&quot;">';
       motifTitle.textContent = themeDef.badge || themeDef.name;
       motifWrap.title = variantData.title + ' (Tap 7 times to toggle pre-roll)';
@@ -21320,9 +21428,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   });
   window.addEventListener('beforeunload', () => {
     updateUrlTimestamp(true);
+    try { if (typeof flushCloudSync === 'function') flushCloudSync(); } catch (e) {}
   });
   window.addEventListener('pagehide', () => {
     updateUrlTimestamp(true);
+    try { if (typeof flushCloudSync === 'function') flushCloudSync(); } catch (e) {}
   });
 
   // Fallback if primary audio stream errors
@@ -21481,6 +21591,21 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   syncHeaderSpacer();
   window.addEventListener('resize', syncHeaderSpacer);
 
+  // True when the left button cluster (brand → login → zman → theme)
+  // overflows the header row. header-left never shrinks (until the
+  // .cluster-tight last resort), so any excess width lands in scrollWidth.
+  function headerClusterOverflows() {
+    var header = document.getElementById('mainHeader');
+    if (!header) return false;
+    var inner = header.querySelector('.header-inner');
+    if (!inner) return false;
+    return inner.scrollWidth > inner.clientWidth + 2;
+  }
+
+  // Header priority, left to right with no gaps:
+  // brand + login/settings (always) → zman apple (full, else apple-only,
+  // else hidden) → light/dark (only when room remains). Sacrifices happen
+  // lowest-priority-first: theme, then motif, then (last resort) brand.
   function checkHeaderOverflow() {
     var header = document.getElementById('mainHeader');
     if (!header) return;
@@ -21499,6 +21624,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     var isMobile = wWidth <= 640;
     var rowMaxTop = hRect.top + (isMobile ? 38 : 46);
 
+    // 0. Login/settings button: always visible, guaranteed after the brand.
+    if (authBtn) {
+      authBtn.style.display = 'inline-flex';
+    }
+
     // 1. Hebrew Calendar Date Badge: Hidden on mobile (<= 640px)
     if (badge) {
       if (isMobile) {
@@ -21514,57 +21644,41 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       }
     }
 
-    // 2. Holiday Motif Badge (e.g. Rosh Hashanah apple):
-    // If screen is <= 768px or if full title would cause login button or theme toggle to cut off,
-    // shrink to just the icon (the apple)!
-    if (motif && motif.style.display !== 'none') {
-      var shouldShrinkMotif = wWidth <= 768;
-      if (!shouldShrinkMotif) {
+    // Reset to full visibility first so every run re-derives state from
+    // scratch (widening auto-restores; no oscillation between runs).
+    var motifOn = motif && motif.dataset.holiday === '1';
+    if (themeBtn) themeBtn.style.display = 'inline-flex';
+    if (motif) {
+      if (motifOn) {
+        motif.style.display = 'inline-flex';
         motif.classList.remove('icon-only');
-        var mRect = motif.getBoundingClientRect();
-        var tRect = (themeBtn && themeBtn.style.display !== 'none') ? themeBtn.getBoundingClientRect() : null;
-
-        var themeCutOff = tRect && (tRect.right > maxRight - 4 || tRect.top > rowMaxTop || tRect.left < leftBoundary + 8);
-        var motifCutOff = mRect.right > maxRight - 4 || mRect.left < leftBoundary + 8 || mRect.top > rowMaxTop;
-
-        if (themeCutOff || motifCutOff) {
-          shouldShrinkMotif = true;
-        }
-      }
-
-      if (shouldShrinkMotif) {
-        motif.classList.add('icon-only');
-        var motifTitle = document.getElementById('holidayMotifTitle');
-        var titleText = motifTitle ? (motifTitle.textContent || '').trim() : '';
-        if (titleText) motif.title = titleText + ' (Tap to view)';
       } else {
-        motif.classList.remove('icon-only');
+        motif.style.display = 'none';
       }
+    }
+    header.classList.remove('cluster-tight');
 
-      var mRectFinal = motif.getBoundingClientRect();
-      if (mRectFinal.left < leftBoundary + 4) {
+    // 2. Theme Toggle Button (lowest priority): hidden first when tight.
+    if (themeBtn && headerClusterOverflows()) {
+      themeBtn.style.display = 'none';
+    }
+
+    // 3. Holiday Motif Badge (e.g. Rosh Hashanah apple): apple-only when
+    // tight, hidden only when even the apple won't fit. Purely
+    // measurement-based — no screen-size breakpoints.
+    if (motifOn && motif && headerClusterOverflows()) {
+      motif.classList.add('icon-only');
+      var motifTitle = document.getElementById('holidayMotifTitle');
+      var titleText = motifTitle ? (motifTitle.textContent || '').trim() : '';
+      if (titleText) motif.title = titleText + ' (Tap to view)';
+      if (headerClusterOverflows()) {
         motif.style.display = 'none';
       }
     }
 
-    // 3. Ensure authBtn (login button) is visible and never cut off
-    if (authBtn) {
-      authBtn.style.display = 'inline-flex';
-    }
-
-    // 4. Theme Toggle Button check
-    if (themeBtn) {
-      themeBtn.style.display = 'inline-flex';
-      var tRectFinal = themeBtn.getBoundingClientRect();
-      var isCutOff = tRectFinal.right > maxRight - 4 ||
-                     tRectFinal.top > rowMaxTop ||
-                     tRectFinal.left < leftBoundary + 6;
-      if (isCutOff) {
-        themeBtn.style.display = 'none';
-      } else {
-        themeBtn.style.display = 'inline-flex';
-      }
-    }
+    // 4. Last resort: let the brand text ellipsis so the login button is
+    // never pushed out on ultra-narrow screens.
+    header.classList.toggle('cluster-tight', headerClusterOverflows());
   }
 
   // Dismiss expanded holiday motif popup on document click outside or Escape

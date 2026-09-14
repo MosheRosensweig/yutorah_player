@@ -24,6 +24,26 @@ async function testHomepage() {
   assert.ok(html.includes('id="articleViewerContainer"'), 'Homepage must contain #articleViewerContainer');
   assert.ok(html.includes('id="searchInput"'), 'Homepage must contain #searchInput');
   assert.ok(html.includes('id="themeToggleBtn"'), 'Homepage must contain #themeToggleBtn');
+  // Header left cluster order: brand → login/settings → zman apple → theme (no gaps).
+  const brandIdx = html.indexOf('class="brand"');
+  const authIdx = html.indexOf('id="authBtn"');
+  const motifIdx = html.indexOf('id="holidayMotifWrap"');
+  const themeIdx = html.indexOf('id="themeToggleBtn"');
+  assert.ok(brandIdx !== -1 && authIdx > brandIdx && motifIdx > authIdx && themeIdx > motifIdx,
+    'header left cluster must be brand → login → zman → theme');
+  assert.ok(html.includes('function headerClusterOverflows()'), 'overflow measurement helper must exist');
+  assert.ok(html.includes("dataset.holiday"), 'motif holiday-active flag must exist');
+  assert.ok(html.includes('.brand > span:last-child'), 'PLAYER pill style must be scoped (brand text stays plain)');
+  assert.ok(html.includes('cluster-tight'), 'last-resort brand shrink class must exist');
+  assert.ok(html.includes('yutorah_history_tombstones'), 'history delete tombstone store must exist');
+  assert.ok(html.includes('deletedHistory'), 'tombstones must travel in the sync payload');
+  // History deletes must sync (dirty-mark) and flush on unload.
+  const doRemoveIdx = html.indexOf('function devDoRemove(');
+  const dirtyAfterRemove = html.indexOf("markCloudDirty('history')", doRemoveIdx);
+  assert.ok(doRemoveIdx !== -1 && dirtyAfterRemove !== -1 && (dirtyAfterRemove - doRemoveIdx) < 1200,
+    'devDoRemove history branch must mark cloud dirty');
+  assert.ok(html.includes('function flushCloudSync()'), 'unload sync flush must exist');
+  assert.ok(html.includes('keepalive: true'), 'unload flush must use keepalive');
   console.log('  ✅ Homepage renders successfully with all controls and viewer containers.');
 }
 
@@ -705,37 +725,41 @@ async function testDualReviewAccessibilityAndSharingRemediation() {
 }
 
 async function testLoggedOutHeaderThemeToggle() {
-  console.log('20. Testing Logged-Out Header Theme Toggle & Right-Hand Placement...');
+  console.log('20. Testing Logged-Out Header Left-Cluster Order (brand → login → zman → theme)...');
 
   const res = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/'));
   assert.equal(res.status, 200, 'Homepage SSR must return 200 OK');
   const html = await res.text();
 
-  // 1. Theme toggle button is rendered on the right-hand side of #authBtn in header HTML, and #authBtn is next after .brand
+  // 1. Left cluster order in header HTML: brand → #authBtn → zman motif → #themeToggleBtn (no gaps)
   const brandIndex = html.indexOf('class="brand"');
   const authBtnIndex = html.indexOf('id="authBtn"');
+  const motifIndex = html.indexOf('id="holidayMotifWrap"');
   const themeToggleIndex = html.indexOf('id="themeToggleBtn"');
   const hebrewDateIndex = html.indexOf('id="hebrewDateBadge"');
   assert.ok(brandIndex !== -1, 'Header must contain .brand');
   assert.ok(authBtnIndex !== -1, 'Header must contain #authBtn');
+  assert.ok(motifIndex !== -1, 'Header must contain #holidayMotifWrap');
   assert.ok(themeToggleIndex !== -1, 'Header must contain #themeToggleBtn');
   assert.ok(hebrewDateIndex !== -1, 'Header must contain #hebrewDateBadge');
   assert.ok(brandIndex < authBtnIndex, '#authBtn must be rendered next after .brand in header');
-  assert.ok(authBtnIndex < themeToggleIndex, '#themeToggleBtn must be rendered after #authBtn in DOM to sit on the right-hand side');
-  assert.ok(hebrewDateIndex < themeToggleIndex, '#themeToggleBtn must be rendered after #hebrewDateBadge in DOM');
+  assert.ok(authBtnIndex < motifIndex, 'zman motif must be rendered after #authBtn in DOM (left cluster, no gap)');
+  assert.ok(motifIndex < themeToggleIndex, '#themeToggleBtn must be rendered after the zman motif in DOM (left cluster, no gap)');
+  assert.ok(themeToggleIndex < hebrewDateIndex, 'left cluster (incl. theme) must precede the right-hand date badge');
   assert.ok(html.includes('.header-left'), 'CSS must include .header-left layout styling');
 
-  // 2. CSS orders #themeToggleBtn on the right with order: 10
-  assert.ok(html.includes('.header-right #themeToggleBtn'), 'CSS must specify .header-right #themeToggleBtn styling');
-  assert.ok(html.includes('order: 10'), '#themeToggleBtn must have order: 10 in CSS');
-
-  // 3. Mobile media query keeps theme toggle and zmanim icon visible in header
-  assert.ok(html.includes('.header-right #themeToggleBtn'), 'CSS must specify themeToggleBtn in .header-right');
+  // 2. Theme toggle lives in the left cluster (no right-hand order rule)
+  assert.ok(!html.includes('.header-right #themeToggleBtn'), 'theme toggle must not be styled into .header-right');
   assert.ok(html.includes('display: inline-flex;'), 'Theme toggle displays inline-flex by default');
 
-  // 4. Dynamic overflow detection suppresses theme toggle if it would be cut off or collide
+  // 3. Theme visibility is measurement-governed (shown only when space allows)
+  assert.ok(html.includes('function headerClusterOverflows()'), 'overflow measurement helper must exist');
   assert.ok(html.includes('function checkHeaderOverflow()'), 'checkHeaderOverflow must be defined in client JS');
-  assert.ok(html.includes('isCutOff') && html.includes("themeBtn.style.display = 'none'"), 'checkHeaderOverflow must hide theme toggle if cut off');
+  assert.ok(html.includes("themeBtn.style.display = 'none'"), 'checkHeaderOverflow must hide theme toggle when tight');
+
+  // 4. Dynamic overflow detection suppresses theme toggle if it would be cut off or collide
+  assert.ok(html.includes("dataset.holiday === '1'"), 'motif holiday-active flag must gate motif display');
+  assert.ok(html.includes("motif.classList.add('icon-only')"), 'motif must shrink to apple-only before hiding');
 
   // 5. Settings dropdown menu includes theme toggle fallback for all users (logged-in and guest)
   assert.ok(html.includes('menu-theme-toggle-btn'), 'Settings menu must provide theme toggle fallback for all users');
@@ -898,8 +922,8 @@ async function testZmanimIconShrinkAndSpacePreservation() {
   assert.ok(html.includes("e.key === 'Escape'") && html.includes("wrap.classList.remove('expanded')"),
     'Client JS must dismiss expanded motif popover on Escape key');
 
-  // 6. checkHeaderOverflow shrinks holiday motif badge to icon whenever space is tight or login would be cut off
-  assert.ok(html.includes('shouldShrinkMotif') && html.includes("motif.classList.add('icon-only')"),
+  // 6. checkHeaderOverflow shrinks holiday motif badge to icon whenever space is tight (measurement-based, no breakpoints)
+  assert.ok(html.includes('function headerClusterOverflows()') && html.includes("motif.classList.add('icon-only')"),
     'checkHeaderOverflow must dynamically shrink holiday motif badge to icon-only');
   assert.ok(html.includes("authBtn.style.display = 'inline-flex'"),
     'checkHeaderOverflow must prioritize authBtn (login button) display');

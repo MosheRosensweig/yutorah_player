@@ -101,6 +101,10 @@ function makeDb() {
             items.delete(p[0] + '|' + p[1] + '|' + p[2]);
             return {};
           }
+          if (q.startsWith('DELETE FROM listening_history')) {
+            hist.delete(p[0] + '|' + p[1]);
+            return {};
+          }
           throw new Error('unstubbed run(): ' + q.slice(0, 100));
         }
       };
@@ -205,5 +209,23 @@ await api('/api/sync', { history: [{ id: 'h2', title: 'New', listenedAt: 5000 }]
 await api('/api/sync', { history: [{ id: 'h2', title: 'Stale', listenedAt: 1000 }] });
 assert.equal(db._hist.get('u1|h2').title, 'New', 'stale push skipped');
 console.log('  ✅ Stale history pushes skipped server-side.');
+
+// 5. History deletes travel as explicit tombstones — never full-list
+//    replace (local history is an LRU window; a replace would wipe rows
+//    the client merely truncated and never saw).
+db._hist.set('u1|old1', { user_id: 'u1', shiur_id: 'old1', title: 'Old', speaker: '', photo: '', duration: '', date_iso: '', date_display: '', category: '', is_article: 0, progress_seconds: 0, duration_seconds: 0, completed: 0, last_listened_at: 100, listen_count: 5 });
+await api('/api/sync', { history: [
+  { id: 'k1', title: 'Keep', listenedAt: 9000 },
+  { id: 'k2', title: 'Drop', listenedAt: 9000 }
+]});
+assert.ok(db._hist.has('u1|old1') && db._hist.has('u1|k1') && db._hist.has('u1|k2'), 'legacy push upserts without deleting');
+r = await api('/api/sync', { dirty: { history: true }, history: [{ id: 'k1', title: 'Keep', listenedAt: 9000 }], deletedHistory: ['k2'] });
+assert.ok(db._hist.has('u1|old1'), 'tombstone push preserves beyond-window rows');
+assert.ok(db._hist.has('u1|k1'), 'kept item survives');
+assert.ok(!db._hist.has('u1|k2'), 'tombstoned item removed server-side');
+r = await api('/api/sync');
+assert.ok(!(r.body.history || []).some(x => x.id === 'k2'), 'deleted item stays gone on pull');
+assert.ok((r.body.history || []).some(x => x.id === 'k1'), 'kept item still pulls');
+console.log('  ✅ History deletes stick past reload/pull.');
 
 console.log('\n🎉 ALL SYNC MERGE TESTS PASSED SUCCESSFULLY!');
