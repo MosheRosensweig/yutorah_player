@@ -5506,6 +5506,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       outline: 2px solid var(--primary) !important;
       outline-offset: 2px;
     }
+    .hebrew-date-badge:not(.icon-only) .hebrew-date-text {
+      margin-left: 6px;
+    }
     .hebrew-date-badge.icon-only {
       padding: 4px 6px;
       min-width: 32px;
@@ -10858,7 +10861,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         </div>
       </div>
       <a href="https://www.givecampus.com/campaigns/50770/donations/new" target="_blank" rel="noopener noreferrer" class="support-yutorah-btn" title="Support YUTorah & Sponsor Learning (Opens in new window)">❤️ Support YUTorah</a>
-      <div class="hebrew-date-badge" id="hebrewDateBadge" onclick="handleCalendarSecretClick(event); pulseHebrewDate();" tabindex="0" role="button" aria-label="Hebrew date" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();handleCalendarSecretClick(event);pulseHebrewDate();}" title="">📅<span class="hebrew-date-text">&nbsp;&nbsp;${escapeHtml(homepageData?.hebrewDateString || 'Calendar')}</span></div>
+      <div class="hebrew-date-badge" id="hebrewDateBadge" onclick="handleCalendarSecretClick(event); pulseHebrewDate();" tabindex="0" role="button" aria-label="Hebrew date" aria-expanded="false" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();handleCalendarSecretClick(event);pulseHebrewDate();}" title="">📅<span class="hebrew-date-text">${escapeHtml(homepageData?.hebrewDateString || 'Calendar')}</span></div>
       <button type="button" id="authBtn" class="theme-toggle-btn auth-btn" onclick="toggleAuthMenu(event)" title="Sign in to sync across devices">
         <span class="auth-icon">👤</span><span class="auth-label"> Sign in</span>
       </button>
@@ -12093,13 +12096,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (!badge) return;
       if (badge.classList.contains('expanded')) {
         badge.classList.remove('expanded');
+        badge.setAttribute('aria-expanded', 'false');
         clearTimeout(hebrewPulseTimer);
         return;
       }
       badge.classList.add('expanded');
+      badge.setAttribute('aria-expanded', 'true');
       clearTimeout(hebrewPulseTimer);
       hebrewPulseTimer = setTimeout(() => {
-        if (badge) badge.classList.remove('expanded');
+        if (badge) {
+          badge.classList.remove('expanded');
+          badge.setAttribute('aria-expanded', 'false');
+        }
       }, 4000);
     } catch (e) {}
   }
@@ -21520,6 +21528,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     var badge = document.getElementById('hebrewDateBadge');
     if (badge && badge.classList.contains('expanded') && !badge.contains(e.target)) {
       badge.classList.remove('expanded');
+      badge.setAttribute('aria-expanded', 'false');
       if (typeof hebrewPulseTimer !== 'undefined') clearTimeout(hebrewPulseTimer);
     }
   });
@@ -21528,6 +21537,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       var badge = document.getElementById('hebrewDateBadge');
       if (badge && badge.classList.contains('expanded')) {
         badge.classList.remove('expanded');
+        badge.setAttribute('aria-expanded', 'false');
         if (typeof hebrewPulseTimer !== 'undefined') clearTimeout(hebrewPulseTimer);
       }
     }
