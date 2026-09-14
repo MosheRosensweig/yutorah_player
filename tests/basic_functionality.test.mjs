@@ -711,15 +711,19 @@ async function testLoggedOutHeaderThemeToggle() {
   assert.equal(res.status, 200, 'Homepage SSR must return 200 OK');
   const html = await res.text();
 
-  // 1. Theme toggle button is rendered on the right-hand side of #authBtn in header HTML
+  // 1. Theme toggle button is rendered on the right-hand side of #authBtn in header HTML, and #authBtn is next after .brand
+  const brandIndex = html.indexOf('class="brand"');
   const authBtnIndex = html.indexOf('id="authBtn"');
   const themeToggleIndex = html.indexOf('id="themeToggleBtn"');
   const hebrewDateIndex = html.indexOf('id="hebrewDateBadge"');
+  assert.ok(brandIndex !== -1, 'Header must contain .brand');
   assert.ok(authBtnIndex !== -1, 'Header must contain #authBtn');
   assert.ok(themeToggleIndex !== -1, 'Header must contain #themeToggleBtn');
   assert.ok(hebrewDateIndex !== -1, 'Header must contain #hebrewDateBadge');
+  assert.ok(brandIndex < authBtnIndex, '#authBtn must be rendered next after .brand in header');
   assert.ok(authBtnIndex < themeToggleIndex, '#themeToggleBtn must be rendered after #authBtn in DOM to sit on the right-hand side');
   assert.ok(hebrewDateIndex < themeToggleIndex, '#themeToggleBtn must be rendered after #hebrewDateBadge in DOM');
+  assert.ok(html.includes('.header-left'), 'CSS must include .header-left layout styling');
 
   // 2. CSS orders #themeToggleBtn on the right with order: 10
   assert.ok(html.includes('.header-right #themeToggleBtn'), 'CSS must specify .header-right #themeToggleBtn styling');

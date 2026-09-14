@@ -5459,6 +5459,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       gap: 12px;
       width: 100%;
     }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+      min-width: 0;
+    }
     .brand {
       display: flex;
       align-items: center;
@@ -5950,6 +5957,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       display: inline-flex;
     }
     @media (max-width: 640px) {
+      .header-left {
+        gap: 6px;
+      }
       .header-right {
         gap: 6px;
       }
@@ -9138,6 +9148,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       background: rgba(255, 255, 255, 0.94);
       color: #1e2530;
       border: 1px solid rgba(255, 255, 255, 0.9);
+      border-radius: 20px;
+      padding: 3px 10px 3px 4px;
+      gap: 6px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+      flex-shrink: 0;
     }
     .auth-btn .auth-icon {
       display: inline-flex;
@@ -9159,8 +9174,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      background: transparent;
-      border: none;
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      border-radius: 0 !important;
     }
     .auth-btn.logged-in .auth-avatar,
     .auth-btn.logged-in .auth-avatar.plain-gear {
@@ -9196,11 +9213,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       #authBtn .auth-label {
         display: none;
       }
+      #authBtn:not(.logged-in) {
+        padding: 3px;
+        border-radius: 50%;
+      }
     }
     .auth-menu {
       position: fixed;
       top: 52px;
-      right: 12px;
+      left: 12px;
       min-width: 220px;
       background: var(--card, #fff);
       color: var(--text);
@@ -10787,9 +10808,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
 <header id="mainHeader">
   <div class="header-inner">
-    <a href="/" class="brand" onclick="goHome(event)">
-      🎧 YUTorah Enhanced <span>PLAYER</span>
-    </a>
+    <div class="header-left">
+      <a href="/" class="brand" onclick="goHome(event)">
+        🎧 YUTorah Enhanced <span>PLAYER</span>
+      </a>
+      <button type="button" id="authBtn" class="theme-toggle-btn auth-btn" onclick="toggleAuthMenu(event)" title="Sign in to sync across devices">
+        <span class="auth-icon">👤</span><span class="auth-label"> Sign in</span>
+      </button>
+      <div id="authMenu" class="auth-menu" style="display: none;" role="menu" aria-label="Account"></div>
+    </div>
     <div class="header-right">
       <div id="holidayMotifWrap" class="holiday-motif-wrap" onclick="handleCalendarSecretClick(event); toggleHolidayMotifExpand();" tabindex="0" role="button" aria-label="Holiday theme" aria-expanded="false" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();handleCalendarSecretClick(event);toggleHolidayMotifExpand();}" style="display: none;" title="">
         <span id="holidayMotifIcon" class="holiday-motif-icon"></span>
@@ -10870,10 +10897,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       </div>
       <a href="https://www.givecampus.com/campaigns/50770/donations/new" target="_blank" rel="noopener noreferrer" class="support-yutorah-btn" title="Support YUTorah & Sponsor Learning (Opens in new window)">❤️ Support YUTorah</a>
       <div class="hebrew-date-badge" id="hebrewDateBadge" onclick="handleCalendarSecretClick(event)" title="Hebrew Calendar Date">📅<span class="hebrew-date-text">${escapeHtml(homepageData?.hebrewDateString || 'Calendar')}</span></div>
-      <button type="button" id="authBtn" class="theme-toggle-btn auth-btn" onclick="toggleAuthMenu(event)" title="Sign in to sync across devices">
-        <span class="auth-icon">👤</span><span class="auth-label"> Sign in</span>
-      </button>
-      <div id="authMenu" class="auth-menu" style="display: none;" role="menu" aria-label="Account"></div>
       <button type="button" id="themeToggleBtn" class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Dark / Light Mode">${themeMode === 'light' ? '🌙' : '☀️'}</button>
     </div>
   </div>
@@ -19248,7 +19271,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       const r = btn.getBoundingClientRect();
       const h = menu.offsetHeight || 200;
       const roomBelow = window.innerHeight - r.bottom;
-      menu.style.right = Math.max(8, window.innerWidth - r.right) + 'px';
+      const menuWidth = menu.offsetWidth || 220;
+      let leftPos = Math.max(8, r.left);
+      if (leftPos + menuWidth > window.innerWidth - 8) {
+        leftPos = Math.max(8, window.innerWidth - menuWidth - 8);
+      }
+      menu.style.left = leftPos + 'px';
+      menu.style.right = 'auto';
       menu.style.top = '';
       menu.style.bottom = '';
       if (roomBelow >= h + 12) {
@@ -21465,6 +21494,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     var hRect = header.getBoundingClientRect();
     var maxRight = Math.min(wWidth, hRect.right);
     var brandRight = brand ? brand.getBoundingClientRect().right : 0;
+    var authRight = authBtn ? authBtn.getBoundingClientRect().right : brandRight;
+    var leftBoundary = Math.max(brandRight, authRight);
     var isMobile = wWidth <= 640;
     var rowMaxTop = hRect.top + (isMobile ? 38 : 46);
 
@@ -21475,7 +21506,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       } else {
         badge.style.display = 'inline-flex';
         var bRect = badge.getBoundingClientRect();
-        if (bRect.right > maxRight - 4 || bRect.left < brandRight + 8 || bRect.top > rowMaxTop) {
+        if (bRect.right > maxRight - 4 || bRect.left < leftBoundary + 8 || bRect.top > rowMaxTop) {
           badge.style.display = 'none';
         } else {
           badge.style.display = 'inline-flex';
@@ -21491,14 +21522,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (!shouldShrinkMotif) {
         motif.classList.remove('icon-only');
         var mRect = motif.getBoundingClientRect();
-        var aRect = authBtn ? authBtn.getBoundingClientRect() : null;
         var tRect = (themeBtn && themeBtn.style.display !== 'none') ? themeBtn.getBoundingClientRect() : null;
 
-        var authCutOff = aRect && (aRect.right > maxRight - 4 || aRect.top > rowMaxTop || aRect.left < brandRight + 8);
-        var themeCutOff = tRect && (tRect.right > maxRight - 4 || tRect.top > rowMaxTop || tRect.left < brandRight + 8);
-        var motifCutOff = mRect.right > maxRight - 4 || mRect.left < brandRight + 8 || mRect.top > rowMaxTop;
+        var themeCutOff = tRect && (tRect.right > maxRight - 4 || tRect.top > rowMaxTop || tRect.left < leftBoundary + 8);
+        var motifCutOff = mRect.right > maxRight - 4 || mRect.left < leftBoundary + 8 || mRect.top > rowMaxTop;
 
-        if (authCutOff || themeCutOff || motifCutOff) {
+        if (themeCutOff || motifCutOff) {
           shouldShrinkMotif = true;
         }
       }
@@ -21513,7 +21542,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       }
 
       var mRectFinal = motif.getBoundingClientRect();
-      if (mRectFinal.left < brandRight + 4) {
+      if (mRectFinal.left < leftBoundary + 4) {
         motif.style.display = 'none';
       }
     }
@@ -21527,11 +21556,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (themeBtn) {
       themeBtn.style.display = 'inline-flex';
       var tRectFinal = themeBtn.getBoundingClientRect();
-      var aRectFinal = authBtn ? authBtn.getBoundingClientRect() : null;
       var isCutOff = tRectFinal.right > maxRight - 4 ||
                      tRectFinal.top > rowMaxTop ||
-                     tRectFinal.left < brandRight + 6 ||
-                     (aRectFinal && aRectFinal.right > maxRight - 4);
+                     tRectFinal.left < leftBoundary + 6;
       if (isCutOff) {
         themeBtn.style.display = 'none';
       } else {
