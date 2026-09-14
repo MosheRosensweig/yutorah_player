@@ -1,6 +1,10 @@
 {
   "entries": [
     {
+      "date": "2026-09-14T10:20:00-04:00",
+      "message": "Shiurim-therein info button: an explainer tooltip beside the public-playlist scope checkbox (standard tooltip system, additive-scope copy)."
+    },
+    {
       "date": "2026-09-14T10:00:00-04:00",
       "message": "Source Sheet button on audio shiurim: attached handouts open in the Liquid Mode viewer without interrupting playback (multi-sheet chooser, per-track reset, materials-CDN proxy allowlist)."
     },

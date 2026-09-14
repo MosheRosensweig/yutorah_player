@@ -643,6 +643,9 @@ async function testPlaylistsEnhancementsRound2() {
   assert.ok(html.includes("q.set('scopeTitle'"), 'plPublicParams must serialize scopeTitle');
   assert.ok(html.includes("q.set('scopeDesc'"), 'plPublicParams must serialize scopeDesc');
   assert.ok(html.includes("q.set('scopeShiurim'"), 'plPublicParams must serialize scopeShiurim');
+  assert.ok(html.includes('togglePlInfoTip(event, &quot;scope-shiurim&quot;)'), 'Shiurim scope must have an info button');
+  assert.ok(html.includes('id="tip-scope-shiurim"'), 'Shiurim info tooltip must render');
+  assert.ok(html.includes('only ever widens results'), 'Shiurim tooltip must explain additive scope');
 
   // Task 4: Playlist Reordering Direct Parity with Queue
   assert.ok(html.includes('const canReorder = !pl.isHistory && !pl.isSubscription;'), 'canReorder must allow direct reordering on all mutable user playlists');

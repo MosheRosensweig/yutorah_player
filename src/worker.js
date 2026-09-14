@@ -18297,7 +18297,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       '<label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; font-weight:600;">' +
       '<input type="checkbox" id="plScopeDesc"' + (plPublicScope.desc ? ' checked' : '') + ' style="accent-color:var(--primary); cursor:pointer;"> Playlist description</label>' +
       '<label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; font-weight:600;">' +
-      '<input type="checkbox" id="plScopeShiurim"' + (plPublicScope.shiurim ? ' checked' : '') + ' style="accent-color:var(--primary); cursor:pointer;"> Shiurim inside the playlists</label>' +
+      '<input type="checkbox" id="plScopeShiurim"' + (plPublicScope.shiurim ? ' checked' : '') + ' style="accent-color:var(--primary); cursor:pointer;"> Shiurim inside the playlists' +
+      '<span class="pl-btn-with-info">' +
+        '<button type="button" class="pl-info-btn" onclick="togglePlInfoTip(event, &quot;scope-shiurim&quot;)" aria-label="About Shiurim therein" title="About Shiurim therein" aria-expanded="false" aria-haspopup="true">ⓘ</button>' +
+        '<div id="tip-scope-shiurim" class="pl-action-tooltip" style="display:none;" role="tooltip" onclick="event.stopPropagation()">' +
+          '<div class="pl-action-tooltip-header">' +
+            '<span class="pl-action-tooltip-title">🔍 Shiurim therein</span>' +
+            '<button type="button" class="pl-action-tooltip-close" onclick="closePlInfoTip(event, &quot;scope-shiurim&quot;)" aria-label="Close">×</button>' +
+          '</div>' +
+          '<div class="pl-action-tooltip-body">Also matches the lectures inside each playlist — titles, speakers, and series contents — so a playlist appears when any shiur it contains matches your search. This scope only ever widens results, never narrows them.</div>' +
+        '</div>' +
+      '</span></label>' +
       '</div>';
 
     qhtml += '<div id="plPublicActiveBar" style="grid-column:1/-1; display:contents;">' + plActiveFilterBarHtml() + '</div>';

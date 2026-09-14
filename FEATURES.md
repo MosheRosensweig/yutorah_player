@@ -285,6 +285,7 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 - **Preview items with duration + upload date**: expanding a public playlist preview shows each shiur's duration and upload date; the preview endpoint was fixed (SQL columns) with instant client-side caching.
 - **Shareable playlist URLs**: the active playlist, public-search query, Teacher/Venue/Topic pills, scope checkboxes, and sort all live in namespaced URL params (`tab/pl/plq/plteachers/…`), so reload keeps your place and links share exact state. Player open/close carries the context; shiur search uses one-view-per-URL.
 - **Public search scope that only adds**: the "Shiurim inside the playlists" checkbox matches lecture titles/speakers/series contents (including series bundles via `items_json`) and can only ever widen results, never zero them (fixed a missing-column query + fallback).
+- **ℹ️ Shiurim-therein explainer**: an info button beside the scope checkbox opens the standard tooltip (`togglePlInfoTip`, edge-flip positioning, `role="tooltip"`, outside-click/`Escape`/resize dismiss) explaining that the scope matches lectures inside playlists and only widens results. Tapping it never flips the checkbox.
 - **Playlists tab + display-name banner**: the collection tab is labeled `🎧 Playlists` with a `👤 Playlist Display Name:` banner linking to the rename modal.
 
 ### PWA: installable app, authentic icons
