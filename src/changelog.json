@@ -1,6 +1,10 @@
 {
   "entries": [
     {
+      "date": "2026-09-14T00:35:00-04:00",
+      "message": "Header motif tap guard, 7-tap dev-mode toggle, Install App menu item, and calendar buffer: full-width holiday taps no longer shrink the badge; 7 taps on the date badge toggles Dev Mode on/off (pre-roll stays 3 taps on the apple); settings menu offers Install App only when not installed; 6px gap between calendar icon and date."
+    },
+    {
       "date": "2026-09-14T00:05:00-04:00",
       "message": "Header single left-to-right flow with greedy fill: brand, login, zman apple, theme, support, and date badge pack left with no gaps; login always guaranteed; zman shrinks to apple-only then hides by measurement; theme/support/badge refill whenever space allows."
     },

@@ -42,6 +42,8 @@
 - Installable PWA with offline-tolerant shell.
 - Article Liquid Mode reader with footnotes; source-sheet viewing without stopping audio.
 - Seasonal holiday themes + zman badge; adaptive header that packs icons by available space.
+- In-app Install option (settings menu, hidden once installed) with deferred browser prompt.
+- 7-tap dev-mode toggle on the date badge; full-width holiday taps never shrink the badge.
 - Clickable metadata chips that filter without interrupting playback; collapsible speaker bios.
 - Autoplay-next queue, Queue-to-Top for whole playlists, series expand/collapse.
 - Sponsorship pre-roll audio with countdown + skip; bolded dedication banner.
@@ -108,6 +110,8 @@
 - **Shareable playlist links** — Filters, query, scope, sort, and active list encoded in the URL.
 - **Progress + completion** — Per-shiur position heartbeat, resume prompts, completion states.
 - **PWA install** — Manifest + Service Worker (offline shell; audio/API bypass cache), authentic centered shield icons.
+- **Install App menu item** — Settings dropdown offers install only when not installed; deferred prompt or manual hint.
+- **Secret gestures** — 7 taps on the date badge toggles Dev Mode; 3 taps on the holiday apple toggles pre-roll; full-width taps never shrink.
 - **Article reader** — Liquid Mode reflow, drop caps, footnotes, source sheets without pausing audio.
 - **Change Log** — In-app newest-first list of every shipped change.
 - **Edge performance** — Cloudflare Workers global edge, 5-min collection cache, CORS-safe APIs.

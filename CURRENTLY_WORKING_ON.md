@@ -92,6 +92,16 @@ Production status: **DEPLOYED & VERIFIED (HTTP 200 on both Dev & Prod)**
 
 ## 🕒 Chronological Activity Log
 
+### [2026-09-14 ET] — Motif Tap Guard + 7-Tap Dev Toggle + Install App + Badge Buffer (dual-reviewed, dev `c4fa1f53`, prod `f8bff5c3`)
+- `[DONE]` **Full-width motif taps never shrink**: popover CSS scoped to `.icon-only.expanded` + toggle early-return; duplicate floating title glitch gone. Pre-roll stays 3 taps on the apple (title copy fixed 7→3).
+- `[DONE]` **7-tap dev-mode toggle**: Hebrew date badge (+ menu calendar rows) count dev taps on a separate counter — 7 to enable, 7 to disable, symmetric toasts, 2s reset. Typed `dev mode` flow unchanged.
+- `[DONE]` **📲 Install App menu item**: settings dropdown offers it only when `isPwaInstalled()` is false (standalone/IOS check); deferred prompt or iOS-aware manual hint; consistent ordering in both auth branches.
+- `[DONE]` **Calendar 6px buffer** between 📅 and date text (both themes, all sizes).
+- `[DONE]` **Review follow-ups fixed**: install placement symmetry, stale-menu close on toggle, comment accuracy, wide-path expanded cleanup, iPadOS-desktop-UA detect, unscoped-rule test coverage.
+- `[DONE]` **Dual review**: PASS/PASS. All 5 suites green. Deployed dev + prod (200 OK, markers verified; plain-`/` edge cache noted — verify with cache-buster).
+- `[DONE]` **Docs**: FEATURES.md §13 + TALKING_POINTS.md entries for all four items.
+- `[DONE]` **Changelog**: `src/changelog.json` newest-first entry dated `2026-09-14T00:35:00-04:00`.
+
 ### [2026-09-14 ET] — Header Single-Flow + Permanent Deletes (dual-reviewed, dev `e706f730`, prod `3b8df141`)
 - `[DONE]` **Single left-to-right header flow**: brand → login → zman → theme → support → date badge packed left (`flex-start`, no gap); login guaranteed; measurement-based sacrifice (badge → support → theme → motif apple → motif hidden) + highest-first refill + brand-ellipsis last resort; theme only when room allows (menu fallback); keyboard-accessible date badge.
 - `[DONE]` **Permanent deletes**: history removes sync as explicit bounded tombstones (`deletedHistory`) with revive-on-relisten, ack-clearing, unload `keepalive` flush, and boot re-dirty retry; full-list replace rejected (would wipe truncated rows). Non-history deletes already synced.
