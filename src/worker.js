@@ -28,6 +28,21 @@ function jsEmbed(val) {
   return JSON.stringify(val === undefined ? null : val).replace(/</g, '\\u003c');
 }
 
+const DEV_SEED_ITEM_METAS = {
+  "1053000": { date: "2022-12-27", duration: "52 min" },
+  "1052980": { date: "2022-12-26", duration: "38 min" },
+  "979218":  { date: "2020-11-29", duration: "1h 36m" },
+  "1052970": { date: "2022-12-25", duration: "1h 3m" },
+  "1052960": { date: "2022-12-25", duration: "8 min" },
+  "1052950": { date: "2022-12-26", duration: "6 min" },
+  "979219":  { date: "2020-11-30", duration: "21 min" },
+  "1052940": { date: "2022-12-25", duration: "28 min" },
+  "1052930": { date: "2022-12-25", duration: "3 min" },
+  "1052990": { date: "2023-12-26", duration: "20 min" },
+  "1052920": { date: "2022-12-25", duration: "3 min" },
+  "1052910": { date: "2022-12-25", duration: "46 min" }
+};
+
 // =========================================================================
 // Auth + cloud sync (Google OAuth 2.0 code flow + D1). Phase 2.
 // Setup: GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET (wrangler secret), and an
@@ -620,7 +635,13 @@ async function handleSyncRoutes(request, env, url) {
           try { kids = JSON.parse(it.itemsJson || '[]'); } catch (e) { kids = []; }
           return { kind: 'series', seriesTitle: it.title, items: Array.isArray(kids) ? kids : [] };
         }
-        return it;
+        const sid = String(it.id || '');
+        const meta = typeof DEV_SEED_ITEM_METAS !== 'undefined' ? DEV_SEED_ITEM_METAS[sid] : null;
+        return {
+          ...it,
+          date: it.date || (meta ? meta.date : ''),
+          duration: it.duration || (meta ? meta.duration : '')
+        };
       });
       let tags = { teachers: [], venues: [], topics: [] };
       try { tags = typeof r.tagsJson === 'string' ? JSON.parse(r.tagsJson) : (r.tagsJson || tags); } catch(e) {}
@@ -2500,12 +2521,50 @@ export default {
 
 function formatDuration(lengthStr) {
   if (!lengthStr) return '';
-  const parts = lengthStr.split(':');
-  if (parts.length < 2) return lengthStr;
-  const h = parseInt(parts[0], 10);
-  const m = parseInt(parts[1], 10);
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m} min`;
+  const s = String(lengthStr).trim();
+  if (!s) return '';
+  if (s.includes(':')) {
+    const parts = s.split(':');
+    if (parts.length === 2) {
+      const m = parseInt(parts[0], 10);
+      if (!isNaN(m)) {
+        if (m >= 60) {
+          const h = Math.floor(m / 60);
+          const remM = m % 60;
+          return remM > 0 ? `${h}h ${remM}m` : `${h}h`;
+        }
+        return `${m} min`;
+      }
+    } else if (parts.length === 3) {
+      const h = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10);
+      if (!isNaN(h) && !isNaN(m)) {
+        if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`;
+        return `${m} min`;
+      }
+    }
+  }
+  const hm = s.match(/(\d+)\s*h(?:r)?(?:\s*(\d+)\s*m(?:in)?)?/i);
+  if (hm) {
+    const h = parseInt(hm[1], 10);
+    const m = hm[2] ? parseInt(hm[2], 10) : 0;
+    if (m > 0) return `${h}h ${m}m`;
+    return `${h}h`;
+  }
+  const mm = s.match(/(\d+)\s*min/i);
+  if (mm) {
+    return `${parseInt(mm[1], 10)} min`;
+  }
+  if (/^\d+$/.test(s)) {
+    const totalM = parseInt(s, 10);
+    if (totalM >= 60) {
+      const h = Math.floor(totalM / 60);
+      const remM = totalM % 60;
+      return remM > 0 ? `${h}h ${remM}m` : `${h}h`;
+    }
+    return `${totalM} min`;
+  }
+  return s;
 }
 
 function getNowInNewYork() {
@@ -2663,37 +2722,43 @@ const DEV_PUBLIC_SEEDS = [
         "id": "1053000",
         "title": "The Power of Teshuvah in Elul",
         "speaker": "Rabbi Shaya Katz",
-        "duration": "42:15"
+        "duration": "42:15",
+        "date": "2022-12-27"
       },
       {
         "id": "1052980",
         "title": "Hilchos Selichos and Viduy",
         "speaker": "Rabbi Hershel Schachter",
-        "duration": "38:40"
+        "duration": "38:40",
+        "date": "2022-12-26"
       },
       {
         "id": "979218",
         "title": "Preparing the Soul for Rosh Hashanah",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "51:10"
+        "duration": "51:10",
+        "date": "2020-11-29"
       },
       {
         "id": "1052970",
         "title": "The Rambam’s Definition of Teshuvah Gemurah",
         "speaker": "Rabbi Mayer Twersky",
-        "duration": "46:25"
+        "duration": "46:25",
+        "date": "2022-12-25"
       },
       {
         "id": "1052960",
         "title": "Teshuvah MeAhavah vs. Teshuvah MeYirah",
         "speaker": "Rabbi Moshe Taragin",
-        "duration": "39:50"
+        "duration": "39:50",
+        "date": "2022-12-25"
       },
       {
         "id": "1052950",
         "title": "The Thirteen Middos HaRachamim in Selichos",
         "speaker": "Rabbi Yaakov Neuburger",
-        "duration": "44:30"
+        "duration": "44:30",
+        "date": "2022-12-26"
       }
     ]
   },
@@ -2724,49 +2789,57 @@ const DEV_PUBLIC_SEEDS = [
         "id": "979218",
         "title": "Foundations of Muktzah: Kli SheMelachto L’Issur",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "55:20"
+        "duration": "55:20",
+        "date": "2020-11-29"
       },
       {
         "id": "979219",
         "title": "Gramada and Electricity on Shabbat",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "48:30"
+        "duration": "48:30",
+        "date": "2020-11-30"
       },
       {
         "id": "1052980",
         "title": "Borer in Modern Food Preparation",
         "speaker": "Rabbi Hershel Schachter",
-        "duration": "36:15"
+        "duration": "36:15",
+        "date": "2022-12-26"
       },
       {
         "id": "1052970",
         "title": "Bishul and Kli Rishon vs. Kli Sheni",
         "speaker": "Rabbi Aryeh Lebowitz",
-        "duration": "43:50"
+        "duration": "43:50",
+        "date": "2022-12-25"
       },
       {
         "id": "1052960",
         "title": "Hot Water Dispensers and Urns on Shabbos",
         "speaker": "Rabbi Hershel Schachter",
-        "duration": "40:10"
+        "duration": "40:10",
+        "date": "2022-12-25"
       },
       {
         "id": "1052950",
         "title": "Amira L’Akum in Institutional Settings",
         "speaker": "Rabbi Yaakov Neuburger",
-        "duration": "47:15"
+        "duration": "47:15",
+        "date": "2022-12-26"
       },
       {
         "id": "1052940",
         "title": "Kavod and Oneg Shabbos: Halachic Parameters",
         "speaker": "Rabbi Mayer Twersky",
-        "duration": "52:00"
+        "duration": "52:00",
+        "date": "2022-12-25"
       },
       {
         "id": "1052930",
         "title": "Eruv Chatzeirot in Suburbia and Cities",
         "speaker": "Rabbi Hershel Schachter",
-        "duration": "49:45"
+        "duration": "49:45",
+        "date": "2022-12-25"
       }
     ]
   },
@@ -2797,31 +2870,36 @@ const DEV_PUBLIC_SEEDS = [
         "id": "1052980",
         "title": "Medical Triage and Resource Allocation in Halacha",
         "speaker": "Rabbi Aryeh Lebowitz",
-        "duration": "50:15"
+        "duration": "50:15",
+        "date": "2022-12-26"
       },
       {
         "id": "1052990",
         "title": "Pikuach Nefesh on Shabbat in Hospitals",
         "speaker": "Rabbi Aryeh Lebowitz",
-        "duration": "46:40"
+        "duration": "46:40",
+        "date": "2023-12-26"
       },
       {
         "id": "1053000",
         "title": "Halachic Issues in Organ Donation",
         "speaker": "Rabbi Hershel Schachter",
-        "duration": "54:10"
+        "duration": "54:10",
+        "date": "2022-12-27"
       },
       {
         "id": "1052970",
         "title": "End of Life Decision-Making and DNR Orders",
         "speaker": "Rabbi Yaakov Neuburger",
-        "duration": "48:25"
+        "duration": "48:25",
+        "date": "2022-12-25"
       },
       {
         "id": "1052960",
         "title": "Fertility Treatments and Halacha",
         "speaker": "Rabbi Aryeh Lebowitz",
-        "duration": "42:30"
+        "duration": "42:30",
+        "date": "2022-12-25"
       }
     ]
   },
@@ -2852,43 +2930,50 @@ const DEV_PUBLIC_SEEDS = [
         "id": "1052980",
         "title": "Structure and Flow of the Shemoneh Esrei",
         "speaker": "Rabbi Yaakov Neuburger",
-        "duration": "39:50"
+        "duration": "39:50",
+        "date": "2022-12-26"
       },
       {
         "id": "1053000",
         "title": "Kavana in Birchot Krias Shema",
         "speaker": "Rabbi Yaakov Neuburger",
-        "duration": "43:15"
+        "duration": "43:15",
+        "date": "2022-12-27"
       },
       {
         "id": "979218",
         "title": "The Rav’s Philosophy of Prayer",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "49:25"
+        "duration": "49:25",
+        "date": "2020-11-29"
       },
       {
         "id": "1052970",
         "title": "Tefillah BeTzibbur: Obligation or Privilege?",
         "speaker": "Rabbi Hershel Schachter",
-        "duration": "45:10"
+        "duration": "45:10",
+        "date": "2022-12-25"
       },
       {
         "id": "1052960",
         "title": "Chazaras HaShatz and Birchas Kohanim",
         "speaker": "Rabbi Mayer Twersky",
-        "duration": "41:35"
+        "duration": "41:35",
+        "date": "2022-12-25"
       },
       {
         "id": "1052950",
         "title": "Pesukei D’Zimrah: Preparation for Encounter",
         "speaker": "Rabbi Moshe Taragin",
-        "duration": "38:45"
+        "duration": "38:45",
+        "date": "2022-12-26"
       },
       {
         "id": "1052940",
         "title": "Tefillas Tashlumin and Missed Prayers",
         "speaker": "Rabbi Aryeh Lebowitz",
-        "duration": "36:20"
+        "duration": "36:20",
+        "date": "2022-12-25"
       }
     ]
   },
@@ -2922,25 +3007,29 @@ const DEV_PUBLIC_SEEDS = [
         "id": "1052980",
         "title": "Modern Food Ingredients and Kashering Appliances",
         "speaker": "Rabbi Hershel Schachter",
-        "duration": "44:30"
+        "duration": "44:30",
+        "date": "2022-12-26"
       },
       {
         "id": "1052990",
         "title": "Bishul Akum and Commercial Food Preparation",
         "speaker": "Rabbi Aryeh Lebowitz",
-        "duration": "37:50"
+        "duration": "37:50",
+        "date": "2023-12-26"
       },
       {
         "id": "1053000",
         "title": "Basar B’Chalav: Complex Modern Scenarios",
         "speaker": "Rabbi Hershel Schachter",
-        "duration": "52:15"
+        "duration": "52:15",
+        "date": "2022-12-27"
       },
       {
         "id": "1052970",
         "title": "Tevilas Keilim for Disposable and Electrical Appliances",
         "speaker": "Rabbi Aryeh Lebowitz",
-        "duration": "41:10"
+        "duration": "41:10",
+        "date": "2022-12-25"
       }
     ]
   },
@@ -2971,55 +3060,64 @@ const DEV_PUBLIC_SEEDS = [
         "id": "979218",
         "title": "Ona’ah and Price Disclosure in Contemporary Commerce",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "50:40"
+        "duration": "50:40",
+        "date": "2020-11-29"
       },
       {
         "id": "979219",
         "title": "Intellectual Property and Hasagas G’vul in Halacha",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "47:15"
+        "duration": "47:15",
+        "date": "2020-11-30"
       },
       {
         "id": "1053000",
         "title": "Dina D’Malchuta Dina and Corporate Ethics",
         "speaker": "Rabbi Hershel Schachter",
-        "duration": "41:20"
+        "duration": "41:20",
+        "date": "2022-12-27"
       },
       {
         "id": "1052980",
         "title": "Ribbis in Modern Banking and Heter Iska",
         "speaker": "Rabbi Aryeh Lebowitz",
-        "duration": "45:30"
+        "duration": "45:30",
+        "date": "2022-12-26"
       },
       {
         "id": "1052970",
         "title": "Whistleblowing and Confidentiality Agreements",
         "speaker": "Rabbi Yaakov Neuburger",
-        "duration": "43:15"
+        "duration": "43:15",
+        "date": "2022-12-25"
       },
       {
         "id": "1052960",
         "title": "Severance Pay and Employment Contracts in Beis Din",
         "speaker": "Rabbi Hershel Schachter",
-        "duration": "48:50"
+        "duration": "48:50",
+        "date": "2022-12-25"
       },
       {
         "id": "1052950",
         "title": "Honesty in Negotiations and Genevas Daas",
         "speaker": "Rabbi Mayer Twersky",
-        "duration": "39:40"
+        "duration": "39:40",
+        "date": "2022-12-26"
       },
       {
         "id": "1052940",
         "title": "Returning Lost Objects in Digital Spaces",
         "speaker": "Rabbi Aryeh Lebowitz",
-        "duration": "36:10"
+        "duration": "36:10",
+        "date": "2022-12-25"
       },
       {
         "id": "1052930",
         "title": "Stock Market Trading and Ethical Investments",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "53:05"
+        "duration": "53:05",
+        "date": "2022-12-25"
       }
     ]
   },
@@ -3050,19 +3148,22 @@ const DEV_PUBLIC_SEEDS = [
         "id": "1052980",
         "title": "Birkas HaMazon: Chiyuv and Shiurim",
         "speaker": "Rabbi Aryeh Lebowitz",
-        "duration": "38:15"
+        "duration": "38:15",
+        "date": "2022-12-26"
       },
       {
         "id": "1053000",
         "title": "Ikar v’Tafel in Granola and Breakfast Cereals",
         "speaker": "Rabbi Aryeh Lebowitz",
-        "duration": "42:30"
+        "duration": "42:30",
+        "date": "2022-12-27"
       },
       {
         "id": "1052990",
         "title": "Birchos HaRe’ach and Special Occasions",
         "speaker": "Rabbi Yaakov Neuburger",
-        "duration": "35:45"
+        "duration": "35:45",
+        "date": "2023-12-26"
       }
     ]
   },
@@ -3093,61 +3194,71 @@ const DEV_PUBLIC_SEEDS = [
         "id": "979218",
         "title": "Brisker Methodology: Defining Cheftza vs Gavra",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "58:10"
+        "duration": "58:10",
+        "date": "2020-11-29"
       },
       {
         "id": "979219",
         "title": "Two Dinim in Sukkah and Mitzvos Aseh",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "53:40"
+        "duration": "53:40",
+        "date": "2020-11-30"
       },
       {
         "id": "1053000",
         "title": "Reb Chaim on Rambam: Hilchos Chometz U’Matzah",
         "speaker": "Rabbi Mayer Twersky",
-        "duration": "51:00"
+        "duration": "51:00",
+        "date": "2022-12-27"
       },
       {
         "id": "1052980",
         "title": "Rav Chaim on Pikuach Nefesh: Dichuyah vs. Hutrah",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "56:15"
+        "duration": "56:15",
+        "date": "2022-12-26"
       },
       {
         "id": "1052970",
         "title": "The Brisker Conceptualization of Hazakah",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "54:30"
+        "duration": "54:30",
+        "date": "2022-12-25"
       },
       {
         "id": "1052960",
         "title": "Pesak vs. Limud in the Brisker Tradition",
         "speaker": "Rabbi Mayer Twersky",
-        "duration": "49:20"
+        "duration": "49:20",
+        "date": "2022-12-25"
       },
       {
         "id": "1052950",
         "title": "Reb Velvel on Kodashim and Zevachim",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "57:45"
+        "duration": "57:45",
+        "date": "2022-12-26"
       },
       {
         "id": "1052940",
         "title": "Rav Soloveitchik on Mitzvos Shebalev",
         "speaker": "Rabbi Mayer Twersky",
-        "duration": "48:10"
+        "duration": "48:10",
+        "date": "2022-12-25"
       },
       {
         "id": "1052930",
         "title": "Two Dinim in Shechitah: Machshire vs. Mishtamesh",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "55:00"
+        "duration": "55:00",
+        "date": "2022-12-25"
       },
       {
         "id": "1052920",
         "title": "The Role of Sevara in Talmudic Jurisprudence",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "52:40"
+        "duration": "52:40",
+        "date": "2022-12-25"
       }
     ]
   },
@@ -3178,31 +3289,36 @@ const DEV_PUBLIC_SEEDS = [
         "id": "1053000",
         "title": "Ha’azinu: The Song of History and Destiny",
         "speaker": "Rabbi Moshe Taragin",
-        "duration": "45:30"
+        "duration": "45:30",
+        "date": "2022-12-27"
       },
       {
         "id": "1052990",
         "title": "Nitzavim: Teshuvah and Free Will in Devarim",
         "speaker": "Rabbi Moshe Taragin",
-        "duration": "40:20"
+        "duration": "40:20",
+        "date": "2023-12-26"
       },
       {
         "id": "979218",
         "title": "Eikev: Tefillah and Eretz Yisrael in Devarim",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "48:15"
+        "duration": "48:15",
+        "date": "2020-11-29"
       },
       {
         "id": "1052980",
         "title": "Va’eschanan: Ten Commandments and Shema",
         "speaker": "Rabbi Moshe Taragin",
-        "duration": "43:50"
+        "duration": "43:50",
+        "date": "2022-12-26"
       },
       {
         "id": "1052970",
         "title": "Vezos HaBerachah: Moshe’s Farewell to the Tribes",
         "speaker": "Rabbi Yaakov Neuburger",
-        "duration": "39:10"
+        "duration": "39:10",
+        "date": "2022-12-25"
       }
     ]
   },
@@ -3233,25 +3349,29 @@ const DEV_PUBLIC_SEEDS = [
         "id": "1052980",
         "title": "The Stages of Mourning: Aninus and Shiva",
         "speaker": "Rabbi Hershel Schachter",
-        "duration": "46:20"
+        "duration": "46:20",
+        "date": "2022-12-26"
       },
       {
         "id": "1052990",
         "title": "Nichum Aveilim: Meaning and Protocol",
         "speaker": "Rabbi Hershel Schachter",
-        "duration": "39:15"
+        "duration": "39:15",
+        "date": "2023-12-26"
       },
       {
         "id": "979218",
         "title": "Kaddish and Yahrtzeit: Spiritual Dimensions",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "44:50"
+        "duration": "44:50",
+        "date": "2020-11-29"
       },
       {
         "id": "1052970",
         "title": "Hesped: Obligation to the Deceased vs. the Living",
         "speaker": "Rabbi Mayer Twersky",
-        "duration": "42:00"
+        "duration": "42:00",
+        "date": "2022-12-25"
       }
     ]
   },
@@ -3282,43 +3402,50 @@ const DEV_PUBLIC_SEEDS = [
         "id": "1053000",
         "title": "The Philosophy of Malchiyos",
         "speaker": "Rabbi Mayer Twersky",
-        "duration": "44:00"
+        "duration": "44:00",
+        "date": "2022-12-27"
       },
       {
         "id": "1052990",
         "title": "Hearing the Shofar: Kavana and Halacha",
         "speaker": "Rabbi Hershel Schachter",
-        "duration": "41:10"
+        "duration": "41:10",
+        "date": "2023-12-26"
       },
       {
         "id": "979218",
         "title": "Zichronos and Shofros: Divine Remembrances",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "49:30"
+        "duration": "49:30",
+        "date": "2020-11-29"
       },
       {
         "id": "1052980",
         "title": "Tekios DeMeyushav vs. Tekios DeMeumad",
         "speaker": "Rabbi Hershel Schachter",
-        "duration": "45:20"
+        "duration": "45:20",
+        "date": "2022-12-26"
       },
       {
         "id": "1052970",
         "title": "Unetanneh Tokef: Authorship and Theological Depth",
         "speaker": "Rabbi Moshe Taragin",
-        "duration": "38:40"
+        "duration": "38:40",
+        "date": "2022-12-25"
       },
       {
         "id": "1052960",
         "title": "Tashlich and Simanim: Halacha and Custom",
         "speaker": "Rabbi Yaakov Neuburger",
-        "duration": "36:15"
+        "duration": "36:15",
+        "date": "2022-12-25"
       },
       {
         "id": "1052950",
         "title": "Rosh Hashanah as Yom HaDin and Yom Teruah",
         "speaker": "Rabbi Mayer Twersky",
-        "duration": "47:05"
+        "duration": "47:05",
+        "date": "2022-12-26"
       }
     ]
   },
@@ -3349,61 +3476,71 @@ const DEV_PUBLIC_SEEDS = [
         "id": "1053000",
         "title": "Shiur Klali: Sukkah Taaseh V’Lo Min Ha’Asui",
         "speaker": "Rabbi Moshe Taragin",
-        "duration": "47:25"
+        "duration": "47:25",
+        "date": "2022-12-27"
       },
       {
         "id": "979218",
         "title": "Lomdus of Bedikas Chametz and Bitul",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "53:10"
+        "duration": "53:10",
+        "date": "2020-11-29"
       },
       {
         "id": "1052980",
         "title": "Pesachim: Kol Sha’ah and Issur Hana’ah",
         "speaker": "Rabbi Hershel Schachter",
-        "duration": "45:15"
+        "duration": "45:15",
+        "date": "2022-12-26"
       },
       {
         "id": "1052970",
         "title": "Sukkah: Dofanos and Mechitzos in Halacha",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "50:40"
+        "duration": "50:40",
+        "date": "2022-12-25"
       },
       {
         "id": "1052960",
         "title": "Pesachim: Korban Pesach and Chaburah",
         "speaker": "Rabbi Mayer Twersky",
-        "duration": "48:30"
+        "duration": "48:30",
+        "date": "2022-12-25"
       },
       {
         "id": "1052950",
         "title": "Sukkah: Seudah on the First Night of Yom Tov",
         "speaker": "Rabbi Hershel Schachter",
-        "duration": "42:15"
+        "duration": "42:15",
+        "date": "2022-12-26"
       },
       {
         "id": "1052940",
         "title": "Pesachim: Erev Pesach That Falls on Shabbos",
         "speaker": "Rabbi Aryeh Lebowitz",
-        "duration": "44:50"
+        "duration": "44:50",
+        "date": "2022-12-25"
       },
       {
         "id": "1052930",
         "title": "Sukkah: Chiyuv of Sukkah for Travelers",
         "speaker": "Rabbi Yaakov Neuburger",
-        "duration": "39:20"
+        "duration": "39:20",
+        "date": "2022-12-25"
       },
       {
         "id": "1052920",
         "title": "Pesachim: Arba Kosos and Heseibah",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "51:30"
+        "duration": "51:30",
+        "date": "2022-12-25"
       },
       {
         "id": "1052910",
         "title": "Methodology in Daf Yomi: Depth vs. Breadth",
         "speaker": "Rabbi Moshe Taragin",
-        "duration": "46:00"
+        "duration": "46:00",
+        "date": "2022-12-25"
       }
     ]
   },
@@ -3434,49 +3571,57 @@ const DEV_PUBLIC_SEEDS = [
         "id": "1053000",
         "title": "Bereishis: Creation and Human Consciousness",
         "speaker": "Rabbi Moshe Taragin",
-        "duration": "42:15"
+        "duration": "42:15",
+        "date": "2022-12-27"
       },
       {
         "id": "1052990",
         "title": "Noach: Covenant with Humanity and Earth",
         "speaker": "Rabbi Moshe Taragin",
-        "duration": "39:50"
+        "duration": "39:50",
+        "date": "2023-12-26"
       },
       {
         "id": "979218",
         "title": "Lech Lecha: The Call and Journey of Avraham",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "52:00"
+        "duration": "52:00",
+        "date": "2020-11-29"
       },
       {
         "id": "1052980",
         "title": "Vayeira: The Akeidah and Absolute Commitment",
         "speaker": "Rabbi Mayer Twersky",
-        "duration": "46:30"
+        "duration": "46:30",
+        "date": "2022-12-26"
       },
       {
         "id": "1052970",
         "title": "Chayei Sarah: Mourning and Legacy Building",
         "speaker": "Rabbi Moshe Taragin",
-        "duration": "41:10"
+        "duration": "41:10",
+        "date": "2022-12-25"
       },
       {
         "id": "1052960",
         "title": "Toldos: The Complex Identity of Yaakov and Eisav",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "49:45"
+        "duration": "49:45",
+        "date": "2022-12-25"
       },
       {
         "id": "1052950",
         "title": "Vayetzei: The Ladder Between Heaven and Earth",
         "speaker": "Rabbi Yaakov Neuburger",
-        "duration": "38:20"
+        "duration": "38:20",
+        "date": "2022-12-26"
       },
       {
         "id": "1052940",
         "title": "Vayishlach: Confrontation and Reconciliation",
         "speaker": "Rabbi Moshe Taragin",
-        "duration": "43:15"
+        "duration": "43:15",
+        "date": "2022-12-25"
       }
     ]
   },
@@ -3507,55 +3652,64 @@ const DEV_PUBLIC_SEEDS = [
         "id": "979218",
         "title": "The Rav’s Methodology in Hilchos Tefillah",
         "speaker": "Rabbi Hershel Schachter",
-        "duration": "58:00"
+        "duration": "58:00",
+        "date": "2020-11-29"
       },
       {
         "id": "979219",
         "title": "Halakhic Man and Lonely Man of Faith Compared",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "52:45"
+        "duration": "52:45",
+        "date": "2020-11-30"
       },
       {
         "id": "1052980",
         "title": "Kol Dodi Dofek and Historical Providence",
         "speaker": "Rabbi Mayer Twersky",
-        "duration": "46:30"
+        "duration": "46:30",
+        "date": "2022-12-26"
       },
       {
         "id": "1052970",
         "title": "The Rav on Teshuvah: Kapparah vs. Taharah",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "55:10"
+        "duration": "55:10",
+        "date": "2022-12-25"
       },
       {
         "id": "1052960",
         "title": "Tradition and Modernity in the Thought of the Rav",
         "speaker": "Rabbi Moshe Taragin",
-        "duration": "44:20"
+        "duration": "44:20",
+        "date": "2022-12-25"
       },
       {
         "id": "1052950",
         "title": "The Rav’s Shiurim on Maseches Yoma",
         "speaker": "Rabbi Hershel Schachter",
-        "duration": "59:30"
+        "duration": "59:30",
+        "date": "2022-12-26"
       },
       {
         "id": "1052940",
         "title": "Kinnos Shiurim of the Rav: A Sacred Memory",
         "speaker": "Rabbi Yaakov Neuburger",
-        "duration": "47:15"
+        "duration": "47:15",
+        "date": "2022-12-25"
       },
       {
         "id": "1052930",
         "title": "The Rav on Zionism and Jewish Statehood",
         "speaker": "Rabbi Mayer Twersky",
-        "duration": "50:40"
+        "duration": "50:40",
+        "date": "2022-12-25"
       },
       {
         "id": "1052920",
         "title": "Catharsis in Halacha and Aggadah",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "53:25"
+        "duration": "53:25",
+        "date": "2022-12-25"
       }
     ]
   },
@@ -3586,37 +3740,43 @@ const DEV_PUBLIC_SEEDS = [
         "id": "1053000",
         "title": "Halachos of Daled Minim Selection and Care",
         "speaker": "Rabbi Hershel Schachter",
-        "duration": "48:15"
+        "duration": "48:15",
+        "date": "2022-12-27"
       },
       {
         "id": "1052990",
         "title": "The Nature of Simchah on Sukkos and Shemini Atzeres",
         "speaker": "Rabbi Mayer Twersky",
-        "duration": "41:30"
+        "duration": "41:30",
+        "date": "2023-12-26"
       },
       {
         "id": "979218",
         "title": "Hakafos and the Simchah of Siyum HaTorah",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "45:10"
+        "duration": "45:10",
+        "date": "2020-11-29"
       },
       {
         "id": "1052980",
         "title": "Ushpizin: Welcoming the Ancestors into the Sukkah",
         "speaker": "Rabbi Moshe Taragin",
-        "duration": "37:45"
+        "duration": "37:45",
+        "date": "2022-12-26"
       },
       {
         "id": "1052970",
         "title": "Simchas Beis HaShoevah: Historical and Spiritual Heights",
         "speaker": "Rabbi Yaakov Neuburger",
-        "duration": "43:00"
+        "duration": "43:00",
+        "date": "2022-12-25"
       },
       {
         "id": "1052960",
         "title": "Hoshanah Rabbah: The Culmination of Judgement",
         "speaker": "Rabbi Hershel Schachter",
-        "duration": "44:20"
+        "duration": "44:20",
+        "date": "2022-12-25"
       }
     ]
   },
@@ -3647,25 +3807,29 @@ const DEV_PUBLIC_SEEDS = [
         "id": "979218",
         "title": "Mehadrin Min HaMehadrin: Lomdus of Lighting",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "51:20"
+        "duration": "51:20",
+        "date": "2020-11-29"
       },
       {
         "id": "1052980",
         "title": "Oil vs Wax Candles and Electric Menorahs",
         "speaker": "Rabbi Hershel Schachter",
-        "duration": "43:45"
+        "duration": "43:45",
+        "date": "2022-12-26"
       },
       {
         "id": "1053000",
         "title": "Hallel on Chanukah: Shiur and Nature",
         "speaker": "Rabbi Mayer Twersky",
-        "duration": "40:15"
+        "duration": "40:15",
+        "date": "2022-12-27"
       },
       {
         "id": "1052970",
         "title": "Al HaNissim and the Theology of Hidden Miracles",
         "speaker": "Rabbi Moshe Taragin",
-        "duration": "38:50"
+        "duration": "38:50",
+        "date": "2022-12-25"
       }
     ]
   },
@@ -3696,31 +3860,36 @@ const DEV_PUBLIC_SEEDS = [
         "id": "1052980",
         "title": "Mishloach Manot and Matanot LaEvyonim Halachot",
         "speaker": "Rabbi Yaakov Neuburger",
-        "duration": "38:50"
+        "duration": "38:50",
+        "date": "2022-12-26"
       },
       {
         "id": "1053000",
         "title": "Krias HaMegillah: Hearing and Reading Nuances",
         "speaker": "Rabbi Hershel Schachter",
-        "duration": "46:10"
+        "duration": "46:10",
+        "date": "2022-12-27"
       },
       {
         "id": "1052990",
         "title": "Ad D’Lo Yada: Hashkafic Perspectives",
         "speaker": "Rabbi Moshe Taragin",
-        "duration": "42:25"
+        "duration": "42:25",
+        "date": "2023-12-26"
       },
       {
         "id": "979218",
         "title": "Kabalas HaTorah on Purim: Kiymu v’Kiblu",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "50:15"
+        "duration": "50:15",
+        "date": "2020-11-29"
       },
       {
         "id": "1052970",
         "title": "Seudas Purim on Friday or Sunday",
         "speaker": "Rabbi Aryeh Lebowitz",
-        "duration": "39:40"
+        "duration": "39:40",
+        "date": "2022-12-25"
       }
     ]
   },
@@ -3751,49 +3920,57 @@ const DEV_PUBLIC_SEEDS = [
         "id": "979218",
         "title": "The Mitzvah of Sippur Yetzias Mitzrayim",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "56:30"
+        "duration": "56:30",
+        "date": "2020-11-29"
       },
       {
         "id": "979219",
         "title": "Shiur Kezayis and K’dei Achilas Pras for Matzah",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "49:15"
+        "duration": "49:15",
+        "date": "2020-11-30"
       },
       {
         "id": "1052980",
         "title": "Kitniyos and Modern Derivatives",
         "speaker": "Rabbi Hershel Schachter",
-        "duration": "44:00"
+        "duration": "44:00",
+        "date": "2022-12-26"
       },
       {
         "id": "1052970",
         "title": "Kashering Ovens and Induction Cooktops for Pesach",
         "speaker": "Rabbi Aryeh Lebowitz",
-        "duration": "42:10"
+        "duration": "42:10",
+        "date": "2022-12-25"
       },
       {
         "id": "1052960",
         "title": "Arba Kosos: Wine vs. Grape Juice and Shiur Kos",
         "speaker": "Rabbi Yaakov Neuburger",
-        "duration": "38:45"
+        "duration": "38:45",
+        "date": "2022-12-25"
       },
       {
         "id": "1052950",
         "title": "Afikoman: Dining After Midnight and Minhagim",
         "speaker": "Rabbi Hershel Schachter",
-        "duration": "41:20"
+        "duration": "41:20",
+        "date": "2022-12-26"
       },
       {
         "id": "1052940",
         "title": "The Four Sons: Educational Philosophy of the Haggadah",
         "speaker": "Rabbi Moshe Taragin",
-        "duration": "43:30"
+        "duration": "43:30",
+        "date": "2022-12-25"
       },
       {
         "id": "1052930",
         "title": "Mechiras Chametz: Legal Validity and Modern Commerce",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "53:00"
+        "duration": "53:00",
+        "date": "2022-12-25"
       }
     ]
   },
@@ -3824,19 +4001,22 @@ const DEV_PUBLIC_SEEDS = [
         "id": "1053000",
         "title": "Sefirah: One Long Mitzvah or 49 Independent Mitzvos?",
         "speaker": "Rabbi Mayer Twersky",
-        "duration": "45:20"
+        "duration": "45:20",
+        "date": "2022-12-27"
       },
       {
         "id": "1052990",
         "title": "Mourning the Talmidei Rabbi Akiva: Lessons in Kavod",
         "speaker": "Rabbi Moshe Taragin",
-        "duration": "39:40"
+        "duration": "39:40",
+        "date": "2023-12-26"
       },
       {
         "id": "979218",
         "title": "Spiritual Preparation for Receiving the Torah",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "48:10"
+        "duration": "48:10",
+        "date": "2020-11-29"
       }
     ]
   },
@@ -3867,37 +4047,43 @@ const DEV_PUBLIC_SEEDS = [
         "id": "979218",
         "title": "Kabalas HaTorah: B’Ones or B’Ratzon?",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "54:15"
+        "duration": "54:15",
+        "date": "2020-11-29"
       },
       {
         "id": "1052980",
         "title": "Akdamus and Minhagim of Shavuos",
         "speaker": "Rabbi Hershel Schachter",
-        "duration": "37:50"
+        "duration": "37:50",
+        "date": "2022-12-26"
       },
       {
         "id": "1053000",
         "title": "Ruth and Shavuos: The Power of Torah Loyalty",
         "speaker": "Rabbi Mayer Twersky",
-        "duration": "43:35"
+        "duration": "43:35",
+        "date": "2022-12-27"
       },
       {
         "id": "1052970",
         "title": "Tikkun Leil Shavuos: Toras Eretz Yisrael and Night Learning",
         "speaker": "Rabbi Moshe Taragin",
-        "duration": "41:10"
+        "duration": "41:10",
+        "date": "2022-12-25"
       },
       {
         "id": "1052960",
         "title": "Dairy Meals and Meat Meals on Shavuos",
         "speaker": "Rabbi Aryeh Lebowitz",
-        "duration": "36:40"
+        "duration": "36:40",
+        "date": "2022-12-25"
       },
       {
         "id": "1052950",
         "title": "Revelation at Sinai as the Foundation of Emunah",
         "speaker": "Rabbi Yaakov Neuburger",
-        "duration": "45:20"
+        "duration": "45:20",
+        "date": "2022-12-26"
       }
     ]
   },
@@ -3928,43 +4114,50 @@ const DEV_PUBLIC_SEEDS = [
         "id": "1052980",
         "title": "Semichas Chaver: Hilchos Mezuzah Practical Overview",
         "speaker": "Rabbi Aryeh Lebowitz",
-        "duration": "49:10"
+        "duration": "49:10",
+        "date": "2022-12-26"
       },
       {
         "id": "1053000",
         "title": "Semichas Chaver: Bishul Akum and Microwaves",
         "speaker": "Rabbi Aryeh Lebowitz",
-        "duration": "43:50"
+        "duration": "43:50",
+        "date": "2022-12-27"
       },
       {
         "id": "1052990",
         "title": "Semichas Chaver: Tevilas Keilim in Modern Times",
         "speaker": "Rabbi Aryeh Lebowitz",
-        "duration": "41:20"
+        "duration": "41:20",
+        "date": "2023-12-26"
       },
       {
         "id": "1052970",
         "title": "Semichas Chaver: Melachas Borer on Shabbat",
         "speaker": "Rabbi Aryeh Lebowitz",
-        "duration": "47:15"
+        "duration": "47:15",
+        "date": "2022-12-25"
       },
       {
         "id": "1052960",
         "title": "Semichas Chaver: Hilchos Tzitzis and Tallis",
         "speaker": "Rabbi Aryeh Lebowitz",
-        "duration": "44:30"
+        "duration": "44:30",
+        "date": "2022-12-25"
       },
       {
         "id": "1052950",
         "title": "Semichas Chaver: Muktzah in the Modern Home",
         "speaker": "Rabbi Aryeh Lebowitz",
-        "duration": "46:00"
+        "duration": "46:00",
+        "date": "2022-12-26"
       },
       {
         "id": "1052940",
         "title": "Semichas Chaver: Shehiyah and Chazarah on Friday Afternoon",
         "speaker": "Rabbi Aryeh Lebowitz",
-        "duration": "48:25"
+        "duration": "48:25",
+        "date": "2022-12-25"
       }
     ]
   },
@@ -3998,49 +4191,57 @@ const DEV_PUBLIC_SEEDS = [
         "id": "979218",
         "title": "Torah Study for Women: Historical Perspectives",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "52:10"
+        "duration": "52:10",
+        "date": "2020-11-29"
       },
       {
         "id": "1053000",
         "title": "Women and Mitzvos Aseh SheHazman Grama",
         "speaker": "Rabbi Mayer Twersky",
-        "duration": "47:45"
+        "duration": "47:45",
+        "date": "2022-12-27"
       },
       {
         "id": "1052980",
         "title": "Women in Communal Leadership Roles",
         "speaker": "Rabbi Hershel Schachter",
-        "duration": "44:30"
+        "duration": "44:30",
+        "date": "2022-12-26"
       },
       {
         "id": "1052970",
         "title": "Megillah Reading for and by Women",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "51:00"
+        "duration": "51:00",
+        "date": "2022-12-25"
       },
       {
         "id": "1052960",
         "title": "Women and Kaddish: Halachic and Historical Sources",
         "speaker": "Rabbi Yaakov Neuburger",
-        "duration": "43:20"
+        "duration": "43:20",
+        "date": "2022-12-25"
       },
       {
         "id": "1052950",
         "title": "Tefillin and Tzitzis: Gender in Mitzvah Performance",
         "speaker": "Rabbi Hershel Schachter",
-        "duration": "46:15"
+        "duration": "46:15",
+        "date": "2022-12-26"
       },
       {
         "id": "1052940",
         "title": "Women Scholars throughout the Generations",
         "speaker": "Dr. Smadar Rosensweig",
-        "duration": "49:30"
+        "duration": "49:30",
+        "date": "2022-12-25"
       },
       {
         "id": "1052930",
         "title": "Partnership in Torah and Family Building",
         "speaker": "Rabbi Moshe Taragin",
-        "duration": "41:40"
+        "duration": "41:40",
+        "date": "2022-12-25"
       }
     ]
   },
@@ -4071,61 +4272,71 @@ const DEV_PUBLIC_SEEDS = [
         "id": "1053000",
         "title": "Rambam on Free Will and Divine Foreknowledge",
         "speaker": "Rabbi Mayer Twersky",
-        "duration": "48:30"
+        "duration": "48:30",
+        "date": "2022-12-27"
       },
       {
         "id": "979218",
         "title": "The Purpose of Creation in Moreh Nevukhim",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "53:15"
+        "duration": "53:15",
+        "date": "2020-11-29"
       },
       {
         "id": "979219",
         "title": "Ta’amei HaMitzvos: The Rationality of Commandments",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "49:40"
+        "duration": "49:40",
+        "date": "2020-11-30"
       },
       {
         "id": "1052980",
         "title": "Negative Theology and Divine Attributes in the Rambam",
         "speaker": "Rabbi Mayer Twersky",
-        "duration": "51:20"
+        "duration": "51:20",
+        "date": "2022-12-26"
       },
       {
         "id": "1052970",
         "title": "Prophecy in Moreh Nevukhim: Intellectual and Moral Perfection",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "54:45"
+        "duration": "54:45",
+        "date": "2022-12-25"
       },
       {
         "id": "1052960",
         "title": "Providence (Hashgachah) According to the Rambam",
         "speaker": "Rabbi Mayer Twersky",
-        "duration": "47:10"
+        "duration": "47:10",
+        "date": "2022-12-25"
       },
       {
         "id": "1052950",
         "title": "The Rambam’s View on Angels and Creation Ex Nihilo",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "52:00"
+        "duration": "52:00",
+        "date": "2022-12-26"
       },
       {
         "id": "1052940",
         "title": "Reasons for Korbanos in Moreh Nevukhim",
         "speaker": "Rabbi Moshe Taragin",
-        "duration": "45:30"
+        "duration": "45:30",
+        "date": "2022-12-25"
       },
       {
         "id": "1052930",
         "title": "The Messianic Era in Mishneh Torah vs. Moreh",
         "speaker": "Rabbi Hershel Schachter",
-        "duration": "46:15"
+        "duration": "46:15",
+        "date": "2022-12-25"
       },
       {
         "id": "1052920",
         "title": "Love and Awe of God as Culmination of Philosophy",
         "speaker": "Rabbi Mayer Twersky",
-        "duration": "50:00"
+        "duration": "50:00",
+        "date": "2022-12-25"
       }
     ]
   },
@@ -4159,31 +4370,36 @@ const DEV_PUBLIC_SEEDS = [
         "id": "1053000",
         "title": "Sarah Imeinu: The Crucible of Faith and Hospitality",
         "speaker": "Rabbi Moshe Taragin",
-        "duration": "42:00"
+        "duration": "42:00",
+        "date": "2022-12-27"
       },
       {
         "id": "1052990",
         "title": "Rivka and the Strategic Blessing",
         "speaker": "Rabbi Moshe Taragin",
-        "duration": "40:15"
+        "duration": "40:15",
+        "date": "2023-12-26"
       },
       {
         "id": "979218",
         "title": "Rachel and Leah: Two Paths in Building the House of Israel",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "50:30"
+        "duration": "50:30",
+        "date": "2020-11-29"
       },
       {
         "id": "1052980",
         "title": "Miriam HaNevi’ah: The Leadership of Hope and Song",
         "speaker": "Dr. Smadar Rosensweig",
-        "duration": "44:20"
+        "duration": "44:20",
+        "date": "2022-12-26"
       },
       {
         "id": "1052970",
         "title": "Devorah HaNevi’ah: Judge and Mother in Israel",
         "speaker": "Dr. Smadar Rosensweig",
-        "duration": "46:50"
+        "duration": "46:50",
+        "date": "2022-12-25"
       }
     ]
   },
@@ -4214,25 +4430,29 @@ const DEV_PUBLIC_SEEDS = [
         "id": "1052980",
         "title": "Megillat Ruth: Hesed as the Foundation of Torah",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "46:40"
+        "duration": "46:40",
+        "date": "2022-12-26"
       },
       {
         "id": "1053000",
         "title": "Boaz and the Redemption of Naomi’s Heritage",
         "speaker": "Rabbi Mayer Twersky",
-        "duration": "41:15"
+        "duration": "41:15",
+        "date": "2022-12-27"
       },
       {
         "id": "979218",
         "title": "The Legal and Spiritual Dimensions of Ruth’s Conversion",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "48:50"
+        "duration": "48:50",
+        "date": "2020-11-29"
       },
       {
         "id": "1052970",
         "title": "From Moav to David HaMelech: The Royal Lineage",
         "speaker": "Dr. Smadar Rosensweig",
-        "duration": "43:10"
+        "duration": "43:10",
+        "date": "2022-12-25"
       }
     ]
   },
@@ -4263,37 +4483,43 @@ const DEV_PUBLIC_SEEDS = [
         "id": "979218",
         "title": "Understanding the Destruction: Kamtza and Bar Kamtza",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "52:45"
+        "duration": "52:45",
+        "date": "2020-11-29"
       },
       {
         "id": "1052980",
         "title": "Halachos of the Nine Days and Tisha B’Av",
         "speaker": "Rabbi Hershel Schachter",
-        "duration": "44:10"
+        "duration": "44:10",
+        "date": "2022-12-26"
       },
       {
         "id": "1053000",
         "title": "The Themes of Lamentations: From Churban to Hope",
         "speaker": "Rabbi Yaakov Neuburger",
-        "duration": "40:30"
+        "duration": "40:30",
+        "date": "2022-12-27"
       },
       {
         "id": "1052970",
         "title": "Eleh Ezkera: The Ten Martyrs and Jewish Sanctity",
         "speaker": "Rabbi Mayer Twersky",
-        "duration": "48:20"
+        "duration": "48:20",
+        "date": "2022-12-25"
       },
       {
         "id": "1052960",
         "title": "Arzei HaLevanon: Eulogizing the Torah Greats",
         "speaker": "Rabbi Moshe Taragin",
-        "duration": "42:15"
+        "duration": "42:15",
+        "date": "2022-12-25"
       },
       {
         "id": "1052950",
         "title": "Nechama and Comfort: The Seven Weeks of Consolation",
         "speaker": "Rabbi Yaakov Neuburger",
-        "duration": "41:50"
+        "duration": "41:50",
+        "date": "2022-12-26"
       }
     ]
   },
@@ -4324,55 +4550,64 @@ const DEV_PUBLIC_SEEDS = [
         "id": "1052980",
         "title": "CRISPR Gene Editing and Germline Modification in Halacha",
         "speaker": "Rabbi Aryeh Lebowitz",
-        "duration": "47:30"
+        "duration": "47:30",
+        "date": "2022-12-26"
       },
       {
         "id": "1053000",
         "title": "Genetic Screening and Dor Yeshorim",
         "speaker": "Rabbi Aryeh Lebowitz",
-        "duration": "44:15"
+        "duration": "44:15",
+        "date": "2022-12-27"
       },
       {
         "id": "979218",
         "title": "Stem Cell Research and Pre-Implantation Diagnosis",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "51:40"
+        "duration": "51:40",
+        "date": "2020-11-29"
       },
       {
         "id": "1052990",
         "title": "Brain Death and Organ Transplantation: The Halachic Debate",
         "speaker": "Rabbi Hershel Schachter",
-        "duration": "56:20"
+        "duration": "56:20",
+        "date": "2023-12-26"
       },
       {
         "id": "1052970",
         "title": "Artificial Insemination and Surrogacy",
         "speaker": "Rabbi Yaakov Neuburger",
-        "duration": "48:10"
+        "duration": "48:10",
+        "date": "2022-12-25"
       },
       {
         "id": "1052960",
         "title": "Informed Consent and Experimental Treatments",
         "speaker": "Rabbi Aryeh Lebowitz",
-        "duration": "42:50"
+        "duration": "42:50",
+        "date": "2022-12-25"
       },
       {
         "id": "1052950",
         "title": "Halachic Directives for Healthcare Proxies",
         "speaker": "Rabbi Yaakov Neuburger",
-        "duration": "45:00"
+        "duration": "45:00",
+        "date": "2022-12-26"
       },
       {
         "id": "1052940",
         "title": "Artificial Intelligence in Medical Diagnoses and Pesak",
         "speaker": "Rabbi Aryeh Lebowitz",
-        "duration": "43:15"
+        "duration": "43:15",
+        "date": "2022-12-25"
       },
       {
         "id": "1052930",
         "title": "Allocation of Scarce Medications in Emergencies",
         "speaker": "Rabbi Hershel Schachter",
-        "duration": "50:25"
+        "duration": "50:25",
+        "date": "2022-12-25"
       }
     ]
   },
@@ -4403,43 +4638,50 @@ const DEV_PUBLIC_SEEDS = [
         "id": "1052980",
         "title": "Parenting in the Digital Era: Boundaries and Empowerment",
         "speaker": "Rabbi Yaakov Neuburger",
-        "duration": "45:30"
+        "duration": "45:30",
+        "date": "2022-12-26"
       },
       {
         "id": "1053000",
         "title": "Chanoch LaNa’ar Al Pi Darko: Tailoring Torah to the Child",
         "speaker": "Rabbi Yaakov Neuburger",
-        "duration": "48:15"
+        "duration": "48:15",
+        "date": "2022-12-27"
       },
       {
         "id": "1052990",
         "title": "Emotional Resilience and Emunah in the Next Generation",
         "speaker": "Rabbi Moshe Taragin",
-        "duration": "41:40"
+        "duration": "41:40",
+        "date": "2023-12-26"
       },
       {
         "id": "1052970",
         "title": "Teaching Mitzvos with Joy and Love",
         "speaker": "Rabbi Aryeh Lebowitz",
-        "duration": "39:25"
+        "duration": "39:25",
+        "date": "2022-12-25"
       },
       {
         "id": "1052960",
         "title": "Handling Religious Rebellion and Doubts in Teens",
         "speaker": "Rabbi Yaakov Neuburger",
-        "duration": "51:10"
+        "duration": "51:10",
+        "date": "2022-12-25"
       },
       {
         "id": "1052950",
         "title": "Tefillah Education in Schools and Homes",
         "speaker": "Rabbi Mayer Twersky",
-        "duration": "44:00"
+        "duration": "44:00",
+        "date": "2022-12-26"
       },
       {
         "id": "1052940",
         "title": "Transmitting the Mesorah: The Family Table as Beis Midrash",
         "speaker": "Rabbi Moshe Taragin",
-        "duration": "43:50"
+        "duration": "43:50",
+        "date": "2022-12-25"
       }
     ]
   },
@@ -4470,49 +4712,57 @@ const DEV_PUBLIC_SEEDS = [
         "id": "1053000",
         "title": "Mesillas Yesharim: The Map of Spiritual Ascent",
         "speaker": "Rabbi Mayer Twersky",
-        "duration": "46:30"
+        "duration": "46:30",
+        "date": "2022-12-27"
       },
       {
         "id": "979218",
         "title": "Middas HaZehirus: Mindfulness in Halachic Living",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "53:00"
+        "duration": "53:00",
+        "date": "2020-11-29"
       },
       {
         "id": "1052980",
         "title": "Middas HaZerizus: Alacrity and Energy in Divine Service",
         "speaker": "Rabbi Mayer Twersky",
-        "duration": "48:15"
+        "duration": "48:15",
+        "date": "2022-12-26"
       },
       {
         "id": "1052970",
         "title": "Nekiyus: Purity from Subtle Transgressions",
         "speaker": "Rabbi Yaakov Neuburger",
-        "duration": "42:40"
+        "duration": "42:40",
+        "date": "2022-12-25"
       },
       {
         "id": "1052960",
         "title": "Perishus: Sacred Moderation in a World of Excess",
         "speaker": "Rabbi Moshe Taragin",
-        "duration": "45:20"
+        "duration": "45:20",
+        "date": "2022-12-25"
       },
       {
         "id": "1052950",
         "title": "Taharah: Rectifying the Subconscious Intentions",
         "speaker": "Rabbi Mayer Twersky",
-        "duration": "47:50"
+        "duration": "47:50",
+        "date": "2022-12-26"
       },
       {
         "id": "1052940",
         "title": "Chassidus: Beyond the Letter of the Law",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "52:10"
+        "duration": "52:10",
+        "date": "2022-12-25"
       },
       {
         "id": "1052930",
         "title": "Yiras Cheit and Kedushah: Dwelling in the Divine Presence",
         "speaker": "Rabbi Mayer Twersky",
-        "duration": "49:40"
+        "duration": "49:40",
+        "date": "2022-12-25"
       }
     ]
   },
@@ -4543,31 +4793,36 @@ const DEV_PUBLIC_SEEDS = [
         "id": "1052980",
         "title": "Mitzvat Yishuv Eretz Yisrael in Contemporary Halacha",
         "speaker": "Rabbi Hershel Schachter",
-        "duration": "52:30"
+        "duration": "52:30",
+        "date": "2022-12-26"
       },
       {
         "id": "1053000",
         "title": "The Holiness of the Land and Shemittah Observance",
         "speaker": "Rabbi Moshe Taragin",
-        "duration": "44:40"
+        "duration": "44:40",
+        "date": "2022-12-27"
       },
       {
         "id": "979218",
         "title": "Eretz Hemdah: The Spiritual Connection to Zion",
         "speaker": "Rabbi Michael Rosensweig",
-        "duration": "50:15"
+        "duration": "50:15",
+        "date": "2020-11-29"
       },
       {
         "id": "1052970",
         "title": "Terumos and Ma’asros in the Modern Supermarket",
         "speaker": "Rabbi Hershel Schachter",
-        "duration": "43:10"
+        "duration": "43:10",
+        "date": "2022-12-25"
       },
       {
         "id": "1052960",
         "title": "Aliyah in Contemporary Times: Halachic Weight",
         "speaker": "Rabbi Moshe Taragin",
-        "duration": "41:25"
+        "duration": "41:25",
+        "date": "2022-12-25"
       }
     ]
   }
@@ -11314,6 +11569,53 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   let autocompleteCache = null;
   let autocompleteData = null;
+  function formatDuration(lengthStr) {
+    if (!lengthStr) return '';
+    const s = String(lengthStr).trim();
+    if (!s) return '';
+    if (s.includes(':')) {
+      const parts = s.split(':');
+      if (parts.length === 2) {
+        const m = parseInt(parts[0], 10);
+        if (!isNaN(m)) {
+          if (m >= 60) {
+            const h = Math.floor(m / 60);
+            const remM = m % 60;
+            return remM > 0 ? (h + 'h ' + remM + 'm') : (h + 'h');
+          }
+          return m + ' min';
+        }
+      } else if (parts.length === 3) {
+        const h = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10);
+        if (!isNaN(h) && !isNaN(m)) {
+          if (h > 0) return m > 0 ? (h + 'h ' + m + 'm') : (h + 'h');
+          return m + ' min';
+        }
+      }
+    }
+    const hm = s.match(/(\d+)\s*h(?:r)?(?:\s*(\d+)\s*m(?:in)?)?/i);
+    if (hm) {
+      const h = parseInt(hm[1], 10);
+      const m = hm[2] ? parseInt(hm[2], 10) : 0;
+      if (m > 0) return h + 'h ' + m + 'm';
+      return h + 'h';
+    }
+    const mm = s.match(/(\d+)\s*min/i);
+    if (mm) {
+      return parseInt(mm[1], 10) + ' min';
+    }
+    if (/^\d+$/.test(s)) {
+      const totalM = parseInt(s, 10);
+      if (totalM >= 60) {
+        const h = Math.floor(totalM / 60);
+        const remM = totalM % 60;
+        return remM > 0 ? (h + 'h ' + remM + 'm') : (h + 'h');
+      }
+      return totalM + ' min';
+    }
+    return s;
+  }
 
   function getNowInNewYork() {
     try {
@@ -17860,9 +18162,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
             (firstId ? '<a href="/' + String(firstId) + '" style="font-weight:700; color:var(--primary);">📚 ' + escapeHtml(sTitle) + '</a>' : '<span style="font-weight:700;">📚 ' + escapeHtml(sTitle) + '</span>') +
             '<div style="font-size:11.5px; color:var(--text-muted); margin-top:2px;">' + count + ' lectures in series</div></div>';
         }
+        const dur = formatDuration(s.duration || s.shiurDuration || s.durationformatted || '');
+        const rawDt = s.date || s.shiurDateFormatted || s.shiurdateformatted || s.shiurDate || s.shiurdate || '';
+        const dt = formatShiurDate(rawDt);
+        const metaBits = [];
+        if (dur) metaBits.push('⏱ ' + escapeHtml(dur));
+        if (dt) metaBits.push(escapeHtml(dt));
+        const metaLine = metaBits.length > 0 ? '<div style="font-size:11px; color:var(--text-muted); margin-top:2px; opacity:0.9;">' + metaBits.join(' · ') + '</div>' : '';
+
         return '<div style="font-size:13.5px; padding:6px 0; border-bottom:1px solid var(--border);">' +
           '<a href="/' + String(s.id || '') + '" style="font-weight:700; color:var(--text);">' + escapeHtml(s.title || 'Untitled') + '</a>' +
-          '<div style="font-size:11.5px; color:var(--text-muted); margin-top:2px;">' + escapeHtml(s.speaker || '') + '</div></div>';
+          '<div style="font-size:11.5px; color:var(--text-muted); margin-top:2px;">' + escapeHtml(s.speaker || '') + '</div>' +
+          metaLine + '</div>';
       }).join('') + (items.length > 8 ? '<div style="font-size:12px; color:var(--text-muted); margin-top:6px;">+' + (items.length - 8) + ' more after saving</div>' : '');
     };
 

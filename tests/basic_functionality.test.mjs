@@ -370,7 +370,11 @@ async function testPublicPlaylistSubscriptionOptions() {
   assert.ok(itemsData && itemsData.playlist, 'Response must include playlist metadata');
   assert.equal(itemsData.playlist.title, 'Elul & Teshuvah Essentials', 'Playlist title should match');
   assert.ok(Array.isArray(itemsData.items) && itemsData.items.length > 0, 'Playlist must contain items array');
+  assert.ok(itemsData.items[0].duration, 'Preview items must have duration');
+  assert.ok(itemsData.items[0].date, 'Preview items must have date');
   assert.ok(html.includes('plPreviewCache'), 'Client-side playlist preview cache defined');
+  assert.ok(html.includes("metaBits.push('⏱ ' + escapeHtml(dur))"), 'Preview renderer formats duration with stopwatch');
+  assert.ok(html.includes('metaBits.push(escapeHtml(dt))'), 'Preview renderer formats relative date');
 
   console.log('  ✅ Public playlist save choice modal, live-sync subscription, segmented controls, sorting, items API & preview verified.');
 }
