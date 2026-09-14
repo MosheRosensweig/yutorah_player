@@ -1202,7 +1202,7 @@ async function testDafHub() {
   assert.ok(workerSrc.includes('saveDafHandoff(!audio.paused)') && workerSrc.includes('sessionStorage'), 'Regular player must persist the Daf handoff state');
   assert.ok(workerSrc.includes('saveDafHandoff(!audio.paused)') && workerSrc.includes('id="returnToDafBtn"'), 'Normal player must persist handoff and expose Return to Daf');
   assert.ok(!html.includes('id="dafShiurimLink" href="#" target="_blank"'), 'Daf Shiurim must stay in the same tab');
-  assert.ok(workerSrc.includes('id="miniDafBtn"') && workerSrc.includes('currentDafRef') && !workerSrc.includes("miniDafBtn.href = '/daf?m=' + encodeURIComponent(currentDafRef.m) + '&d=' + encodeURIComponent(String(currentDafRef.d)) + '&shiurId'"), 'Regular miniplayer must expose the Daf action without a second audio player handoff');
+  assert.ok(!workerSrc.includes('id="miniDafBtn"'), 'Mini player must not render a daf button');
   assert.ok(workerSrc.includes('currentDafRef = dafMatch || inheritedDafRef') && workerSrc.includes('let inheritedDafRef = null;') && workerSrc.includes('hasValidRef'), 'Daf Shiurim selections must retain the originating Daf when metadata is incomplete without leaking it to unrelated shiurim');
   assert.ok(workerSrc.includes('const DAF_CYCLE_DAYS = 2711'), 'cycle must be 2711 dafim');
   assert.ok(workerSrc.includes('Date.UTC(2019, 11, 28)'), 'anchor must be 2019-12-28 (Berachos 2)');

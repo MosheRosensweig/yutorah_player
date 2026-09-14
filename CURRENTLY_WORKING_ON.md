@@ -1,10 +1,10 @@
 # Currently Working On — Living Status & Activity Log
 
 Living status doc & audit log — updated on every milestone and user request.  
-Last updated: **2026-09-14, 16:28 ET**  
+Last updated: **2026-09-14, 16:30 ET**  
 Current branch: `feat/auth-d1` (synchronized with `main`)  
-Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev) (`fe7f8c5c`)  
-Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://yutorah-player.mrosensweig.workers.dev) (`858e5490`)  
+Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev) (`e2f7f305`)  
+Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://yutorah-player.mrosensweig.workers.dev) (`0b723050`)  
 Tests: **5/5 test suites passing (100% green, 27/27 basic functionality checks)**  
 Production status: **DEPLOYED & VERIFIED (HTTP 200 on both Dev & Prod)**
 

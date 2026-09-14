@@ -12886,7 +12886,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         </svg>
       </button>
       <button type="button" class="mini-btn expand-btn" onclick="expandPlayer(); event.stopPropagation();" title="Expand Full Player">⤢</button>
-      <a class="mini-btn" id="miniDafBtn" href="#" onclick="event.stopPropagation();" title="Open Daf" style="display:none; text-decoration:none;">📜</a>
       <button type="button" class="mini-btn queue-btn acct-only" onclick="toggleQueuePopup(); event.stopPropagation();" title="Play Queue (Dev)">☰</button>
       <button type="button" class="mini-btn close-btn" onclick="closeMiniPlayer(); event.stopPropagation();" title="Stop & Close">✕</button>
     </div>
@@ -13351,7 +13350,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   function updateDafActions() {
     const dafBtn = document.getElementById('dafOpenBtn');
-    const miniDafBtn = document.getElementById('miniDafBtn');
     const hasValidRef = Boolean(currentDafRef && currentDafRef.m && Number.isFinite(Number(currentDafRef.d)));
     const href = hasValidRef
       ? '/daf?m=' + encodeURIComponent(currentDafRef.m) + '&d=' + encodeURIComponent(String(currentDafRef.d))
@@ -13360,10 +13358,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (dafBtn) {
       dafBtn.href = href;
       dafBtn.style.display = visible ? 'inline-flex' : 'none';
-    }
-    if (miniDafBtn) {
-      miniDafBtn.href = href;
-      miniDafBtn.style.display = visible ? 'inline-flex' : 'none';
     }
   }
 
@@ -13939,7 +13933,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const miniSpeaker = document.getElementById('miniSpeaker');
     const miniThumb = document.getElementById('miniThumb');
     const miniTime = document.getElementById('miniTime');
-    const miniDafBtn = document.getElementById('miniDafBtn');
     if (miniTitle) miniTitle.textContent = shiurObj.title;
     if (miniSpeaker) miniSpeaker.textContent = (shiurObj.speaker ? shiurObj.speaker + ' · ' : '') + "🎙️ Playing Sponsor Dedication";
     if (miniThumb) {
