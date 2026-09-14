@@ -114,7 +114,7 @@
 - **Progress + completion** — Per-shiur position heartbeat, resume prompts, completion states.
 - **PWA install** — Manifest + Service Worker (offline shell; audio/API bypass cache), authentic centered shield icons.
 - **Install App menu item** — Settings dropdown offers install only when not installed; deferred prompt or manual hint.
-- **Secret gestures** — 7 taps on the date badge toggles Dev Mode; 3 taps on the holiday apple toggles pre-roll; full-width taps never shrink.
+- **Secret gestures** — 7 taps on the date badge toggles Dev Mode; 10 taps on the holiday apple toggles pre-roll; full-width taps never shrink.
 - **Article reader** — Liquid Mode reflow, drop caps, footnotes, source sheets without pausing audio.
 - **Change Log** — In-app newest-first list of every shipped change.
 - **Edge performance** — Cloudflare Workers global edge, 5-min collection cache, CORS-safe APIs.

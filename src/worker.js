@@ -13606,7 +13606,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   // Secret taps:
   //   Hebrew date badge: 7 taps = toggle Dev Mode on/off (symmetric).
-  //   Holiday motif apple: 3 taps = toggle pre-roll enable/disable.
+  //   Holiday motif apple: 10 taps = toggle pre-roll enable/disable.
   // (Typing "dev mode" / "exit dev mode" in search still works too.)
   let calendarClickCount = 0;
   let calendarClickTimer = null;
@@ -13680,8 +13680,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     calendarClickCount++;
     clearTimeout(calendarClickTimer);
 
-    if (calendarClickCount === 3) {
-      // 3 taps: toggle pre-roll enable/disable
+    if (calendarClickCount === 10) {
+      // 10 taps: toggle pre-roll enable/disable
       togglePreRoll();
       calendarClickCount = 0;
       calendarClickTimer = setTimeout(() => {
@@ -23163,7 +23163,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       motifWrap.dataset.titleEn = titleEn;
       motifWrap.dataset.titleHe = titleHe;
       motifTitle.textContent = titleEn;
-      motifWrap.title = variantData.title + ' (Tap 3 times to toggle pre-roll)';
+      motifWrap.title = variantData.title + ' (Tap 10 times to toggle pre-roll)';
     }
 
     // Toggle Purim Inverted Header Mode
