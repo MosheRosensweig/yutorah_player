@@ -924,13 +924,34 @@ async function testZmanimIconShrinkAndSpacePreservation() {
   assert.ok(html.includes('.holiday-motif-wrap.icon-only'), 'CSS must define .holiday-motif-wrap.icon-only');
   assert.ok(html.includes('.holiday-motif-wrap.icon-only:not(.expanded) .holiday-motif-title'), 'CSS must hide title in icon-only mode when not expanded');
 
-  // 3. CSS contains #holidayMotifWrap.expanded floating popover rules with high specificity
-  assert.ok(html.includes('#holidayMotifWrap.expanded #holidayMotifTitle'), 'CSS must include #holidayMotifWrap.expanded #holidayMotifTitle with high specificity');
+  // 3. CSS contains #holidayMotifWrap popover rules scoped to icon-only
+  // (full-width motif keeps its inline title; tapping it must not shrink it)
+  assert.ok(html.includes('#holidayMotifWrap.icon-only.expanded #holidayMotifTitle'), 'CSS must scope popover to #holidayMotifWrap.icon-only.expanded');
+  assert.ok(!html.includes('.holiday-motif-wrap.expanded .holiday-motif-title,'), 'unscoped expanded popover rule must be gone');
+  assert.ok(!html.includes('.holiday-motif-wrap.expanded .holiday-motif-title::before,'), 'unscoped ::before popover rule must be gone');
+  assert.ok(!html.includes('.holiday-motif-wrap.expanded .holiday-motif-title::after,'), 'unscoped ::after popover rule must be gone');
   assert.ok(html.includes('animation: motifBadgePop'), 'Expanded popover must have motifBadgePop animation');
   assert.ok(html.includes('id="holidayMotifWrap"') && html.includes('aria-expanded="false"'), 'Holiday motif badge must support aria-expanded state');
 
-  // 4. toggleHolidayMotifExpand handles toggle and temporary expansion
+  // 4. toggleHolidayMotifExpand handles toggle and temporary expansion,
+  // but is a no-op for full-width motifs (tap must not shrink them)
   assert.ok(html.includes('toggleHolidayMotifExpand()'), 'Client JS must define toggleHolidayMotifExpand()');
+  assert.ok(html.includes("if (!wrap.classList.contains('icon-only')) return;"), 'expand toggle must no-op when motif is full-width');
+  // 4b. 7-tap dev-mode toggle on the date badge; pre-roll stays motif-only
+  assert.ok(html.includes('function handleDevModeSecretTap(e)'), 'dev-mode secret tap handler must exist');
+  assert.ok(html.includes('devTapCount >= 7'), 'dev-mode toggle must require 7 taps');
+  assert.ok(html.includes('onclick="handleDevModeSecretTap(event)"'), 'date badge must use the dev-mode tap handler');
+  // 4c. Install-as-app plumbing: prompt capture, installed check, menu item
+  assert.ok(html.includes("window.addEventListener('beforeinstallprompt'"), 'deferred install prompt must be captured');
+  assert.ok(html.includes('function isPwaInstalled()'), 'installed check must exist');
+  assert.ok(html.includes('display-mode: standalone'), 'installed check must cover standalone display mode');
+  assert.ok(html.includes('function promptInstallApp()'), 'install prompt handler must exist');
+  assert.ok(html.includes('Install App</span></button>'), 'settings menu must offer Install App');
+  // 4d. Date badge icon/text buffer
+  const badgeCssIdx = html.indexOf('.hebrew-date-badge {');
+  assert.ok(badgeCssIdx !== -1, 'badge CSS must exist');
+  assert.ok(html.indexOf('gap: 6px;', badgeCssIdx) !== -1 && html.indexOf('gap: 6px;', badgeCssIdx) < badgeCssIdx + 800,
+    'badge CSS must buffer icon from date text');
   assert.ok(html.includes("wrap.classList.contains('expanded')"), 'toggleHolidayMotifExpand must toggle expanded state');
   assert.ok(html.includes('4000'), 'toggleHolidayMotifExpand must have 4000ms duration timer');
 

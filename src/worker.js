@@ -5533,6 +5533,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       border-radius: 20px;
       white-space: nowrap;
       flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      /* Buffer between the 📅 icon and the date text. */
+      gap: 6px;
       cursor: pointer;
       user-select: none;
       -webkit-user-select: none;
@@ -6293,9 +6297,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     .holiday-motif-wrap.icon-only:not(.expanded) .holiday-motif-title {
       display: none;
     }
-    /* Floating popover tap effect when expanded in icon-only state */
-    .holiday-motif-wrap.expanded .holiday-motif-title,
-    #holidayMotifWrap.expanded #holidayMotifTitle {
+    /* Floating popover tap effect when expanded in icon-only state.
+       Scoped to .icon-only: a full-width motif keeps its inline title —
+       tapping it must not yank the title into a popover (no shrink). */
+    .holiday-motif-wrap.icon-only.expanded .holiday-motif-title,
+    #holidayMotifWrap.icon-only.expanded #holidayMotifTitle {
       display: block !important;
       position: absolute;
       top: calc(100% + 8px);
@@ -6314,8 +6320,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       pointer-events: none;
       animation: motifBadgePop 0.18s cubic-bezier(0.16, 1, 0.3, 1);
     }
-    .holiday-motif-wrap.expanded .holiday-motif-title::before,
-    #holidayMotifWrap.expanded #holidayMotifTitle::before {
+    .holiday-motif-wrap.icon-only.expanded .holiday-motif-title::before,
+    #holidayMotifWrap.icon-only.expanded #holidayMotifTitle::before {
       content: '';
       position: absolute;
       top: -6px;
@@ -6325,8 +6331,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       border-right: 6px solid transparent;
       border-bottom: 6px solid var(--border-light, rgba(255, 255, 255, 0.25));
     }
-    .holiday-motif-wrap.expanded .holiday-motif-title::after,
-    #holidayMotifWrap.expanded #holidayMotifTitle::after {
+    .holiday-motif-wrap.icon-only.expanded .holiday-motif-title::after,
+    #holidayMotifWrap.icon-only.expanded #holidayMotifTitle::after {
       content: '';
       position: absolute;
       top: -4.5px;
@@ -10833,7 +10839,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       </div>
       <button type="button" id="themeToggleBtn" class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Dark / Light Mode">${themeMode === 'light' ? '🌙' : '☀️'}</button>
       <a href="https://www.givecampus.com/campaigns/50770/donations/new" target="_blank" rel="noopener noreferrer" class="support-yutorah-btn" title="Support YUTorah & Sponsor Learning (Opens in new window)">❤️ Support YUTorah</a>
-      <div class="hebrew-date-badge" id="hebrewDateBadge" onclick="handleCalendarSecretClick(event)" tabindex="0" role="button" aria-label="Hebrew Calendar Date" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();handleCalendarSecretClick(event);}" title="Hebrew Calendar Date">📅<span class="hebrew-date-text">${escapeHtml(homepageData?.hebrewDateString || 'Calendar')}</span></div>
+      <div class="hebrew-date-badge" id="hebrewDateBadge" onclick="handleDevModeSecretTap(event)" tabindex="0" role="button" aria-label="Hebrew Calendar Date" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();handleDevModeSecretTap(event);}" title="Hebrew Calendar Date">📅<span class="hebrew-date-text">${escapeHtml(homepageData?.hebrewDateString || 'Calendar')}</span></div>
       <div id="authMenu" class="auth-menu" style="display: none;" role="menu" aria-label="Account"></div>
     </div>
     <div class="header-right">
@@ -11973,8 +11979,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
   }
 
-  // Developer Mode: the ONLY way in is typing "dev mode" (case-insensitive)
-  // in the search box. There is no tap gesture for dev mode.
+  // Developer Mode: type "dev mode" (case-insensitive) in the search box,
+  // or tap the Hebrew date badge 7 times (7 taps toggles either way).
   let isDevMode = false;
   // Elements revealed by activateDevMode (re-hidden by deactivateDevMode).
   var devRevealedSettings = [];
@@ -12125,18 +12131,49 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     return true;
   }
 
-  // Secret taps on Calendar Icon / Holiday Motif:
-  //   3 taps = toggle pre-roll enable/disable (always works)
-  // (Dev Mode is NOT available via taps — type "dev mode" in search instead.)
+  // Secret taps:
+  //   Hebrew date badge: 7 taps = toggle Dev Mode on/off (symmetric).
+  //   Holiday motif apple: 3 taps = toggle pre-roll enable/disable.
+  // (Typing "dev mode" / "exit dev mode" in search still works too.)
   let calendarClickCount = 0;
   let calendarClickTimer = null;
   let toastTimer = null;
+  let devTapCount = 0;
+  let devTapTimer = null;
+  function handleDevModeSecretTap(e) {
+    if (e) {
+      e.stopPropagation();
+    }
+    devTapCount++;
+    clearTimeout(devTapTimer);
+    if (devTapCount >= 7) {
+      devTapCount = 0;
+      if (isDevMode) {
+        deactivateDevMode();
+        flashToast('👋 Dev Mode Off', false, false);
+      } else {
+        activateDevMode();
+        flashToast('🛠️ Dev Mode Unlocked!', false, true);
+      }
+      // Taps from inside the open settings menu would otherwise leave it
+      // stale (Dev items appear only on next open) — close so reopen is fresh.
+      try { if (typeof closeAuthMenu === 'function') closeAuthMenu(); } catch (e) {}
+    } else {
+      // Not there yet; reset counter after 2s of inactivity
+      devTapTimer = setTimeout(() => {
+        devTapCount = 0;
+      }, 2000);
+    }
+  }
 
   let motifExpandTimer = null;
   function toggleHolidayMotifExpand() {
     try {
       const wrap = document.getElementById('holidayMotifWrap');
       if (!wrap) return;
+      // Full-width motif has nothing to expand: tapping it is a no-op
+      // (the popover exists only for the apple-only state).
+      if (!wrap.classList.contains('icon-only')) return;
       if (wrap.classList.contains('expanded')) {
         wrap.classList.remove('expanded');
         wrap.setAttribute('aria-expanded', 'false');
@@ -14519,6 +14556,43 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         }
       }
     });
+  }
+
+  // Deferred PWA install prompt (captured for the settings-menu item).
+  let deferredInstallPrompt = null;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    try { e.preventDefault(); } catch (err) {}
+    deferredInstallPrompt = e;
+  });
+  window.addEventListener('appinstalled', () => {
+    deferredInstallPrompt = null;
+  });
+  function isPwaInstalled() {
+    try {
+      if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return true;
+      if (window.navigator && window.navigator.standalone === true) return true;
+    } catch (e) {}
+    return false;
+  }
+  function promptInstallApp() {
+    try { if (typeof closeAuthMenu === 'function') closeAuthMenu(); } catch (e) {}
+    if (deferredInstallPrompt) {
+      const p = deferredInstallPrompt;
+      deferredInstallPrompt = null;
+      try {
+        p.prompt();
+        if (p.userChoice && typeof p.userChoice.then === 'function') {
+          p.userChoice.then(() => {}).catch(() => {});
+        }
+      } catch (e) {}
+      return;
+    }
+    // No browser install prompt available: point at the manual flow.
+    try {
+      const ua = window.navigator ? (window.navigator.userAgent || '') : '';
+      const isiOS = /iphone|ipad|ipod/i.test(ua) || (/macintosh/i.test(ua) && window.navigator.maxTouchPoints > 1);
+      flashToast(isiOS ? '📲 To install: Share → Add to Home Screen' : '📲 To install: browser menu → Install / Add to Home Screen', false, false);
+    } catch (e) {}
   }
 
   // Initialize listeners on DOMContentLoaded
@@ -19278,7 +19352,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         const calEl = document.getElementById('hebrewDateBadge');
         const calRaw = calEl ? (calEl.textContent || '') : '';
         const calText = calRaw.replace(/^📅\uFE0F?\s*/, '').trim();
-        if (calText) html += '<div class="settings-menu-item auth-cal-mobile" onclick="handleCalendarSecretClick(event);" title="Hebrew Calendar Date"><span class="menu-item-icon menu-cal-icon">📅</span> <span>' + escapeHtml(calText) + '</span></div>';
+        if (calText) html += '<div class="settings-menu-item auth-cal-mobile" onclick="handleDevModeSecretTap(event);" title="Hebrew Calendar Date"><span class="menu-item-icon menu-cal-icon">📅</span> <span>' + escapeHtml(calText) + '</span></div>';
+      } catch (e) {}
+      try {
+        if (typeof isPwaInstalled === 'function' && !isPwaInstalled()) {
+          html += '<button type="button" class="settings-menu-item" onclick="promptInstallApp();"><span class="menu-item-icon">📲</span> <span>Install App</span></button>';
+        }
       } catch (e) {}
       html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); handleAuthClick();"><span class="menu-item-icon">🚪</span> <span>Sign out</span></button>';
     } else {
@@ -19299,7 +19378,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         const calEl2 = document.getElementById('hebrewDateBadge');
         const calRaw2 = calEl2 ? (calEl2.textContent || '') : '';
         const calText2 = calRaw2.replace(/^📅\uFE0F?\s*/, '').trim();
-        if (calText2) html += '<div class="settings-menu-item auth-cal-mobile" onclick="handleCalendarSecretClick(event);" title="Hebrew Calendar Date"><span class="menu-item-icon menu-cal-icon">📅</span> <span>' + escapeHtml(calText2) + '</span></div>';
+        if (calText2) html += '<div class="settings-menu-item auth-cal-mobile" onclick="handleDevModeSecretTap(event);" title="Hebrew Calendar Date"><span class="menu-item-icon menu-cal-icon">📅</span> <span>' + escapeHtml(calText2) + '</span></div>';
+      } catch (e) {}
+      try {
+        if (typeof isPwaInstalled === 'function' && !isPwaInstalled()) {
+          html += '<button type="button" class="settings-menu-item" onclick="promptInstallApp();"><span class="menu-item-icon">📲</span> <span>Install App</span></button>';
+        }
       } catch (e) {}
     }
     if (isDevMode) {
@@ -20734,7 +20818,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       motifWrap.dataset.holiday = '1';
       motifIcon.innerHTML = '<img src="/assets/themes/' + variantData.icon + '" alt="icon" style="width:100%; height:100%; display:block;" onerror="this.style.display=&quot;none&quot;">';
       motifTitle.textContent = themeDef.badge || themeDef.name;
-      motifWrap.title = variantData.title + ' (Tap 7 times to toggle pre-roll)';
+      motifWrap.title = variantData.title + ' (Tap 3 times to toggle pre-roll)';
     }
 
     // Toggle Purim Inverted Header Mode
@@ -21655,6 +21739,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     if (motifOn && motif && headerClusterOverflows()) {
       motif.style.display = 'none';
+    }
+    // Wide motif has no popover: clear any lingering expanded state so a
+    // stale class can never resurface untappably later.
+    if (motif && motif.style.display !== 'none' && !motif.classList.contains('icon-only') && motif.classList.contains('expanded')) {
+      motif.classList.remove('expanded');
+      motif.setAttribute('aria-expanded', 'false');
     }
 
     // Refill (highest-priority-first): shrinkage above may have freed room
