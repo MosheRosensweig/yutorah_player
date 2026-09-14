@@ -132,7 +132,7 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 - **Automatic Stream Failover**:
   - Automatically fails over between `shiurim.yutorah.net` (Cloudflare R2) and `download.yutorah.org` if any network interruption occurs.
 - **Direct MP3 Download**:
-  - Dedicated **⬇️ Download MP3** button linking directly to the full audio file for offline listening.
+  - Dedicated **⬇️ Download** button linking directly to the full audio file for offline listening.
 - **Lecture Description**:
   - Displays the speaker's written lecture summary and overview below the player controls.
 
@@ -306,6 +306,7 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 - **Homepage integration**: selecting the Daf Yomi card from the Timely Study menu opens `/daf`, keeping the hub within the regular YUTorah Enhanced site navigation.
 - **Shiurim on this daf**: the 🎧 Shiurim button sits directly under **Today’s Daf** and opens a `?search=Masechta+Daf` results tab for related lectures. Entry via the 📖 Daf Hub quick chip; `themeMode` SSR + client toggle included; breakout-safe param embedding (`jsEmbed`).
 - **Daf-linked audio flow (dev)**: Daf is an in-app view inside the regular application shell, not a second HTML document. Daf search links stay in the same view and use the existing regular application's audio player and mini-player. Identifiable Daf shiurim expose an **📜 Open Daf** action in both the full and minimized regular players; that action swaps the view without creating a second audio element or Daf-specific mini-player. Detection uses explicit tractate/folio fields plus patterns in lecture title, description, series, keywords, and posted categories.
+- **Main player Daf action (dev)**: The main player action row shows a **📜 Daf** button only when the loaded playable shiur resolves to a tractate and folio (or is opened through a valid Daf handoff). YUTorah video-backed items are treated as playable media in this app and are eligible too; only true text/article/PDF items are excluded. The action stays hidden by default for ordinary shiurim, clears synchronously before each in-app track switch, deterministically parses tractate titles with or without the word “Daf” and normalizes `Baba Batra`/`Bava Batra` to canonical `Bava Basra`, recomputes independently on the new track, and opens the shared Daf view without interrupting playback.
 - **ℹ️ Shiurim-therein explainer** (companion, public playlists): info button beside the scope checkbox using the standard tooltip system; copy states the scope only widens results.
 
 ### 📄 Source Sheet button on audio shiurim

@@ -1,6 +1,10 @@
 {
   "entries": [
     {
+      "date": "2026-09-14T16:20:00-04:00",
+      "message": "Daf detection & action lifecycle fix: properly double-escape regexes in client-side detectDafReference, synchronize full and mini-player Daf actions across track switches, and normalize Baba Batra to Bava Basra."
+    },
+    {
       "date": "2026-09-14T10:40:00-04:00",
       "message": "Daf Yomi hub (/daf): tractate/folio selector, calendar nav over the verified 2,711-day cycle, OG-style tap-to-zoom daf viewer with bilingual Sefaria text and shiurim links."
     },

@@ -5202,9 +5202,10 @@ function extractDafReference(data) {
     }
   }
   const text = parts.join(' ').replace(/[״"']/g, ' ').replace(/\s+/g, ' ');
+  const dafText = text.replace(/\bBaba\s+Batra\b/gi, 'Bava Basra').replace(/\bBava\s+Batra\b/gi, 'Bava Basra');
   for (const [name] of DAF_MASECHTOT) {
     const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const match = new RegExp('(?:^|\\W)' + escaped + '\\s*(\\d{1,3})(?:\\s*([ab]))?(?:\\W|$)', 'i').exec(text);
+    const match = new RegExp('(?:^|\\W)' + escaped + '(?:\\s+daf\\s*|\\s+|\\s*[,.:\\-]\\s*)(\\d{1,3})(?:\\s*([ab]))?(?:\\W|$)', 'i').exec(dafText);
     if (match) return { m: name, d: parseInt(match[1], 10), amud: (match[2] || '').toLowerCase() };
   }
   return null;
@@ -12607,9 +12608,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
             📋 Copy Link @ Time
           </button>
           <a class="action-btn" id="dlBtn" href="${escapeHtml(downloadUrl || audioUrl)}" target="_blank" ${downloadUrl || audioUrl ? '' : 'style="display:none;"'}>
-            ⬇️ Download MP3
+            ⬇️ Download
           </a>
-          <a class="action-btn" id="dafOpenBtn" onclick="saveDafHandoff(!audio.paused);" href="${initialDafRef ? '/daf?m=' + encodeURIComponent(initialDafRef.m) + '&d=' + encodeURIComponent(String(initialDafRef.d)) : '#'}" ${initialDafRef ? '' : 'style="display:none;"'} title="Open this shiur's Daf">📜 Open Daf</a>
+          <a class="action-btn" id="dafOpenBtn" onclick="saveDafHandoff(!audio.paused); openDafView(event);" href="${initialDafRef ? '/daf?m=' + encodeURIComponent(initialDafRef.m) + '&d=' + encodeURIComponent(String(initialDafRef.d)) : '/daf'}" ${initialDafRef ? '' : 'style="display:none;"'} title="Open this shiur's Daf">📜 Daf</a>
           <button type="button" class="action-btn" id="sourceSheetBtn" onclick="openSourceSheetPicker()" style="display: none;" title="Open attached source sheet">
             📄 Source Sheet
           </button>
@@ -13348,6 +13349,24 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   let currentSpeakerName = ${jsEmbed(speaker || '')};
   let currentDafRef = ${jsEmbed(initialDafRef || null)};
 
+  function updateDafActions() {
+    const dafBtn = document.getElementById('dafOpenBtn');
+    const miniDafBtn = document.getElementById('miniDafBtn');
+    const hasValidRef = Boolean(currentDafRef && currentDafRef.m && Number.isFinite(Number(currentDafRef.d)));
+    const href = hasValidRef
+      ? '/daf?m=' + encodeURIComponent(currentDafRef.m) + '&d=' + encodeURIComponent(String(currentDafRef.d))
+      : '/daf';
+    const visible = hasValidRef && hasAudio && !isCurrentShiurArticle;
+    if (dafBtn) {
+      dafBtn.href = href;
+      dafBtn.style.display = visible ? 'inline-flex' : 'none';
+    }
+    if (miniDafBtn) {
+      miniDafBtn.href = href;
+      miniDafBtn.style.display = visible ? 'inline-flex' : 'none';
+    }
+  }
+
   function persistDafAudioState() {
     if (!currentShiurId || !currentDafRef || !audio) return;
     try {
@@ -14024,20 +14043,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (miniSpeaker) miniSpeaker.textContent = shiurObj.speaker;
     if (miniThumb) miniThumb.src = shiurObj.photo || 'https://cdnyutorah.cachefly.net/_images/roshei_yeshiva/_default.jpg';
     if (miniTime) miniTime.textContent = '0:00 / ' + (shiurObj.duration || '0:00');
-    if (miniDafBtn) {
-      if (currentDafRef) {
-        miniDafBtn.href = '/daf?m=' + encodeURIComponent(currentDafRef.m) + '&d=' + encodeURIComponent(String(currentDafRef.d));
-        miniDafBtn.style.display = 'inline-flex';
-      } else {
-        miniDafBtn.style.display = 'none';
-      }
-    }
 
     if ('mediaSession' in navigator) {
       updateMediaSession(shiurObj.title, shiurObj.speaker, shiurObj.photo);
     }
 
     hasAudio = true;
+    updateDafActions();
     initialTimeApplied = false;
     audio.src = shiurObj.audioSrc;
     if (currentPlaybackRate) {
@@ -17459,7 +17471,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         if (group && Array.isArray(group.categories)) group.categories.forEach(function(c) { add(c && (c.categoryName || c.name)); });
       });
     }
-    var text = bits.join(' ').replace(/[״"']/g, ' ').replace(/\s+/g, ' ');
+    var text = bits.join(' ').replace(/[״"']/g, ' ').replace(/\\s+/g, ' ');
+    text = text.replace(/\\bBaba\\s+Batra\\b/gi, 'Bava Basra').replace(/\\bBava\\s+Batra\\b/gi, 'Bava Basra');
     var aliases = [
       ['Berachos', 'Berachos'], ['Berachot', 'Berachos'], ['Brachos', 'Berachos'],
       ['Shabbos', 'Shabbos'], ['Shabbat', 'Shabbos'], ['Chulin', 'Chullin'],
@@ -17469,9 +17482,26 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       ['Keritot', 'Kerisos'], ['Horayot', 'Horayos']
     ];
     names = names.concat(aliases);
+    var lowerText = text.toLowerCase();
+    for (var ti = 0; ti < names.length; ti++) {
+      var needle = names[ti][0].toLowerCase();
+      var start = lowerText.indexOf(needle);
+      if (start < 0) continue;
+      var tail = text.slice(start + needle.length).trim();
+      if (tail.slice(0, 3).toLowerCase() === 'daf') tail = tail.slice(3).trim();
+      var digits = '';
+      for (var di = 0; di < tail.length && digits.length < 3; di++) {
+        var ch = tail.charAt(di);
+        if (ch < '0' || ch > '9') break;
+        digits += ch;
+      }
+      if (digits) return { m: names[ti][1], d: parseInt(digits, 10), amud: '' };
+    }
     for (var i = 0; i < names.length; i++) {
-      var escaped = names[i][0].replace(/[.*+?^\${}()|[\]\\]/g, '\\$&');
-      var re = new RegExp('(?:^|\\W)' + escaped + '(?:\\s+|\\s*[,.:\\-]\\s*)(\\d{1,3})(?:\\s*([ab])(?:\\b|$))?', 'i');
+      var escaped = names[i][0].replace(/[.*+?^${'$'}{}()|[\\]\\\\]/g, '\\\\$&');
+      // YUTorah's live lecture titles commonly use "Chullin Daf 137"
+      // rather than placing the folio immediately after the tractate.
+      var re = new RegExp('(?:^|\\\\W)' + escaped + '(?:\\\\s+daf\\\\s*|\\\\s+|\\\\s*[,.:\\\\-]\\\\s*)(\\\\d{1,3})(?:\\\\s*([ab])(?:\\\\b|$))?', 'i');
       var m = re.exec(text);
       if (m) return { m: names[i][1], d: parseInt(m[1], 10), amud: (m[2] || '').toLowerCase() };
     }
@@ -17518,7 +17548,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     currentShiurId = id;
     hasAudio = true;
     initialTimeApplied = false;
-    let inheritedDafRef = currentDafRef;
+    // Never let a previous track's Daf classification bleed into this one.
+    currentDafRef = null;
+    let inheritedDafRef = null;
+    updateDafActions();
 
     // Reset UI while loading
     document.getElementById('shiurTitle').textContent = 'Loading shiur #' + id + '...';
@@ -17567,6 +17600,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       const res = await fetch('/sidebar/lecturedata?shiurID=' + encodeURIComponent(id));
       if (!res.ok) throw new Error('API returned status ' + res.status);
       const data = await res.json();
+      // A fast second click can resolve before an earlier request. Never let
+      // that stale response overwrite the current track or its Daf action.
+      if (String(currentShiurId) !== String(id)) return;
 
       const title = data.shiurTitle || 'Untitled Shiur';
       const speaker = data.shiurTeacherFullName || (data.shiurTeachers && data.shiurTeachers[0] ? data.shiurTeachers[0].teacherFullName : 'YUTorah');
@@ -17648,15 +17684,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           }
         } catch (e) {}
       }
-      var dafBtn = document.getElementById('dafOpenBtn');
-      if (dafBtn) {
-        if (currentDafRef) {
-          dafBtn.href = '/daf?m=' + encodeURIComponent(currentDafRef.m) + '&d=' + encodeURIComponent(String(currentDafRef.d));
-          dafBtn.style.display = 'inline-flex';
-        } else {
-          dafBtn.style.display = 'none';
-        }
-      }
+      updateDafActions();
 
       const returnDafBtn = document.getElementById('returnToDafBtn');
       if (returnDafBtn) {
@@ -17685,6 +17713,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       const isArticle = mediaCategory === 'text' || mediaCategory === 'article' || /\\.pdf(\$|\\?)/i.test(audioSrc) || /\\.pdf(\$|\\?)/i.test(dlSrc);
       isCurrentShiurArticle = isArticle;
       currentArticlePdf = isArticle ? (audioSrc || dlSrc) : '';
+      updateDafActions();
 
       addRecentHistory({
         id: id,
@@ -17732,7 +17761,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         navBack.textContent = '← Browse Library While Listening';
       }
       if (dlBtn) {
-        dlBtn.innerHTML = '⬇️ Download MP3';
+        dlBtn.innerHTML = '⬇️ Download';
       }
 
       // Check if URL or localStorage has a timestamp for this shiur
