@@ -1,6 +1,10 @@
 {
   "entries": [
     {
+      "date": "2026-09-14T08:35:00-04:00",
+      "message": "Public playlist publishing, deletion cascade, live-sync, and privacy lifecycle: deleting a playlist privately immediately deletes its public registry entry from D1; toggling public/private immediately updates pills and card badges; modifying, adding, or deleting shiurim in a public playlist auto-syncs the public snapshot and preview; backend supports 0-item snapshot updates; search queries bypass stale caching with no-cache; cloud sync merge preserves publicId and isPublic."
+    },
+    {
       "date": "2026-09-14T08:15:00-04:00",
       "message": "Public playlist Subscribe vs. Copy buttons with interactive explanation popovers, plus mobile docking clearance & safe-area padding: replaced the modal save button with direct '📡 Subscribe' and '📋 Copy' actions with (i) tooltips explaining live sync vs. personal cloning; added env(safe-area-inset-bottom) and dynamic --player-height clearance to protect compact mobile devices (<=375px) from player overlap."
     },

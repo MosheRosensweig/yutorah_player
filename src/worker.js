@@ -620,7 +620,11 @@ async function handleSyncRoutes(request, env, url) {
       }
       if (sort === 'saves') list.sort((a, b) => (b.saves - a.saves) || (b.updatedAt - a.updatedAt));
       return new Response(JSON.stringify({ playlists: list.slice(offset, offset + limit), total: list.length }), {
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'public, max-age=60' }
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'no-cache, no-store, must-revalidate'
+        }
       });
     }
     return new Response(JSON.stringify({ error: 'method not allowed' }), {
@@ -851,7 +855,8 @@ async function handleSyncRoutes(request, env, url) {
     if (url.pathname === '/api/playlists/publish' && request.method === 'POST') {
       const pl = (pbody && pbody.playlist) || {};
       const rawItems = Array.isArray(pl.items) ? pl.items.filter(x => x && x.id) : [];
-      if (rawItems.length === 0) {
+      let pid = String((pbody && pbody.publicId) || '');
+      if (rawItems.length === 0 && !pid) {
         return new Response(JSON.stringify({ error: 'empty playlist' }), {
           status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
         });
@@ -881,7 +886,6 @@ async function handleSyncRoutes(request, env, url) {
       const isDev = (puser.id === 'dev' || request.headers.get('x-dev-mode') === '1');
       const authorPseudonym = (isDev && pbody.author) ? String(pbody.author).trim().slice(0, 40) : null;
       const ownerName = authorPseudonym || String(puser.name || 'Anonymous').slice(0, 40);
-      let pid = String((pbody && pbody.publicId) || '');
       if (pid) {
         const owned = await db.prepare('SELECT owner_id FROM public_playlists WHERE id = ?').bind(pid).first();
         if (!owned || (owned.owner_id !== puser.id && !isDev)) {
@@ -934,7 +938,9 @@ async function handleSyncRoutes(request, env, url) {
               'shiur', '[]'));
         }
       }
-      await db.batch(batch);
+      if (batch.length > 0) {
+        await db.batch(batch);
+      }
       return new Response(JSON.stringify({ id: pid }), {
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
       });
@@ -943,8 +949,9 @@ async function handleSyncRoutes(request, env, url) {
     // POST /api/playlists/unpublish { id } (owner only; also drops saves).
     if (url.pathname === '/api/playlists/unpublish' && request.method === 'POST') {
       const pid = String((pbody && pbody.id) || '');
+      const isDev = (puser.id === 'dev' || request.headers.get('x-dev-mode') === '1');
       const row = await db.prepare('SELECT owner_id FROM public_playlists WHERE id = ?').bind(pid).first();
-      if (!row || row.owner_id !== puser.id) {
+      if (!row || (row.owner_id !== puser.id && !isDev)) {
         return new Response(JSON.stringify({ error: 'not found' }), {
           status: 404, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
         });
@@ -9675,6 +9682,34 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       color: #fff;
       border-color: #38bdf8;
     }
+    .playlist-pill.public-pill {
+      border-color: #2b4c7e;
+      background: rgba(43, 76, 126, 0.07);
+      color: var(--primary);
+    }
+    .playlist-pill.public-pill:hover {
+      border-color: #1e365b;
+      color: #1e365b;
+    }
+    .playlist-pill.public-pill.active {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+    }
+    [data-theme="dark"] .playlist-pill.public-pill {
+      border-color: #3b82f6;
+      background: rgba(59, 130, 246, 0.12);
+      color: #93c5fd;
+    }
+    [data-theme="dark"] .playlist-pill.public-pill:hover {
+      border-color: #60a5fa;
+      color: #bfdbfe;
+    }
+    [data-theme="dark"] .playlist-pill.public-pill.active {
+      background: #2563eb;
+      color: #fff;
+      border-color: #60a5fa;
+    }
     .playlist-sub-badge {
       background: rgba(56, 189, 248, 0.15) !important;
       color: #0369a1 !important;
@@ -16969,6 +17004,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       return true;
     }
     saveDevStore(store);
+    if (pl && pl.publicId && pl.isPublic !== false) {
+      if (typeof plSyncIfPublic === 'function') plSyncIfPublic(pl);
+    }
     return true;
   }
 
@@ -17372,6 +17410,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         }
         pl.items = pl.items.filter(item => String(item.id) !== String(id));
         saveDevStore(store);
+        if (pl.publicId && pl.isPublic !== false) {
+          if (typeof plSyncIfPublic === 'function') plSyncIfPublic(pl);
+        }
       }
       try {
         if (typeof cloudPush === 'function' && cloudEnabled()) {
@@ -17943,10 +17984,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         if (!p) return '';
         const n = (p.items || []).length;
         const isSub = !!p.isSubscription;
+        const isPublic = !isSub && Boolean(p.publicId && p.isPublic !== false);
         const icon = isSub ? '📡' : (p.icon || '📁');
-        const cls = 'playlist-pill' + (isSub ? ' subscription-pill' : '') + (pid === activePid ? ' active' : '');
-        return '<button type="button" class="' + cls + '" onclick="devSelectPlaylist(&quot;' + escapeHtml(pid) + '&quot;);">' +
-          escapeHtml(icon) + ' ' + escapeHtml(p.name) + ' (' + n + ')</button>';
+        const cls = 'playlist-pill' + (isSub ? ' subscription-pill' : (isPublic ? ' public-pill' : '')) + (pid === activePid ? ' active' : '');
+        const pubIndicator = isPublic ? ' <span role="img" aria-label="Public" style="font-size:11px; opacity:0.85;" title="Public playlist">🌍</span>' : '';
+        return '<button type="button" class="' + cls + '" aria-pressed="' + (pid === activePid ? 'true' : 'false') + '" onclick="devSelectPlaylist(&quot;' + escapeHtml(pid) + '&quot;);">' +
+          escapeHtml(icon) + ' ' + escapeHtml(p.name) + pubIndicator + ' (' + n + ')</button>';
       }).join('');
     }
 
@@ -18437,6 +18480,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const moved = pl.items.splice(fromIdx, 1)[0];
     pl.items.splice(toIdx, 0, moved);
     saveDevStore(store);
+    if (pl && pl.publicId && pl.isPublic !== false) {
+      if (typeof plSyncIfPublic === 'function') plSyncIfPublic(pl);
+    }
     renderPlaylistsGrid();
   }
   window.devReorderPlaylistItem = devReorderPlaylistItem;
@@ -18561,9 +18607,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           setTimeout(() => devSyncSubscribedPlaylist(pl.id, false), 100);
         }
       } else {
-        const visTag = pl.publicId
-          ? '<span class="active-filter-pill">🌍 Public</span>'
-          : '<span class="active-filter-pill">🔒 Private</span>';
+        const isPublic = Boolean(pl.publicId && pl.isPublic !== false);
+        const visTag = isPublic
+          ? '<span class="active-filter-pill" style="background:rgba(43,76,126,0.12); color:var(--primary); border-color:var(--primary);">🌍 Public</span>'
+          : '<span class="active-filter-pill" style="background:rgba(100,116,139,0.12); color:var(--text-muted); border-color:var(--border);">🔒 Private</span>';
         html += '<div style="grid-column:1/-1; margin-bottom:4px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">' + visTag;
         const pTags = pl.tags && typeof pl.tags === 'object' ? pl.tags : null;
         const tagBits = pTags ? []
@@ -18584,10 +18631,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           '<button type="button" class="card-mini-btn" onclick="devSharePlaylist(&quot;' + escapeHtml(pl.id) + '&quot;)" title="Share playlist link">📋 Share</button>' +
           '<button type="button" class="card-mini-btn" onclick="devExportPlaylist()">Export JSON</button>' +
           '<button type="button" class="card-mini-btn" onclick="openPlaylistDetailsModal()">📝 Details & Tags</button>';
-        if (pl.publicId) {
-          html += '<button type="button" class="card-mini-btn" onclick="plUnpublishCurrent()">Unpublish</button>';
+        if (isPublic) {
+          html += '<button type="button" class="card-mini-btn" onclick="plUnpublishCurrent()" title="Remove from public search and make private">🔒 Unpublish</button>';
         } else {
-          html += '<button type="button" class="card-mini-btn" onclick="plPublishCurrent(true)">🌍 Publish</button>';
+          html += '<button type="button" class="card-mini-btn" onclick="plPublishCurrent(true)" title="Publish to public search and listings">🌍 Publish</button>';
         }
         html += '<button type="button" class="card-mini-btn" onclick="devDeletePlaylist()">Delete Playlist</button></div>';
       }
@@ -18925,12 +18972,42 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       const res = await fetch('/api/playlists/mine');
       if (!res.ok) return [];
       const data = await res.json();
-      plMineCache = { at: Date.now(), list: data.playlists || [] };
+      const list = data.playlists || [];
+      plMineCache = { at: Date.now(), list };
+      plReconcileMineState(list);
       return plMineCache.list;
     } catch (e) {
       return [];
     }
   }
+
+  function plReconcileMineState(serverLists) {
+    if (!Array.isArray(serverLists) || serverLists.length === 0) return;
+    try {
+      const store = getDevStore();
+      let changed = false;
+      for (const sp of serverLists) {
+        if (!sp || !sp.id || !sp.title) continue;
+        for (const pid in store.custom || {}) {
+          const lp = store.custom[pid];
+          if (!lp || lp.isSubscription) continue;
+          if (String(lp.name || '').trim().toLowerCase() === String(sp.title).trim().toLowerCase()) {
+            if (lp.publicId !== sp.id || lp.isPublic !== Boolean(sp.isPublic)) {
+              lp.publicId = sp.id;
+              lp.isPublic = Boolean(sp.isPublic);
+              if (sp.description && !lp.description) lp.description = sp.description;
+              changed = true;
+            }
+          }
+        }
+      }
+      if (changed) {
+        saveDevStore(store);
+        renderPlaylistsGrid();
+      }
+    } catch (e) {}
+  }
+  window.plReconcileMineState = plReconcileMineState;
 
   function plFindMine(customName) {
     return (plMineCache.list || []).filter(p =>
@@ -19443,6 +19520,32 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
   window.devEditPublicPlaylist = devEditPublicPlaylist;
 
+  async function plSyncIfPublic(pl) {
+    if (!pl || !pl.publicId || pl.isPublic === false) return;
+    if (!cloudEnabled() && !isDevMode) return;
+    try {
+      if (typeof plPreviewCache !== 'undefined' && plPreviewCache[pl.publicId]) {
+        delete plPreviewCache[pl.publicId];
+      }
+      const headers = { 'Content-Type': 'application/json' };
+      if (isDevMode) headers['X-Dev-Mode'] = '1';
+      await fetch('/api/playlists/publish', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          public: true,
+          publicId: pl.publicId,
+          title: pl.name,
+          description: pl.description || '',
+          tags: pl.tags || { teachers: [], venues: [], topics: [] },
+          playlist: { name: pl.name, items: pl.items || [] }
+        })
+      });
+      plMineCache.at = 0;
+    } catch (e) {}
+  }
+  window.plSyncIfPublic = plSyncIfPublic;
+
   async function plPublishCurrent(makePublic) {
     if (!cloudEnabled() && !isDevMode) {
       flashToast('🔑 Log in to publish playlists', true, false);
@@ -19474,6 +19577,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       pl.publicId = data.id;
       pl.isPublic = makePublic !== false;
       saveDevStore(store);
+      if (typeof plPreviewCache !== 'undefined' && plPreviewCache[pl.publicId]) {
+        delete plPreviewCache[pl.publicId];
+      }
       plMineCache.at = 0;
       renderPlaylistsGrid();
       flashToast(makePublic !== false ? '🌍 Published' : '🔒 Saved as private', false, false);
@@ -19491,20 +19597,25 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       body: 'Remove "' + pl.name + '" from public listings? Your local copy stays.',
       confirmLabel: 'Unpublish',
       onConfirm: async () => {
+        const pubId = pl.publicId;
         try {
           const headers = { 'Content-Type': 'application/json' };
           if (isDevMode) headers['X-Dev-Mode'] = '1';
           await fetch('/api/playlists/unpublish', {
             method: 'POST',
             headers,
-            body: JSON.stringify({ id: pl.publicId })
+            body: JSON.stringify({ id: pubId })
           });
         } catch (e) {}
+        if (typeof plPreviewCache !== 'undefined' && plPreviewCache[pubId]) {
+          delete plPreviewCache[pubId];
+        }
         delete pl.publicId;
         pl.isPublic = false;
         saveDevStore(store);
         plMineCache.at = 0;
         renderPlaylistsGrid();
+        flashToast('🔒 Playlist is now private', false, false);
       }
     });
   }
@@ -20248,11 +20359,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           const pid = byName.get(name) || slugPid(name);
           if (isPlaylistDeletedTombstoned(pid)) continue;
           if (cloudDirty.playlists && !store.custom[pid]) continue;
-          const existing = store.custom[pid];
-          if (existing && existing.isSubscription) continue;
-          const prev = (store.custom[pid] && store.custom[pid].items) || [];
+          const existing = store.custom[pid] || {};
+          if (existing.isSubscription) continue;
+          const prev = existing.items || [];
           store.custom[pid] = {
-            id: pid, name, icon: icons[name] || '📁',
+            ...existing,
+            id: pid,
+            name,
+            icon: icons[name] || existing.icon || '📁',
             items: mergeItems(prev, items, pid, name)
           };
         }
@@ -20465,6 +20579,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         if (cloudUser && cloudUser.id !== 'dev' && typeof cleanDevSeedsFromUserAccount === 'function') {
           try { cleanDevSeedsFromUserAccount(); } catch (e) {}
         }
+        if (typeof plFetchMine === 'function') {
+          plFetchMine().catch(() => {});
+        }
         // Pending delete intents (e.g. unload flush failed): re-dirty so
         // they push on the debounce instead of waiting for the next edit.
         try {
@@ -20576,12 +20693,28 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       confirmLabel: '🗑️ Delete',
       onConfirm: () => {
         const s = getDevStore();
+        const pubId = pl.publicId;
         addPlaylistDeletedTombstone(pl.name);
         addPlaylistDeletedTombstone(activeDevPlaylistId);
         delete s.custom[activeDevPlaylistId];
         activeDevPlaylistId = 'history';
         saveDevStore(s);
         renderPlaylistsGrid();
+        if (pubId) {
+          if (typeof plPreviewCache !== 'undefined' && plPreviewCache[pubId]) {
+            delete plPreviewCache[pubId];
+          }
+          try {
+            const headers = { 'Content-Type': 'application/json' };
+            if (typeof isDevMode !== 'undefined' && isDevMode) headers['X-Dev-Mode'] = '1';
+            fetch('/api/playlists/unpublish', {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({ id: pubId })
+            }).catch(() => {});
+            if (typeof plMineCache !== 'undefined') plMineCache.at = 0;
+          } catch (e) {}
+        }
         try {
           if (typeof cloudPush === 'function' && cloudEnabled()) {
             clearTimeout(cloudSyncTimer);

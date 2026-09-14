@@ -15,6 +15,16 @@ Production status: **DEPLOYED & VERIFIED (HTTP 200 on both Dev & Prod)**
    - Only **AFTER** Dev is fully deployed, validated, and approved may the version be promoted to **Production** (`https://yutorah-player.mrosensweig.workers.dev` via `npx wrangler deploy`).
    - Dev and Prod must always remain strictly synchronized. Never push directly to Prod without the preceding Dev deployment.
 
+## 🎯 ACTIVE TASK: Public Playlist Publishing, Deletion, Privacy Toggle & Content Synchronization
+- **User Request**:
+  - Fix publishing and unpublishing lifecycle for public playlists:
+    1. **Immediate deletion of orphaned public listing**: Playlist called "amazing 🔥" (or any deleted playlist) that no longer exists privately must be removed from the public listing immediately. Public listings must strictly reflect private listings; the owner can delete any playlist at any time.
+    2. **Public / Private badge & indicator sync**: When a playlist is published, the user's private playlist tab and playlist card must display that it is Public (not remain tagged as Private). Toggling between public and private must update the tags/badges on the playlist card and inside the playlist detail view immediately.
+    3. **Search availability sync**: When toggled to public, it should be immediately searchable and available in public listings. When toggled to private, it must be removed from public listings/search immediately.
+    4. **Content edit sync**: When the owner modifies, adds, or deletes shiurim in a published playlist, the public search/listing and public playlist preview must reflect those changes immediately (including when all items are deleted, or items are removed).
+    5. **Documentation**: Write in detail in the feature document (`FEATURES.md` and related docs) how this is supposed to work.
+- **Status**: Implementation complete & all 5 test suites (25/25 checks) passing 100% green. Preparing for dual review and Dev-First deployment.
+
 ## 🎯 Completed Task: Settings Menu Icon & Calendar Date Vertical Alignment
 - **User Request**: In the settings menu, all the icons are aligned one on top of the other on the left-hand side except for the calendar date which was not aligned. Make the calendar date come into alignment with all the icons and push to both Dev and Production.
 - **Root Cause**:
@@ -91,6 +101,17 @@ Production status: **DEPLOYED & VERIFIED (HTTP 200 on both Dev & Prod)**
 ---
 
 ## 🕒 Chronological Activity Log
+
+### [2026-09-14 ET] — Public Playlist Publishing, Live-Sync, Deletion Cascade & Privacy Lifecycle
+- `[DONE]` **Immediate Deletion of Orphaned Listing**: Purged orphaned record for deleted playlist "Amazing" (`LmSKGxr0liD02-f1`) directly from remote Cloudflare D1 (`yutorah-db`).
+- `[DONE]` **Private Deletion Cascades to Public DB**: Updated `devDeletePlaylist()` so that if `pl.publicId` is present, it captures `pubId`, deletes local and tombstone references, and immediately issues a POST to `/api/playlists/unpublish` to permanently drop the entry from `public_playlists`, `public_playlist_items`, and `playlist_saves`. Invalidates `plPreviewCache` and `plMineCache`.
+- `[DONE]` **Real-Time Content & Preview Synchronization**: Implemented `plSyncIfPublic(pl)` and integrated it into `devDoRemove()`, `devSetMembership()`, and `devReorderPlaylistItem()`. Any changes made by the owner immediately push the snapshot to `/api/playlists/publish` and invalidate preview caches.
+- `[DONE]` **Zero-Item Snapshot Support**: Modified backend `/api/playlists/publish` to allow 0 items when updating an existing playlist (`pid` present), clearing the lecture list and setting `itemCount: 0`.
+- `[DONE]` **Public Badge on Custom Pills & Detail Views**: Added `.playlist-pill.public-pill` and `🌍` indicator on pills in "My Playlists & Subscriptions", with active `🌍 Public` / `🔒 Private` tags in playlist detail view.
+- `[DONE]` **Zero-Staleness Search Indexing**: Updated `/api/playlists/public` to `Cache-Control: no-cache, no-store, must-revalidate` so updates and unpublishing are reflected in public search without delay.
+- `[DONE]` **Cloud Sync Merge State Integrity**: Updated `adoptCloudState()` to spread and preserve `existing` properties (`publicId`, `isPublic`, `tags`, `description`, `icon`) on cloud sync merges. Wired `plFetchMine()` / `plReconcileMineState()` into `bootAuth()` to restore public state automatically.
+- `[DONE]` **Feature Documentation**: Documented §14 in `FEATURES.md` detailing the entire public playlist publishing, live-sync, deletion cascading, and privacy lifecycle.
+- `[DONE]` **Automated Testing**: Added Test #25 to `tests/basic_functionality.test.mjs`. All 5 test suites (25/25 basic functionality tests) pass 100% green.
 
 ### [2026-09-14 ET] — Mobile Docking Clearance & Public Playlist Subscribe vs Copy Buttons
 - `[DONE]` **Public Playlist Direct Actions**: Replaced the single save button with direct `📡 Subscribe` and `📋 Copy` buttons on public playlist cards.

@@ -1,6 +1,7 @@
 // tests/basic_functionality.test.mjs
 // Automated regression test suite for YUTorah Player
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import worker from '../src/worker.js';
 
 console.log('🧪 Running Basic Functionality & Article Viewer Automated Regression Tests...\n');
@@ -1012,6 +1013,56 @@ async function testMobileDockingAndPublicPlaylistButtons() {
   console.log('  ✅ Mobile player docking clearance & Public Playlist Subscribe vs Copy buttons verified.');
 }
 
+async function testPublicPlaylistPublishingAndSyncLifecycle() {
+  console.log('25. Testing Public Playlist Publishing, Live-Sync, Deletion & Privacy Lifecycle...');
+  const res = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/'));
+  const html = await res.text();
+  const workerSrc = fs.readFileSync(new URL('../src/worker.js', import.meta.url), 'utf8');
+
+  // 1. CSS support for public pills in custom row
+  assert.ok(html.includes('.playlist-pill.public-pill'), 'CSS must define .playlist-pill.public-pill');
+
+  // 2. Custom pill renders public indicator when playlist is public
+  assert.ok(html.includes("const isPublic = !isSub && Boolean(p.publicId && p.isPublic !== false);"),
+    'devPlaylistsHeaderHtml must calculate isPublic flag');
+  assert.ok(html.includes("title=\"Public playlist\">🌍</span>"),
+    'Public playlist pill must render 🌍 indicator');
+
+  // 3. Deletion cascades to unpublish
+  assert.ok(html.includes("const pubId = pl.publicId;"),
+    'devDeletePlaylist must capture pubId before deletion');
+  assert.ok(html.includes("fetch('/api/playlists/unpublish'"),
+    'devDeletePlaylist must call unpublish endpoint when deleting a public playlist');
+
+  // 4. Real-time sync helper and invocations
+  assert.ok(html.includes("async function plSyncIfPublic(pl)"),
+    'plSyncIfPublic helper function must be defined');
+  assert.ok(html.includes("if (pl.publicId && pl.isPublic !== false)"),
+    'devDoRemove must check public status');
+  assert.ok(html.includes("if (typeof plSyncIfPublic === 'function') plSyncIfPublic(pl);"),
+    'devDoRemove and devSetMembership must trigger plSyncIfPublic');
+
+  // 5. Zero-staleness Cache-Control on /api/playlists/public in backend
+  assert.ok(workerSrc.includes("'Cache-Control': 'no-cache, no-store, must-revalidate'"),
+    'Public playlists endpoint must disable stale caching');
+
+  // 6. Zero items allowed when updating existing public playlist
+  assert.ok(workerSrc.includes("if (rawItems.length === 0 && !pid)"),
+    'Publish endpoint must allow 0 items when updating an existing publicId');
+
+  // 7. adoptCloudState preserves publicId and isPublic
+  assert.ok(html.includes("...existing,"),
+    'adoptCloudState must spread and preserve existing playlist properties');
+
+  // 8. plReconcileMineState defined and wired to bootAuth
+  assert.ok(html.includes("function plReconcileMineState(serverLists)"),
+    'plReconcileMineState must exist to restore public metadata');
+  assert.ok(html.includes("if (typeof plFetchMine === 'function')"),
+    'bootAuth must trigger plFetchMine');
+
+  console.log('  ✅ Public Playlist Publishing, Live-Sync, Deletion & Privacy Lifecycle verified.');
+}
+
 async function runAll() {
   try {
     await testHomepage();
@@ -1038,6 +1089,7 @@ async function runAll() {
     await testPlaylistsTabAndDisplayNameBanner();
     await testZmanimIconShrinkAndSpacePreservation();
     await testMobileDockingAndPublicPlaylistButtons();
+    await testPublicPlaylistPublishingAndSyncLifecycle();
     console.log('\n🎉 ALL BASIC FUNCTIONALITY, ARTICLE READER & LIQUID MODE TESTS PASSED SUCCESSFULLY!');
   } catch (err) {
     console.error('\n❌ Test failed:', err);

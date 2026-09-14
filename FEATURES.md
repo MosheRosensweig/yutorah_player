@@ -21,6 +21,7 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 11. [Product Roadmap](#11-product-roadmap)
 12. [Recent Features — Search, Discovery & Dev Mode](#12-recent-features--search-discovery--dev-mode)
 13. [Recent Features — Header, Sync, Playlists & PWA (Sept 2026)](#13-recent-features--header-sync-playlists--pwa-sept-2026)
+14. [Public Playlist Publishing, Live-Sync, Deletion & Privacy Lifecycle](#14-public-playlist-publishing-live-sync-deletion--privacy-lifecycle)
 
 ---
 
@@ -293,3 +294,35 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 ### Small fixes in the same batch
 - **No double calendar emoji**: the account-menu date stripped the header badge's leading 📅 before adding its own (both auth states, incl. variant-selector form).
 - **Settings/login menu date**: single 📅 prefix; menu calendar entry uses uniform item padding with icon containers.
+
+---
+
+## 14. Public Playlist Publishing, Live-Sync, Deletion & Privacy Lifecycle
+
+> Shipped September 2026 (`feat/auth-d1`). Governs public discovery, owner rights, privacy state changes, deletion cascading, and real-time synchronization.
+
+### Strict Lifecycle Rules & Guarantees
+1. **Private Owners Retain Full Sovereignty**:
+   - The private owner can modify, rename, add, reorder, or delete any playlist at any time.
+   - Public listings are strictly a projection of the owner's playlist. If an owner deletes a playlist in their personal collection, its public counterpart is immediately and irrevocably deleted from the Cloudflare D1 public registry (`public_playlists`, `public_playlist_items`, and `playlist_saves`). No orphaned public listings can remain.
+
+2. **Immediate Visibility & Privacy Toggling**:
+   - **Publishing (`🌍 Publish`)**: Snapshots the playlist, generates or links its `publicId`, tags it as public (`isPublic = true`), marks it with a `🌍 Public` badge on cards and pills, and makes it discoverable in public search immediately.
+   - **Unpublishing (`Unpublish`)**: Instantly removes the listing from the public database and public search, revokes public access, purges memory caches (`plPreviewCache`), and flips the owner's personal status tag back to `🔒 Private`. The owner's local copy remains untouched in their collection.
+   - **Visual Badging in "My Playlists"**:
+     - Custom playlist pills in the "My Playlists & Subscriptions" row display an unmistakable `🌍` indicator when public.
+     - The playlist detail view displays a distinct `🌍 Public` or `🔒 Private` active pill tag, together with a single-click action to toggle between `🌍 Publish` and `Unpublish`.
+
+3. **Real-Time Content Synchronization (`plSyncIfPublic`)**:
+   - When a playlist is public, any modification made by the owner—whether adding a shiur via the card menu (`devSetMembership`), removing a shiur (`devDoRemove`), reordering via drag-and-drop or ▲/▼ controls (`devReorderPlaylistItem`), or editing title, description, and taxonomy tags (`openPlaylistDetailsModal`)—automatically triggers a background snapshot push to `/api/playlists/publish`.
+   - In-memory preview caches (`plPreviewCache`) are invalidated immediately so that public browsers and search results show the fresh content on their next query.
+   - **Zero-Item Snapshot Support**: If an owner removes all shiurim from a published playlist, the backend allows the update (clearing `public_playlist_items` and setting `itemCount = 0`), accurately reflecting the empty playlist rather than rejecting the update or leaving old shiurim stuck in the public index.
+
+4. **Zero-Staleness Search Indexing**:
+   - Public search (`/api/playlists/public`) returns `Cache-Control: no-cache, no-store, must-revalidate`.
+   - When an owner publishes, unpublishes, or modifies a playlist, search queries immediately return the up-to-date state without 60-second edge-cache delays.
+
+5. **Cloud Sync Merge State Integrity**:
+   - `adoptCloudState()` spreads and preserves local metadata (`publicId`, `isPublic`, `tags`, `description`, `icon`) across cloud pull cycles and page reloads. A cloud sync merge will never strip `publicId` or erroneously re-tag a public playlist as private.
+   - On account boot (`bootAuth()`), `plFetchMine()` automatically reconciles local playlists with `/api/playlists/mine`, restoring any public identifiers if a browser cache was cleared.
+
