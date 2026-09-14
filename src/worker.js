@@ -11235,7 +11235,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       </div>
       <div class="tab-bar">
         <button class="tab-btn active" id="tab-editors" onclick="switchCollection('editors')">⭐ Editor's Picks</button>
-        <button class="tab-btn dev-playlist-tab" id="tab-playlists" onclick="switchCollection('playlists')">🎧 My Playlists</button>
+        <button class="tab-btn dev-playlist-tab" id="tab-playlists" onclick="switchCollection('playlists')">🎧 Playlists</button>
         <button class="tab-btn dev-curated-tab" id="tab-dev-playlists" onclick="switchCollection('dev-playlists')" style="display: none;" aria-hidden="true">🛠️ Dev Playlists</button>
         <button class="tab-btn" id="tab-series" onclick="switchCollection('series')">📚 Featured Series</button>
         <button class="tab-btn" id="tab-recent" onclick="switchCollection('recent')">⏱️ Recently Uploaded</button>
@@ -16693,12 +16693,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (tab) {
         tab.style.display = '';
         tab.removeAttribute('aria-hidden');
-        const nm = accountDisplayName();
-        tab.textContent = '🎧 ' + (on && nm ? nm + '’s Playlists' : 'My Playlists');
+        tab.textContent = '🎧 Playlists';
       }
       if (typeof collectionTitles !== 'undefined' && collectionTitles) {
-        const nm2 = accountDisplayName();
-        collectionTitles.playlists = '🎧 ' + (on && nm2 ? nm2 + '’s Playlists' : 'My Playlists');
+        collectionTitles.playlists = '🎧 Playlists';
       }
       const devTab = document.getElementById('tab-dev-playlists');
       if (devTab) {
@@ -17118,6 +17116,22 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   function devPlaylistsHeaderHtml(store, activePid) {
     let h = devPlaylistSegmentedBarHtml(false);
+
+    let dispName = '';
+    try { dispName = (localStorage.getItem('yutorah_display_name') || '').trim(); } catch (e) {}
+    if (!dispName && typeof cloudUser !== 'undefined' && cloudUser && cloudUser.name) {
+      dispName = String(cloudUser.name).trim();
+    }
+    const hasName = Boolean(dispName);
+    const dispLabel = hasName ? escapeHtml(dispName) : '<span style="font-weight:normal; font-style:italic; color:var(--text-muted);">Not set</span>';
+
+    h += '<div class="playlist-author-banner" style="grid-column:1/-1; display:flex; align-items:center; justify-content:space-between; margin:-6px 0 14px; padding:8px 14px; background:var(--card); border:1px solid var(--border-light); border-radius:10px; font-size:13px;">' +
+      '<span style="display:inline-flex; align-items:center; gap:8px; color:var(--text); flex-wrap:wrap;">' +
+      '<span style="color:var(--text-muted); font-weight:500;">👤 Playlist Display Name:</span>' +
+      '<strong style="color:var(--primary); font-weight:700;">' + dispLabel + '</strong>' +
+      '</span>' +
+      '<button type="button" class="card-mini-btn" onclick="openDisplayNameModal()" style="font-size:12px; padding:3px 10px;" title="Change how your name appears on playlists and public shares">✏️ ' + (hasName ? 'Edit' : 'Set Name') + '</button>' +
+      '</div>';
 
     // Row 1: System Playlists (frozen top row)
     const histCount = getRecentHistory().length;
@@ -19205,6 +19219,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       }
       try { localStorage.setItem('yutorah_display_name', v); } catch (e) {}
       try { if (typeof renderAccountMode === 'function') renderAccountMode(); } catch (e) {}
+      try { if (typeof renderPlaylistsGrid === 'function') renderPlaylistsGrid(); } catch (e) {}
       overlay.remove();
       flashToast('✅ Display name saved', false, false);
     };
@@ -20183,7 +20198,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   const collections = ['editors', 'playlists', 'dev-playlists', 'series', 'recent', 'popular', 'viewed', 'parsha', 'daily', 'trending'];
   const collectionTitles = {
     editors: "⭐ Editor's Picks",
-    playlists: "🎧 My Playlists",
+    playlists: "🎧 Playlists",
     'dev-playlists': "🛠️ Dev Playlists",
     series: "📚 Featured Series",
     recent: "⏱️ Recently Uploaded",

@@ -833,6 +833,47 @@ async function testPwaIntegration() {
   console.log('  ✅ PWA manifest, service worker caching, app icons (192 & 512 PNG/SVG), meta tags & registration verified.');
 }
 
+async function testPlaylistsTabAndDisplayNameBanner() {
+  console.log('22. Testing Playlists Tab Label & Playlist Display Name Indicator...');
+  const homeReq = new Request('https://yutorah-player.mrosensweig.workers.dev/');
+  const homeRes = await worker.fetch(homeReq, mockEnv, mockCtx);
+  const html = await homeRes.text();
+
+  // 1. SSR Tab label is '🎧 Playlists'
+  assert.ok(html.includes('<button class="tab-btn dev-playlist-tab" id="tab-playlists" onclick="switchCollection(\'playlists\')">🎧 Playlists</button>'),
+    'SSR tab button must be labeled "🎧 Playlists"');
+
+  // 2. Client-side renderAccountMode ensures tab and collection title stay '🎧 Playlists'
+  assert.ok(html.includes("tab.textContent = '🎧 Playlists';"),
+    'renderAccountMode must set tab.textContent to "🎧 Playlists"');
+  assert.ok(html.includes("collectionTitles.playlists = '🎧 Playlists';"),
+    'renderAccountMode must set collectionTitles.playlists to "🎧 Playlists"');
+  assert.ok(html.includes('playlists: "🎧 Playlists",'),
+    'collectionTitles default must be "🎧 Playlists"');
+
+  // 3. Segmented bar preserved as My Playlists and Public Playlists
+  assert.ok(html.includes('devPlaylistSegmentedBarHtml'),
+    'devPlaylistSegmentedBarHtml helper must be defined');
+  assert.ok(html.includes('🎧 My Playlists</button>'),
+    'Segmented bar must keep "🎧 My Playlists" sub-tab');
+  assert.ok(html.includes('🌍 Public Playlists</button>'),
+    'Segmented bar must keep "🌍 Public Playlists" sub-tab');
+
+  // 4. Playlist display name indicator banner under My Playlists
+  assert.ok(html.includes('playlist-author-banner'),
+    'devPlaylistsHeaderHtml must include playlist-author-banner');
+  assert.ok(html.includes('👤 Playlist Display Name:'),
+    'Banner must state "👤 Playlist Display Name:"');
+  assert.ok(html.includes('openDisplayNameModal()'),
+    'Banner must provide quick action to openDisplayNameModal');
+
+  // 5. openDisplayNameModal re-renders playlists grid
+  assert.ok(html.includes('renderPlaylistsGrid'),
+    'openDisplayNameModal must update playlists grid upon save');
+
+  console.log('  ✅ Playlists tab labeled "🎧 Playlists", segmented controls preserved, and display name banner verified.');
+}
+
 async function runAll() {
   try {
     await testHomepage();
@@ -856,6 +897,7 @@ async function runAll() {
     await testDualReviewAccessibilityAndSharingRemediation();
     await testLoggedOutHeaderThemeToggle();
     await testPwaIntegration();
+    await testPlaylistsTabAndDisplayNameBanner();
     console.log('\n🎉 ALL BASIC FUNCTIONALITY, ARTICLE READER & LIQUID MODE TESTS PASSED SUCCESSFULLY!');
   } catch (err) {
     console.error('\n❌ Test failed:', err);
