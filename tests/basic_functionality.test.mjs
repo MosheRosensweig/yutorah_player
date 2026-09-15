@@ -1250,6 +1250,45 @@ async function testDafHub() {
   console.log('  ✅ Daf hub route, cycle math, OG-style viewer & entry chip verified.');
 }
 
+async function testPwaThemePlaylistDeleteClearHistory() {
+  console.log('28. Testing PWA theme cookie, playlist delete-confirm persistence & clear history...');
+  const workerSrc = fs.readFileSync(new URL('../src/worker.js', import.meta.url), 'utf8');
+
+  // Issue 1: theme must survive the browser-tab → installed-PWA hop (iOS
+  // home-screen apps don't share localStorage, but they share cookies).
+  assert.ok(workerSrc.includes("request.headers.get('cookie')") && workerSrc.includes('yutorah_theme=(light|dark)') && workerSrc.includes('honor the theme cookie'), 'server must honor the yutorah_theme cookie when no URL theme param is present');
+  assert.ok(workerSrc.includes("document.cookie = 'yutorah_theme='") && workerSrc.includes('Max-Age=31536000'), 'client must mirror the theme choice into a long-lived cookie');
+  assert.ok(workerSrc.includes('var cmat = document.cookie.match') && workerSrc.includes('Cookie fallback: installed PWAs'), 'main boot must fall back to the cookie when localStorage is empty (PWA)');
+  assert.ok(workerSrc.includes('persistDafTheme') && workerSrc.includes('function persistThemeChoice') && workerSrc.includes('function persistDafBootTheme'), 'daf boot/toggles must persist the theme the same way');
+  assert.ok(workerSrc.includes('yutorah_theme=(light|dark)(?:;|$)'), 'theme cookie match must be value-anchored (darkish must not match dark)');
+
+  // Issue 2: a pending inline remove-confirm must survive grid re-renders
+  // (background cloudPush/pull → adoptCloudState → renderPlaylistsGrid).
+  assert.ok(workerSrc.includes('let devPendingRemove = null'), 'pending remove-confirm must be tracked');
+  assert.ok(workerSrc.includes('function devShowRemoveConfirm(pid, id)'), 'confirm swap must be a reusable function');
+  assert.ok(workerSrc.includes('function devCancelRemove()'), 'cancel must clear pending state before re-rendering');
+  assert.ok(workerSrc.includes('onclick="devCancelRemove()"'), 'confirm Cancel must route through devCancelRemove');
+  assert.ok(workerSrc.includes('devPendingRemove = null;\n    if (pid === \'history\')'), 'confirmed remove must clear pending state');
+  assert.ok(workerSrc.includes('Re-apply a pending remove confirmation wiped by this re-render'), 'renderPlaylistsGrid must re-apply a pending confirm after rendering');
+
+  // Issue 3: clear-all-history button with a normal confirm popup.
+  assert.ok(workerSrc.includes('onclick="devClearHistoryAsk()"') && workerSrc.includes('🧹 Clear History'), 'history view must offer a Clear History button');
+  assert.ok(workerSrc.includes('function devClearHistoryAsk()') && workerSrc.includes("title: 'Clear all history?'"), 'clear-history must ask via the generic confirm modal');
+  assert.ok(workerSrc.includes('function devClearHistory()') && workerSrc.includes('yutorah_recent_history\', JSON.stringify([])'), 'clear-history must empty local history');
+  assert.ok(workerSrc.includes('let historyClearAllPending = false') && workerSrc.includes('body.clearHistory = true'), 'clear-history must flag the next push for a server-side wipe');
+  assert.ok(workerSrc.includes('if (sent.history && payload.clearHistory === true) historyClearAllPending = false'), 'clear-all flag must clear only after a successful push (failed pushes must retry, not resurrect)');
+  assert.ok(workerSrc.includes('data-dev-remove-confirm-pid'), 'pending confirm must be marked so a remove on another item reverts it');
+  assert.ok(workerSrc.includes('body.clearHistory === true') && workerSrc.includes('DELETE FROM listening_history WHERE user_id = ?\''), 'server must wipe all history rows on clear-all intent');
+
+  // Server honors the theme cookie: homepage SSR must pick it up.
+  const res = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/', { headers: { Cookie: 'yutorah_theme=light' } }), mockEnv, mockCtx);
+  assert.equal(res.status, 200, 'homepage with theme cookie should return 200 OK');
+  const html = await res.text();
+  assert.ok(!html.includes('<html lang="en" data-theme="dark">'), 'theme=light cookie must SSR the light theme (no dark attr)');
+
+  console.log('  ✅ PWA theme cookie, delete-confirm persistence & clear history verified.');
+}
+
 async function runAll() {
   try {
     await testHomepage();
@@ -1280,6 +1319,7 @@ async function runAll() {
     await testPublicPlaylistCopyTooltipAndSubscriptionPersistence();
     await testSourceSheetButton();
     await testDafHub();
+    await testPwaThemePlaylistDeleteClearHistory();
     console.log('\n🎉 ALL BASIC FUNCTIONALITY, ARTICLE READER & LIQUID MODE TESTS PASSED SUCCESSFULLY!');
   } catch (err) {
     console.error('\n❌ Test failed:', err);

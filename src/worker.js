@@ -1088,6 +1088,17 @@ async function handleSyncRoutes(request, env, url) {
           } catch (e) {}
         }
       }
+      // Explicit clear-all intent (devClearHistory): wipe every history row,
+      // including ones this client truncated long ago and never tombstoned.
+      // Runs after the upserts above; a clear-all push sends history: [],
+      // so the wipe only affects rows outside this same payload. (A newer
+      // device's rows pushed earlier are intentionally cleared too — the
+      // user asked to clear ALL history.)
+      if (body.clearHistory === true) {
+        try {
+          await db.prepare('DELETE FROM listening_history WHERE user_id = ?').bind(user.id).run();
+        } catch (e) {}
+      }
     }
 
     if (Array.isArray(body.deletedPlaylistItems)) {
@@ -2559,6 +2570,17 @@ export default {
       themeMode = 'light';
     } else if (rawThemeParam === 'dark' || url.searchParams.get('dark') === '1' || (url.searchParams.has('dark') && url.searchParams.get('dark') !== '0')) {
       themeMode = 'dark';
+    } else {
+      // No explicit URL theme: honor the theme cookie. This matters for
+      // installed PWAs (notably iOS home-screen apps), which do NOT share
+      // localStorage with the browser — without the cookie the PWA falls
+      // back to dark while the browser tab shows the user's saved light
+      // theme (or vice versa), so every themed color disagrees.
+      try {
+        const cookieHeader = request.headers.get('cookie') || '';
+        const cm = cookieHeader.match(/(?:^|;\s*)yutorah_theme=(light|dark)(?:;|$)/);
+        if (cm) themeMode = cm[1];
+      } catch (e) {}
     }
 
     // 4b. Daf Yomi is a view inside the regular application shell. Keeping
@@ -5255,9 +5277,23 @@ function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', in
         var urlTheme = (p.get('theme') || p.get('mode') || '').toLowerCase();
         var saved = null;
         try { saved = localStorage.getItem('yutorah_theme'); } catch (e) {}
+        // Cookie fallback: installed PWAs don't share localStorage with the
+        // browser tab, but they do share cookies (see main page boot).
+        if (!saved) {
+          try {
+            var cmat = document.cookie.match(/(?:^|;\s*)yutorah_theme=(light|dark)(?:;|$)/);
+            if (cmat) saved = cmat[1];
+          } catch (e2) {}
+        }
         var dark = true;
-        if (urlTheme === 'light' || p.get('dark') === '0' || p.get('light') === '1') dark = false;
-        else if (urlTheme === 'dark' || p.get('dark') === '1') dark = true;
+        // Persist explicit URL choices exactly like the main page boot, so
+        // /daf?theme=light sticks across browser tab and PWA alike.
+        function persistDafBootTheme(v) {
+          try { localStorage.setItem('yutorah_theme', v); } catch (e) {}
+          try { document.cookie = 'yutorah_theme=' + v + '; Path=/; Max-Age=31536000; SameSite=Lax'; } catch (e2) {}
+        }
+        if (urlTheme === 'light' || p.get('dark') === '0' || p.get('light') === '1') { dark = false; persistDafBootTheme('light'); }
+        else if (urlTheme === 'dark' || p.get('dark') === '1') { dark = true; persistDafBootTheme('dark'); }
         else if (saved) dark = (saved === 'dark');
         if (dark) document.documentElement.setAttribute('data-theme', 'dark');
         else document.documentElement.removeAttribute('data-theme');
@@ -5910,12 +5946,18 @@ function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', in
   };
   window.dafToggleTheme = function() {
     var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    // Mirror into the shared theme cookie as well as localStorage (see main
+    // page boot): installed PWAs don't share localStorage with the browser.
+    function persistDafTheme(v) {
+      try { localStorage.setItem('yutorah_theme', v); } catch (e) {}
+      try { document.cookie = 'yutorah_theme=' + v + '; Path=/; Max-Age=31536000; SameSite=Lax'; } catch (e2) {}
+    }
     if (dark) {
       document.documentElement.removeAttribute('data-theme');
-      try { localStorage.setItem('yutorah_theme', 'light'); } catch (e) {}
+      persistDafTheme('light');
     } else {
       document.documentElement.setAttribute('data-theme', 'dark');
-      try { localStorage.setItem('yutorah_theme', 'dark'); } catch (e) {}
+      persistDafTheme('dark');
     }
     var b = document.getElementById('dafThemeBtn');
     if (b) b.textContent = dark ? '🌙' : '☀️';
@@ -6309,14 +6351,29 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         var p = new URLSearchParams(window.location.search);
         var urlTheme = (p.get('theme') || p.get('mode') || '').toLowerCase();
         var dark = false;
+        // Mirror the choice into a cookie: installed PWAs (notably iOS
+        // home-screen apps) don't share localStorage with the browser, but
+        // they do share cookies — the server reads this cookie so the PWA
+        // first-paints with the same theme as the browser tab.
+        function persistThemeChoice(v) {
+          try { localStorage.setItem('yutorah_theme', v); } catch(e) {}
+          try { document.cookie = 'yutorah_theme=' + v + '; Path=/; Max-Age=31536000; SameSite=Lax'; } catch(e2) {}
+        }
         if (urlTheme === 'dark' || p.get('dark') === '1' || (p.has('dark') && p.get('dark') !== '0')) {
           dark = true;
-          try { localStorage.setItem('yutorah_theme', 'dark'); } catch(e) {}
+          persistThemeChoice('dark');
         } else if (urlTheme === 'light' || p.get('dark') === '0' || p.get('light') === '1') {
           dark = false;
-          try { localStorage.setItem('yutorah_theme', 'light'); } catch(e) {}
+          persistThemeChoice('light');
         } else {
-          var saved = localStorage.getItem('yutorah_theme');
+          var saved = null;
+          try { saved = localStorage.getItem('yutorah_theme'); } catch(e) {}
+          if (!saved) {
+            try {
+              var cmat = document.cookie.match(/(?:^|;\s*)yutorah_theme=(light|dark)(?:;|$)/);
+              if (cmat) saved = cmat[1];
+            } catch(e2) {}
+          }
           // New users default to dark mode; an explicit saved choice always wins.
           dark = saved ? saved === 'dark' : true;
         }
@@ -18062,6 +18119,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     // Re-listening revives the item: drop any pending delete for it so a
     // later push cannot delete the just re-added row.
     clearHistoryTombstones([shiur.id]);
+    // A new listen supersedes a still-unpushed clear-all: the pending wipe
+    // refers to history as of the clear, and must not delete this row when
+    // the retry finally lands (server applies upserts before the wipe).
+    try { historyClearAllPending = false; } catch (e) {}
     try {
       let history = getRecentHistory();
       history = history.filter(item => String(item.id) !== String(shiur.id));
@@ -18721,6 +18782,27 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     return total + ' min';
   }
 
+  // Pending single-item remove confirmation. The confirm UI is inline in
+  // the grid, but the grid re-renders on background sync (cloudPush/pull →
+  // adoptCloudState → renderPlaylistsGrid), which used to wipe a pending
+  // confirm whenever a debounced push landed between the two clicks.
+  // Keeping the pending {pid,id} lets renderPlaylistsGrid re-apply it.
+  let devPendingRemove = null;
+  function devShowRemoveConfirm(pid, id) {
+    const grid = document.getElementById('grid-playlists');
+    if (!grid) return false;
+    const sel = grid.querySelector('[data-dev-remove="' + pid + ':' + id + '"]');
+    if (!sel) return false;
+    const store = getDevStore();
+    const pl = getDevPlaylist(store, pid);
+    const plName = pl && pl.name ? pl.name : pid;
+    // Marker attributes let devAskRemove's reset loop revert this confirm
+    // when the user starts a remove on a different item.
+    sel.outerHTML = '<span data-dev-remove-confirm="' + escapeHtml(id) + '" data-dev-remove-confirm-pid="' + escapeHtml(pid) + '">Are you sure you want to remove this shiur from "' + escapeHtml(plName) + '?" ' +
+      '<button type="button" class="card-mini-btn" onclick="devDoRemove(\\'' + pid + '\\', \\'' + id + '\\')">🗑️ Confirm Remove</button> ' +
+      '<button type="button" class="card-mini-btn" onclick="devCancelRemove()">Cancel</button></span>';
+    return true;
+  }
   function devAskRemove(pid, id) {
     const grid = document.getElementById('grid-playlists');
     if (!grid) return;
@@ -18728,18 +18810,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       el.outerHTML = '<button type="button" class="card-mini-btn" data-dev-remove="' + el.getAttribute('data-dev-remove-confirm-pid') + ':' + el.getAttribute('data-dev-remove-confirm') + '"' +
         ' onclick="devAskRemove(\\'' + el.getAttribute('data-dev-remove-confirm-pid') + '\\', \\'' + el.getAttribute('data-dev-remove-confirm') + '\\')">✕ Remove</button>';
     });
-    const sel = grid.querySelector('[data-dev-remove="' + pid + ':' + id + '"]');
-    if (sel) {
-      const store = getDevStore();
-      const pl = getDevPlaylist(store, pid);
-      const plName = pl && pl.name ? pl.name : pid;
-      sel.outerHTML = '<span>Are you sure you want to remove this shiur from "' + escapeHtml(plName) + '?" ' +
-        '<button type="button" class="card-mini-btn" onclick="devDoRemove(\\'' + pid + '\\', \\'' + id + '\\')">🗑️ Confirm Remove</button> ' +
-        '<button type="button" class="card-mini-btn" onclick="renderPlaylistsGrid()">Cancel</button></span>';
-    }
+    devPendingRemove = { pid: pid, id: id };
+    if (!devShowRemoveConfirm(pid, id)) devPendingRemove = null;
+  }
+  function devCancelRemove() {
+    devPendingRemove = null;
+    renderPlaylistsGrid();
   }
 
   function devDoRemove(pid, id) {
+    devPendingRemove = null;
     if (pid === 'history') {
       try {
         let history = getRecentHistory().filter(item => String(item.id) !== String(id));
@@ -18793,6 +18873,48 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         }
       } catch (e) {}
     }
+    devRefreshCardButtons();
+    renderPlaylistsGrid();
+  }
+
+  function devClearHistoryAsk() {
+    let n = 0;
+    try { n = getRecentHistory().length; } catch (e) {}
+    if (!n) return;
+    openConfirmModal({
+      title: 'Clear all history?',
+      body: 'Remove all ' + n + ' item' + (n === 1 ? '' : 's') + ' from your listening history here and in the cloud? This cannot be undone.',
+      confirmLabel: '🧹 Clear History',
+      onConfirm: devClearHistory
+    });
+  }
+  function devClearHistory() {
+    let ids = [];
+    try { ids = getRecentHistory().map(h => String(h && h.id || '')).filter(Boolean); } catch (e) {}
+    for (const sid of ids) { try { addHistoryTombstone(sid); } catch (e) {} }
+    try { localStorage.setItem('yutorah_recent_history', JSON.stringify([])); } catch (e) {}
+    // Drop saved progress for the cleared items (same as single-item remove).
+    try {
+      const pkey = (typeof DEV_PROGRESS_KEY !== 'undefined' && DEV_PROGRESS_KEY) ? DEV_PROGRESS_KEY : 'yutorah_playback_progress';
+      const prog = JSON.parse(localStorage.getItem(pkey) || '{}');
+      let changed = false;
+      for (const sid of ids) {
+        if (prog && Object.prototype.hasOwnProperty.call(prog, sid)) { delete prog[sid]; changed = true; }
+      }
+      if (changed) localStorage.setItem(pkey, JSON.stringify(prog));
+    } catch (e) {}
+    // Ask the server to wipe the whole history table (covers rows this
+    // device truncated long ago); tombstones cover the recent window.
+    historyClearAllPending = true;
+    try {
+      if (typeof markCloudDirty === 'function') markCloudDirty('history');
+      if (typeof cloudPush === 'function' && cloudEnabled()) {
+        clearTimeout(cloudSyncTimer);
+        cloudPush().catch(() => {});
+      } else if (typeof scheduleCloudSync === 'function') {
+        scheduleCloudSync();
+      }
+    } catch (e) {}
     devRefreshCardButtons();
     renderPlaylistsGrid();
   }
@@ -19880,6 +20002,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         '<button type="button" class="card-mini-btn" onclick="handleAuthClick()">🔑 Log in with Google</button></div>' +
         '<div id="plGuestPublic" style="grid-column:1/-1; display:contents;"></div>';
       activeDevPlaylistId = 'public';
+      devPendingRemove = null;
       const host = document.getElementById('plGuestPublic');
       if (host) renderPlPublicInto(host, true);
       return;
@@ -19887,6 +20010,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const store = getDevStore();
     // Public browser pseudo-view (browse + save other people's lists).
     if (activeDevPlaylistId === 'public') {
+      devPendingRemove = null;
       renderPlPublicInto(grid, false);
       return;
     }
@@ -19903,6 +20027,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       }
       qhtml += '<div style="grid-column:1/-1;">' + devQueueListHtml() + '</div>';
       grid.innerHTML = qhtml;
+      // Leaving the playlist detail view dismisses any pending remove
+      // confirm (these branches return before the tail re-apply below).
+      devPendingRemove = null;
       return;
     }
     if (!getDevPlaylist(store, activeDevPlaylistId)) activeDevPlaylistId = 'history';
@@ -20021,7 +20148,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         html += '<button type="button" class="card-mini-btn" onclick="devDeletePlaylist()">Delete Playlist</button></div>';
       }
     } else if (items.length > 0) {
-      html += '<div style="grid-column:1/-1; margin-bottom:8px; display:flex; gap:6px; flex-wrap:wrap;"><button type="button" class="card-mini-btn" onclick="playDevPlaylistAll()">▶ Play All</button><button type="button" class="card-mini-btn"' + (items.length<2 ? ' disabled aria-disabled="true" title="Add at least 2 items to shuffle"' : ' aria-label="Shuffle playlist" title="Play in random order"') + ' onclick="playDevPlaylistShuffled()">🔀 Shuffle</button><button type="button" class="card-mini-btn" onclick="devQueuePlaylistToTop()" title="Add playlist to top of queue">⏫ Queue to Top</button><button type="button" class="card-mini-btn" onclick="devSharePlaylist(&quot;' + escapeHtml(pl.id) + '&quot;)" title="Share playlist link">📋 Share</button></div>';
+      html += '<div style="grid-column:1/-1; margin-bottom:8px; display:flex; gap:6px; flex-wrap:wrap;"><button type="button" class="card-mini-btn" onclick="playDevPlaylistAll()">▶ Play All</button><button type="button" class="card-mini-btn"' + (items.length<2 ? ' disabled aria-disabled="true" title="Add at least 2 items to shuffle"' : ' aria-label="Shuffle playlist" title="Play in random order"') + ' onclick="playDevPlaylistShuffled()">🔀 Shuffle</button><button type="button" class="card-mini-btn" onclick="devQueuePlaylistToTop()" title="Add playlist to top of queue">⏫ Queue to Top</button><button type="button" class="card-mini-btn" onclick="devSharePlaylist(&quot;' + escapeHtml(pl.id) + '&quot;)" title="Share playlist link">📋 Share</button>' +
+        (pl.isHistory ? '<button type="button" class="card-mini-btn" onclick="devClearHistoryAsk()" title="Remove every item from history">🧹 Clear History</button>' : '') + '</div>';
     }
     if (items.length === 0) {
       html += '<div style="grid-column:1/-1; text-align:center; padding:30px; color:var(--text-muted);">Empty playlist — tap 🕒 Save for later, ☆ Fav or ➕ Playlist on any card to add shiurim.</div>';
@@ -20047,6 +20175,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       }).join('');
     }
     grid.innerHTML = html;
+    // Re-apply a pending remove confirmation wiped by this re-render
+    // (e.g. a background sync landing between Remove and Confirm).
+    if (devPendingRemove) {
+      if (!devShowRemoveConfirm(devPendingRemove.pid, devPendingRemove.id)) devPendingRemove = null;
+    }
   }
 
   function devPromptNewPlaylist() {
@@ -21348,6 +21481,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   let playlistEditVersion = 0;
   let queueEditVersion = 0;
   let historyEditVersion = 0;
+  // Set by devClearHistory: the next history push also carries
+  // clearHistory=true so the server wipes rows this device truncated long
+  // ago (beyond the tombstone window), not just the tombstoned ids.
+  let historyClearAllPending = false;
   function markCloudDirty(which) {
     if (which === 'playlists') {
       cloudDirty.playlists = true;
@@ -21714,6 +21851,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       body.progress = progress;
       const tombstones = getHistoryTombstones();
       if (tombstones.length > 0) body.deletedHistory = tombstones.slice(0, 200);
+      // NOTE: the flag is NOT cleared here — collectLocalState also runs for
+      // doomed pushes (network failure). It is cleared only after a push
+      // succeeds (see cloudPush), so a failed clear-all retries instead of
+      // silently resurrecting truncated server rows on the next pull.
+      if (historyClearAllPending) body.clearHistory = true;
     }
     if (cloudDirty.playlists) {
       let store = null;
@@ -21955,6 +22097,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (sent.playlists && playlistEditVersion === vPlaylists) cloudDirty.playlists = false;
       if (sent.queue && queueEditVersion === vQueue) cloudDirty.queue = false;
       if (sent.history && historyEditVersion === vHistory) cloudDirty.history = false;
+      // The server honored the clear-all intent we sent: drop the flag so a
+      // later push cannot wipe history the user built up since. Retained on
+      // failure (above) for retry.
+      if (sent.history && payload.clearHistory === true) historyClearAllPending = false;
       // Server honored the tombstones we sent: drop exactly those so a
       // later push cannot re-delete something re-added since. Retained on
       // failure for retry.
@@ -23980,12 +24126,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   function toggleTheme() {
     var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     var nextDark = !isDark;
+    // Mirror into the theme cookie (shared with installed PWAs) as well as
+    // localStorage, so the choice survives across browser tab and PWA.
+    function persistThemeChoice(v) {
+      try { localStorage.setItem('yutorah_theme', v); } catch(e) {}
+      try { document.cookie = 'yutorah_theme=' + v + '; Path=/; Max-Age=31536000; SameSite=Lax'; } catch(e2) {}
+    }
     if (nextDark) {
       document.documentElement.setAttribute('data-theme', 'dark');
-      try { localStorage.setItem('yutorah_theme', 'dark'); } catch(e) {}
+      persistThemeChoice('dark');
     } else {
       document.documentElement.removeAttribute('data-theme');
-      try { localStorage.setItem('yutorah_theme', 'light'); } catch(e) {}
+      persistThemeChoice('light');
     }
     var btn = document.getElementById('themeToggleBtn');
     if (btn) {
