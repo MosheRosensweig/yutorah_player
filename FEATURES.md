@@ -29,6 +29,7 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 - **No Installations Required**: Runs directly in any web browser on desktop, tablet, and mobile. No browser extensions, mobile apps, or local software needed.
 - **Clean REST URLs**: Direct shareable routes for every shiur:
   - `https://yutorah-player.mrosensweig.workers.dev/<shiurId>` (e.g. `/1187082`).
+  - Searching while listening keeps the loaded shiur in the path (`/1179518?t=48&search=…`), so reload/share restores both the player position and the results (server prefetches search even with a shiur loaded).
 - **Server-Side Rendered (SSR)**: Direct links immediately arrive with complete title, speaker name, duration, and metadata already in the HTML.
 - **Rich Social Sharing**: Generates dynamic OpenGraph metadata so links shared via WhatsApp, iMessage, Slack, or email display the shiur title and rabbi portrait preview.
 

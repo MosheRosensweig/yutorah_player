@@ -1317,6 +1317,8 @@ async function testCardPlayStatesAndMiniPop() {
   assert.ok(workerSrc.includes('function cardPlayBadgeHtml(id, isArticle, label, onclickJs, cls)'), 'badges must paint current state at render time (F4/G1)');
   assert.ok(workerSrc.includes("cardPlayBadgeHtml(id, isArticle, '▶ Play', badgePlay)"), 'search cards must use the state-aware badge (F4)');
   assert.ok(workerSrc.includes("cardPlayBadgeHtml(item.id, isDoc, '▶ Resume'"), 'history cards must use the state-aware badge (F4)');
+  assert.ok(workerSrc.includes("newUrl.pathname = '/' + String(currentShiurId);"), 'search must keep the loaded shiur path (G2)');
+  assert.ok(workerSrc.includes('if (!isDafRoute && (searchQuery || hasFilterParams))'), 'server must prefetch search even with a shiur loaded (G2)');
   assert.ok(workerSrc.includes("'series-sub-play')"), 'series drawer badges must use the state-aware badge (G1)');
   assert.ok(workerSrc.includes('.series-sub-play.is-playing'), 'series drawer badges need playing-state styling (G1)');
   assert.ok(workerSrc.includes('.series-sub-card .series-sub-play'), 'badge updater must scan series drawer badges (G1)');

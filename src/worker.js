@@ -2716,7 +2716,10 @@ export default {
     // filter params like ?subCategoryId= from hero slides), not just ?search=.
     const hasFilterParams = ['teacherId', 'subCategoryId', 'locationId', 'seriesId', 'year', 'fromDate', 'toDate', 'minDuration', 'maxDuration', 'mediaType', 'sort']
       .some(k => url.searchParams.get(k));
-    if (!shiurData && !isDafRoute && (searchQuery || hasFilterParams)) {
+    // Prefetch even when a shiur is loaded: search URLs keep the /<id>
+    // path while listening (see executeLiveSearch), so /<id>?search=...
+    // must render both the player and the results on reload/share.
+    if (!isDafRoute && (searchQuery || hasFilterParams)) {
       try {
         const searchPayload = await executeSearchInternal(url.searchParams);
         initialSearchResults = searchPayload?.response?.docs || [];
@@ -16992,9 +16995,20 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     loadMoreBox.style.display = 'none';
     if (phoneticBanner) phoneticBanner.style.display = 'none';
 
-    // Update browser URL without reload (search + date bounds survive reload)
+    // Update browser URL without reload (search + date bounds survive reload).
+    // Keep the loaded shiur in the path while listening: searching from
+    // /1179518?t=48 must yield /1179518?t=48&search=... (not /?search=...),
+    // so reload/share preserves the listening context. The server
+    // prefetches search results even when a shiur is loaded (see fetch
+    // handler), so the combined URL renders both.
+    // Freeze t FIRST so the snapshot below carries the exact position.
+    try { if (typeof updateUrlTimestamp === 'function') updateUrlTimestamp(true); } catch (e) {}
     const newUrl = new URL(window.location.href);
-    newUrl.pathname = '/';
+    if (typeof currentShiurId !== 'undefined' && currentShiurId) {
+      newUrl.pathname = '/' + String(currentShiurId);
+    } else {
+      newUrl.pathname = '/';
+    }
     if (query) newUrl.searchParams.set('search', query);
     else newUrl.searchParams.delete('search');
     if (extraParams.fromDate) newUrl.searchParams.set('fromDate', extraParams.fromDate);
