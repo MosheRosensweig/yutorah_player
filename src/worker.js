@@ -17611,15 +17611,19 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       }
     } catch (err) {}
 
-    // Same track already loaded: never restart — resume if paused,
-    // otherwise drop to the mini player and keep the position.
+    // Same track already loaded: never restart from the top.
+    // - Badge tap (stayMini): cycle pause/resume in place.
+    // - Card tap: back to the big player (expand), resuming if paused.
     if (String(id) === String(currentShiurId) && hasAudio && audio) {
       try {
-        if (audio.paused) {
+        if (stayMini) {
+          if (audio.paused) await audio.play();
+          else audio.pause();
+        } else if (audio.paused) {
+          expandPlayer();
           await audio.play();
         } else {
-          minimizePlayer();
-          flashToast('▶ Already playing — kept your place', false, false);
+          expandPlayer();
         }
       } catch (err) {}
       return;

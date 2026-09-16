@@ -116,6 +116,7 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 ## 6. Audio Player & Transport Controls
 - **Instant In-Page Playback (`playShiurById`)**:
   - Clicking `▶ Play` on any shiur card immediately expands the player and begins audio streaming in 0 milliseconds without a page reload.
+  - Tapping the badge of the already-loaded track cycles pause/resume in place (`Playing` ⇄ `Paused`); tapping the card body always returns to the big player (expand), resuming if paused — so scroll-back, mini-tap, and card-tap all lead home.
 - **Card Play Badge 3 States (`updateCardPlayBadges`)**:
   - Default: blue `▶ Play` (history cards keep their `▶ Resume` label).
   - The card whose shiur is loaded in the player turns green: `▶ Playing` while audio runs (including while the new track loads), `‖ Paused` while paused. Article `📄 Read` badges are never touched.

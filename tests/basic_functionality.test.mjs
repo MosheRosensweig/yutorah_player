@@ -1309,6 +1309,8 @@ async function testCardPlayStatesAndMiniPop() {
   assert.ok(workerSrc.includes('data-orig-text'), 'original badge text (Play/Resume) must be restored on deselect');
   assert.ok(workerSrc.includes('Set track state BEFORE minimize/expand'), 'playShiurById must set track state before minimizePlayer so the mini-player is not swallowed');
   assert.ok(workerSrc.includes('resyncMiniChrome'), 'mini chrome + badges must re-sync once the fetched track type (audio/article) is known');
+  assert.ok(workerSrc.includes('Badge tap (stayMini): cycle pause/resume in place.'), 'badge tap on the playing card must toggle pause/resume (F1)');
+  assert.ok(workerSrc.includes('Card tap: back to the big player'), 'card tap on the loaded track must expand the big player (F3)');
   console.log('  ✅ Card play states & mini-player pop verified.');
 }
 

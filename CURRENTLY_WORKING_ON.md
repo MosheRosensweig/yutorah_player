@@ -8,6 +8,13 @@ Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://
 Tests: **5/5 test suites passing (100% green, 31/31 basic functionality checks)**
 Production status: **DEPLOYED & VERIFIED (HTTP 200 on both Dev & Prod)** — batch is Dev-only until approved
 
+## 🎯 In Progress: Player Follow-ups (badge toggle → resume → card-expand → fresh-card state)
+Per-user instruction: branch `feat/player-followups`, one at a time — review + Dev deploy + notes each — final dual review at the end. Prod untouched.
+- [ ] **F1: Badge toggles play/pause** — clicking a green `Playing` badge pauses (label flips to `Paused`); clicking again resumes. Cycle via the same-track path.
+- [ ] **F2 (BIG): Always resume saved progress** — clicking any shiur from anywhere (card, badge, history, queue, search) must continue from saved position when one exists; today history can show 6:00 in yet playback restarts at 0:00 with position context lost.
+- [ ] **F3 (BIG): Card click returns to big player** — with mini up, clicking the playing track's card must expand the big player (today it minimizes+toasts). All 3 ways back must work: scroll, mini tap, card tap.
+- [ ] **F4 (BIG): Fresh renders show Playing state** — cards rendered while a track plays (scroll more, new search, tab switch) paint default blue `Play`; they must paint the current `Playing`/`Paused` state at render time.
+
 ## 🎯 In Progress: Player UX Batch (skip flash → card states → mini pop → desktop color → series scope)
 Per-user instruction (2026-09-15): branch `feat/player-ux-batch`, implement one at a time — FEATURES.md + review + Dev deploy each — final dual review at the end. Prod untouched until approved.
 - [x] **A: Skip flash indicator** — `skip(sec)` (single choke point for main ±10/±30, mini ±10, keyboard ←/→/Shift+←/→) shows a brief centered `+10`/`−10` flash. New `#skipFlash` overlay (650ms, own timer, `aria-hidden`, reduced-motion guard), no interference with `#secretToast`. Test #29. Review: PASS (2 LOW nits, motion one folded in). *Status: ✅ dev-deployed (`dc602e96`, HTTP 200, markers live).*
