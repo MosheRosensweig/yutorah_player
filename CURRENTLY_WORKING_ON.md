@@ -12,7 +12,7 @@ Production status: **DEPLOYED & VERIFIED (HTTP 200 on both Dev & Prod)** — bat
 Per-user instruction: branch `feat/series-search-pwa`, one at a time — review + Dev deploy + notes each — FEATURES.md for everything + final dual review at the end. Prod untouched.
 - [x] **G1: Series-sub-cards show Playing/Paused** — `cardPlayBadgeHtml()` takes badge class; updater + CSS cover `.series-sub-play`. Review: PASS. *Status: ✅ dev-deployed (`6c0a807a`, HTTP 200).*
 - NOTE (2026-09-16): paused mid-batch to ship `main` to prod (`3adad62b`, UX batch + F1–F4 live, markers verified); resumed here.
-- [ ] **G2: Search URL preserves loaded shiur** — searching while on `/1179518?t=48` yields `/?t=30&search=…` (id dropped, stale `t=` kept). Keep the loaded shiur id (and its position) across search navigation.
+- [x] **G2: Search URL preserves loaded shiur** — root cause: `executeLiveSearch` reset path to `/` (dropping id) while keeping stale `t=`. Fix: keep `/<id>` + freeze `t` first; server prefetches search even with shiur loaded. Review: PASS (ordering nit folded in). *Status: ✅ dev-deployed (`23a86712`, HTTP 200 on `/1179518?search=shabbat`).*
 - [ ] **G3: Series strip in big player + cards** — implements scope E: series indicator always available while listening (player strip + card drawers showing before/after parts around a mid-series item).
 - [ ] **G4: PWA session restore** — closing the PWA saves loaded shiur + position; reopen restores big player focused there, paused. Implement if easy.
 
