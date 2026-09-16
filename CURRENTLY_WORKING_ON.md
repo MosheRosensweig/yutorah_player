@@ -10,7 +10,7 @@ Production status: **DEPLOYED & VERIFIED (HTTP 200 on both Dev & Prod)**
 
 ## 🎯 In Progress: Player UX Batch (skip flash → card states → mini pop → desktop color → series scope)
 Per-user instruction (2026-09-15): branch `feat/player-ux-batch`, implement one at a time — FEATURES.md + review + Dev deploy each — final dual review at the end. Prod untouched until approved.
-- [ ] **A: Skip flash indicator** — `skip(sec)` (single choke point for main ±10/±30, mini ±10, keyboard ←/→) shows a brief centered `+10`/`−10` flash. New `#skipFlash` overlay, own timer, no interference with `#secretToast`.
+- [x] **A: Skip flash indicator** — `skip(sec)` (single choke point for main ±10/±30, mini ±10, keyboard ←/→) shows a brief centered `+10`/`−10` flash. New `#skipFlash` overlay (650ms, own timer, `aria-hidden`, reduced-motion guard), no interference with `#secretToast`. Test #29. Review: PASS (2 LOW nits, motion one folded in). *Status: ✅ dev-deployed (`dc602e96`, HTTP 200, markers live).*
 - [ ] **B: Card play badge 3 states** — `.quick-play-badge`: default blue `▶ Play`; selected+playing → green `Playing`; selected+paused → green `Paused`. Central `updateCardPlayBadges()` called on track change + play/pause; articles (`📄 Read`) untouched.
 - [ ] **C: Mini player pops immediately on card play** — card badge play currently relies on scroll-auto-show (`handleScrollAutoMiniPlayer`); add `.visible` immediately in the card-play path.
 - [ ] **D: Desktop color mismatch investigation** — same faded-blue (dark `--primary`) symptom as PWA but on desktop. Suspects: multi-browser storages, theme-forcing URL params in shared links, private windows, SSR default. Audit + fix.
