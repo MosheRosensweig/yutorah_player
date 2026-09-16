@@ -17831,6 +17831,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
       const navBack = document.getElementById('playerNavBackBtn');
 
+      // The mini chrome + card badges were synced pre-fetch with the
+      // PREVIOUS track's type (isCurrentShiurArticle was stale). Re-sync
+      // now that the new track's type is resolved; no-op when the mini
+      // bar isn't visible (expanded player path).
+      function resyncMiniChrome() {
+        try {
+          const mp = document.getElementById('miniPlayer');
+          if (mp && mp.classList.contains('visible')) minimizePlayer();
+        } catch (e) {}
+      }
+
       if (isArticle) {
         hasAudio = false;
         if (audio && !audio.paused) {
@@ -17844,6 +17855,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         if (dlBtn) {
           dlBtn.innerHTML = '⬇️ Download PDF';
         }
+        updateCardPlayBadges();
+        resyncMiniChrome();
         loadArticlePdf(currentArticlePdf);
         return;
       }
@@ -17858,6 +17871,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (dlBtn) {
         dlBtn.innerHTML = '⬇️ Download';
       }
+      resyncMiniChrome();
 
       // Check if URL or localStorage has a timestamp for this shiur
       let resumeSec = 0;
@@ -17901,6 +17915,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       }
     } catch (err) {
       console.error('Failed to load shiur:', err);
+      // Roll back the optimistic selection so the failed track doesn't
+      // keep a green "Playing" badge or a live mini-player.
+      currentShiurId = '';
+      hasAudio = false;
+      updateCardPlayBadges();
       document.getElementById('shiurTitle').textContent = 'Error loading shiur #' + id;
       document.getElementById('shiurSpeaker').textContent = 'Please check the ID or try again.';
       const errUploadEl = document.getElementById('shiurUploadDate');

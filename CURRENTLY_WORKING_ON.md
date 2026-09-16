@@ -1,20 +1,25 @@
 # Currently Working On — Living Status & Activity Log
 
 Living status doc & audit log — updated on every milestone and user request.  
-Last updated: **2026-09-14, 16:30 ET**  
-Current branch: `feat/auth-d1` (synchronized with `main`)  
-Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev) (`e2f7f305`)  
+Last updated: **2026-09-16, 08:00 ET**  
+Current branch: `feat/player-ux-batch` (Player UX Batch A–E; based on `main` @ `5fdfadc`)  
+Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev) (`ae80c78e`)  
 Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://yutorah-player.mrosensweig.workers.dev) (`0b723050`)  
-Tests: **5/5 test suites passing (100% green, 28/28 basic functionality checks)**
-Production status: **DEPLOYED & VERIFIED (HTTP 200 on both Dev & Prod)**
+Tests: **5/5 test suites passing (100% green, 31/31 basic functionality checks)**
+Production status: **DEPLOYED & VERIFIED (HTTP 200 on both Dev & Prod)** — batch is Dev-only until approved
 
 ## 🎯 In Progress: Player UX Batch (skip flash → card states → mini pop → desktop color → series scope)
 Per-user instruction (2026-09-15): branch `feat/player-ux-batch`, implement one at a time — FEATURES.md + review + Dev deploy each — final dual review at the end. Prod untouched until approved.
-- [x] **A: Skip flash indicator** — `skip(sec)` (single choke point for main ±10/±30, mini ±10, keyboard ←/→) shows a brief centered `+10`/`−10` flash. New `#skipFlash` overlay (650ms, own timer, `aria-hidden`, reduced-motion guard), no interference with `#secretToast`. Test #29. Review: PASS (2 LOW nits, motion one folded in). *Status: ✅ dev-deployed (`dc602e96`, HTTP 200, markers live).*
+- [x] **A: Skip flash indicator** — `skip(sec)` (single choke point for main ±10/±30, mini ±10, keyboard ←/→/Shift+←/→) shows a brief centered `+10`/`−10` flash. New `#skipFlash` overlay (650ms, own timer, `aria-hidden`, reduced-motion guard), no interference with `#secretToast`. Test #29. Review: PASS (2 LOW nits, motion one folded in). *Status: ✅ dev-deployed (`dc602e96`, HTTP 200, markers live).*
 - [x] **B: Card play badge 3 states** — `.quick-play-badge`: default `▶ Play`/`▶ Resume` (restored verbatim); selected+playing → green `▶ Playing` (incl. loading); selected+paused → green `‖ Paused`. Central `updateCardPlayBadges()` via play/pause/ended/track-switch/close; articles (`📄 Read`) untouched. Tests #30. Review: PASS (LOWs only). *Status: ✅ dev-deployed (`7cbd3318`, HTTP 200, markers live).*
 - [x] **C: Mini player pops immediately on card play** — root cause: `minimizePlayer()` early-returns on false `hasAudio`, but `playShiurById` set it *after* the minimize call; only scroll-auto-show rescued it later. Fix: assign track state before the stayMini/expand branch ( reorder verified safe). Same commit/deploy as B.
 - [x] **D: Desktop color mismatch investigation** — root cause: cross-device theme contagion via copied links. Copy-link stamped `?theme=` whenever the copier had an explicit theme; opening it applied AND saved that theme (boot + popstate wrote localStorage+cookie), permanently flipping the desktop to dark. Fix: URL theme is render-only everywhere (boot main+daf, popstate); copy-link + public-search share strip stamped params; server still honors URL for SSR first-paint. Toggle handlers remain the only savers. Tests #28 updated + #31. Review: PASS (3 follow-ups folded in). *Status: ✅ dev-deployed (`ae80c78e`, HTTP 200, `?theme=dark` still SSRs dark once).*
-- [ ] **E (scope only): Series indicator while listening** — bottom indicator/dropdown on the player when the current shiur belongs to a series, reusing search-result series-grouping. Write-up only, no code yet.
+- [x] **E (scope only): Series indicator while listening** — verdict: **yes, doable** — write-up below, no code yet.
+  - **What already exists**: series identity (`series_title`/`cover_id`) flows through sync rows, queue entries (`kind:'series'`), and search grouping; search renders cover cards + expandable drawers (`toggleSeriesDrawer`, `renderSeriesGroup`) and caches expansions in `devSeriesCache[coverId] = {title, docs}`; sub-card markup (`renderSeriesSubCard`) is reusable.
+  - **Gap 1 — player doesn't know its series**: `playShiurById` would need series identity for the current track (from the clicked card's dataset at click time, or a series field on the lecture API response if present).
+  - **Gap 2 — sibling fetch**: no dedicated series endpoint; miss path needs one (options: query search grouped by series title, or new `cover_id`-keyed lookup). Hit path reuses `devSeriesCache`.
+  - **Proposed build steps**: (1) plumb `seriesTitle`+`coverId` into now-playing state on `playShiurById` (+ direct-link hydrate); (2) sibling resolver: cache-hit render, cache-miss fetch; (3) bottom strip UI in `#playerCard` reusing drawer/sub-card markup with current-item highlight + click-to-switch + collapse, hidden for non-series/articles; (4) refresh on track switch + player close teardown; (5) test (grouped series plays → strip appears; switch → highlight moves) + FEATURES.md; (6) review + dev deploy.
+  - **Estimate**: half the work is done (grouping + drawer + cache); remaining is plumbing + strip UI ≈ one focused session. Open question: preferred miss-path source (search-group query vs new endpoint).
 
 ## 🎯 In Progress: Dev-Only Trio (Source Sheets → Shiurim-Info → /daf Hub)
 Per-user instruction: dev only (no prod), one feature at a time — quick review + FEATURES.md + dev deploy each — notes throughout, final dual review at the end.
