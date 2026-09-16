@@ -122,6 +122,7 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 - **Dedicated Skip Buttons**:
   - **-30s** and **-10s**: Jump backward by 30 or 10 seconds.
   - **+10s** and **+30s**: Jump forward by 10 or 30 seconds.
+  - **Skip flash feedback**: every skip (main ±10/±30, mini-player ±10, keyboard ←/→/Shift+←/→) pops a brief centered `+10`/`−10`-style flash (`#skipFlash`, 650ms, own timer) confirming the press visually — no need to judge by ear.
 - **Variable Playback Speed Selector**:
   - Native speed menu with 9 speed presets: **0.5x, 0.75x, 1.0x, 1.25x, 1.5x, 1.75x, 2.0x, 2.5x, 3.0x**.
 - **High-Performance Snappy Scrubber Bar**:

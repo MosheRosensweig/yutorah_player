@@ -5,8 +5,16 @@ Last updated: **2026-09-14, 16:30 ET**
 Current branch: `feat/auth-d1` (synchronized with `main`)  
 Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev) (`e2f7f305`)  
 Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://yutorah-player.mrosensweig.workers.dev) (`0b723050`)  
-Tests: **5/5 test suites passing (100% green, 27/27 basic functionality checks)**  
+Tests: **5/5 test suites passing (100% green, 28/28 basic functionality checks)**
 Production status: **DEPLOYED & VERIFIED (HTTP 200 on both Dev & Prod)**
+
+## 🎯 In Progress: Player UX Batch (skip flash → card states → mini pop → desktop color → series scope)
+Per-user instruction (2026-09-15): branch `feat/player-ux-batch`, implement one at a time — FEATURES.md + review + Dev deploy each — final dual review at the end. Prod untouched until approved.
+- [ ] **A: Skip flash indicator** — `skip(sec)` (single choke point for main ±10/±30, mini ±10, keyboard ←/→) shows a brief centered `+10`/`−10` flash. New `#skipFlash` overlay, own timer, no interference with `#secretToast`.
+- [ ] **B: Card play badge 3 states** — `.quick-play-badge`: default blue `▶ Play`; selected+playing → green `Playing`; selected+paused → green `Paused`. Central `updateCardPlayBadges()` called on track change + play/pause; articles (`📄 Read`) untouched.
+- [ ] **C: Mini player pops immediately on card play** — card badge play currently relies on scroll-auto-show (`handleScrollAutoMiniPlayer`); add `.visible` immediately in the card-play path.
+- [ ] **D: Desktop color mismatch investigation** — same faded-blue (dark `--primary`) symptom as PWA but on desktop. Suspects: multi-browser storages, theme-forcing URL params in shared links, private windows, SSR default. Audit + fix.
+- [ ] **E (scope only): Series indicator while listening** — bottom indicator/dropdown on the player when the current shiur belongs to a series, reusing search-result series-grouping. Write-up only, no code yet.
 
 ## 🎯 In Progress: Dev-Only Trio (Source Sheets → Shiurim-Info → /daf Hub)
 Per-user instruction: dev only (no prod), one feature at a time — quick review + FEATURES.md + dev deploy each — notes throughout, final dual review at the end.

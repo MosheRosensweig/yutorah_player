@@ -1289,6 +1289,17 @@ async function testPwaThemePlaylistDeleteClearHistory() {
   console.log('  ✅ PWA theme cookie, delete-confirm persistence & clear history verified.');
 }
 
+async function testSkipFlashFeedback() {
+  console.log('29. Testing skip ±10/±30 flash feedback...');
+  const workerSrc = fs.readFileSync(new URL('../src/worker.js', import.meta.url), 'utf8');
+  assert.ok(workerSrc.includes('id="skipFlash"'), 'shell must contain the skip-flash overlay');
+  assert.ok(workerSrc.includes('function flashSkipFeedback(sec)'), 'skip feedback function must exist');
+  assert.ok(workerSrc.includes('flashSkipFeedback(sec);'), 'skip() must trigger the flash after seeking');
+  assert.ok(workerSrc.includes('.skip-flash'), 'skip-flash styling must exist');
+  assert.ok(workerSrc.includes('skipFlashTimer'), 'skip flash must use its own timer (never fight toasts)');
+  console.log('  ✅ Skip flash feedback verified.');
+}
+
 async function runAll() {
   try {
     await testHomepage();
@@ -1320,6 +1331,7 @@ async function runAll() {
     await testSourceSheetButton();
     await testDafHub();
     await testPwaThemePlaylistDeleteClearHistory();
+    await testSkipFlashFeedback();
     console.log('\n🎉 ALL BASIC FUNCTIONALITY, ARTICLE READER & LIQUID MODE TESTS PASSED SUCCESSFULLY!');
   } catch (err) {
     console.error('\n❌ Test failed:', err);

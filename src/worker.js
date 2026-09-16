@@ -6808,6 +6808,34 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       background: rgba(26, 20, 10, 0.96);
       color: #fef3c7;
     }
+    /* Skip feedback flash: brief centered +10/−10 indicator confirming a
+       skip-button press (main ±10/±30, mini ±10, keyboard). Own element and
+       timer so rapid skips and app toasts never interfere with each other. */
+    .skip-flash {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0.8);
+      background: rgba(18, 26, 38, 0.92);
+      color: #ffffff;
+      padding: 14px 26px;
+      border-radius: 999px;
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+      border: 1.5px solid rgba(255, 255, 255, 0.25);
+      z-index: 9999998;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s ease, transform 0.15s ease;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+    .skip-flash.visible {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
 
     /* Main Container */
     main {
@@ -7301,6 +7329,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       .hero-cta {
         transition: none !important;
         transform: none !important;
+      }
+      /* .skip-flash keeps its centering transform; only the scale/fade
+         animation is removed. */
+      .skip-flash {
+        transition: none !important;
       }
     }
 
@@ -12364,6 +12397,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   </div>
 </header>
 <div id="secretToast" class="secret-toast" style="display: none;"></div>
+<div id="skipFlash" class="skip-flash" style="display: none;" aria-hidden="true"></div>
 <div class="header-spacer" id="headerSpacer"></div>
 
 <div class="sponsorship-banner">
@@ -23670,11 +23704,28 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
   }
 
+  let skipFlashTimer = null;
+  function flashSkipFeedback(sec) {
+    const el = document.getElementById('skipFlash');
+    if (!el) return;
+    try {
+      clearTimeout(skipFlashTimer);
+      el.textContent = (sec > 0 ? '+' : '') + sec;
+      el.style.display = 'block';
+      void el.offsetWidth; // restart the transition for rapid repeated skips
+      el.classList.add('visible');
+      skipFlashTimer = setTimeout(() => {
+        el.classList.remove('visible');
+        setTimeout(() => { if (!el.classList.contains('visible')) el.style.display = 'none'; }, 200);
+      }, 650);
+    } catch (e) {}
+  }
   function skip(sec) {
     if (isCurrentShiurArticle || isSponsorPlaying) return;
     if (!audio.src) return;
     audio.currentTime = Math.max(0, Math.min(audio.duration || Infinity, audio.currentTime + sec));
     updateUrlTimestamp(true);
+    flashSkipFeedback(sec);
   }
 
   function setSpeed(rate) {
