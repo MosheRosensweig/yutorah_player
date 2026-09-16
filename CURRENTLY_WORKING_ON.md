@@ -10,9 +10,9 @@ Production status: **DEPLOYED & VERIFIED (HTTP 200 on both Dev & Prod)** — bat
 
 ## 🎯 In Progress: Player Follow-ups (badge toggle → resume → card-expand → fresh-card state)
 Per-user instruction: branch `feat/player-followups`, one at a time — review + Dev deploy + notes each — final dual review at the end. Prod untouched.
-- [ ] **F1: Badge toggles play/pause** — clicking a green `Playing` badge pauses (label flips to `Paused`); clicking again resumes. Cycle via the same-track path.
+- [x] **F1: Badge toggles play/pause** — clicking a green `Playing` badge pauses (label flips to `Paused`); clicking again resumes. Cycle via the same-track path. Review: PASS (LOWs only). *Status: ✅ dev-deployed (`c9e7fbd8`, HTTP 200).*
 - [ ] **F2 (BIG): Always resume saved progress** — clicking any shiur from anywhere (card, badge, history, queue, search) must continue from saved position when one exists; today history can show 6:00 in yet playback restarts at 0:00 with position context lost.
-- [ ] **F3 (BIG): Card click returns to big player** — with mini up, clicking the playing track's card must expand the big player (today it minimizes+toasts). All 3 ways back must work: scroll, mini tap, card tap.
+- [x] **F3 (BIG): Card click returns to big player** — with mini up, clicking the playing track's card expands the big player (resuming if paused). Same-track branch rewritten (badge=cycle, card=expand); scroll/mini/card all land on `expandPlayer`. Same review+deploy as F1 (shared branch).
 - [ ] **F4 (BIG): Fresh renders show Playing state** — cards rendered while a track plays (scroll more, new search, tab switch) paint default blue `Play`; they must paint the current `Playing`/`Paused` state at render time.
 
 ## 🎯 In Progress: Player UX Batch (skip flash → card states → mini pop → desktop color → series scope)
