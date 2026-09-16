@@ -16589,6 +16589,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           lastLectureData = data;
           renderMetadataBox(data);
           try { if (typeof updateSourceSheetButton === 'function') updateSourceSheetButton(data); } catch (e) {}
+          // Direct links/reloads/shares skip playShiurById, so the series
+          // strip needs its own hydrate here (race-guard inside matches).
+          try { if (typeof updateSeriesStrip === 'function') updateSeriesStrip(String(currentShiurId), data.seriesName || data.seriesname || ''); } catch (e) {}
           const rawD = data.shiurDateFormatted || data.shiurDate || '';
           fetchUploadDate(String(currentShiurId), rawD ? formatShiurDate(rawD) : '');
         }).catch(() => {});
