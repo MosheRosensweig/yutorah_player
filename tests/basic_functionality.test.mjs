@@ -1327,6 +1327,11 @@ async function testCardPlayStatesAndMiniPop() {
   assert.ok(workerSrc.includes('id="seriesStrip"'), 'player card must contain the series strip (G3)');
   assert.ok(workerSrc.includes('function toggleCardSeries('), 'single cards need lazy series drawers (G3)');
   assert.ok(workerSrc.includes('series-now-playing'), 'current part must be marked in drawers (G3)');
+  assert.ok(workerSrc.includes('yutorah_last_session'), 'app must snapshot the loaded track on hide/unload (G4)');
+  assert.ok(workerSrc.includes('function saveLastSession()') && workerSrc.includes('function clearLastSession()'), 'session save/clear helpers must exist (G4)');
+  assert.ok(workerSrc.includes('Session restore: reopen where you left off'), 'bare launches must restore the snapshot paused (G4)');
+  assert.ok(workerSrc.includes("get('restored') === '1'"), 'restored loads must skip boot autoplay (G4)');
+  assert.ok(workerSrc.includes("ru.pathname === '/daf'"), 'restore must never hijack Daf links (G4)');
   console.log('  ✅ Card play states & mini-player pop verified.');
 }
 

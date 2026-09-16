@@ -159,6 +159,7 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
   - Forces an instant sync on **pause**, **scrubber seek**, **±10s/±30s skip**, **tab switch / minimize** (`visibilitychange`), and **window/tab close** (`beforeunload`, `pagehide`).
 - **Seamless Session Recovery**:
   - If you close your browser or tab and reopen/restore it, the URL retains the exact `?t=...` parameter and immediately seeks to that exact position.
+  - **Relaunch restore (PWA included)**: closing the app snapshots the loaded track (`yutorah_last_session` on hide/unload); a later bare launch reopens `/<id>?t=<pos>` into the big player, paused at the saved spot (completed tracks and >30-day snapshots fall through to the homepage; explicit ✕ close clears the snapshot so nothing resurrects).
 - **LocalStorage Secondary Backup**:
   - Automatically saves progress to `localStorage` under `yutorah_progress_<id>` so that even reopening `/<shiurId>` without `?t=` restores where you left off.
   - Automatically clears saved progress when the shiur reaches the end (`ended` event).

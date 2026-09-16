@@ -16048,6 +16048,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     currentShiurId = '';
     updateCardPlayBadges();
     try { if (typeof hideSeriesStrip === 'function') hideSeriesStrip(); } catch (e) {}
+    try { if (typeof clearLastSession === 'function') clearLastSession(); } catch (e) {}
     const miniPlayer = document.getElementById('miniPlayer');
     if (miniPlayer) miniPlayer.classList.remove('visible');
     document.body.classList.remove('mini-player-active');
@@ -16504,6 +16505,45 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   // Initialize listeners on DOMContentLoaded
   document.addEventListener('DOMContentLoaded', () => {
+    // Session restore: reopen where you left off, paused (PWA relaunch
+    // included). Only on bare launches — no path id, no content params,
+    // no SSR-loaded track. Replaces to /<id>?t=<pos> and reloads into the
+    // tested direct-link path (which never autoplays). Cannot loop: the
+    // reloaded URL is non-bare, and explicit close clears the snapshot.
+    // Position comes from resolveResumeSec, so completed tracks (pos 0)
+    // and stale snapshots (>30d) fall through to the homepage.
+    try {
+      const ru = new URL(window.location.href);
+      // Lectures-aware path check (mirrors the server route regex).
+      const segs = ru.pathname.split('/').filter(s => s);
+      const pathHasId = (segs.length > 0 && /^[0-9]+$/.test(segs[0])) ||
+        (segs[0] === 'lectures' && segs.length > 1 && /^[0-9]+$/.test(segs[1]));
+      const isDafPath = ru.pathname === '/daf' || ru.pathname === '/daf/';
+      // Bare = only cosmetic theme params present. Anything else (search,
+      // tabs, filters, Daf refs, timestamps) means the URL already has a
+      // destination — never hijack it.
+      const cosmetic = { theme: 1, mode: 1, dark: 1, light: 1 };
+      let hasContent = pathHasId || isDafPath;
+      try {
+        ru.searchParams.forEach((v, k) => {
+          if (!cosmetic[k]) hasContent = true;
+        });
+      } catch (e2) {}
+      if (!hasContent && (typeof currentShiurId === 'undefined' || !currentShiurId)) {
+        let sess = null;
+        try { sess = JSON.parse(localStorage.getItem('yutorah_last_session') || 'null'); } catch (e) {}
+        if (sess && sess.id && sess.at && (Date.now() - Number(sess.at)) < 30 * 864e5) {
+          const pos = (typeof resolveResumeSec === 'function') ? resolveResumeSec(String(sess.id)) : 0;
+          if (pos > 0) {
+            ru.pathname = '/' + String(sess.id);
+            ru.searchParams.set('t', String(Math.floor(pos)));
+            ru.searchParams.set('restored', '1');
+            window.location.replace(ru.toString());
+            return;
+          }
+        }
+      }
+    } catch (e) {}
     // PWA Service Worker Registration
     try {
       if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
@@ -17203,6 +17243,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     else newUrl.searchParams.delete('sort');
     newUrl.searchParams.delete('shiurId');
     newUrl.searchParams.delete('id');
+    newUrl.searchParams.delete('restored');
     // Shiur search is its own view: drop playlist deep-link keys (one view
     // per URL; in-memory playlist state is untouched and re-syncs on return).
     try { clearPlaylistUrlKeys(newUrl); } catch (e) {}
@@ -18268,6 +18309,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     currentShiurId = '';
     updateCardPlayBadges();
     try { if (typeof hideSeriesStrip === 'function') hideSeriesStrip(); } catch (e) {}
+    try { if (typeof clearLastSession === 'function') clearLastSession(); } catch (e) {}
     const newUrl = new URL(window.location.href);
     newUrl.pathname = '/';
     // Keep playlist + theme context; drop only player/search-specific keys.
@@ -19926,6 +19968,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         u.searchParams.delete('mode');
         u.searchParams.delete('dark');
         u.searchParams.delete('light');
+        u.searchParams.delete('restored');
         url = u.toString();
       } catch (e2) {}
       if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -24077,6 +24120,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     url.searchParams.delete('mode');
     url.searchParams.delete('dark');
     url.searchParams.delete('light');
+    url.searchParams.delete('restored');
     navigator.clipboard.writeText(url.toString()).then(() => {
       const btn = document.getElementById('copyLinkBtn');
       btn.textContent = '✅ Copied (' + formatTime(curSec) + ')!';
@@ -24394,10 +24438,28 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     applyInitialTime();
   }
 
+  // Last-session snapshot: which track was loaded when the app went
+  // away (PWA close included). Position itself is already persisted by
+  // updateUrlTimestamp/heartbeat; this only records the track identity.
+  function saveLastSession() {
+    try {
+      if (typeof currentShiurId !== 'undefined' && currentShiurId &&
+          (hasAudio || isCurrentShiurArticle)) {
+        localStorage.setItem('yutorah_last_session',
+          JSON.stringify({ id: String(currentShiurId), at: Date.now() }));
+      }
+    } catch (e) {}
+  }
+  function clearLastSession() {
+    try { localStorage.removeItem('yutorah_last_session'); } catch (e) {}
+  }
+
   // Save timestamp when page/tab is backgrounded or closed
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
       updateUrlTimestamp(true);
+      try { if (typeof devRecordHeartbeat === 'function') devRecordHeartbeat(true); } catch (e) {}
+      saveLastSession();
       try {
         if (typeof markCloudDirty === 'function') markCloudDirty('history');
         if (typeof scheduleCloudSync === 'function') scheduleCloudSync();
@@ -24406,10 +24468,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   });
   window.addEventListener('beforeunload', () => {
     updateUrlTimestamp(true);
+    try { if (typeof devRecordHeartbeat === 'function') devRecordHeartbeat(true); } catch (e) {}
+    saveLastSession();
     try { if (typeof flushCloudSync === 'function') flushCloudSync(); } catch (e) {}
   });
   window.addEventListener('pagehide', () => {
     updateUrlTimestamp(true);
+    try { if (typeof devRecordHeartbeat === 'function') devRecordHeartbeat(true); } catch (e) {}
+    saveLastSession();
     try { if (typeof flushCloudSync === 'function') flushCloudSync(); } catch (e) {}
   });
 
@@ -26371,8 +26437,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     loadArticlePdf(INITIAL_ARTICLE_PDF);
   }
 
-  // If page loaded with audio, try to autoplay or wait for user touch
-  if (hasAudio) {
+  // If page loaded with audio, try to autoplay or wait for user touch.
+  // Restored sessions (?restored=1) stay paused by design — the user
+  // explicitly left, so we never resume sound uninvited.
+  let bootRestored = false;
+  try {
+    bootRestored = new URLSearchParams(window.location.search).get('restored') === '1';
+  } catch (e) {}
+  if (hasAudio && !bootRestored) {
     audio.play().catch(() => {
       console.log('Autoplay deferred for user tap');
     });
