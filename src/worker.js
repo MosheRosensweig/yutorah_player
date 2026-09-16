@@ -5286,14 +5286,10 @@ function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', in
           } catch (e2) {}
         }
         var dark = true;
-        // Persist explicit URL choices exactly like the main page boot, so
-        // /daf?theme=light sticks across browser tab and PWA alike.
-        function persistDafBootTheme(v) {
-          try { localStorage.setItem('yutorah_theme', v); } catch (e) {}
-          try { document.cookie = 'yutorah_theme=' + v + '; Path=/; Max-Age=31536000; SameSite=Lax'; } catch (e2) {}
-        }
-        if (urlTheme === 'light' || p.get('dark') === '0' || p.get('light') === '1') { dark = false; persistDafBootTheme('light'); }
-        else if (urlTheme === 'dark' || p.get('dark') === '1') { dark = true; persistDafBootTheme('dark'); }
+        // URL-supplied theme renders for THIS load only and is never saved
+        // (same cross-device contagion rule as the main page boot).
+        if (urlTheme === 'light' || p.get('dark') === '0' || p.get('light') === '1') { dark = false; }
+        else if (urlTheme === 'dark' || p.get('dark') === '1') { dark = true; }
         else if (saved) dark = (saved === 'dark');
         if (dark) document.documentElement.setAttribute('data-theme', 'dark');
         else document.documentElement.removeAttribute('data-theme');
@@ -6351,20 +6347,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         var p = new URLSearchParams(window.location.search);
         var urlTheme = (p.get('theme') || p.get('mode') || '').toLowerCase();
         var dark = false;
-        // Mirror the choice into a cookie: installed PWAs (notably iOS
-        // home-screen apps) don't share localStorage with the browser, but
-        // they do share cookies — the server reads this cookie so the PWA
-        // first-paints with the same theme as the browser tab.
-        function persistThemeChoice(v) {
-          try { localStorage.setItem('yutorah_theme', v); } catch(e) {}
-          try { document.cookie = 'yutorah_theme=' + v + '; Path=/; Max-Age=31536000; SameSite=Lax'; } catch(e2) {}
-        }
+        // URL-supplied theme renders for THIS load only and is never saved:
+        // persisting it let theme-stamped shared links (see copy-link)
+        // permanently flip the opener's saved theme on another device.
+        // (The params stay in the address bar, so refresh keeps working.)
         if (urlTheme === 'dark' || p.get('dark') === '1' || (p.has('dark') && p.get('dark') !== '0')) {
           dark = true;
-          persistThemeChoice('dark');
         } else if (urlTheme === 'light' || p.get('dark') === '0' || p.get('light') === '1') {
           dark = false;
-          persistThemeChoice('light');
         } else {
           var saved = null;
           try { saved = localStorage.getItem('yutorah_theme'); } catch(e) {}
@@ -19658,7 +19648,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   function plSharePublicSearch() {
     try {
-      const url = window.location.href;
+      // Strip stamped theme params (see copyShareLink NOTE): shared links
+      // carry no theme; it is a device-local preference.
+      let url = window.location.href;
+      try {
+        const u = new URL(window.location.href);
+        u.searchParams.delete('theme');
+        u.searchParams.delete('mode');
+        u.searchParams.delete('dark');
+        u.searchParams.delete('light');
+        url = u.toString();
+      } catch (e2) {}
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(url).then(() => {
           flashToast('📋 Public search link copied to clipboard!', false, false);
@@ -23798,16 +23798,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       url.searchParams.delete('speed');
       url.searchParams.delete('rate');
     }
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    const hasExplicitTheme = url.searchParams.has('mode') || url.searchParams.has('theme') || Boolean(localStorage.getItem('yutorah_theme'));
-    if (hasExplicitTheme) {
-      const themeKey = url.searchParams.has('theme') ? 'theme' : 'mode';
-      url.searchParams.delete('dark');
-      url.searchParams.delete('light');
-      url.searchParams.delete('mode');
-      url.searchParams.delete('theme');
-      url.searchParams.set(themeKey, isDark ? 'dark' : 'light');
-    }
+    // NOTE: theme is deliberately NOT stamped into copied links. It is a
+    // device-local preference (localStorage + shared cookie); baking it
+    // into shared URLs used to permanently flip the opener's saved theme
+    // on whatever device opened the link (dark link → faded-blue surprise).
+    // Strip any stamped params inherited from the address bar so shared
+    // links carry no theme even when opened from one.
+    url.searchParams.delete('theme');
+    url.searchParams.delete('mode');
+    url.searchParams.delete('dark');
+    url.searchParams.delete('light');
     navigator.clipboard.writeText(url.toString()).then(() => {
       const btn = document.getElementById('copyLinkBtn');
       btn.textContent = '✅ Copied (' + formatTime(curSec) + ')!';
@@ -24179,16 +24179,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         setSpeed(1);
       }
 
-      // Sync light/dark mode on back/forward navigation
+      // Sync light/dark mode on back/forward navigation (render-only: a
+      // theme-stamped URL must not overwrite the device's saved choice).
       const rawTheme = (p.get('theme') || p.get('mode') || '').toLowerCase();
       if (rawTheme === 'dark' || p.get('dark') === '1' || (p.has('dark') && p.get('dark') !== '0')) {
         document.documentElement.setAttribute('data-theme', 'dark');
-        try { localStorage.setItem('yutorah_theme', 'dark'); } catch(e) {}
         initTheme();
         applyHolidayTheme();
       } else if (rawTheme === 'light' || p.get('dark') === '0' || p.get('light') === '1') {
         document.documentElement.removeAttribute('data-theme');
-        try { localStorage.setItem('yutorah_theme', 'light'); } catch(e) {}
         initTheme();
         applyHolidayTheme();
       }

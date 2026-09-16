@@ -1259,7 +1259,7 @@ async function testPwaThemePlaylistDeleteClearHistory() {
   assert.ok(workerSrc.includes("request.headers.get('cookie')") && workerSrc.includes('yutorah_theme=(light|dark)') && workerSrc.includes('honor the theme cookie'), 'server must honor the yutorah_theme cookie when no URL theme param is present');
   assert.ok(workerSrc.includes("document.cookie = 'yutorah_theme='") && workerSrc.includes('Max-Age=31536000'), 'client must mirror the theme choice into a long-lived cookie');
   assert.ok(workerSrc.includes('var cmat = document.cookie.match') && workerSrc.includes('Cookie fallback: installed PWAs'), 'main boot must fall back to the cookie when localStorage is empty (PWA)');
-  assert.ok(workerSrc.includes('persistDafTheme') && workerSrc.includes('function persistThemeChoice') && workerSrc.includes('function persistDafBootTheme'), 'daf boot/toggles must persist the theme the same way');
+  assert.ok(workerSrc.includes('persistDafTheme') && workerSrc.includes('function persistThemeChoice'), 'daf/main toggles must persist the theme the same way');
   assert.ok(workerSrc.includes('yutorah_theme=(light|dark)(?:;|$)'), 'theme cookie match must be value-anchored (darkish must not match dark)');
 
   // Issue 2: a pending inline remove-confirm must survive grid re-renders
@@ -1311,6 +1311,30 @@ async function testCardPlayStatesAndMiniPop() {
   console.log('  ✅ Card play states & mini-player pop verified.');
 }
 
+async function testThemeNoContagion() {
+  console.log('31. Testing theme isolation (no cross-device contagion)...');
+  const workerSrc = fs.readFileSync(new URL('../src/worker.js', import.meta.url), 'utf8');
+  assert.ok(!workerSrc.includes("url.searchParams.set(themeKey"), 'copy-link must not stamp theme into shared URLs');
+  assert.ok(workerSrc.includes('renders for THIS load only'), 'URL-supplied theme must render without overwriting the saved choice');
+  assert.ok(workerSrc.includes("rawThemeParam === 'light'"), 'server must still honor URL theme for first-paint SSR');
+  // A theme-stamped link renders that theme once but must not save it:
+  // localStorage + cookie writes happen only in the toggle handlers now.
+  // Both boot scripts contain the same `var urlTheme` marker (daf first).
+  const firstBoot = workerSrc.indexOf('var urlTheme = (p.get(');
+  const secondBoot = workerSrc.indexOf('var urlTheme = (p.get(', firstBoot + 1);
+  for (const [name, at] of [['daf', firstBoot], ['main', secondBoot]]) {
+    const region = workerSrc.slice(at, at + 2500);
+    assert.ok(!region.includes('setItem'), name + ' boot URL-theme must not write localStorage');
+    assert.ok(!region.includes("yutorah_theme='"), name + ' boot URL-theme must not write the cookie');
+  }
+  const popIdx = workerSrc.indexOf('back/forward navigation (render-only');
+  assert.ok(popIdx !== -1, 'popstate render-only marker must exist');
+  const popRegion = workerSrc.slice(popIdx, popIdx + 1200);
+  assert.ok(!popRegion.includes('setItem') && !popRegion.includes('document.cookie'), 'popstate theme sync must not persist');
+  assert.ok(workerSrc.includes("url.searchParams.delete('theme')"), 'share builders must strip stamped theme params');
+  console.log('  ✅ Theme isolation verified.');
+}
+
 async function runAll() {
   try {
     await testHomepage();
@@ -1344,6 +1368,7 @@ async function runAll() {
     await testPwaThemePlaylistDeleteClearHistory();
     await testSkipFlashFeedback();
     await testCardPlayStatesAndMiniPop();
+    await testThemeNoContagion();
     console.log('\n🎉 ALL BASIC FUNCTIONALITY, ARTICLE READER & LIQUID MODE TESTS PASSED SUCCESSFULLY!');
   } catch (err) {
     console.error('\n❌ Test failed:', err);
