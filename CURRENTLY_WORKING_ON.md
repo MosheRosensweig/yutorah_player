@@ -8,6 +8,13 @@ Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://
 Tests: **5/5 test suites passing (100% green, 31/31 basic functionality checks)**
 Production status: **DEPLOYED & VERIFIED (HTTP 200 on both Dev & Prod)** — batch is Dev-only until approved
 
+## 🎯 In Progress: Series/Search/PWA Batch (sub-badges → search URL → series strip → PWA restore)
+Per-user instruction: branch `feat/series-search-pwa`, one at a time — review + Dev deploy + notes each — FEATURES.md for everything + final dual review at the end. Prod untouched.
+- [ ] **G1: Series-sub-cards show Playing/Paused** — known F4 gap: `.series-sub-play` badges in series drawers never pre-paint nor converge. Extend state paint + updater to them.
+- [ ] **G2: Search URL preserves loaded shiur** — searching while on `/1179518?t=48` yields `/?t=30&search=…` (id dropped, stale `t=` kept). Keep the loaded shiur id (and its position) across search navigation.
+- [ ] **G3: Series strip in big player + cards** — implements scope E: series indicator always available while listening (player strip + card drawers showing before/after parts around a mid-series item).
+- [ ] **G4: PWA session restore** — closing the PWA saves loaded shiur + position; reopen restores big player focused there, paused. Implement if easy.
+
 ## 🎯 In Progress: Player Follow-ups (badge toggle → resume → card-expand → fresh-card state)
 Per-user instruction: branch `feat/player-followups`, one at a time — review + Dev deploy + notes each — final dual review at the end. Prod untouched.
 - [x] **F1: Badge toggles play/pause** — clicking a green `Playing` badge pauses (label flips to `Paused`); clicking again resumes. Cycle via the same-track path. Review: PASS (LOWs only). *Status: ✅ dev-deployed (`c9e7fbd8`, HTTP 200).*

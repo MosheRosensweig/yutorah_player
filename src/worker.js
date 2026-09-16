@@ -9680,6 +9680,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       background: var(--primary);
       color: #fff;
     }
+    /* Selected-track state for series drawer badges (same green language
+       as .quick-play-badge.is-playing; works in both themes). */
+    .series-sub-play.is-playing,
+    .series-sub-card:hover .series-sub-play.is-playing {
+      background: #16a34a;
+      color: #fff;
+    }
     .series-sub-meta {
       font-size: 11px;
       color: var(--text-muted);
@@ -17489,9 +17496,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     if (date) metaParts.push(escapeHtml(date));
 
-    const subAction = isArticle
-      ? '<span class="series-sub-play" style="background:#10b981; color:#fff;">📄 Read</span>'
-      : '<span class="series-sub-play" role="button" tabindex="0" data-kbplay onclick="event.stopPropagation(); playShiurById(event, \\'' + id + '\\', true)">▶ Play</span>';
+    const subAction = cardPlayBadgeHtml(id, isArticle, '▶ Play', 'event.stopPropagation(); playShiurById(event, \\'' + id + '\\', true)', 'series-sub-play');
 
     return '<a href="/' + id + '" class="series-sub-card" onclick="playShiurById(event, this.dataset.id)" data-id="' + id + '">' +
       '<div class="series-sub-header">' +
@@ -23979,9 +23984,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   // search) show Playing/Paused immediately instead of waiting for the
   // next play/pause event. updateCardPlayBadges keeps them live after.
   // Client-only globals are guarded (SSR templates never call this).
-  function cardPlayBadgeHtml(id, isArticle, label, onclickJs) {
+  function cardPlayBadgeHtml(id, isArticle, label, onclickJs, cls) {
+    const badgeCls = cls || 'quick-play-badge';
     if (isArticle) {
-      return '<span class="quick-play-badge" style="background:#10b981; color:#fff;">📄 Read</span>';
+      return '<span class="' + badgeCls + '" style="background:#10b981; color:#fff;">📄 Read</span>';
     }
     let sel = false, playing = false;
     try {
@@ -23990,9 +23996,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       playing = sel && (typeof audio === 'undefined' || !audio || !audio.src || !audio.paused);
     } catch (e) {}
     if (!sel) {
-      return '<span class="quick-play-badge" role="button" tabindex="0" data-kbplay onclick="' + onclickJs + '">' + escapeHtml(label) + '</span>';
+      return '<span class="' + badgeCls + '" role="button" tabindex="0" data-kbplay onclick="' + onclickJs + '">' + escapeHtml(label) + '</span>';
     }
-    return '<span class="quick-play-badge is-playing" role="button" tabindex="0" data-kbplay data-orig-text="' + escapeHtml(label) + '" onclick="' + onclickJs + '">' + (playing ? '▶ Playing' : '‖ Paused') + '</span>';
+    return '<span class="' + badgeCls + ' is-playing" role="button" tabindex="0" data-kbplay data-orig-text="' + escapeHtml(label) + '" onclick="' + onclickJs + '">' + (playing ? '▶ Playing' : '‖ Paused') + '</span>';
   }
 
   // Card play-badge 3 states: default "▶ Play" (or "▶ Resume" on history
@@ -24003,7 +24009,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   function updateCardPlayBadges() {
     try {
       const sel = String(currentShiurId || '');
-      const badges = document.querySelectorAll('.quick-card-link .quick-play-badge');
+      const badges = document.querySelectorAll('.quick-card-link .quick-play-badge, .series-sub-card .series-sub-play');
       if (!badges || badges.length === 0) return;
       badges.forEach(badge => {
         if (badge.textContent.indexOf('📄') !== -1) return;
@@ -24012,7 +24018,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         }
         let cardId = '';
         try {
-          const card = badge.closest('.quick-card-link');
+          const card = badge.closest('.quick-card-link') || badge.closest('.series-sub-card');
           cardId = card && card.dataset ? String(card.dataset.id || '') : '';
         } catch (e) {}
         const isSel = Boolean(sel && cardId && cardId === sel);

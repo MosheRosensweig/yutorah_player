@@ -1314,9 +1314,12 @@ async function testCardPlayStatesAndMiniPop() {
   assert.ok(workerSrc.includes('function resolveResumeSec(id)'), 'unified resume resolver must exist (F2)');
   assert.ok(workerSrc.includes('let resumeSec = resolveResumeSec(id);'), 'track loads must use the unified resolver (F2)');
   assert.ok(workerSrc.includes('targetSec = resolveResumeSec(currentShiurId);'), 'initial-time path must use the unified resolver (F2)');
-  assert.ok(workerSrc.includes('function cardPlayBadgeHtml(id, isArticle, label, onclickJs)'), 'badges must paint current state at render time (F4)');
+  assert.ok(workerSrc.includes('function cardPlayBadgeHtml(id, isArticle, label, onclickJs, cls)'), 'badges must paint current state at render time (F4/G1)');
   assert.ok(workerSrc.includes("cardPlayBadgeHtml(id, isArticle, '▶ Play', badgePlay)"), 'search cards must use the state-aware badge (F4)');
   assert.ok(workerSrc.includes("cardPlayBadgeHtml(item.id, isDoc, '▶ Resume'"), 'history cards must use the state-aware badge (F4)');
+  assert.ok(workerSrc.includes("'series-sub-play')"), 'series drawer badges must use the state-aware badge (G1)');
+  assert.ok(workerSrc.includes('.series-sub-play.is-playing'), 'series drawer badges need playing-state styling (G1)');
+  assert.ok(workerSrc.includes('.series-sub-card .series-sub-play'), 'badge updater must scan series drawer badges (G1)');
   console.log('  ✅ Card play states & mini-player pop verified.');
 }
 
