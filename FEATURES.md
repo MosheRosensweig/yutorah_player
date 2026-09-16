@@ -116,6 +116,11 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 ## 6. Audio Player & Transport Controls
 - **Instant In-Page Playback (`playShiurById`)**:
   - Clicking `▶ Play` on any shiur card immediately expands the player and begins audio streaming in 0 milliseconds without a page reload.
+- **Card Play Badge 3 States (`updateCardPlayBadges`)**:
+  - Default: blue `▶ Play` (history cards keep their `▶ Resume` label).
+  - The card whose shiur is loaded in the player turns green: `▶ Playing` while audio runs (including while the new track loads), `‖ Paused` while paused. Article `📄 Read` badges are never touched.
+  - States refresh on track switch, play/pause/ended, and player close (original label restored verbatim).
+- **Mini-Player Pops Immediately**: card-badge play sets track state before minimizing (previously `minimizePlayer()` early-returned on the still-false `hasAudio` and the bar only appeared on the next scroll). The mini-player now shows `.visible` on the same tap.
 - **Pure Vector Play / Pause Controls**:
   - Play button switches seamlessly between a white directional play triangle and two crisp rounded white pause bars (`||`).
   - Rendered entirely via inline SVG vectors instead of Unicode emojis, eliminating platform-specific emoji artifacts (such as Google and Samsung's default bright orange squircle background on `⏸️`).

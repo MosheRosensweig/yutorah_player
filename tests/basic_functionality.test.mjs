@@ -1300,6 +1300,17 @@ async function testSkipFlashFeedback() {
   console.log('  ✅ Skip flash feedback verified.');
 }
 
+async function testCardPlayStatesAndMiniPop() {
+  console.log('30. Testing card play 3-states & immediate mini-player...');
+  const workerSrc = fs.readFileSync(new URL('../src/worker.js', import.meta.url), 'utf8');
+  assert.ok(workerSrc.includes('function updateCardPlayBadges()'), 'central badge updater must exist');
+  assert.ok(workerSrc.includes('.quick-play-badge.is-playing'), 'playing badge styling must exist');
+  assert.ok(workerSrc.includes('▶ Playing') && workerSrc.includes('‖ Paused'), 'badges must show Playing / Paused text');
+  assert.ok(workerSrc.includes('data-orig-text'), 'original badge text (Play/Resume) must be restored on deselect');
+  assert.ok(workerSrc.includes('Set track state BEFORE minimize/expand'), 'playShiurById must set track state before minimizePlayer so the mini-player is not swallowed');
+  console.log('  ✅ Card play states & mini-player pop verified.');
+}
+
 async function runAll() {
   try {
     await testHomepage();
@@ -1332,6 +1343,7 @@ async function runAll() {
     await testDafHub();
     await testPwaThemePlaylistDeleteClearHistory();
     await testSkipFlashFeedback();
+    await testCardPlayStatesAndMiniPop();
     console.log('\n🎉 ALL BASIC FUNCTIONALITY, ARTICLE READER & LIQUID MODE TESTS PASSED SUCCESSFULLY!');
   } catch (err) {
     console.error('\n❌ Test failed:', err);

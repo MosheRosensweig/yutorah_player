@@ -6481,6 +6481,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       background: var(--primary);
       color: #fff;
     }
+    [data-theme="dark"] .quick-play-badge.is-playing,
+    [data-theme="dark"] .quick-card-link:hover .quick-play-badge.is-playing {
+      background: #16a34a;
+      color: #fff;
+    }
     [data-theme="dark"] .search-results-info {
       background: #141f2f;
       border: 1px solid #233147;
@@ -9790,6 +9795,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     .quick-card-link:hover .quick-play-badge {
       background: var(--primary);
+      color: #fff;
+    }
+    /* Selected-track states: the card whose shiur is loaded in the player
+       turns green — "Playing" while audio runs, "Paused" while paused.
+       Article "Read" badges are never touched (see updateCardPlayBadges). */
+    .quick-play-badge.is-playing {
+      background: #16a34a;
+      color: #fff;
+    }
+    .quick-card-link:hover .quick-play-badge.is-playing {
+      background: #16a34a;
       color: #fff;
     }
 
@@ -15819,6 +15835,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     isManuallyMinimized = false;
     teardownSourceSheetView();
     currentShiurId = '';
+    updateCardPlayBadges();
     const miniPlayer = document.getElementById('miniPlayer');
     if (miniPlayer) miniPlayer.classList.remove('visible');
     document.body.classList.remove('mini-player-active');
@@ -17619,6 +17636,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
 
     isManuallyMinimized = false;
+    // Set track state BEFORE minimize/expand: minimizePlayer() early-returns
+    // when hasAudio is false, which used to swallow the mini-player on
+    // card-badge play until a later scroll event showed it.
+    currentShiurId = id;
+    hasAudio = true;
     if (stayMini) {
       // Card play: start in miniplayer, do not move screen
       minimizePlayer();
@@ -17629,8 +17651,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (playerCard) playerCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
-    currentShiurId = id;
-    hasAudio = true;
+    updateCardPlayBadges();
     initialTimeApplied = false;
     // Never let a previous track's Daf classification bleed into this one.
     currentDafRef = null;
@@ -17985,6 +18006,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     document.body.classList.remove('mini-player-active');
     hasAudio = false;
     currentShiurId = '';
+    updateCardPlayBadges();
     const newUrl = new URL(window.location.href);
     newUrl.pathname = '/';
     // Keep playlist + theme context; drop only player/search-specific keys.
@@ -23910,6 +23932,44 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       miniBtn.innerHTML = isPlaying ? PAUSE_ICON_MINI : PLAY_ICON_MINI;
       miniBtn.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play');
     }
+    updateCardPlayBadges();
+  }
+
+  // Card play-badge 3 states: default "▶ Play" (or "▶ Resume" on history
+  // cards — restored verbatim), selected+playing green "▶ Playing",
+  // selected+paused green "‖ Paused". Article "📄 Read" badges untouched.
+  // Called from updatePlayPauseIcons (play/pause/ended), playShiurById
+  // (track switch), and the player close paths (deselect).
+  function updateCardPlayBadges() {
+    try {
+      const sel = String(currentShiurId || '');
+      const badges = document.querySelectorAll('.quick-card-link .quick-play-badge');
+      if (!badges || badges.length === 0) return;
+      badges.forEach(badge => {
+        if (badge.textContent.indexOf('📄') !== -1) return;
+        if (!badge.hasAttribute('data-orig-text')) {
+          badge.setAttribute('data-orig-text', badge.textContent);
+        }
+        let cardId = '';
+        try {
+          const card = badge.closest('.quick-card-link');
+          cardId = card && card.dataset ? String(card.dataset.id || '') : '';
+        } catch (e) {}
+        const isSel = Boolean(sel && cardId && cardId === sel);
+        // No src yet means the new track is still loading and will autoplay.
+        const audiblyPlaying = Boolean(isSel && hasAudio && (!audio || !audio.src || !audio.paused));
+        if (audiblyPlaying) {
+          badge.classList.add('is-playing');
+          badge.textContent = '▶ Playing';
+        } else if (isSel && hasAudio) {
+          badge.classList.add('is-playing');
+          badge.textContent = '‖ Paused';
+        } else {
+          badge.classList.remove('is-playing');
+          badge.textContent = badge.getAttribute('data-orig-text') || '▶ Play';
+        }
+      });
+    } catch (e) {}
   }
 
   // Audio Events
