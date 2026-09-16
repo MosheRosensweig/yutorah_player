@@ -1,9 +1,9 @@
 # Currently Working On — Living Status & Activity Log
 
 Living status doc & audit log — updated on every milestone and user request.  
-Last updated: **2026-09-16, 08:00 ET**  
-Current branch: `feat/player-ux-batch` (Player UX Batch A–E; based on `main` @ `5fdfadc`)  
-Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev) (`13e08c5a`)  
+Last updated: **2026-09-16, 09:15 ET**  
+Current branch: `feat/player-followups` (Player Follow-ups F1–F4; based on `feat/player-ux-batch` @ `6c66a1d`)  
+Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev) (`72685143`)  
 Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://yutorah-player.mrosensweig.workers.dev) (`0b723050`)  
 Tests: **5/5 test suites passing (100% green, 31/31 basic functionality checks)**
 Production status: **DEPLOYED & VERIFIED (HTTP 200 on both Dev & Prod)** — batch is Dev-only until approved
@@ -12,7 +12,7 @@ Production status: **DEPLOYED & VERIFIED (HTTP 200 on both Dev & Prod)** — bat
 Per-user instruction: branch `feat/player-followups`, one at a time — review + Dev deploy + notes each — final dual review at the end. Prod untouched.
 - [x] **F1: Badge toggles play/pause** — clicking a green `Playing` badge pauses (label flips to `Paused`); clicking again resumes. Cycle via the same-track path. Review: PASS (LOWs only). *Status: ✅ dev-deployed (`c9e7fbd8`, HTTP 200).*
 - [x] **F2 (BIG): Always resume saved progress** — root cause: per-track `yutorah_progress_<id>` keys never leave their device, while heartbeat progress syncs; cross-device/PWA↔browser clicks fell back to 0:00. Fix: `resolveResumeSec()` (`?t=` → heartbeat (skip completed) → local key) used by track loads + initial-time path; all entries (card/badge/history/queue/search/daf/direct) covered. Review: PASS (MED pull-timing race pre-existing, noted). *Status: ✅ dev-deployed (`5f28711d`, HTTP 200).*
-- [x] **F3 (BIG): Card click returns to big player** — with mini up, clicking the playing track's card expands the big player (resuming if paused). Same-track branch rewritten (badge=cycle, card=expand); scroll/mini/card all land on `expandPlayer`. Same review+deploy as F1 (shared branch).
+- [x] **F3 (BIG): Card click returns to big player** — with mini up, clicking the playing track's card expands the big player (resuming if paused). Same-track branch rewritten (badge=cycle, card=expand); scroll/mini/card all land on `expandPlayer`. Shipped in commit `3b07fcc`, same review (`PASS`) + Dev deploy (`c9e7fbd8`) as F1 — one shared branch, two behaviors.
 - [x] **F4 (BIG): Fresh renders show Playing state** — `cardPlayBadgeHtml()` paints current state at render (search + history sites; SSR untouched + boot pass); event updater keeps them live. Decision tables verified identical. Review: PASS (LOWs only; series-sub badges noted out of scope). *Status: ✅ dev-deployed (`72685143`, HTTP 200).*
 
 ## 🎯 In Progress: Player UX Batch (skip flash → card states → mini pop → desktop color → series scope)
