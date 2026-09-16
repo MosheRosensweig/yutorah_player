@@ -17431,9 +17431,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     // Play badge mini-plays in place; anywhere else on the card opens the
     // full player (expand + scroll), as before.
     const badgePlay = 'event.stopPropagation(); playShiurById(event, \\'' + id + '\\', true)';
-    const actionBadge = isArticle
-      ? '<span class="quick-play-badge" style="background:#10b981; color:#fff;">📄 Read</span>'
-      : '<span class="quick-play-badge" role="button" tabindex="0" data-kbplay onclick="' + badgePlay + '">▶ Play</span>';
+    const actionBadge = cardPlayBadgeHtml(id, isArticle, '▶ Play', badgePlay);
 
     return '<a href="/' + id + '" class="quick-card-link' + coverClass + '" onclick="playShiurById(event, this.dataset.id)" data-id="' + id + '">' +
       newBadge +
@@ -18264,9 +18262,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       }
       if (dateStr) metaParts.push(escapeHtml(dateStr));
       const bottomMeta = metaParts.join(' · ');
-      const actionBadge = isDoc
-        ? '<span class="quick-play-badge" style="background:#10b981; color:#fff;">📄 Read</span>'
-        : '<span class="quick-play-badge" role="button" tabindex="0" data-kbplay onclick="event.stopPropagation(); playShiurById(event, \\'' + item.id + '\\', true)">▶ Resume</span>';
+      const actionBadge = cardPlayBadgeHtml(item.id, isDoc, '▶ Resume', 'event.stopPropagation(); playShiurById(event, \\'' + item.id + '\\', true)');
       return '<a href="/' + item.id + '" class="quick-card-link" onclick="playShiurById(event, this.dataset.id)" data-id="' + item.id + '">' +
         newBadge +
         '<div class="quick-card-top">' +
@@ -23978,6 +23974,27 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     updateCardPlayBadges();
   }
 
+  // Paints the play badge with the CURRENT playback state at render time,
+  // so cards created while a track plays (Load More, tab switch, new
+  // search) show Playing/Paused immediately instead of waiting for the
+  // next play/pause event. updateCardPlayBadges keeps them live after.
+  // Client-only globals are guarded (SSR templates never call this).
+  function cardPlayBadgeHtml(id, isArticle, label, onclickJs) {
+    if (isArticle) {
+      return '<span class="quick-play-badge" style="background:#10b981; color:#fff;">📄 Read</span>';
+    }
+    let sel = false, playing = false;
+    try {
+      sel = Boolean(typeof currentShiurId !== 'undefined' && currentShiurId !== '' &&
+        typeof hasAudio !== 'undefined' && hasAudio && String(id) === String(currentShiurId));
+      playing = sel && (typeof audio === 'undefined' || !audio || !audio.src || !audio.paused);
+    } catch (e) {}
+    if (!sel) {
+      return '<span class="quick-play-badge" role="button" tabindex="0" data-kbplay onclick="' + onclickJs + '">' + escapeHtml(label) + '</span>';
+    }
+    return '<span class="quick-play-badge is-playing" role="button" tabindex="0" data-kbplay data-orig-text="' + escapeHtml(label) + '" onclick="' + onclickJs + '">' + (playing ? '▶ Playing' : '‖ Paused') + '</span>';
+  }
+
   // Card play-badge 3 states: default "▶ Play" (or "▶ Resume" on history
   // cards — restored verbatim), selected+playing green "▶ Playing",
   // selected+paused green "‖ Paused". Article "📄 Read" badges untouched.
@@ -24504,6 +24521,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   initTheme();
   updateSettingsMenuText();
   applyHolidayTheme();
+  // Paint card badges for SSR renders / direct-link loads (play/pause
+  // events keep them live afterwards).
+  try { if (typeof updateCardPlayBadges === 'function') updateCardPlayBadges(); } catch (e) {}
   try {
     if (window.matchMedia) {
       window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {

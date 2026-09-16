@@ -124,6 +124,7 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
   - Default: blue `▶ Play` (history cards keep their `▶ Resume` label).
   - The card whose shiur is loaded in the player turns green: `▶ Playing` while audio runs (including while the new track loads), `‖ Paused` while paused. Article `📄 Read` badges are never touched.
   - States refresh on track switch, play/pause/ended, and player close (original label restored verbatim).
+  - Cards also paint the current state at render time (`cardPlayBadgeHtml`), so scrolling to more results, switching tabs, or fresh searches show `Playing`/`Paused` on the loaded track immediately — plus one boot pass for server-rendered cards.
 - **Mini-Player Pops Immediately**: card-badge play sets track state before minimizing (previously `minimizePlayer()` early-returned on the still-false `hasAudio` and the bar only appeared on the next scroll). The mini-player now shows `.visible` on the same tap.
 - **Pure Vector Play / Pause Controls**:
   - Play button switches seamlessly between a white directional play triangle and two crisp rounded white pause bars (`||`).
