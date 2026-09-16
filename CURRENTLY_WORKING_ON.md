@@ -14,7 +14,7 @@ Per-user instruction: branch `feat/series-search-pwa`, one at a time — review 
 - NOTE (2026-09-16): paused mid-batch to ship `main` to prod (`3adad62b`, UX batch + F1–F4 live, markers verified); resumed here.
 - [x] **G2: Search URL preserves loaded shiur** — root cause: `executeLiveSearch` reset path to `/` (dropping id) while keeping stale `t=`. Fix: keep `/<id>` + freeze `t` first; server prefetches search even with shiur loaded. Review: PASS (ordering nit folded in). *Status: ✅ dev-deployed (`23a86712`, HTTP 200 on `/1179518?search=shabbat`).*
 - [x] **G3: Series strip in big player + cards** — implements scope E: player strip (`View N more`, drawer with current highlighted, parts expand in place) + lazy `View series` drawers on single cards incl. mid-series orphans (cache → regrouped title search, id-verified). Review: PASS (count + docs + dead-code fixes folded in). *Status: ✅ dev-deployed (`4e466574`, HTTP 200).*
-- [ ] **G4: PWA session restore** — closing the PWA saves loaded shiur + position; reopen restores big player focused there, paused. Implement if easy.
+- [x] **G4: PWA session restore** — easy, done: snapshot id on hide/unload; bare launches replace to `/<id>?t=<pos>&restored=1` (direct-link path, boot autoplay gated off → paused). Daf/filter/lectures URLs exempt; explicit close clears; completed/>30d fall through; heartbeat flushed on hide. Review: FAIL→fixed→PASS. *Status: ✅ dev-deployed (`fdf48de9`, HTTP 200).*
 
 ## 🎯 In Progress: Player Follow-ups (badge toggle → resume → card-expand → fresh-card state)
 Per-user instruction: branch `feat/player-followups`, one at a time — review + Dev deploy + notes each — final dual review at the end. Prod untouched.
