@@ -9690,6 +9690,23 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       background: #16a34a;
       color: #fff;
     }
+    /* Current part inside any series drawer (player strip + card drawers):
+       green ring + "Now playing" tag, both themes. */
+    .series-sub-card.is-current-part {
+      border-color: #16a34a;
+      box-shadow: 0 0 0 1px #16a34a;
+    }
+    .series-now-playing {
+      font-size: 10px;
+      font-weight: 800;
+      color: #fff;
+      background: #16a34a;
+      border-radius: 10px;
+      padding: 1px 7px;
+      margin-left: 6px;
+      white-space: nowrap;
+    }
+
     .series-sub-meta {
       font-size: 11px;
       color: var(--text-muted);
@@ -12787,6 +12804,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
     <div class="shiur-desc" id="shiurDesc">${escapeHtml(description)}</div>
 
+    <!-- Series strip: shown while the loaded track belongs to a series -->
+    <div id="seriesStrip" style="display: none; margin: 10px 0 4px;">
+      <button type="button" class="series-expand-btn" id="seriesStripBtn" data-drawer-target="seriesStripDrawer" onclick="toggleSeriesDrawer(event, 'seriesStripDrawer')"></button>
+      <div id="seriesStripDrawer" class="series-drawer" style="display: none;"></div>
+    </div>
+
     <!-- Metadata Chips -->
     <div class="shiur-metadata-box" id="shiurMetadataBox" style="${(shiurTeachers.length || shiurLocations.length || Object.keys(shiurCategories).length || shiurKeywords.length) ? '' : 'display:none;'}">
       ${shiurTeachers.length > 0 ? `
@@ -15134,6 +15157,164 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
   }
 
+  // Series sibling resolution (player strip + single-card drawers).
+  // Priority mirrors groupAndRankDocs: collection id, else series id.
+  // devSeriesCache hits come from expanded search groups; misses fetch
+  // /api/search by series title and regroup client-side. Membership is
+  // always verified by shiur id — a bare title match is never trusted.
+  function seriesIdentityOf(doc) {
+    try {
+      if (!doc || typeof doc !== 'object') return null;
+      if (Array.isArray(doc.collectionid) && doc.collectionid.length > 0 && doc.collectionname && doc.collectionname[0]) {
+        return { key: 'coll_' + doc.collectionid[0], title: String(doc.collectionname[0]).split('|')[0].trim() };
+      }
+      if (doc.seriesid && doc.seriesname) {
+        return { key: 'series_' + doc.seriesid, title: String(doc.seriesname) };
+      }
+      if (doc.seriesTitle) {
+        return { key: 'title:' + String(doc.seriesTitle).toLowerCase(), title: String(doc.seriesTitle) };
+      }
+    } catch (e) {}
+    return null;
+  }
+  const seriesResolveInflight = {};
+  function resolveSeriesDocs(id, ident) {
+    const sid = String(id || '');
+    if (!sid || !ident || !ident.title) return Promise.resolve(null);
+    try {
+      if (typeof devSeriesCache !== 'undefined' && devSeriesCache) {
+        for (const entry of Object.values(devSeriesCache)) {
+          const docs = (entry && entry.docs) || [];
+          if (docs.some(d => String(d.shiurid || d.shiurID || d.id || '') === sid)) {
+            if (docs.length > 1) return Promise.resolve({ title: entry.title || ident.title, docs: docs });
+          }
+        }
+      }
+    } catch (e) {}
+    const inflightKey = ident.key + '|' + sid;
+    if (seriesResolveInflight[inflightKey]) return seriesResolveInflight[inflightKey];
+    const p = fetch('/api/search?q=' + encodeURIComponent(ident.title) + '&rows=50').then(r => {
+      if (!r.ok) return null;
+      return r.json();
+    }).then(payload => {
+      try {
+        const docs = (payload && payload.response && payload.response.docs) || payload.docs || [];
+        const items = groupAndRankDocs(Array.isArray(docs) ? docs : []);
+        for (const it of items) {
+          if (!it.isSeries || !Array.isArray(it.docs)) continue;
+          // Membership by shiur id is the only trust signal (a bare
+          // title match is never enough); multi-part required.
+          if (!it.docs.some(d => String(d.shiurid || d.shiurID || d.id || '') === sid)) continue;
+          if (it.docs.length < 2) continue;
+          try {
+            if (typeof devSeriesCache !== 'undefined' && devSeriesCache) {
+              devSeriesCache['q:' + it.key] = { title: it.title || ident.title, docs: it.docs };
+            }
+          } catch (e) {}
+          return { title: it.title || ident.title, docs: it.docs };
+        }
+      } catch (e) {}
+      return null;
+    }).catch(() => null).finally(() => {
+      try { delete seriesResolveInflight[inflightKey]; } catch (e) {}
+    });
+    seriesResolveInflight[inflightKey] = p;
+    return p;
+  }
+
+  // Renders sibling parts for the player strip + single-card drawers:
+  // full before/after order, current track highlighted, badge behavior
+  // per surface (player badges expand, card badges mini).
+  function seriesPartsHtml(docs, currentId, badgeMini) {
+    try {
+      return (docs || []).map((sub, i) =>
+        renderSeriesSubCard(sub, i + 1, { highlightId: currentId, badgeMini: badgeMini })).join('');
+    } catch (e) {
+      return '';
+    }
+  }
+
+  // Lazy single-card series drawer: resolves siblings on first open,
+  // then delegates open/close to toggleSeriesDrawer (label behavior free).
+  function toggleCardSeries(e, drawerId) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    const drawer = document.getElementById(drawerId);
+    if (!drawer) return;
+    if (drawer.getAttribute('data-filled') === '1') {
+      toggleSeriesDrawer(e, drawerId);
+      return;
+    }
+    const btn = document.querySelector('[data-drawer-target="' + drawerId + '"]');
+    const sid = btn ? (btn.getAttribute('data-series-sid') || '') : '';
+    const skey = btn ? (btn.getAttribute('data-series-key') || '') : '';
+    const stitle = btn ? (btn.getAttribute('data-series-title') || '') : '';
+    if (!sid || !stitle) return;
+    if (btn) btn.style.opacity = '0.6';
+    resolveSeriesDocs(sid, { key: skey, title: stitle }).then(group => {
+      if (btn) btn.style.opacity = '';
+      if (!group || !Array.isArray(group.docs) || group.docs.length < 2) {
+        // Not actually a multi-part series: remove the dead button.
+        try { if (btn) btn.style.display = 'none'; } catch (e2) {}
+        return;
+      }
+      let nowId = '';
+      try {
+        nowId = (typeof hasAudio !== 'undefined' && hasAudio && typeof currentShiurId !== 'undefined') ? String(currentShiurId || '') : '';
+      } catch (e2) {}
+      drawer.innerHTML = seriesPartsHtml(group.docs, nowId, true);
+      drawer.setAttribute('data-filled', '1');
+      if (btn) {
+        // "N more" matches cover convention (subs beyond the current one).
+        btn.setAttribute('data-sub-count', String(group.docs.length - 1));
+        btn.setAttribute('data-series-title', group.title || stitle);
+      }
+      toggleSeriesDrawer(null, drawerId);
+    }).catch(() => {
+      if (btn) btn.style.opacity = '';
+    });
+  }
+
+  // Big-player series strip: always-available indicator + drawer while the
+  // loaded track belongs to a multi-part series. Hidden otherwise.
+  let currentSeriesName = '';
+  function hideSeriesStrip() {
+    currentSeriesName = '';
+    try {
+      const s = document.getElementById('seriesStrip');
+      if (s) s.style.display = 'none';
+      const d = document.getElementById('seriesStripDrawer');
+      if (d) {
+        d.style.display = 'none';
+        d.innerHTML = '';
+        d.removeAttribute('data-filled');
+      }
+    } catch (e) {}
+  }
+  function updateSeriesStrip(id, seriesName) {
+    hideSeriesStrip();
+    if (!id || !seriesName) return;
+    const myId = String(id);
+    currentSeriesName = String(seriesName);
+    resolveSeriesDocs(myId, { key: '', title: currentSeriesName }).then(group => {
+      if (!group || !Array.isArray(group.docs) || group.docs.length < 2) return;
+      if (String(currentShiurId) !== myId) return; // moved on
+      const strip = document.getElementById('seriesStrip');
+      const btn = document.getElementById('seriesStripBtn');
+      const drawer = document.getElementById('seriesStripDrawer');
+      if (!strip || !btn || !drawer) return;
+      btn.setAttribute('data-drawer-target', 'seriesStripDrawer');
+      btn.setAttribute('data-sub-count', String(group.docs.length - 1));
+      btn.setAttribute('data-series-title', group.title || currentSeriesName);
+      btn.innerHTML = '<span class="series-expand-icon">➕</span> <span class="series-expand-text">View ' + (group.docs.length - 1) + ' more in \u2018' + escapeHtml(group.title || currentSeriesName) + '\u2019 Series</span>';
+      drawer.innerHTML = seriesPartsHtml(group.docs, myId, false);
+      drawer.setAttribute('data-filled', '1');
+      strip.style.display = 'block';
+    }).catch(() => {});
+  }
+
   function onToggleClassicSearch(checked) {
     useClassicSearch = !!checked;
 
@@ -15866,6 +16047,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     teardownSourceSheetView();
     currentShiurId = '';
     updateCardPlayBadges();
+    try { if (typeof hideSeriesStrip === 'function') hideSeriesStrip(); } catch (e) {}
     const miniPlayer = document.getElementById('miniPlayer');
     if (miniPlayer) miniPlayer.classList.remove('visible');
     document.body.classList.remove('mini-player-active');
@@ -17454,7 +17636,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const badgePlay = 'event.stopPropagation(); playShiurById(event, \\'' + id + '\\', true)';
     const actionBadge = cardPlayBadgeHtml(id, isArticle, '▶ Play', badgePlay);
 
-    return '<a href="/' + id + '" class="quick-card-link' + coverClass + '" onclick="playShiurById(event, this.dataset.id)" data-id="' + id + '">' +
+    const cardHtml = '<a href="/' + id + '" class="quick-card-link' + coverClass + '" onclick="playShiurById(event, this.dataset.id)" data-id="' + id + '">' +
       newBadge +
       seriesBadge +
       '<div class="quick-card-top">' +
@@ -17473,10 +17655,30 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       (typeof devCardActionsHtml === 'function' ? devCardActionsHtml(String(id), Boolean(options.isCover)) : '') +
       (typeof devProgressHtml === 'function' ? devProgressHtml(String(id)) : '') +
     '</a>';
+    // Single cards that belong to a series (orphans outside a rendered
+    // group, mid-series parts included) get the same drawer treatment as
+    // groups: button + lazy drawer as SIBLINGS of the card link, showing
+    // the full before/after order on demand. Covers already have one.
+    const cardSeriesIdent = (!options.isCover && id) ? seriesIdentityOf(d) : null;
+    if (!cardSeriesIdent) return cardHtml;
+    const cardDrawerId = 'card_series_' + String(id).replace(/[^a-zA-Z0-9]/g, '') + '_' + Math.random().toString(36).substring(2, 7);
+    return '<div class="quick-card-series-group">' + cardHtml +
+      '<button type="button" class="series-expand-btn" data-drawer-target="' + cardDrawerId + '"' +
+      ' data-series-sid="' + escapeHtml(String(id)) + '" data-series-key="' + escapeHtml(cardSeriesIdent.key || '') + '" data-series-title="' + escapeHtml(cardSeriesIdent.title || '') + '"' +
+      ' onclick="toggleCardSeries(event, \\'' + cardDrawerId + '\\')">' +
+      '<span class="series-expand-icon">➕</span> <span class="series-expand-text">View series</span></button>' +
+      '<div id="' + cardDrawerId + '" class="series-drawer" style="display: none;"></div>' +
+    '</div>';
   }
 
-  function renderSeriesSubCard(sub, partNumber) {
+  function renderSeriesSubCard(sub, partNumber, opts) {
+    const o = opts || {};
     const id = sub.shiurid || sub.shiurID || sub.id || '';
+    const isCurrent = o.highlightId != null && String(id) === String(o.highlightId);
+    // Default: badge minis, card body expands — exactly today's behavior
+    // everywhere. Player-drawer parts pass badgeMini:false so the badge
+    // also expands (big player stays put). Card bodies never change.
+    const badgeMini = o.badgeMini === false ? false : true;
     const title = sub.shiurtitle || sub.shiurTitle || sub.title || 'Untitled';
     const subDurRaw = sub.durationformatted || sub.duration || '';
     const duration = subDurRaw ? (String(subDurRaw).match(/[a-z]/i) ? String(subDurRaw) : subDurRaw + ' min') : '';
@@ -17510,11 +17712,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     if (date) metaParts.push(escapeHtml(date));
 
-    const subAction = cardPlayBadgeHtml(id, isArticle, '▶ Play', 'event.stopPropagation(); playShiurById(event, \\'' + id + '\\', true)', 'series-sub-play');
+    const badgeStayArg = badgeMini ? ', true' : '';
+    const subAction = cardPlayBadgeHtml(id, isArticle, '▶ Play', 'event.stopPropagation(); playShiurById(event, \\'' + id + '\\'' + badgeStayArg + ')', 'series-sub-play');
 
-    return '<a href="/' + id + '" class="series-sub-card" onclick="playShiurById(event, this.dataset.id)" data-id="' + id + '">' +
+    return '<a href="/' + id + '" class="series-sub-card' + (isCurrent ? ' is-current-part' : '') + '" onclick="playShiurById(event, this.dataset.id)" data-id="' + id + '">' +
       '<div class="series-sub-header">' +
-        '<div class="series-sub-title"><span style="opacity:0.75; font-weight:700; margin-right:4px;">#' + partNumber + '</span> ' + displayTitle + '</div>' +
+        '<div class="series-sub-title"><span style="opacity:0.75; font-weight:700; margin-right:4px;">#' + partNumber + '</span> ' + displayTitle + (isCurrent ? ' <span class="series-now-playing">Now playing</span>' : '') + '</div>' +
         subAction +
       '</div>' +
       matchReasonHtml +
@@ -17693,6 +17896,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
 
     updateCardPlayBadges();
+    try { if (typeof hideSeriesStrip === 'function') hideSeriesStrip(); } catch (e) {}
     initialTimeApplied = false;
     // Never let a previous track's Daf classification bleed into this one.
     currentDafRef = null;
@@ -17792,6 +17996,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         uploadEl.textContent = '';
       }
       lastLectureData = data;
+
+      // Series strip: show sibling parts while the loaded track belongs
+      // to a multi-part series (audio and article paths alike).
+      try {
+        updateSeriesStrip(id, data.seriesName || data.seriesname || '');
+      } catch (e) {}
 
       // Upload date feeds the metadata box (between Date and Topics):
       // lightweight Solr id-lookup, applied progressively.
@@ -18057,6 +18267,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     hasAudio = false;
     currentShiurId = '';
     updateCardPlayBadges();
+    try { if (typeof hideSeriesStrip === 'function') hideSeriesStrip(); } catch (e) {}
     const newUrl = new URL(window.location.href);
     newUrl.pathname = '/';
     // Keep playlist + theme context; drop only player/search-specific keys.

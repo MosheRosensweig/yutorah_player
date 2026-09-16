@@ -195,6 +195,9 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
   - Automatically queries and renders up to 6 other lectures given by the same speaker.
 - **📚 More in this Category**:
   - Automatically queries and renders up to 6 other lectures in the same topic or subcategory.
+- **📚 Series Strip & Card Drawers (`updateSeriesStrip`, `toggleCardSeries`)**:
+  - While the loaded track belongs to a multi-part series, the big player shows a series strip (`View N more in ‘<Title>’ Series`, same language as cover drawers) with an expandable drawer of all parts in order — before and after the current one, which carries a green ring + `Now playing` tag. Drawer parts play in the big player (no minimize).
+  - Single cards that belong to a series (including mid-series parts outside a rendered group) get their own `View series` drawer, resolved lazily: cache hit from expanded search groups, else a series-title search regrouped client-side (membership always verified by shiur id). Cards whose siblings can't be resolved remove their button on first open.
 
 ---
 

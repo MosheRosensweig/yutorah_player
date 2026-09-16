@@ -1322,6 +1322,11 @@ async function testCardPlayStatesAndMiniPop() {
   assert.ok(workerSrc.includes("'series-sub-play')"), 'series drawer badges must use the state-aware badge (G1)');
   assert.ok(workerSrc.includes('.series-sub-play.is-playing'), 'series drawer badges need playing-state styling (G1)');
   assert.ok(workerSrc.includes('.series-sub-card .series-sub-play'), 'badge updater must scan series drawer badges (G1)');
+  assert.ok(workerSrc.includes('function resolveSeriesDocs('), 'series sibling resolver must exist (G3)');
+  assert.ok(workerSrc.includes('function updateSeriesStrip('), 'big-player series strip updater must exist (G3)');
+  assert.ok(workerSrc.includes('id="seriesStrip"'), 'player card must contain the series strip (G3)');
+  assert.ok(workerSrc.includes('function toggleCardSeries('), 'single cards need lazy series drawers (G3)');
+  assert.ok(workerSrc.includes('series-now-playing'), 'current part must be marked in drawers (G3)');
   console.log('  ✅ Card play states & mini-player pop verified.');
 }
 
