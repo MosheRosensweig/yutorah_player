@@ -117,6 +117,9 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 - **Instant In-Page Playback (`playShiurById`)**:
   - Clicking `▶ Play` on any shiur card immediately expands the player and begins audio streaming in 0 milliseconds without a page reload.
   - Tapping the badge of the already-loaded track cycles pause/resume in place (`Playing` ⇄ `Paused`); tapping the card body always returns to the big player (expand), resuming if paused — so scroll-back, mini-tap, and card-tap all lead home.
+- **Resume-Everywhere (`resolveResumeSec`)**:
+  - Playing any shiur from anywhere (card, badge, history, queue, search, Daf, direct link) continues from saved progress with one precedence: explicit `?t=` → synced heartbeat progress → device-local per-track key. Completed tracks restart.
+  - This fixed cross-context restarts: per-track keys never leave their device, so resuming from another device (or PWA↔browser) fell back to 0:00 even with fresh synced progress showing in history. The synced heartbeat store now fills that gap.
 - **Card Play Badge 3 States (`updateCardPlayBadges`)**:
   - Default: blue `▶ Play` (history cards keep their `▶ Resume` label).
   - The card whose shiur is loaded in the player turns green: `▶ Playing` while audio runs (including while the new track loads), `‖ Paused` while paused. Article `📄 Read` badges are never touched.

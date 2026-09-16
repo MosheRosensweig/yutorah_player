@@ -1311,6 +1311,9 @@ async function testCardPlayStatesAndMiniPop() {
   assert.ok(workerSrc.includes('resyncMiniChrome'), 'mini chrome + badges must re-sync once the fetched track type (audio/article) is known');
   assert.ok(workerSrc.includes('Badge tap (stayMini): cycle pause/resume in place.'), 'badge tap on the playing card must toggle pause/resume (F1)');
   assert.ok(workerSrc.includes('Card tap: back to the big player'), 'card tap on the loaded track must expand the big player (F3)');
+  assert.ok(workerSrc.includes('function resolveResumeSec(id)'), 'unified resume resolver must exist (F2)');
+  assert.ok(workerSrc.includes('let resumeSec = resolveResumeSec(id);'), 'track loads must use the unified resolver (F2)');
+  assert.ok(workerSrc.includes('targetSec = resolveResumeSec(currentShiurId);'), 'initial-time path must use the unified resolver (F2)');
   console.log('  ✅ Card play states & mini-player pop verified.');
 }
 

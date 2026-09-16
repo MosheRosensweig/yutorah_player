@@ -14223,10 +14223,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       const p = parseFloat(initialTimestamp);
       if (!isNaN(p) && p > 0) targetSec = p;
     } else if (currentShiurId) {
-      try {
-        const saved = parseFloat(localStorage.getItem('yutorah_progress_' + currentShiurId));
-        if (!isNaN(saved) && saved > 5) targetSec = saved;
-      } catch (e) {}
+      targetSec = resolveResumeSec(currentShiurId);
     }
 
     if (targetSec > 0) {
@@ -14242,6 +14239,39 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         } catch(e) {}
       }
     }
+  }
+
+  // Unified resume resolver: ONE precedence for every entry point
+  // (card, badge, history, queue, search, daf, direct link).
+  // 1. URL ?t= — explicit navigation/share intent, highest.
+  // 2. Synced heartbeat progress — the only store that travels across
+  //    devices and PWA↔browser (per-shiur keys below never leave the
+  //    device that wrote them, so cross-context resume failed).
+  // 3. Device-local per-shiur key (5s ticker).
+  // Completed records are skipped (finished = restart, same as the
+  // ended handler deleting the per-shiur key).
+  function resolveResumeSec(id) {
+    try {
+      const t = new URL(window.location.href).searchParams.get('t');
+      if (t) {
+        const p = parseFloat(t);
+        if (!isNaN(p) && p > 0) return p;
+      }
+    } catch (e) {}
+    try {
+      if (typeof getProgressRecord === 'function') {
+        const rec = getProgressRecord(id);
+        if (rec && !rec.completed) {
+          const p = Number(rec.progressSec || 0);
+          if (!isNaN(p) && p > 5) return p;
+        }
+      }
+    } catch (e) {}
+    try {
+      const saved = parseFloat(localStorage.getItem('yutorah_progress_' + id));
+      if (!isNaN(saved) && saved > 5) return saved;
+    } catch (e) {}
+    return 0;
   }
 
   function formatTime(sec) {
@@ -17877,19 +17907,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       }
       resyncMiniChrome();
 
-      // Check if URL or localStorage has a timestamp for this shiur
-      let resumeSec = 0;
-      try {
-        const saved = parseFloat(localStorage.getItem('yutorah_progress_' + id));
-        if (!isNaN(saved) && saved > 5) resumeSec = saved;
-      } catch(e) {}
-
-      const curUrl = new URL(window.location.href);
-      const urlT = curUrl.searchParams.get('t');
-      if (urlT) {
-        const p = parseFloat(urlT);
-        if (!isNaN(p) && p > 0) resumeSec = p;
-      }
+      // Unified resume: explicit ?t=, then synced heartbeat progress,
+      // then the device-local per-shiur key (see resolveResumeSec).
+      let resumeSec = resolveResumeSec(id);
       if (dafHandoffState && Number.isFinite(Number(dafHandoffState.time))) resumeSec = Math.max(0, Number(dafHandoffState.time));
 
       initialTimestamp = resumeSec ? String(resumeSec) : '';
