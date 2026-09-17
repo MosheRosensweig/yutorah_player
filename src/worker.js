@@ -15210,49 +15210,59 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         }
       }
     } catch (e) {}
-    // Family query scopes past firehose series; the catalog name is the
-    // fallback when no family derives (short/generic titles).
-    const q = familyQuery || (ident && ident.title) || '';
-    if (!q) return Promise.resolve(null);
-    const inflightKey = (ident && ident.key ? ident.key : 'fam') + '|' + q + '|' + sid;
+    // Query chain: family first (topical scoping past firehose series),
+    // then the catalog name (covers tracks whose family is too specific
+    // to match siblings, e.g. one-off titled parts of a real collection).
+    // Either may be empty; at least one is required.
+    const queries = [];
+    if (familyQuery) queries.push({ q: familyQuery, family: true });
+    if (ident && ident.title && ident.title !== familyQuery) queries.push({ q: ident.title, family: false });
+    if (queries.length === 0) return Promise.resolve(null);
+    const inflightKey = (ident && ident.key ? ident.key : 'fam') + '|' + queries.map(x => x.q).join('~') + '|' + sid;
     if (seriesResolveInflight[inflightKey]) return seriesResolveInflight[inflightKey];
-    const p = fetch('/api/search?q=' + encodeURIComponent(q) + '&rows=30').then(r => {
-      if (!r.ok) return null;
-      return r.json();
-    }).then(payload => {
-      try {
-        const docs = (payload && payload.response && payload.response.docs) || payload.docs || [];
-        const items = groupAndRankDocs(Array.isArray(docs) ? docs : []);
-        // Membership by shiur id is the only trust signal (a bare title
-        // match is never enough); prefer the catalog-keyed group, else the
-        // smallest containing group (most specific run).
-        let best = null;
-        for (const it of items) {
-          if (!it.isSeries || !Array.isArray(it.docs)) continue;
-          if (!it.docs.some(d => String(d.shiurid || d.shiurID || d.id || '') === sid)) continue;
-          if (it.docs.length < 2) continue;
-          if (ident && ident.key && it.key === ident.key) {
-            best = it;
-            break;
-          }
-          if (!best || it.docs.length < best.docs.length) best = it;
-        }
-        if (best) {
-          // Family-scoped drawers are labeled by the family query even on
-          // a catalog key match (a "Daily Shiur"-keyed group of Muktzeh
-          // parts must not wear the firehose name). Catalog titles apply
-          // only when the query itself was the catalog name.
-          const title = familyQuery ? q : (best.title || q);
-          try {
-            if (typeof devSeriesCache !== 'undefined' && devSeriesCache) {
-              devSeriesCache['q:' + best.key] = { title: title, docs: best.docs.slice(0, 30) };
+    const tryQuery = (qi) => {
+      if (qi >= queries.length) return Promise.resolve(null);
+      const q = queries[qi].q;
+      const isFamily = queries[qi].family;
+      return fetch('/api/search?q=' + encodeURIComponent(q) + '&rows=30').then(r => {
+        if (!r.ok) return null;
+        return r.json();
+      }).then(payload => {
+        try {
+          const docs = (payload && payload.response && payload.response.docs) || payload.docs || [];
+          const items = groupAndRankDocs(Array.isArray(docs) ? docs : []);
+          // Membership by shiur id is the only trust signal (a bare title
+          // match is never enough); prefer the catalog-keyed group, else
+          // the smallest containing group (most specific run).
+          let best = null;
+          for (const it of items) {
+            if (!it.isSeries || !Array.isArray(it.docs)) continue;
+            if (!it.docs.some(d => String(d.shiurid || d.shiurID || d.id || '') === sid)) continue;
+            if (it.docs.length < 2) continue;
+            if (ident && ident.key && it.key === ident.key) {
+              best = it;
+              break;
             }
-          } catch (e) {}
-          return { title: title, docs: best.docs.slice(0, 30) };
-        }
-      } catch (e) {}
-      return null;
-    }).catch(() => null).finally(() => {
+            if (!best || it.docs.length < best.docs.length) best = it;
+          }
+          if (best) {
+            // Family-scoped drawers are labeled by the family query even
+            // on a catalog key match (a "Daily Shiur"-keyed group of
+            // Muktzeh parts must not wear the firehose name). Catalog
+            // titles apply only when the query itself was the catalog name.
+            const title = isFamily ? q : (best.title || q);
+            try {
+              if (typeof devSeriesCache !== 'undefined' && devSeriesCache) {
+                devSeriesCache['q:' + best.key] = { title: title, docs: best.docs.slice(0, 30) };
+              }
+            } catch (e) {}
+            return { title: title, docs: best.docs.slice(0, 30) };
+          }
+        } catch (e) {}
+        return tryQuery(qi + 1);
+      }).catch(() => tryQuery(qi + 1));
+    };
+    const p = tryQuery(0).finally(() => {
       try { delete seriesResolveInflight[inflightKey]; } catch (e) {}
     });
     seriesResolveInflight[inflightKey] = p;

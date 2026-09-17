@@ -202,6 +202,7 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
   - While the loaded track belongs to a multi-part series, the big player shows a series strip (`View N more in ‘<Title>’ Series`, same language as cover drawers) with an expandable drawer of all parts in order — before and after the current one, which carries a green ring + `Now playing` tag. Drawer parts play in the big player (no minimize).
   - Single cards that belong to a series (including mid-series parts outside a rendered group) get their own `View series` drawer, resolved lazily: cache hit from expanded search groups, else a series-title search regrouped client-side (membership always verified by shiur id). Cards whose siblings can't be resolved remove their button on first open.
   - Title-family fallback (`seriesFamilyQuery`): tracks with no lecture `seriesName` (e.g. "Muktzeh Part 3") resolve via part-marker-stripped title search, preferring the smallest containing group — topical scoping that stays out of firehose series like "Daily Shiur" (30-part cap; family-labeled drawers).
+  - Catalog-name fallback: when the family query only matches the track itself (e.g. one-off titled parts of a real collection), the resolver retries with the catalog/series name and takes the key-matched group — so "AYS Rosh Hashanah 5787" opens its 87-part "Answering YUr Shailos" run instead of silently dropping the button.
 
 ---
 
