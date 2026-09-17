@@ -8279,7 +8279,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       font-size: 13px;
       font-weight: 700;
       color: var(--text-muted);
-      margin: 6px 0 0;
+      /* Evenly spaced between the playback bar and the play button. */
+      margin: 12px 0 14px;
+      min-height: 18px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -9892,6 +9894,27 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     .transcript-opt:disabled {
       cursor: default;
+    }
+    .transcript-opt.quiz-selected {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 1px var(--primary);
+    }
+    .transcript-quiz-actions {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+    .transcript-result {
+      font-size: 13px;
+      font-weight: 700;
+      margin-top: 6px;
+    }
+    .transcript-result.quiz-result-ok {
+      color: #16a34a;
+    }
+    .transcript-result.quiz-result-bad {
+      color: #dc2626;
     }
     .transcript-hear {
       margin-top: 6px;
@@ -15899,9 +15922,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           '<div class="transcript-question-text"><span class="transcript-qnum">' + (qi + 1) + '.</span> ' + esc(q.Question) + '</div>' +
           '<div class="transcript-options">' +
           opts.map(o => '<button type="button" class="card-mini-btn transcript-opt" data-ok="' + (o.ok ? '1' : '0') + '"' +
-            ' onclick="answerTranscriptQuiz(this)">' + esc(o.t) + '</button>').join('') +
+            ' aria-pressed="false" onclick="answerTranscriptQuiz(this)">' + esc(o.t) + '</button>').join('') +
           '</div>' +
+          '<div class="transcript-quiz-actions">' +
+          '<button type="button" class="card-mini-btn transcript-submit" onclick="submitTranscriptQuiz(this)">Submit answer</button>' +
           '<button type="button" class="card-mini-btn transcript-hear" onclick="transcriptSeek(' + ss + ')" title="Hear it in context">↩ ' + formatTime(ss) + '</button>' +
+          '</div>' +
+          '<div class="transcript-result" style="display: none;" aria-live="polite"></div>' +
           '</div>';
       });
       discuss.forEach(d => {
@@ -15931,18 +15958,43 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }));
     return true;
   }
+  // Two-phase quiz like the beta site: tap an option to select it, then
+  // Submit to lock in and see the correct results.
   function answerTranscriptQuiz(btn) {
     try {
       const box = btn.closest('.transcript-question');
       if (!box || box.getAttribute('data-done') === '1') return;
-      box.setAttribute('data-done', '1');
-      const ok = btn.getAttribute('data-ok') === '1';
-      btn.classList.add(ok ? 'quiz-correct' : 'quiz-wrong');
-      if (!ok) {
-        const right = box.querySelector('.transcript-opt[data-ok="1"]');
-        if (right) right.classList.add('quiz-correct');
+      box.querySelectorAll('.transcript-opt').forEach(b => {
+        const on = (b === btn);
+        b.classList.toggle('quiz-selected', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+    } catch (e) {}
+  }
+  function submitTranscriptQuiz(btn) {
+    try {
+      const box = btn.closest('.transcript-question');
+      if (!box || box.getAttribute('data-done') === '1') return;
+      const picked = box.querySelector('.transcript-opt.quiz-selected');
+      if (!picked) {
+        try { flashToast('Tap an answer first, then Submit', true, false); } catch (e) {}
+        return;
       }
+      box.setAttribute('data-done', '1');
+      const ok = picked.getAttribute('data-ok') === '1';
+      picked.classList.remove('quiz-selected');
+      picked.classList.add(ok ? 'quiz-correct' : 'quiz-wrong');
+      const right = box.querySelector('.transcript-opt[data-ok="1"]');
+      if (right) right.classList.add('quiz-correct');
       box.querySelectorAll('.transcript-opt').forEach(b => { b.disabled = true; });
+      try { btn.disabled = true; } catch (e) {}
+      const res = box.querySelector('.transcript-result');
+      if (res) {
+        res.style.display = 'block';
+        res.textContent = ok ? '✓ Correct!' : '✗ Not quite — the highlighted answer is correct.';
+        res.classList.toggle('quiz-result-ok', ok);
+        res.classList.toggle('quiz-result-bad', !ok);
+      }
     } catch (e) {}
   }
   function hideTranscriptSection() {
