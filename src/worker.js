@@ -15263,9 +15263,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   // full before/after order, current track highlighted, badge behavior
   // per surface (player badges expand, card badges mini).
   function seriesPartsHtml(docs, currentId, badgeMini) {
+    // Per-doc guard: one malformed catalog record must not blank the
+    // whole drawer (a throw here used to reject the fill promise and
+    // leave the strip hidden with zero diagnostics).
     try {
-      return (docs || []).map((sub, i) =>
-        renderSeriesSubCard(sub, i + 1, { highlightId: currentId, badgeMini: badgeMini })).join('');
+      return (docs || []).map((sub, i) => {
+        try {
+          return renderSeriesSubCard(sub, i + 1, { highlightId: currentId, badgeMini: badgeMini });
+        } catch (e2) {
+          return '';
+        }
+      }).join('');
     } catch (e) {
       return '';
     }
