@@ -2571,11 +2571,11 @@ export default {
     } else if (rawThemeParam === 'dark' || url.searchParams.get('dark') === '1' || (url.searchParams.has('dark') && url.searchParams.get('dark') !== '0')) {
       themeMode = 'dark';
     } else {
-      // No explicit URL theme: honor the theme cookie. This matters for
-      // installed PWAs (notably iOS home-screen apps), which do NOT share
-      // localStorage with the browser — without the cookie the PWA falls
-      // back to dark while the browser tab shows the user's saved light
-      // theme (or vice versa), so every themed color disagrees.
+      // No explicit URL theme: honor the theme cookie. This covers
+      // same-profile contexts (e.g. desktop/Android PWAs, second
+      // browsers) whose localStorage lacks the choice. Fully isolated
+      // contexts (iOS home-screen apps share nothing) fall through to
+      // the device-appearance default in the boot script.
       try {
         const cookieHeader = request.headers.get('cookie') || '';
         const cm = cookieHeader.match(/(?:^|;\s*)yutorah_theme=(light|dark)(?:;|$)/);
@@ -5281,12 +5281,21 @@ function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', in
         var saved = null;
         try { saved = localStorage.getItem('yutorah_theme'); } catch (e) {}
         // Cookie fallback: installed PWAs don't share localStorage with the
-        // browser tab, but they do share cookies (see main page boot).
+        // browser tab (and iOS home-screen apps share nothing at all, so
+        // this mostly helps same-profile contexts; the system fallback
+        // below covers fully isolated ones).
         if (!saved) {
           try {
             var cmat = document.cookie.match(/(?:^|;\s*)yutorah_theme=(light|dark)(?:;|$)/);
             if (cmat) saved = cmat[1];
           } catch (e2) {}
+        }
+        // Same device-appearance fallback as the main boot (see above):
+        // isolated iOS home-screen apps have no saved choice to read.
+        if (!saved) {
+          try {
+            if (window.matchMedia && !window.matchMedia('(prefers-color-scheme: dark)').matches) saved = 'light';
+          } catch (e3) {}
         }
         var dark = true;
         // URL-supplied theme renders for THIS load only and is never saved
@@ -6367,7 +6376,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
               if (cmat) saved = cmat[1];
             } catch(e2) {}
           }
-          // New users default to dark mode; an explicit saved choice always wins.
+          // No saved choice anywhere (fresh browser, private window, or an
+          // iOS home-screen app — which Apple isolates with zero shared
+          // storage): follow the device appearance instead of forcing
+          // dark, so the PWA matches the phone on first launch.
+          if (!saved) {
+            try {
+              if (window.matchMedia && !window.matchMedia('(prefers-color-scheme: dark)').matches) saved = 'light';
+            } catch (e3) {}
+          }
+          // An explicit saved choice always wins; otherwise dark.
           dark = saved ? saved === 'dark' : true;
         }
         if (dark) {
@@ -24847,8 +24865,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   function toggleTheme() {
     var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     var nextDark = !isDark;
-    // Mirror into the theme cookie (shared with installed PWAs) as well as
-    // localStorage, so the choice survives across browser tab and PWA.
+    // Mirror into the theme cookie as well as localStorage, so the choice
+    // survives across same-profile contexts (desktop/Android PWAs, other
+    // browsers). Fully isolated iOS home-screen apps instead follow the
+    // device appearance until the user toggles in the app itself.
     function persistThemeChoice(v) {
       try { localStorage.setItem('yutorah_theme', v); } catch(e) {}
       try { document.cookie = 'yutorah_theme=' + v + '; Path=/; Max-Age=31536000; SameSite=Lax'; } catch(e2) {}
@@ -25078,7 +25098,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   try {
     if (window.matchMedia) {
       window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
-        if (!localStorage.getItem('yutorah_theme')) {
+        // Only when the user never chose: a saved choice (local or cookie)
+        // always wins over system changes.
+        if (!localStorage.getItem('yutorah_theme') &&
+            !/(?:^|;\s*)yutorah_theme=(light|dark)(?:;|$)/.test(document.cookie || '')) {
           if (e.matches) {
             document.documentElement.setAttribute('data-theme', 'dark');
           } else {

@@ -1261,6 +1261,7 @@ async function testPwaThemePlaylistDeleteClearHistory() {
   assert.ok(workerSrc.includes('var cmat = document.cookie.match') && workerSrc.includes('Cookie fallback: installed PWAs'), 'main boot must fall back to the cookie when localStorage is empty (PWA)');
   assert.ok(workerSrc.includes('persistDafTheme') && workerSrc.includes('function persistThemeChoice'), 'daf/main toggles must persist the theme the same way');
   assert.ok(workerSrc.includes('yutorah_theme=(light|dark)(?:;|$)'), 'theme cookie match must be value-anchored (darkish must not match dark)');
+  assert.ok(workerSrc.includes("matches) saved = 'light'"), 'fresh contexts with no saved choice must follow the device appearance (isolated iOS PWA fix)');
 
   // Issue 2: a pending inline remove-confirm must survive grid re-renders
   // (background cloudPush/pull → adoptCloudState → renderPlaylistsGrid).
