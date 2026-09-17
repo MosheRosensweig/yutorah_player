@@ -4,7 +4,7 @@ Living status doc & audit log — updated on every milestone and user request.
 Last updated: **2026-09-16, 09:15 ET**  
 Current branch: `feat/player-followups` (Player Follow-ups F1–F4; based on `feat/player-ux-batch` @ `6c66a1d`)  
 Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev) (`72685143`)  
-Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://yutorah-player.mrosensweig.workers.dev) (`dde14c4a`) — plus system-appearance theme default for choiceless contexts (iOS PWA isolation fix); markers verified
+Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://yutorah-player.mrosensweig.workers.dev) (`751d1aff`) — transcript + study aids, series system, URL keeps shiur, relaunch restore (v1.5.1); markers verified  
 - User-reported root cause on their device: the iPhone's **browser version** (too old for `prefers-color-scheme`/isolated-PWA behavior) — our `matchMedia` guard intentionally keeps the dark default there; fix covers all browsers with system-theme support  
 Tests: **5/5 test suites passing (100% green, 31/31 basic functionality checks)**
 Production status: **DEPLOYED & VERIFIED (HTTP 200 on both Dev & Prod)** — prod now serves Player UX Batch A–E + Follow-ups F1–F4 (main @ `1ed56f2`); no schema migration needed (clearHistory uses existing table)
