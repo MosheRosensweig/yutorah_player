@@ -15197,78 +15197,157 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
   }
   const seriesResolveInflight = {};
+  function docSid(d) {
+    try { return String(d.shiurid || d.shiurID || d.id || ''); } catch (e) { return ''; }
+  }
+  // Sibling resolution order: cache scan, family query, catalog query,
+  // key-targeted windows (series id direct, collection via catalog-query
+  // windows). Membership by shiur id is the only trust signal throughout;
+  // within a window prefer the catalog-keyed group, else the smallest
+  // containing group (most specific run). The catalog query covers tracks
+  // whose family is too specific (then the catalog name carries them).
+  // Key-targeted and catalog-window results carry paging for Load more;
+  // single-shot topical queries do not (relevance windows are unstable).
   function resolveSeriesDocs(id, ident, familyQuery) {
     const sid = String(id || '');
     if (!sid) return Promise.resolve(null);
+    const key = (ident && ident.key) || '';
+    const catTitle = (ident && ident.title) || '';
     try {
       if (typeof devSeriesCache !== 'undefined' && devSeriesCache) {
         for (const entry of Object.values(devSeriesCache)) {
           const docs = (entry && entry.docs) || [];
-          if (docs.some(d => String(d.shiurid || d.shiurID || d.id || '') === sid)) {
-            if (docs.length > 1) return Promise.resolve({ title: entry.title || (ident && ident.title) || '', docs: docs });
+          if (docs.length > 1 && docs.some(d => docSid(d) === sid)) {
+            // Paged entries keep their paging so reopened big series can
+            // still Load more (legacy entries simply have none).
+            return Promise.resolve({ title: entry.title || catTitle, docs: docs, paging: entry.paging || null });
           }
         }
       }
     } catch (e) {}
-    // Query chain: family first (topical scoping past firehose series),
-    // then the catalog name (covers tracks whose family is too specific
-    // to match siblings, e.g. one-off titled parts of a real collection).
-    // Either may be empty; at least one is required.
-    const queries = [];
-    if (familyQuery) queries.push({ q: familyQuery, family: true });
-    if (ident && ident.title && ident.title !== familyQuery) queries.push({ q: ident.title, family: false });
-    if (queries.length === 0) return Promise.resolve(null);
-    const inflightKey = (ident && ident.key ? ident.key : 'fam') + '|' + queries.map(x => x.q).join('~') + '|' + sid;
+    const inflightKey = key + '|' + (familyQuery || '') + '~' + catTitle + '|' + sid;
     if (seriesResolveInflight[inflightKey]) return seriesResolveInflight[inflightKey];
-    const tryQuery = (qi) => {
-      if (qi >= queries.length) return Promise.resolve(null);
-      const q = queries[qi].q;
-      const isFamily = queries[qi].family;
-      return fetch('/api/search?q=' + encodeURIComponent(q) + '&rows=30').then(r => {
-        if (!r.ok) return null;
-        return r.json();
-      }).then(payload => {
-        try {
-          const docs = (payload && payload.response && payload.response.docs) || payload.docs || [];
-          const items = groupAndRankDocs(Array.isArray(docs) ? docs : []);
-          // Membership by shiur id is the only trust signal (a bare title
-          // match is never enough); prefer the catalog-keyed group, else
-          // the smallest containing group (most specific run).
-          let best = null;
-          for (const it of items) {
-            if (!it.isSeries || !Array.isArray(it.docs)) continue;
-            if (!it.docs.some(d => String(d.shiurid || d.shiurID || d.id || '') === sid)) continue;
-            if (it.docs.length < 2) continue;
-            if (ident && ident.key && it.key === ident.key) {
-              best = it;
-              break;
-            }
-            if (!best || it.docs.length < best.docs.length) best = it;
-          }
-          if (best) {
-            // Family-scoped drawers are labeled by the family query even
-            // on a catalog key match (a "Daily Shiur"-keyed group of
-            // Muktzeh parts must not wear the firehose name). Catalog
-            // titles apply only when the query itself was the catalog name.
-            const title = isFamily ? q : (best.title || q);
-            try {
-              if (typeof devSeriesCache !== 'undefined' && devSeriesCache) {
-                devSeriesCache['q:' + best.key] = { title: title, docs: best.docs.slice(0, 30) };
-              }
-            } catch (e) {}
-            return { title: title, docs: best.docs.slice(0, 30) };
-          }
-        } catch (e) {}
-        return tryQuery(qi + 1);
-      }).catch(() => tryQuery(qi + 1));
+    const storeCache = (ckey, title, docs, paging) => {
+      try {
+        if (typeof devSeriesCache !== 'undefined' && devSeriesCache) {
+          devSeriesCache['q:' + ckey] = { title: title, docs: docs, paging: paging || null };
+        }
+      } catch (e) {}
     };
-    const p = tryQuery(0).finally(() => {
+    const fetchDocs = (url) => fetch(url).then(r => {
+      if (!r.ok) return null;
+      return r.json();
+    }).then(payload => {
+      try {
+        const docs = (payload && payload.response && payload.response.docs) || payload.docs || [];
+        return Array.isArray(docs) ? docs : null;
+      } catch (e) { return null; }
+    }).catch(() => null);
+    const pickGroup = (items) => {
+      let best = null;
+      for (const it of items) {
+        if (!it.isSeries || !Array.isArray(it.docs)) continue;
+        if (!it.docs.some(d => docSid(d) === sid)) continue;
+        if (it.docs.length < 2) continue;
+        if (key && it.key === key) { best = it; break; }
+        if (!best || it.docs.length < best.docs.length) best = it;
+      }
+      return best;
+    };
+    const fromQuery = (q, isFamily) => {
+      return fetchDocs('/api/search?q=' + encodeURIComponent(q) + '&rows=30').then(docs => {
+        if (!docs) return null;
+        const best = pickGroup(groupAndRankDocs(docs));
+        if (!best) return null;
+        const title = isFamily ? q : (best.title || q);
+        storeCache(best.key, title, best.docs);
+        return { title: title, docs: best.docs.slice(0, 30), paging: null };
+      });
+    };
+    // Series-id windows: exact enumeration, paged. Probes sequential
+    // windows until the track is found (cap ~120), then serves from the
+    // first window so before/after order is preserved.
+    const trySeriesKey = () => {
+      if (!key || key.indexOf('series_') !== 0) return Promise.resolve(null);
+      const seriesId = key.slice(7);
+      const windows = [];
+      const loadWindow = (start) => {
+        return fetchDocs('/api/search?seriesId=' + encodeURIComponent(seriesId) + '&start=' + start).then(w => {
+          windows.push({ start: start, docs: w || [] });
+        });
+      };
+      return loadWindow(1).then(() => {
+        if (windows[0].docs.some(d => docSid(d) === sid)) return windows;
+        return loadWindow(31).then(() => {
+          if (windows.some(w => w.docs.some(d => docSid(d) === sid))) return windows;
+          return loadWindow(61).then(() => {
+            if (windows.some(w => w.docs.some(d => docSid(d) === sid))) return windows;
+            return loadWindow(91).then(() => windows);
+          });
+        });
+      }).then(all => {
+        const found = all.some(w => w.docs.some(d => docSid(d) === sid));
+        if (!found) return null;
+        all.sort((a, b) => a.start - b.start);
+        const combined = [];
+        const seen = {};
+        for (const w of all) {
+          for (const d of w.docs) {
+            const k = docSid(d);
+            if (k && !seen[k]) { seen[k] = 1; combined.push(d); }
+          }
+        }
+        const lastFull = all.length > 0 && all[all.length - 1].docs.length >= 30;
+        const title = catTitle || 'Series';
+        const pg = lastFull ? { mode: 'series', key: seriesId, next: all[all.length - 1].start + 30 } : null;
+        storeCache(key, title, combined.slice(0, 120), pg);
+        return {
+          title: title,
+          docs: combined.slice(0, 120),
+          paging: pg
+        };
+      });
+    };
+    // Collection windows: the catalog-name query paged (3 windows max,
+    // concurrent). The track must surface in one of them; its window's
+    // group becomes the drawer, pageable further down the same query.
+    const tryCollWindows = () => {
+      if (!key || key.indexOf('coll_') !== 0 || !catTitle) return Promise.resolve(null);
+      return Promise.all([1, 31, 61].map(st =>
+        fetchDocs('/api/search?q=' + encodeURIComponent(catTitle) + '&start=' + st)
+      )).then(results => {
+        const all = [];
+        for (const w of results) { if (w) all.push(...w); }
+        const best = pickGroup(groupAndRankDocs(all));
+        if (!best) return null;
+        const lastCount = results.length > 0 && results[results.length - 1]
+          ? results[results.length - 1].length : 0;
+        const pgc = lastCount >= 30
+          ? { mode: 'catalog', key: catTitle, coll: key, next: 91 }
+          : null;
+        storeCache(best.key, best.title || catTitle, best.docs.slice(0, 90), pgc);
+        return {
+          title: best.title || catTitle,
+          docs: best.docs.slice(0, 90),
+          paging: pgc
+        };
+      });
+    };
+    let chain = Promise.resolve(null);
+    if (familyQuery) {
+      chain = chain.then(prev => prev || fromQuery(familyQuery, true));
+    }
+    if (catTitle && catTitle !== familyQuery) {
+      chain = chain.then(prev => prev || fromQuery(catTitle, false));
+    }
+    chain = chain.then(prev => prev || trySeriesKey());
+    chain = chain.then(prev => prev || tryCollWindows());
+    const p = chain.finally(() => {
       try { delete seriesResolveInflight[inflightKey]; } catch (e) {}
     });
     seriesResolveInflight[inflightKey] = p;
     return p;
   }
-
   // Renders sibling parts for the player strip + single-card drawers:
   // full before/after order, current track highlighted, badge behavior
   // per surface (player badges expand, card badges mini).
@@ -15287,6 +15366,92 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     } catch (e) {
       return '';
     }
+  }
+
+  function playingTrackId() {
+    try {
+      return (typeof hasAudio !== 'undefined' && hasAudio &&
+        typeof currentShiurId !== 'undefined' && currentShiurId)
+        ? String(currentShiurId) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+  function seriesLoadMoreHtml() {
+    return '<button type="button" class="card-mini-btn series-load-more" style="margin:8px auto; display:block;" onclick="fetchSeriesPage(this)">↓ Load 30 more</button>';
+  }
+  // Fills any series drawer (card, strip) + appends Load-more when the
+  // group carries paging. devUpgradeCards runs here so appended action
+  // buttons appear without waiting for a toggle cycle.
+  function seriesDrawerFill(drawerId, group, badgeMini) {
+    const drawer = document.getElementById(drawerId);
+    if (!drawer || !group || !Array.isArray(group.docs)) return false;
+    drawer.innerHTML = seriesPartsHtml(group.docs, playingTrackId(), badgeMini);
+    drawer.setAttribute('data-filled', '1');
+    const pg = group.paging || null;
+    if (pg && (pg.mode === 'series' || pg.mode === 'catalog') && pg.next) {
+      drawer.setAttribute('data-page-mode', pg.mode);
+      drawer.setAttribute('data-page-key', pg.key || '');
+      if (pg.coll) drawer.setAttribute('data-page-coll', pg.coll);
+      drawer.setAttribute('data-page-next', String(pg.next));
+      drawer.setAttribute('data-badge-mini', badgeMini ? 'true' : 'false');
+      drawer.insertAdjacentHTML('beforeend', seriesLoadMoreHtml());
+    } else {
+      ['data-page-mode', 'data-page-key', 'data-page-coll', 'data-page-next', 'data-badge-mini'].forEach(a => {
+        try { drawer.removeAttribute(a); } catch (e) {}
+      });
+    }
+    try { if (typeof devUpgradeCards === 'function') devUpgradeCards(drawer); } catch (e) {}
+    return true;
+  }
+  // Load-more for paged drawers (big series/collections): appends the next
+  // 30-part window, keeps going until a short window ends the run.
+  function fetchSeriesPage(btn) {
+    try {
+      const drawer = btn ? btn.closest('.series-drawer') : null;
+      if (!drawer) return;
+      const mode = drawer.getAttribute('data-page-mode');
+      const next = parseInt(drawer.getAttribute('data-page-next') || '31', 10) || 31;
+      let url = null;
+      if (mode === 'series') {
+        url = '/api/search?seriesId=' + encodeURIComponent(drawer.getAttribute('data-page-key') || '') + '&start=' + next;
+      } else if (mode === 'catalog') {
+        url = '/api/search?q=' + encodeURIComponent(drawer.getAttribute('data-page-key') || '') + '&start=' + next;
+      }
+      if (!url) return;
+      btn.disabled = true;
+      btn.textContent = 'Loading…';
+      fetch(url).then(r => r.ok ? r.json() : null).then(payload => {
+        let raw = [];
+        try {
+          raw = ((payload && payload.response && payload.response.docs) || (payload && payload.docs) || []).filter(Boolean);
+        } catch (e) {}
+        let docs = raw;
+        if (mode === 'catalog') {
+          const coll = drawer.getAttribute('data-page-coll') || '';
+          docs = raw.filter(d => {
+            try {
+              const c = d.collectionid;
+              return coll && ('coll_' + (Array.isArray(c) ? c[0] : c)) === coll;
+            } catch (e) { return false; }
+          });
+        }
+        try { btn.remove(); } catch (e) {}
+        const bmini = drawer.getAttribute('data-badge-mini') !== 'false';
+        if (docs.length > 0) {
+          drawer.insertAdjacentHTML('beforeend', seriesPartsHtml(docs, playingTrackId(), bmini));
+          try { if (typeof devUpgradeCards === 'function') devUpgradeCards(drawer); } catch (e) {}
+        }
+        if (raw.length >= 30) {
+          drawer.setAttribute('data-page-next', String(next + 30));
+          drawer.insertAdjacentHTML('beforeend', seriesLoadMoreHtml());
+        } else {
+          drawer.removeAttribute('data-page-mode');
+        }
+      }).catch(() => {
+        try { btn.disabled = false; btn.textContent = '↓ Load 30 more'; } catch (e) {}
+      });
+    } catch (e) {}
   }
 
   // Lazy single-card series drawer: resolves siblings on first open,
@@ -15316,14 +15481,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         try { if (btn) btn.style.display = 'none'; } catch (e2) {}
         return;
       }
-      let nowId = '';
-      try {
-        nowId = (typeof hasAudio !== 'undefined' && hasAudio && typeof currentShiurId !== 'undefined') ? String(currentShiurId || '') : '';
-      } catch (e2) {}
-      drawer.innerHTML = seriesPartsHtml(group.docs, nowId, true);
-      drawer.setAttribute('data-filled', '1');
+      seriesDrawerFill(drawerId, group, true);
       if (btn) {
-        // "N more" matches cover convention (subs beyond the current one).
         btn.setAttribute('data-sub-count', String(group.docs.length - 1));
         btn.setAttribute('data-series-title', group.title || stitle);
       }
@@ -15369,8 +15528,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       btn.setAttribute('data-sub-count', String(group.docs.length - 1));
       btn.setAttribute('data-series-title', group.title || currentSeriesName);
       btn.innerHTML = '<span class="series-expand-icon">➕</span> <span class="series-expand-text">View ' + (group.docs.length - 1) + ' more in \u2018' + escapeHtml(group.title || currentSeriesName) + '\u2019 Series</span>';
-      drawer.innerHTML = seriesPartsHtml(group.docs, myId, false);
-      drawer.setAttribute('data-filled', '1');
+      seriesDrawerFill('seriesStripDrawer', group, false);
       strip.style.display = 'block';
     }).catch(() => {});
   }
