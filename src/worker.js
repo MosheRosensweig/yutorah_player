@@ -9838,8 +9838,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     .transcript-options {
       display: flex;
-      flex-wrap: wrap;
+      flex-direction: column;
+      align-items: stretch;
       gap: 6px;
+    }
+    .transcript-options .transcript-opt {
+      text-align: left;
+      justify-content: flex-start;
     }
     .transcript-opt.quiz-correct {
       background: #16a34a;
