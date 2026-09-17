@@ -15441,11 +15441,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   function seriesFamilyQuery(title) {
     try {
       let t = String(title || '');
-      t = t.replace(/\b(parts?|pt\.?|chelek|chelak|vol\.?|volume|nos?\.?|numbers?|shiur(im)?|class(es)?|sessions?|lessons?)\s*\d+[a-z]?\b/gi, ' ');
-      t = t.replace(/#\s*\d+/g, ' ');
-      t = t.replace(/\b\d+\s*of\s*\d+\b/gi, ' ');
-      t = t.replace(/[-_:;,()[\]]/g, ' ');
-      t = t.replace(/\s+/g, ' ').trim();
+      t = t.replace(/\\b(parts?|pt\\.?|chelek|chelak|vol\\.?|volume|nos?\\.?|numbers?|shiur(im)?|class(es)?|sessions?|lessons?)\\s*\\d+[a-z]?\\b/gi, ' ');
+      t = t.replace(/#\\s*\\d+/g, ' ');
+      t = t.replace(/\\b\\d+\\s*of\\s*\\d+\\b/gi, ' ');
+      t = t.replace(/[-_:;,()[\\]]/g, ' ');
+      t = t.replace(/\\s+/g, ' ').trim();
       const words = t.split(' ').filter(w => w.length > 1);
       if (words.length < 2) return '';
       return words.slice(0, 6).join(' ');
@@ -16082,8 +16082,34 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       }
     } catch (e) {}
   }
+  // ?diag=series (dev aid): renders resolver progress into the strip
+  // area so a missing strip reports WHY instead of staying silent.
+  function seriesDiagOn() {
+    try {
+      return new URLSearchParams(window.location.search).get('diag') === 'series';
+    } catch (e) {
+      return false;
+    }
+  }
+  function seriesDiag(msg) {
+    try {
+      if (!seriesDiagOn()) return;
+      let box = document.getElementById('seriesDiag');
+      if (!box) {
+        const strip = document.getElementById('seriesStrip');
+        if (!strip) return;
+        box = document.createElement('div');
+        box.id = 'seriesDiag';
+        box.style.cssText = 'font-size:12px;color:var(--text-muted);padding:6px 8px;white-space:pre-wrap;';
+        strip.appendChild(box);
+        strip.style.display = 'block';
+      }
+      box.textContent += msg + String.fromCharCode(10);
+    } catch (e) {}
+  }
   function updateSeriesStrip(id, seriesName, trackTitle) {
     hideSeriesStrip();
+    if (seriesDiagOn()) seriesDiag('strip: id=' + id + ' seriesName=' + (seriesName || '(none)'));
     if (!id) return;
     const myId = String(id);
     currentSeriesName = String(seriesName || '');
@@ -16091,9 +16117,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     // short/generic titles that yield no family. Either may be empty —
     // the resolver requires at least one.
     const fam = seriesFamilyQuery(trackTitle);
+    if (seriesDiagOn()) seriesDiag('strip: family query=' + (fam || '(none)'));
     resolveSeriesDocs(myId, { key: '', title: currentSeriesName }, fam).then(group => {
+      if (seriesDiagOn()) {
+        seriesDiag('strip: resolved=' + (!group ? 'null' :
+          ('title=' + group.title + ' docs=' + (group.docs || []).length)));
+      }
       if (!group || !Array.isArray(group.docs) || group.docs.length < 2) return;
-      if (String(currentShiurId) !== myId) return; // moved on
+      if (String(currentShiurId) !== myId) {
+        if (seriesDiagOn()) seriesDiag('strip: stale (track moved on)');
+        return;
+      }
       const strip = document.getElementById('seriesStrip');
       const btn = document.getElementById('seriesStripBtn');
       const drawer = document.getElementById('seriesStripDrawer');
@@ -17411,14 +17445,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         }).then(data => {
           if (!data || String(currentShiurId) !== String(data.shiurID || '')) return;
           lastLectureData = data;
-          renderMetadataBox(data);
+          // Each hydrate step is independent: one throwing must not kill
+          // the rest (previously a metadata error hid strip + transcript).
+          try { renderMetadataBox(data); } catch (e) {}
           try { if (typeof updateSourceSheetButton === 'function') updateSourceSheetButton(data); } catch (e) {}
           // Direct links/reloads/shares skip playShiurById, so the series
           // strip needs its own hydrate here (race-guard inside matches).
           try { if (typeof updateSeriesStrip === 'function') updateSeriesStrip(String(currentShiurId), data.seriesName || data.seriesname || '', data.shiurTitle || data.title || ''); } catch (e) {}
           try { if (hasAudio && typeof loadTranscriptSection === 'function') loadTranscriptSection(String(currentShiurId)); } catch (e) {}
-          const rawD = data.shiurDateFormatted || data.shiurDate || '';
-          fetchUploadDate(String(currentShiurId), rawD ? formatShiurDate(rawD) : '');
+          try {
+            const rawD = data.shiurDateFormatted || data.shiurDate || '';
+            fetchUploadDate(String(currentShiurId), rawD ? formatShiurDate(rawD) : '');
+          } catch (e) {}
         }).catch(() => {});
       } else {
         const mm = document.getElementById('shiurMeta');
