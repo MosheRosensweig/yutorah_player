@@ -9862,6 +9862,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     .transcript-hear {
       margin-top: 6px;
     }
+    .transcript-tabs {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin: 2px 0 10px;
+    }
+    .transcript-qnum {
+      font-weight: 800;
+      margin-right: 4px;
+    }
     .transcript-discuss {
       font-size: 13px;
       color: var(--text-muted);
@@ -15724,39 +15734,60 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     return a;
   }
+  function switchTranscriptTab(name) {
+    try {
+      const body = document.getElementById('transcriptBody');
+      if (!body) return;
+      body.querySelectorAll('.transcript-tab').forEach(b => {
+        const on = b.getAttribute('data-tab') === name;
+        b.classList.toggle('active-save', on);
+      });
+      body.querySelectorAll('.transcript-pane').forEach(p => {
+        p.style.display = (p.getAttribute('data-pane') === name) ? '' : 'none';
+      });
+    } catch (e) {}
+  }
   function renderTranscriptBody(data, trackId) {
     const body = document.getElementById('transcriptBody');
     if (!body) return false;
     const esc = (s) => escapeHtml(String(s == null ? '' : s));
-    let html = '';
+    const panes = [];
+    const tabs = [];
+    const paneNames = [];
     const summary = data && data.Summary ? String(data.Summary) : '';
     if (summary) {
-      html += '<div class="transcript-subhead">📋 Summary</div>' +
-        '<p class="transcript-summary">' + esc(summary) + '</p>';
+      paneNames.push('summary');
+      panes.push('<div class="transcript-pane" data-pane="summary" style="display:none;">' +
+        '<p class="transcript-summary">' + esc(summary) + '</p></div>');
+      tabs.push('<button type="button" class="card-mini-btn transcript-tab" data-tab="summary" onclick="switchTranscriptTab(&quot;summary&quot;)">📋 Summary</button>');
     }
     const chapters = (data && Array.isArray(data.Chapters)) ? data.Chapters : [];
-    if (chapters.length > 0) {
-      html += '<div class="transcript-subhead">📑 Chapters</div><div class="transcript-chapters">';
-      chapters.forEach((c, i) => {
-        const st = Number(c.start_seconds || 0);
-        html += '<button type="button" class="card-mini-btn transcript-chapter" onclick="transcriptSeek(' + st + ')"' +
-          ' title="' + esc(c.summary || '') + '">' +
-          '<span class="transcript-chapter-time">' + formatTime(st) + '</span> ' + esc(c.title || ('Part ' + (i + 1))) + '</button>';
-      });
-      html += '</div>';
-    }
     const words = (data && Array.isArray(data.RefinedTranscription) && data.RefinedTranscription.length > 0)
       ? data.RefinedTranscription
       : ((data && Array.isArray(data.TranscriptionText)) ? data.TranscriptionText : []);
     if (words.length > 0) {
-      html += '<div class="transcript-subhead">📝 Transcript <span class="transcript-hint">(tap a paragraph to jump)</span></div>' +
+      let inner = '';
+      if (chapters.length > 0) {
+        inner += '<div class="transcript-subhead">📑 Chapters</div><div class="transcript-chapters">';
+        chapters.forEach((c, i) => {
+          const st = Number(c.start_seconds || 0);
+          inner += '<button type="button" class="card-mini-btn transcript-chapter" onclick="transcriptSeek(' + st + ')"' +
+            ' title="' + esc(c.summary || '') + '">' +
+            '<span class="transcript-chapter-time">' + formatTime(st) + '</span> ' + esc(c.title || ('Part ' + (i + 1))) + '</button>';
+        });
+        inner += '</div>';
+      }
+      inner += '<div class="transcript-subhead">📝 Transcript <span class="transcript-hint">(tap a paragraph to jump)</span></div>' +
         '<div class="transcript-text">' + transcriptChunkHtml(words) + '</div>';
+      panes.push('<div class="transcript-pane" data-pane="transcript" style="display:none;">' + inner + '</div>');
+      paneNames.push('transcript');
+      tabs.push('<button type="button" class="card-mini-btn transcript-tab" data-tab="transcript" onclick="switchTranscriptTab(&quot;transcript&quot;)">📝 Transcript</button>');
     }
     const quiz = (data && data.Quiz && typeof data.Quiz === 'object') ? data.Quiz : null;
     const review = (quiz && Array.isArray(quiz.ReviewQuestions)) ? quiz.ReviewQuestions : [];
     const discuss = (quiz && Array.isArray(quiz.DiscussionQuestions)) ? quiz.DiscussionQuestions : [];
     if (review.length > 0 || discuss.length > 0) {
-      html += '<div class="transcript-subhead">❓ Quiz</div><div class="transcript-quiz">';
+      let inner = '<div class="transcript-quiz">';
       review.forEach((q, qi) => {
         const opts = shuffleInPlace([
           { t: q.CorrectAnswer, ok: true },
@@ -15765,8 +15796,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           { t: q.WrongAnswer3, ok: false }
         ].filter(o => o.t));
         const ss = Number(q.StartSeconds || 0);
-        html += '<div class="transcript-question" data-q="' + qi + '">' +
-          '<div class="transcript-question-text">' + esc(q.Question) + '</div>' +
+        inner += '<div class="transcript-question" data-q="' + qi + '">' +
+          '<div class="transcript-question-text"><span class="transcript-qnum">' + (qi + 1) + '.</span> ' + esc(q.Question) + '</div>' +
           '<div class="transcript-options">' +
           opts.map(o => '<button type="button" class="card-mini-btn transcript-opt" data-ok="' + (o.ok ? '1' : '0') + '"' +
             ' onclick="answerTranscriptQuiz(this)">' + esc(o.t) + '</button>').join('') +
@@ -15776,11 +15807,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       });
       discuss.forEach(d => {
         const dt = (d && d.Question) ? d.Question : (typeof d === 'string' ? d : '');
-        if (dt) html += '<div class="transcript-discuss">💬 ' + esc(dt) + '</div>';
+        if (dt) inner += '<div class="transcript-discuss">💬 ' + esc(dt) + '</div>';
       });
-      html += '</div>';
+      inner += '</div>';
+      panes.push('<div class="transcript-pane" data-pane="quiz" style="display:none;">' + inner + '</div>');
+      paneNames.push('quiz');
+      tabs.push('<button type="button" class="card-mini-btn transcript-tab" data-tab="quiz" onclick="switchTranscriptTab(&quot;quiz&quot;)">❓ Quiz</button>');
     }
-    if (!html) return false;
+    if (panes.length === 0) return false;
+    const first = paneNames.length > 0 ? paneNames[0] : 'summary';
+    let html = '<div class="transcript-tabs">' + tabs.join('') + '</div>' + panes.join('');
+    body.innerHTML = html;
+    switchTranscriptTab(first);
     body.innerHTML = html;
     transcriptTrackId = String(trackId || '');
     transcriptCurIdx = -1;
