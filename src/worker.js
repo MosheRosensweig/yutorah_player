@@ -15378,7 +15378,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
   }
   function seriesLoadMoreHtml() {
-    return '<button type="button" class="card-mini-btn series-load-more" style="margin:8px auto; display:block;" onclick="fetchSeriesPage(this)">↓ Load 30 more</button>';
+    return '<button type="button" class="card-mini-btn series-load-more" style="margin:8px auto; display:block;" onclick="fetchSeriesPage(this)">↓ Load more</button>';
   }
   // Fills any series drawer (card, strip) + appends Load-more when the
   // group carries paging. devUpgradeCards runs here so appended action
@@ -15449,7 +15449,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           drawer.removeAttribute('data-page-mode');
         }
       }).catch(() => {
-        try { btn.disabled = false; btn.textContent = '↓ Load 30 more'; } catch (e) {}
+        try { btn.disabled = false; btn.textContent = '↓ Load more'; } catch (e) {}
       });
     } catch (e) {}
   }

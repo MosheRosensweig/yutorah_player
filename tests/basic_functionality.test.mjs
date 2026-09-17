@@ -1332,7 +1332,7 @@ async function testCardPlayStatesAndMiniPop() {
   assert.ok(workerSrc.includes('then the catalog name carries them'), 'resolver must fall back to the catalog name when family is too specific (H1b)');
   assert.ok(workerSrc.includes('function fetchSeriesPage('), 'paged drawers need a load-more fetcher (H1c)');
   assert.ok(workerSrc.includes('data-page-mode'), 'drawers must carry paging state (H1c)');
-  assert.ok(workerSrc.includes('Load 30 more'), 'drawers must offer to load more (H1c)');
+  assert.ok(workerSrc.includes('Load more'), 'drawers must offer to load more (H1c)');
   assert.ok(workerSrc.includes('function listeningUrlPath()'), 'home/brand must preserve the loaded track URL (H2)');
   assert.ok(workerSrc.includes("newUrl.searchParams.delete('restored')"), 'search must drop the one-shot flag (H2/G4)');
   assert.ok(workerSrc.includes('yutorah_last_session'), 'app must snapshot the loaded track on hide/unload (G4)');
