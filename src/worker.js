@@ -8251,6 +8251,39 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     .scrubber-bar.is-dragging .scrubber-fill {
       transition: none !important;
     }
+    /* Chapter ticks dividing the scrubber (transcript chapters). */
+    #chapterMarkers {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      pointer-events: none;
+    }
+    .chapter-tick {
+      position: absolute;
+      top: -2px;
+      bottom: -2px;
+      width: 3px;
+      margin-left: -1px;
+      background: rgba(255, 255, 255, 0.85);
+      border-radius: 2px;
+      pointer-events: auto;
+      cursor: pointer;
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+    }
+    [data-theme="dark"] .chapter-tick {
+      background: rgba(255, 255, 255, 0.9);
+    }
+    /* Live chapter title between the bar and the transport buttons. */
+    #chapterTitle {
+      text-align: center;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-muted);
+      margin: 6px 0 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
     .scrubber-handle {
       position: absolute;
       right: -10px;
@@ -12871,12 +12904,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           <div class="scrubber-fill" id="scrubberFill">
             <div class="scrubber-handle"></div>
           </div>
+          <div id="chapterMarkers"></div>
         </div>
         <div class="time-display">
           <span id="curTime">0:00</span>
           <span id="totalTime">${escapeHtml(duration || '0:00')}</span>
         </div>
       </div>
+
+      <!-- Current chapter title (transcript chapters, live) -->
+      <div id="chapterTitle" style="display: none;" title=""></div>
 
       <!-- Transport Buttons -->
       <div class="transport-row">
@@ -15680,6 +15717,67 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   let transcriptTrackId = '';
   let transcriptChunks = [];
   let transcriptCurIdx = -1;
+  let transcriptChapters = [];
+  // Chapter ticks on the scrubber + live chapter title. Driven by the
+  // transcript payload (works whether or not the transcript section is
+  // open); cleared with the section on switch/close.
+  function renderChapterMarkers() {
+    try {
+      const box = document.getElementById('chapterMarkers');
+      if (!box) return;
+      box.innerHTML = '';
+      const dur = (typeof audio !== 'undefined' && audio && audio.duration && !isNaN(audio.duration)) ? audio.duration : 0;
+      if (!dur || transcriptChapters.length === 0) {
+        updateChapterTitle();
+        return;
+      }
+      transcriptChapters.forEach((c, i) => {
+        if (i === 0) return; // first chapter starts at 0, no tick needed
+        const pct = Math.max(0, Math.min(100, (c.start / dur) * 100));
+        const tick = document.createElement('div');
+        tick.className = 'chapter-tick';
+        tick.style.left = pct + '%';
+        tick.title = c.title || ('Part ' + (i + 1));
+        tick.setAttribute('role', 'button');
+        tick.setAttribute('aria-label', 'Jump to ' + (c.title || ('part ' + (i + 1))));
+        tick.addEventListener('click', (ev) => {
+          try {
+            ev.stopPropagation();
+            ev.preventDefault();
+            transcriptSeek(c.start);
+          } catch (e) {}
+        });
+        box.appendChild(tick);
+      });
+      updateChapterTitle();
+    } catch (e) {}
+  }
+  function updateChapterTitle() {
+    try {
+      const el = document.getElementById('chapterTitle');
+      if (!el) return;
+      if (!transcriptChapters.length || !transcriptTrackId ||
+          String(transcriptTrackId) !== String(typeof currentShiurId !== 'undefined' ? currentShiurId : '')) {
+        el.style.display = 'none';
+        el.textContent = '';
+        return;
+      }
+      const t = (typeof audio !== 'undefined' && audio) ? (audio.currentTime || 0) : 0;
+      let cur = transcriptChapters[0];
+      for (const c of transcriptChapters) {
+        if (t >= c.start) cur = c;
+        else break;
+      }
+      if (cur && cur.title) {
+        el.textContent = '📑 ' + cur.title;
+        el.title = cur.title;
+        el.style.display = 'block';
+      } else {
+        el.style.display = 'none';
+        el.textContent = '';
+      }
+    } catch (e) {}
+  }
   function transcriptSeek(sec) {
     try {
       if (typeof audio === 'undefined' || !audio || !audio.src) return;
@@ -15820,9 +15918,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     let html = '<div class="transcript-tabs">' + tabs.join('') + '</div>' + panes.join('');
     body.innerHTML = html;
     switchTranscriptTab(first);
-    body.innerHTML = html;
     transcriptTrackId = String(trackId || '');
     transcriptCurIdx = -1;
+    transcriptChapters = chapters
+      .map(c => ({ start: Number(c.start_seconds || 0), end: Number(c.end_seconds || 0), title: String(c.title || '') }))
+      .filter(c => c.title && !isNaN(c.start))
+      .sort((a, b) => a.start - b.start);
+    renderChapterMarkers();
     transcriptChunks = Array.prototype.slice.call(body.querySelectorAll('.transcript-chunk')).map(el => ({
       start: parseFloat(el.getAttribute('data-start')) || 0,
       el: el
@@ -15847,6 +15949,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     transcriptTrackId = '';
     transcriptChunks = [];
     transcriptCurIdx = -1;
+    transcriptChapters = [];
+    try {
+      const box = document.getElementById('chapterMarkers');
+      if (box) box.innerHTML = '';
+      const ct = document.getElementById('chapterTitle');
+      if (ct) {
+        ct.style.display = 'none';
+        ct.textContent = '';
+      }
+    } catch (e) {}
     try {
       const s = document.getElementById('transcriptSection');
       if (s) s.style.display = 'none';
@@ -25045,6 +25157,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (now - lastMediaSessionPosUpdate > 1000) {
       lastMediaSessionPosUpdate = now;
       updateMediaSessionPosition();
+      try { if (typeof updateChapterTitle === 'function') updateChapterTitle(); } catch (e) {}
       // Transcript follow-along: highlight the current paragraph.
       try {
         if (transcriptChunks.length > 0 && transcriptTrackId &&
@@ -25079,12 +25192,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (countdownEl) countdownEl.textContent = Math.ceil(audio.duration);
     }
     applyInitialTime();
+    try { if (typeof renderChapterMarkers === 'function') renderChapterMarkers(); } catch (e) {}
   });
   audio.addEventListener('canplay', () => {
     if (currentPlaybackRate) {
       audio.playbackRate = currentPlaybackRate;
     }
     applyInitialTime();
+    try { if (typeof renderChapterMarkers === 'function') renderChapterMarkers(); } catch (e) {}
   });
   audio.addEventListener('ended', () => {
     if (isSponsorPlaying && pendingShiur) {

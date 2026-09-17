@@ -1272,6 +1272,8 @@ async function testPwaThemePlaylistDeleteClearHistory() {
   assert.ok(workerSrc.includes('id="transcriptSection"'), 'player must contain the transcript section');
   assert.ok(workerSrc.includes('function loadTranscriptSection('), 'transcript loader must exist');
   assert.ok(workerSrc.includes('function answerTranscriptQuiz('), 'quiz answering must exist');
+  assert.ok(workerSrc.includes('id="chapterMarkers"') && workerSrc.includes('id="chapterTitle"'), 'scrubber must carry chapter ticks + live title');
+  assert.ok(workerSrc.includes('function renderChapterMarkers(') && workerSrc.includes('function updateChapterTitle('), 'chapter markers/title updaters must exist');
 
   // Issue 2: a pending inline remove-confirm must survive grid re-renders
   // (background cloudPush/pull → adoptCloudState → renderPlaylistsGrid).
