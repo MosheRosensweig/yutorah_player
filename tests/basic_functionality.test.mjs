@@ -1327,6 +1327,10 @@ async function testCardPlayStatesAndMiniPop() {
   assert.ok(workerSrc.includes('id="seriesStrip"'), 'player card must contain the series strip (G3)');
   assert.ok(workerSrc.includes('function toggleCardSeries('), 'single cards need lazy series drawers (G3)');
   assert.ok(workerSrc.includes('series-now-playing'), 'current part must be marked in drawers (G3)');
+  assert.ok(workerSrc.includes('function seriesFamilyQuery('), 'title-family fallback must exist (H1)');
+  assert.ok(workerSrc.includes('smallest containing group'), 'resolver must prefer the most specific run (H1)');
+  assert.ok(workerSrc.includes('function listeningUrlPath()'), 'home/brand must preserve the loaded track URL (H2)');
+  assert.ok(workerSrc.includes("newUrl.searchParams.delete('restored')"), 'search must drop the one-shot flag (H2/G4)');
   assert.ok(workerSrc.includes('yutorah_last_session'), 'app must snapshot the loaded track on hide/unload (G4)');
   assert.ok(workerSrc.includes('function saveLastSession()') && workerSrc.includes('function clearLastSession()'), 'session save/clear helpers must exist (G4)');
   assert.ok(workerSrc.includes('Session restore: reopen where you left off'), 'bare launches must restore the snapshot paused (G4)');

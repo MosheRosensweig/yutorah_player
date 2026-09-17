@@ -8,6 +8,11 @@ Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://
 Tests: **5/5 test suites passing (100% green, 31/31 basic functionality checks)**
 Production status: **DEPLOYED & VERIFIED (HTTP 200 on both Dev & Prod)** — batch is Dev-only until approved
 
+## 🎯 In Progress: H-fixes (series family fallback → home URL keeps shiur)
+Per-user instruction: same workflow (review + Dev + notes each). Branch `feat/series-search-pwa`.
+- [ ] **H1: Series strip for null-seriesName tracks** — e.g. 1179518 (Muktzeh Part 3): lecture `seriesName` is null, but search docs carry `seriesid:[4000]` ("Daily Shiur" firehose). Fix: title-family fallback query (strip Part N/No. N markers) + smallest-containing-group pick + 30 cap; key-matched groups keep catalog titles.
+- [ ] **H2: Brand/home keeps loaded shiur in URL** — `goHome()` (and `openSearchView`) reset to `/`, dropping the playing id. Keep `/<id>?t=` (fresh t) while loaded; same for Daf→search entry.
+
 ## 🎯 In Progress: Series/Search/PWA Batch (sub-badges → search URL → series strip → PWA restore)
 Per-user instruction: branch `feat/series-search-pwa`, one at a time — review + Dev deploy + notes each — FEATURES.md for everything + final dual review at the end. Prod untouched.
 - [x] **G1: Series-sub-cards show Playing/Paused** — `cardPlayBadgeHtml()` takes badge class; updater + CSS cover `.series-sub-play`. Review: PASS. *Status: ✅ dev-deployed (`6c0a807a`, HTTP 200).*
