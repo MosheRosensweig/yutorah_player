@@ -10,8 +10,8 @@ Production status: **DEPLOYED & VERIFIED (HTTP 200 on both Dev & Prod)** — bat
 
 ## 🎯 In Progress: H-fixes (series family fallback → home URL keeps shiur)
 Per-user instruction: same workflow (review + Dev + notes each). Branch `feat/series-search-pwa`.
-- [ ] **H1: Series strip for null-seriesName tracks** — e.g. 1179518 (Muktzeh Part 3): lecture `seriesName` is null, but search docs carry `seriesid:[4000]` ("Daily Shiur" firehose). Fix: title-family fallback query (strip Part N/No. N markers) + smallest-containing-group pick + 30 cap; key-matched groups keep catalog titles.
-- [ ] **H2: Brand/home keeps loaded shiur in URL** — `goHome()` (and `openSearchView`) reset to `/`, dropping the playing id. Keep `/<id>?t=` (fresh t) while loaded; same for Daf→search entry.
+- [x] **H1: Series strip for null-seriesName tracks** — e.g. 1179518 (Muktzeh Part 3): lecture `seriesName` is null, but search docs carry `seriesid:[4000]` ("Daily Shiur" firehose). Fix: title-family fallback (`Hilchos Shabbos Muktzeh`, verified live) + smallest-containing-group pick + 30 cap; family labels even on key match. Review: PASS (LOWs only). *Status: ✅ dev-deployed (`02d3b98e`, HTTP 200).*
+- [x] **H2: Brand/home keeps loaded shiur in URL** — `goHome()` + `openSearchView` keep `/<id>?t=` (fresh t, prefs kept) while loaded; full reset when not. Same review: PASS. Same deploy.
 
 ## 🎯 In Progress: Series/Search/PWA Batch (sub-badges → search URL → series strip → PWA restore)
 Per-user instruction: branch `feat/series-search-pwa`, one at a time — review + Dev deploy + notes each — FEATURES.md for everything + final dual review at the end. Prod untouched.
