@@ -9906,6 +9906,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       border-color: var(--primary);
       color: #fff;
     }
+    [data-theme="dark"] .transcript-opt.quiz-correct {
+      background: #16a34a;
+      border-color: #16a34a;
+      color: #fff;
+    }
+    [data-theme="dark"] .transcript-opt.quiz-wrong {
+      background: #dc2626;
+      border-color: #dc2626;
+      color: #fff;
+    }
     .transcript-quiz-actions {
       display: flex;
       gap: 6px;
