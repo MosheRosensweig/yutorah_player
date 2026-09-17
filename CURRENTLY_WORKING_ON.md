@@ -8,6 +8,21 @@ Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://
 Tests: **5/5 test suites passing (100% green, 31/31 basic functionality checks)**
 Production status: **DEPLOYED & VERIFIED (HTTP 200 on both Dev & Prod)** — prod now serves Player UX Batch A–E + Follow-ups F1–F4 (main @ `1ed56f2`); no schema migration needed (clearHistory uses existing table)
 
+## 🎯 In Progress: H-fixes (series family fallback → home URL keeps shiur)
+Per-user instruction: same workflow (review + Dev + notes each). Branch `feat/series-search-pwa`.
+- [x] **H1: Series strip for null-seriesName tracks** — e.g. 1179518 (Muktzeh Part 3): lecture `seriesName` is null, but search docs carry `seriesid:[4000]` ("Daily Shiur" firehose). Fix: title-family fallback (`Hilchos Shabbos Muktzeh`, verified live) + smallest-containing-group pick + 30 cap; family labels even on key match. Review: PASS (LOWs only). *Status: ✅ dev-deployed (`02d3b98e`, HTTP 200).*
+- [x] **H1b: Catalog fallback for over-specific families (live bug)** — "AYS Rosh Hashanah 5787" (real 87-part collection, one-off title): family matched only itself → button silently died next to a working MB cover drawer. Resolver now retries the catalog name and takes the key-matched group (verified live: 30/30 same-collection). Review: PASS. *Status: ✅ dev-deployed (`c568123d`, HTTP 200).*
+- [x] **H1c: Big-series paging (live bug)** — "Rosh Hashanah 2026 YCQ" (96-part collection, track past row 30): no query window could form its group → dead button. Resolver now does key-targeted series windows + catalog-query windows with a `↓ Load more` button until a short page ends the run (verified live: track surfaces in window 2/3). Cache keeps paging on reopen. Review: PASS (MED cache fix folded in). *Status: ✅ dev-deployed (`eafe15c5`, HTTP 200).*
+- [x] **H2: Brand/home keeps loaded shiur in URL** — `goHome()` + `openSearchView` keep `/<id>?t=` (fresh t, prefs kept) while loaded; full reset when not. Same review: PASS. Same deploy.
+
+## 🎯 In Progress: Series/Search/PWA Batch (sub-badges → search URL → series strip → PWA restore)
+Per-user instruction: branch `feat/series-search-pwa`, one at a time — review + Dev deploy + notes each — FEATURES.md for everything + final dual review at the end. Prod untouched.
+- [x] **G1: Series-sub-cards show Playing/Paused** — `cardPlayBadgeHtml()` takes badge class; updater + CSS cover `.series-sub-play`. Review: PASS. *Status: ✅ dev-deployed (`6c0a807a`, HTTP 200).*
+- NOTE (2026-09-16): paused mid-batch to ship `main` to prod (`3adad62b`, UX batch + F1–F4 live, markers verified); resumed here.
+- [x] **G2: Search URL preserves loaded shiur** — root cause: `executeLiveSearch` reset path to `/` (dropping id) while keeping stale `t=`. Fix: keep `/<id>` + freeze `t` first; server prefetches search even with shiur loaded. Review: PASS (ordering nit folded in). *Status: ✅ dev-deployed (`23a86712`, HTTP 200 on `/1179518?search=shabbat`).*
+- [x] **G3: Series strip in big player + cards** — implements scope E: player strip (`View N more`, drawer with current highlighted, parts expand in place) + lazy `View series` drawers on single cards incl. mid-series orphans (cache → regrouped title search, id-verified). Review: PASS (count + docs + dead-code fixes folded in). Final review caught strip missing on boot/direct loads → boot hydration now calls `updateSeriesStrip`. *Status: ✅ dev-deployed (`338defb7`, HTTP 200).*
+- [x] **G4: PWA session restore** — easy, done: snapshot id on hide/unload; bare launches replace to `/<id>?t=<pos>&restored=1` (direct-link path, boot autoplay gated off → paused). Daf/filter/lectures URLs exempt; explicit close clears; completed/>30d fall through; heartbeat flushed on hide. Review: FAIL→fixed→PASS. *Status: ✅ dev-deployed (`fdf48de9`, HTTP 200).*
+
 ## 🎯 In Progress: Player Follow-ups (badge toggle → resume → card-expand → fresh-card state)
 Per-user instruction: branch `feat/player-followups`, one at a time — review + Dev deploy + notes each — final dual review at the end. Prod untouched.
 - [x] **F1: Badge toggles play/pause** — clicking a green `Playing` badge pauses (label flips to `Paused`); clicking again resumes. Cycle via the same-track path. Review: PASS (LOWs only). *Status: ✅ dev-deployed (`c9e7fbd8`, HTTP 200).*

@@ -2716,7 +2716,10 @@ export default {
     // filter params like ?subCategoryId= from hero slides), not just ?search=.
     const hasFilterParams = ['teacherId', 'subCategoryId', 'locationId', 'seriesId', 'year', 'fromDate', 'toDate', 'minDuration', 'maxDuration', 'mediaType', 'sort']
       .some(k => url.searchParams.get(k));
-    if (!shiurData && !isDafRoute && (searchQuery || hasFilterParams)) {
+    // Prefetch even when a shiur is loaded: search URLs keep the /<id>
+    // path while listening (see executeLiveSearch), so /<id>?search=...
+    // must render both the player and the results on reload/share.
+    if (!isDafRoute && (searchQuery || hasFilterParams)) {
       try {
         const searchPayload = await executeSearchInternal(url.searchParams);
         initialSearchResults = searchPayload?.response?.docs || [];
@@ -9680,6 +9683,30 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       background: var(--primary);
       color: #fff;
     }
+    /* Selected-track state for series drawer badges (same green language
+       as .quick-play-badge.is-playing; works in both themes). */
+    .series-sub-play.is-playing,
+    .series-sub-card:hover .series-sub-play.is-playing {
+      background: #16a34a;
+      color: #fff;
+    }
+    /* Current part inside any series drawer (player strip + card drawers):
+       green ring + "Now playing" tag, both themes. */
+    .series-sub-card.is-current-part {
+      border-color: #16a34a;
+      box-shadow: 0 0 0 1px #16a34a;
+    }
+    .series-now-playing {
+      font-size: 10px;
+      font-weight: 800;
+      color: #fff;
+      background: #16a34a;
+      border-radius: 10px;
+      padding: 1px 7px;
+      margin-left: 6px;
+      white-space: nowrap;
+    }
+
     .series-sub-meta {
       font-size: 11px;
       color: var(--text-muted);
@@ -12777,6 +12804,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
     <div class="shiur-desc" id="shiurDesc">${escapeHtml(description)}</div>
 
+    <!-- Series strip: shown while the loaded track belongs to a series -->
+    <div id="seriesStrip" style="display: none; margin: 10px 0 4px;">
+      <button type="button" class="series-expand-btn" id="seriesStripBtn" data-drawer-target="seriesStripDrawer" onclick="toggleSeriesDrawer(event, 'seriesStripDrawer')"></button>
+      <div id="seriesStripDrawer" class="series-drawer" style="display: none;"></div>
+    </div>
+
     <!-- Metadata Chips -->
     <div class="shiur-metadata-box" id="shiurMetadataBox" style="${(shiurTeachers.length || shiurLocations.length || Object.keys(shiurCategories).length || shiurKeywords.length) ? '' : 'display:none;'}">
       ${shiurTeachers.length > 0 ? `
@@ -15124,6 +15157,382 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
   }
 
+  // Series sibling resolution (player strip + single-card drawers).
+  // Priority mirrors groupAndRankDocs: collection id, else series id.
+  // devSeriesCache hits come from expanded search groups; misses fetch
+  // /api/search by series title and regroup client-side. Membership is
+  // always verified by shiur id — a bare title match is never trusted.
+  function seriesIdentityOf(doc) {
+    try {
+      if (!doc || typeof doc !== 'object') return null;
+      if (Array.isArray(doc.collectionid) && doc.collectionid.length > 0 && doc.collectionname && doc.collectionname[0]) {
+        return { key: 'coll_' + doc.collectionid[0], title: String(doc.collectionname[0]).split('|')[0].trim() };
+      }
+      if (doc.seriesid && doc.seriesname) {
+        return { key: 'series_' + doc.seriesid, title: String(doc.seriesname) };
+      }
+      if (doc.seriesTitle) {
+        return { key: 'title:' + String(doc.seriesTitle).toLowerCase(), title: String(doc.seriesTitle) };
+      }
+    } catch (e) {}
+    return null;
+  }
+  // Title-family fallback: some tracks (e.g. "Muktzeh Part 3") carry no
+  // lecture seriesName while belonging to an obvious run. Stripping part
+  // markers yields a topical query ("Hilchos Shabbos Muktzeh") that scopes
+  // past firehose series like "Daily Shiur". Needs 2+ real words.
+  function seriesFamilyQuery(title) {
+    try {
+      let t = String(title || '');
+      t = t.replace(/\b(parts?|pt\.?|chelek|chelak|vol\.?|volume|nos?\.?|numbers?|shiur(im)?|class(es)?|sessions?|lessons?)\s*\d+[a-z]?\b/gi, ' ');
+      t = t.replace(/#\s*\d+/g, ' ');
+      t = t.replace(/\b\d+\s*of\s*\d+\b/gi, ' ');
+      t = t.replace(/[-_:;,()[\]]/g, ' ');
+      t = t.replace(/\s+/g, ' ').trim();
+      const words = t.split(' ').filter(w => w.length > 1);
+      if (words.length < 2) return '';
+      return words.slice(0, 6).join(' ');
+    } catch (e) {
+      return '';
+    }
+  }
+  const seriesResolveInflight = {};
+  function docSid(d) {
+    try { return String(d.shiurid || d.shiurID || d.id || ''); } catch (e) { return ''; }
+  }
+  // Sibling resolution order: cache scan, family query, catalog query,
+  // key-targeted windows (series id direct, collection via catalog-query
+  // windows). Membership by shiur id is the only trust signal throughout;
+  // within a window prefer the catalog-keyed group, else the smallest
+  // containing group (most specific run). The catalog query covers tracks
+  // whose family is too specific (then the catalog name carries them).
+  // Key-targeted and catalog-window results carry paging for Load more;
+  // single-shot topical queries do not (relevance windows are unstable).
+  function resolveSeriesDocs(id, ident, familyQuery) {
+    const sid = String(id || '');
+    if (!sid) return Promise.resolve(null);
+    const key = (ident && ident.key) || '';
+    const catTitle = (ident && ident.title) || '';
+    try {
+      if (typeof devSeriesCache !== 'undefined' && devSeriesCache) {
+        for (const entry of Object.values(devSeriesCache)) {
+          const docs = (entry && entry.docs) || [];
+          if (docs.length > 1 && docs.some(d => docSid(d) === sid)) {
+            // Paged entries keep their paging so reopened big series can
+            // still Load more (legacy entries simply have none).
+            return Promise.resolve({ title: entry.title || catTitle, docs: docs, paging: entry.paging || null });
+          }
+        }
+      }
+    } catch (e) {}
+    const inflightKey = key + '|' + (familyQuery || '') + '~' + catTitle + '|' + sid;
+    if (seriesResolveInflight[inflightKey]) return seriesResolveInflight[inflightKey];
+    const storeCache = (ckey, title, docs, paging) => {
+      try {
+        if (typeof devSeriesCache !== 'undefined' && devSeriesCache) {
+          devSeriesCache['q:' + ckey] = { title: title, docs: docs, paging: paging || null };
+        }
+      } catch (e) {}
+    };
+    const fetchDocs = (url) => fetch(url).then(r => {
+      if (!r.ok) return null;
+      return r.json();
+    }).then(payload => {
+      try {
+        const docs = (payload && payload.response && payload.response.docs) || payload.docs || [];
+        return Array.isArray(docs) ? docs : null;
+      } catch (e) { return null; }
+    }).catch(() => null);
+    const pickGroup = (items) => {
+      let best = null;
+      for (const it of items) {
+        if (!it.isSeries || !Array.isArray(it.docs)) continue;
+        if (!it.docs.some(d => docSid(d) === sid)) continue;
+        if (it.docs.length < 2) continue;
+        if (key && it.key === key) { best = it; break; }
+        if (!best || it.docs.length < best.docs.length) best = it;
+      }
+      return best;
+    };
+    const fromQuery = (q, isFamily) => {
+      return fetchDocs('/api/search?q=' + encodeURIComponent(q) + '&rows=30').then(docs => {
+        if (!docs) return null;
+        const best = pickGroup(groupAndRankDocs(docs));
+        if (!best) return null;
+        const title = isFamily ? q : (best.title || q);
+        storeCache(best.key, title, best.docs);
+        return { title: title, docs: best.docs.slice(0, 30), paging: null };
+      });
+    };
+    // Series-id windows: exact enumeration, paged. Probes sequential
+    // windows until the track is found (cap ~120), then serves from the
+    // first window so before/after order is preserved.
+    const trySeriesKey = () => {
+      if (!key || key.indexOf('series_') !== 0) return Promise.resolve(null);
+      const seriesId = key.slice(7);
+      const windows = [];
+      const loadWindow = (start) => {
+        return fetchDocs('/api/search?seriesId=' + encodeURIComponent(seriesId) + '&start=' + start).then(w => {
+          windows.push({ start: start, docs: w || [] });
+        });
+      };
+      return loadWindow(1).then(() => {
+        if (windows[0].docs.some(d => docSid(d) === sid)) return windows;
+        return loadWindow(31).then(() => {
+          if (windows.some(w => w.docs.some(d => docSid(d) === sid))) return windows;
+          return loadWindow(61).then(() => {
+            if (windows.some(w => w.docs.some(d => docSid(d) === sid))) return windows;
+            return loadWindow(91).then(() => windows);
+          });
+        });
+      }).then(all => {
+        const found = all.some(w => w.docs.some(d => docSid(d) === sid));
+        if (!found) return null;
+        all.sort((a, b) => a.start - b.start);
+        const combined = [];
+        const seen = {};
+        for (const w of all) {
+          for (const d of w.docs) {
+            const k = docSid(d);
+            if (k && !seen[k]) { seen[k] = 1; combined.push(d); }
+          }
+        }
+        const lastFull = all.length > 0 && all[all.length - 1].docs.length >= 30;
+        const title = catTitle || 'Series';
+        const pg = lastFull ? { mode: 'series', key: seriesId, next: all[all.length - 1].start + 30 } : null;
+        storeCache(key, title, combined.slice(0, 120), pg);
+        return {
+          title: title,
+          docs: combined.slice(0, 120),
+          paging: pg
+        };
+      });
+    };
+    // Collection windows: the catalog-name query paged (3 windows max,
+    // concurrent). The track must surface in one of them; its window's
+    // group becomes the drawer, pageable further down the same query.
+    const tryCollWindows = () => {
+      if (!key || key.indexOf('coll_') !== 0 || !catTitle) return Promise.resolve(null);
+      return Promise.all([1, 31, 61].map(st =>
+        fetchDocs('/api/search?q=' + encodeURIComponent(catTitle) + '&start=' + st)
+      )).then(results => {
+        const all = [];
+        for (const w of results) { if (w) all.push(...w); }
+        const best = pickGroup(groupAndRankDocs(all));
+        if (!best) return null;
+        const lastCount = results.length > 0 && results[results.length - 1]
+          ? results[results.length - 1].length : 0;
+        const pgc = lastCount >= 30
+          ? { mode: 'catalog', key: catTitle, coll: key, next: 91 }
+          : null;
+        storeCache(best.key, best.title || catTitle, best.docs.slice(0, 90), pgc);
+        return {
+          title: best.title || catTitle,
+          docs: best.docs.slice(0, 90),
+          paging: pgc
+        };
+      });
+    };
+    let chain = Promise.resolve(null);
+    if (familyQuery) {
+      chain = chain.then(prev => prev || fromQuery(familyQuery, true));
+    }
+    if (catTitle && catTitle !== familyQuery) {
+      chain = chain.then(prev => prev || fromQuery(catTitle, false));
+    }
+    chain = chain.then(prev => prev || trySeriesKey());
+    chain = chain.then(prev => prev || tryCollWindows());
+    const p = chain.finally(() => {
+      try { delete seriesResolveInflight[inflightKey]; } catch (e) {}
+    });
+    seriesResolveInflight[inflightKey] = p;
+    return p;
+  }
+  // Renders sibling parts for the player strip + single-card drawers:
+  // full before/after order, current track highlighted, badge behavior
+  // per surface (player badges expand, card badges mini).
+  function seriesPartsHtml(docs, currentId, badgeMini) {
+    // Per-doc guard: one malformed catalog record must not blank the
+    // whole drawer (a throw here used to reject the fill promise and
+    // leave the strip hidden with zero diagnostics).
+    try {
+      return (docs || []).map((sub, i) => {
+        try {
+          return renderSeriesSubCard(sub, i + 1, { highlightId: currentId, badgeMini: badgeMini });
+        } catch (e2) {
+          return '';
+        }
+      }).join('');
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function playingTrackId() {
+    try {
+      return (typeof hasAudio !== 'undefined' && hasAudio &&
+        typeof currentShiurId !== 'undefined' && currentShiurId)
+        ? String(currentShiurId) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+  function seriesLoadMoreHtml() {
+    return '<button type="button" class="card-mini-btn series-load-more" style="margin:8px auto; display:block;" onclick="fetchSeriesPage(this)">↓ Load more</button>';
+  }
+  // Fills any series drawer (card, strip) + appends Load-more when the
+  // group carries paging. devUpgradeCards runs here so appended action
+  // buttons appear without waiting for a toggle cycle.
+  function seriesDrawerFill(drawerId, group, badgeMini) {
+    const drawer = document.getElementById(drawerId);
+    if (!drawer || !group || !Array.isArray(group.docs)) return false;
+    drawer.innerHTML = seriesPartsHtml(group.docs, playingTrackId(), badgeMini);
+    drawer.setAttribute('data-filled', '1');
+    const pg = group.paging || null;
+    if (pg && (pg.mode === 'series' || pg.mode === 'catalog') && pg.next) {
+      drawer.setAttribute('data-page-mode', pg.mode);
+      drawer.setAttribute('data-page-key', pg.key || '');
+      if (pg.coll) drawer.setAttribute('data-page-coll', pg.coll);
+      drawer.setAttribute('data-page-next', String(pg.next));
+      drawer.setAttribute('data-badge-mini', badgeMini ? 'true' : 'false');
+      drawer.insertAdjacentHTML('beforeend', seriesLoadMoreHtml());
+    } else {
+      ['data-page-mode', 'data-page-key', 'data-page-coll', 'data-page-next', 'data-badge-mini'].forEach(a => {
+        try { drawer.removeAttribute(a); } catch (e) {}
+      });
+    }
+    try { if (typeof devUpgradeCards === 'function') devUpgradeCards(drawer); } catch (e) {}
+    return true;
+  }
+  // Load-more for paged drawers (big series/collections): appends the next
+  // 30-part window, keeps going until a short window ends the run.
+  function fetchSeriesPage(btn) {
+    try {
+      const drawer = btn ? btn.closest('.series-drawer') : null;
+      if (!drawer) return;
+      const mode = drawer.getAttribute('data-page-mode');
+      const next = parseInt(drawer.getAttribute('data-page-next') || '31', 10) || 31;
+      let url = null;
+      if (mode === 'series') {
+        url = '/api/search?seriesId=' + encodeURIComponent(drawer.getAttribute('data-page-key') || '') + '&start=' + next;
+      } else if (mode === 'catalog') {
+        url = '/api/search?q=' + encodeURIComponent(drawer.getAttribute('data-page-key') || '') + '&start=' + next;
+      }
+      if (!url) return;
+      btn.disabled = true;
+      btn.textContent = 'Loading…';
+      fetch(url).then(r => r.ok ? r.json() : null).then(payload => {
+        let raw = [];
+        try {
+          raw = ((payload && payload.response && payload.response.docs) || (payload && payload.docs) || []).filter(Boolean);
+        } catch (e) {}
+        let docs = raw;
+        if (mode === 'catalog') {
+          const coll = drawer.getAttribute('data-page-coll') || '';
+          docs = raw.filter(d => {
+            try {
+              const c = d.collectionid;
+              return coll && ('coll_' + (Array.isArray(c) ? c[0] : c)) === coll;
+            } catch (e) { return false; }
+          });
+        }
+        try { btn.remove(); } catch (e) {}
+        const bmini = drawer.getAttribute('data-badge-mini') !== 'false';
+        if (docs.length > 0) {
+          drawer.insertAdjacentHTML('beforeend', seriesPartsHtml(docs, playingTrackId(), bmini));
+          try { if (typeof devUpgradeCards === 'function') devUpgradeCards(drawer); } catch (e) {}
+        }
+        if (raw.length >= 30) {
+          drawer.setAttribute('data-page-next', String(next + 30));
+          drawer.insertAdjacentHTML('beforeend', seriesLoadMoreHtml());
+        } else {
+          drawer.removeAttribute('data-page-mode');
+        }
+      }).catch(() => {
+        try { btn.disabled = false; btn.textContent = '↓ Load more'; } catch (e) {}
+      });
+    } catch (e) {}
+  }
+
+  // Lazy single-card series drawer: resolves siblings on first open,
+  // then delegates open/close to toggleSeriesDrawer (label behavior free).
+  function toggleCardSeries(e, drawerId) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    const drawer = document.getElementById(drawerId);
+    if (!drawer) return;
+    if (drawer.getAttribute('data-filled') === '1') {
+      toggleSeriesDrawer(e, drawerId);
+      return;
+    }
+    const btn = document.querySelector('[data-drawer-target="' + drawerId + '"]');
+    const sid = btn ? (btn.getAttribute('data-series-sid') || '') : '';
+    const skey = btn ? (btn.getAttribute('data-series-key') || '') : '';
+    const stitle = btn ? (btn.getAttribute('data-series-title') || '') : '';
+    const sfam = btn ? (btn.getAttribute('data-series-family') || '') : '';
+    if (!sid || (!stitle && !sfam)) return;
+    if (btn) btn.style.opacity = '0.6';
+    resolveSeriesDocs(sid, { key: skey, title: stitle }, sfam).then(group => {
+      if (btn) btn.style.opacity = '';
+      if (!group || !Array.isArray(group.docs) || group.docs.length < 2) {
+        // Not actually a multi-part series: remove the dead button.
+        try { if (btn) btn.style.display = 'none'; } catch (e2) {}
+        return;
+      }
+      seriesDrawerFill(drawerId, group, true);
+      if (btn) {
+        btn.setAttribute('data-sub-count', String(group.docs.length - 1));
+        btn.setAttribute('data-series-title', group.title || stitle);
+      }
+      toggleSeriesDrawer(null, drawerId);
+    }).catch(() => {
+      if (btn) btn.style.opacity = '';
+    });
+  }
+
+  // Big-player series strip: always-available indicator + drawer while the
+  // loaded track belongs to a multi-part series. Hidden otherwise.
+  let currentSeriesName = '';
+  function hideSeriesStrip() {
+    currentSeriesName = '';
+    try {
+      const s = document.getElementById('seriesStrip');
+      if (s) s.style.display = 'none';
+      const d = document.getElementById('seriesStripDrawer');
+      if (d) {
+        d.style.display = 'none';
+        d.innerHTML = '';
+        d.removeAttribute('data-filled');
+      }
+    } catch (e) {}
+  }
+  function updateSeriesStrip(id, seriesName, trackTitle) {
+    hideSeriesStrip();
+    if (!id) return;
+    const myId = String(id);
+    currentSeriesName = String(seriesName || '');
+    // Family query first (topical scoping); the catalog name covers
+    // short/generic titles that yield no family. Either may be empty —
+    // the resolver requires at least one.
+    const fam = seriesFamilyQuery(trackTitle);
+    resolveSeriesDocs(myId, { key: '', title: currentSeriesName }, fam).then(group => {
+      if (!group || !Array.isArray(group.docs) || group.docs.length < 2) return;
+      if (String(currentShiurId) !== myId) return; // moved on
+      const strip = document.getElementById('seriesStrip');
+      const btn = document.getElementById('seriesStripBtn');
+      const drawer = document.getElementById('seriesStripDrawer');
+      if (!strip || !btn || !drawer) return;
+      btn.setAttribute('data-drawer-target', 'seriesStripDrawer');
+      btn.setAttribute('data-sub-count', String(group.docs.length - 1));
+      btn.setAttribute('data-series-title', group.title || currentSeriesName);
+      btn.innerHTML = '<span class="series-expand-icon">➕</span> <span class="series-expand-text">View ' + (group.docs.length - 1) + ' more in \u2018' + escapeHtml(group.title || currentSeriesName) + '\u2019 Series</span>';
+      seriesDrawerFill('seriesStripDrawer', group, false);
+      strip.style.display = 'block';
+    }).catch(() => {});
+  }
+
   function onToggleClassicSearch(checked) {
     useClassicSearch = !!checked;
 
@@ -15421,6 +15830,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     try { if (typeof devUpgradeCards === 'function') devUpgradeCards(grid); } catch (e) {}
   }
 
+  // Homepage/brand/search-entry navigations preserve the loaded track:
+  // the URL always carries the playing shiur id (path + fresh t), so
+  // reload/share never loses it (same rule as search navigation).
+  function listeningUrlPath() {
+    try {
+      if (typeof currentShiurId !== 'undefined' && currentShiurId) {
+        if (typeof updateUrlTimestamp === 'function') updateUrlTimestamp(true);
+        return '/' + String(currentShiurId);
+      }
+    } catch (e) {}
+    return '/';
+  }
   function goHome(e) {
     if (e) e.preventDefault();
 
@@ -15453,9 +15874,22 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const moreCat = document.getElementById('moreFromCategorySection');
     if (moreCat) moreCat.style.display = 'none';
 
-    const newUrl = new URL(window.location.href);
-    newUrl.pathname = '/';
-    newUrl.search = '';
+    // Home keeps the listening context (id + position); view params are
+    // dropped, playback prefs kept. With no track loaded, full reset.
+    const homePath = listeningUrlPath();
+    const newUrl = new URL(homePath, window.location.origin);
+    if (homePath !== '/') {
+      try {
+        const keep = new URLSearchParams();
+        const cur = new URL(window.location.href).searchParams;
+        ['t', 'speed', 'rate', 'theme', 'mode', 'dark', 'light'].forEach(k => {
+          cur.getAll(k).forEach(v => keep.append(k, v));
+        });
+        newUrl.search = keep.toString();
+      } catch (e) {}
+    } else {
+      newUrl.search = '';
+    }
     history.pushState({}, '', newUrl.toString());
 
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -15507,9 +15941,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       dafView.style.display = 'none';
       regularView.style.display = '';
     }
-    const next = new URL(window.location.href);
-    next.pathname = '/';
+    const next = new URL(listeningUrlPath(), window.location.origin);
     next.search = '';
+    try {
+      // Carry position only with a loaded track (never a stale ?t= home).
+      if (typeof currentShiurId !== 'undefined' && currentShiurId) {
+        const carriedT = new URL(window.location.href).searchParams.get('t');
+        if (carriedT) next.searchParams.set('t', carriedT);
+      }
+    } catch (e) {}
     if (query) next.searchParams.set('search', query);
     if (returnTo) next.searchParams.set('return_to', returnTo);
     history.pushState({}, '', next.pathname + next.search);
@@ -15856,6 +16296,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     teardownSourceSheetView();
     currentShiurId = '';
     updateCardPlayBadges();
+    try { if (typeof hideSeriesStrip === 'function') hideSeriesStrip(); } catch (e) {}
+    try { if (typeof clearLastSession === 'function') clearLastSession(); } catch (e) {}
     const miniPlayer = document.getElementById('miniPlayer');
     if (miniPlayer) miniPlayer.classList.remove('visible');
     document.body.classList.remove('mini-player-active');
@@ -16312,6 +16754,45 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   // Initialize listeners on DOMContentLoaded
   document.addEventListener('DOMContentLoaded', () => {
+    // Session restore: reopen where you left off, paused (PWA relaunch
+    // included). Only on bare launches — no path id, no content params,
+    // no SSR-loaded track. Replaces to /<id>?t=<pos> and reloads into the
+    // tested direct-link path (which never autoplays). Cannot loop: the
+    // reloaded URL is non-bare, and explicit close clears the snapshot.
+    // Position comes from resolveResumeSec, so completed tracks (pos 0)
+    // and stale snapshots (>30d) fall through to the homepage.
+    try {
+      const ru = new URL(window.location.href);
+      // Lectures-aware path check (mirrors the server route regex).
+      const segs = ru.pathname.split('/').filter(s => s);
+      const pathHasId = (segs.length > 0 && /^[0-9]+$/.test(segs[0])) ||
+        (segs[0] === 'lectures' && segs.length > 1 && /^[0-9]+$/.test(segs[1]));
+      const isDafPath = ru.pathname === '/daf' || ru.pathname === '/daf/';
+      // Bare = only cosmetic theme params present. Anything else (search,
+      // tabs, filters, Daf refs, timestamps) means the URL already has a
+      // destination — never hijack it.
+      const cosmetic = { theme: 1, mode: 1, dark: 1, light: 1 };
+      let hasContent = pathHasId || isDafPath;
+      try {
+        ru.searchParams.forEach((v, k) => {
+          if (!cosmetic[k]) hasContent = true;
+        });
+      } catch (e2) {}
+      if (!hasContent && (typeof currentShiurId === 'undefined' || !currentShiurId)) {
+        let sess = null;
+        try { sess = JSON.parse(localStorage.getItem('yutorah_last_session') || 'null'); } catch (e) {}
+        if (sess && sess.id && sess.at && (Date.now() - Number(sess.at)) < 30 * 864e5) {
+          const pos = (typeof resolveResumeSec === 'function') ? resolveResumeSec(String(sess.id)) : 0;
+          if (pos > 0) {
+            ru.pathname = '/' + String(sess.id);
+            ru.searchParams.set('t', String(Math.floor(pos)));
+            ru.searchParams.set('restored', '1');
+            window.location.replace(ru.toString());
+            return;
+          }
+        }
+      }
+    } catch (e) {}
     // PWA Service Worker Registration
     try {
       if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
@@ -16357,6 +16838,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           lastLectureData = data;
           renderMetadataBox(data);
           try { if (typeof updateSourceSheetButton === 'function') updateSourceSheetButton(data); } catch (e) {}
+          // Direct links/reloads/shares skip playShiurById, so the series
+          // strip needs its own hydrate here (race-guard inside matches).
+          try { if (typeof updateSeriesStrip === 'function') updateSeriesStrip(String(currentShiurId), data.seriesName || data.seriesname || '', data.shiurTitle || data.title || ''); } catch (e) {}
           const rawD = data.shiurDateFormatted || data.shiurDate || '';
           fetchUploadDate(String(currentShiurId), rawD ? formatShiurDate(rawD) : '');
         }).catch(() => {});
@@ -16985,9 +17469,20 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     loadMoreBox.style.display = 'none';
     if (phoneticBanner) phoneticBanner.style.display = 'none';
 
-    // Update browser URL without reload (search + date bounds survive reload)
+    // Update browser URL without reload (search + date bounds survive reload).
+    // Keep the loaded shiur in the path while listening: searching from
+    // /1179518?t=48 must yield /1179518?t=48&search=... (not /?search=...),
+    // so reload/share preserves the listening context. The server
+    // prefetches search results even when a shiur is loaded (see fetch
+    // handler), so the combined URL renders both.
+    // Freeze t FIRST so the snapshot below carries the exact position.
+    try { if (typeof updateUrlTimestamp === 'function') updateUrlTimestamp(true); } catch (e) {}
     const newUrl = new URL(window.location.href);
-    newUrl.pathname = '/';
+    if (typeof currentShiurId !== 'undefined' && currentShiurId) {
+      newUrl.pathname = '/' + String(currentShiurId);
+    } else {
+      newUrl.pathname = '/';
+    }
     if (query) newUrl.searchParams.set('search', query);
     else newUrl.searchParams.delete('search');
     if (extraParams.fromDate) newUrl.searchParams.set('fromDate', extraParams.fromDate);
@@ -17000,6 +17495,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     else newUrl.searchParams.delete('sort');
     newUrl.searchParams.delete('shiurId');
     newUrl.searchParams.delete('id');
+    newUrl.searchParams.delete('restored');
     // Shiur search is its own view: drop playlist deep-link keys (one view
     // per URL; in-memory playlist state is untouched and re-syncs on return).
     try { clearPlaylistUrlKeys(newUrl); } catch (e) {}
@@ -17433,7 +17929,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const badgePlay = 'event.stopPropagation(); playShiurById(event, \\'' + id + '\\', true)';
     const actionBadge = cardPlayBadgeHtml(id, isArticle, '▶ Play', badgePlay);
 
-    return '<a href="/' + id + '" class="quick-card-link' + coverClass + '" onclick="playShiurById(event, this.dataset.id)" data-id="' + id + '">' +
+    const cardHtml = '<a href="/' + id + '" class="quick-card-link' + coverClass + '" onclick="playShiurById(event, this.dataset.id)" data-id="' + id + '">' +
       newBadge +
       seriesBadge +
       '<div class="quick-card-top">' +
@@ -17452,10 +17948,31 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       (typeof devCardActionsHtml === 'function' ? devCardActionsHtml(String(id), Boolean(options.isCover)) : '') +
       (typeof devProgressHtml === 'function' ? devProgressHtml(String(id)) : '') +
     '</a>';
+    // Single cards that belong to a series (orphans outside a rendered
+    // group, mid-series parts included) get the same drawer treatment as
+    // groups: button + lazy drawer as SIBLINGS of the card link, showing
+    // the full before/after order on demand. Covers already have one.
+    const cardSeriesIdent = (!options.isCover && id) ? seriesIdentityOf(d) : null;
+    if (!cardSeriesIdent) return cardHtml;
+    const cardFamily = seriesFamilyQuery(title);
+    const cardDrawerId = 'card_series_' + String(id).replace(/[^a-zA-Z0-9]/g, '') + '_' + Math.random().toString(36).substring(2, 7);
+    return '<div class="quick-card-series-group">' + cardHtml +
+      '<button type="button" class="series-expand-btn" data-drawer-target="' + cardDrawerId + '"' +
+      ' data-series-sid="' + escapeHtml(String(id)) + '" data-series-key="' + escapeHtml(cardSeriesIdent.key || '') + '" data-series-title="' + escapeHtml(cardSeriesIdent.title || '') + '" data-series-family="' + escapeHtml(cardFamily) + '"' +
+      ' onclick="toggleCardSeries(event, \\'' + cardDrawerId + '\\')">' +
+      '<span class="series-expand-icon">➕</span> <span class="series-expand-text">View series</span></button>' +
+      '<div id="' + cardDrawerId + '" class="series-drawer" style="display: none;"></div>' +
+    '</div>';
   }
 
-  function renderSeriesSubCard(sub, partNumber) {
+  function renderSeriesSubCard(sub, partNumber, opts) {
+    const o = opts || {};
     const id = sub.shiurid || sub.shiurID || sub.id || '';
+    const isCurrent = o.highlightId != null && String(id) === String(o.highlightId);
+    // Default: badge minis, card body expands — exactly today's behavior
+    // everywhere. Player-drawer parts pass badgeMini:false so the badge
+    // also expands (big player stays put). Card bodies never change.
+    const badgeMini = o.badgeMini === false ? false : true;
     const title = sub.shiurtitle || sub.shiurTitle || sub.title || 'Untitled';
     const subDurRaw = sub.durationformatted || sub.duration || '';
     const duration = subDurRaw ? (String(subDurRaw).match(/[a-z]/i) ? String(subDurRaw) : subDurRaw + ' min') : '';
@@ -17489,13 +18006,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     if (date) metaParts.push(escapeHtml(date));
 
-    const subAction = isArticle
-      ? '<span class="series-sub-play" style="background:#10b981; color:#fff;">📄 Read</span>'
-      : '<span class="series-sub-play" role="button" tabindex="0" data-kbplay onclick="event.stopPropagation(); playShiurById(event, \\'' + id + '\\', true)">▶ Play</span>';
+    const badgeStayArg = badgeMini ? ', true' : '';
+    const subAction = cardPlayBadgeHtml(id, isArticle, '▶ Play', 'event.stopPropagation(); playShiurById(event, \\'' + id + '\\'' + badgeStayArg + ')', 'series-sub-play');
 
-    return '<a href="/' + id + '" class="series-sub-card" onclick="playShiurById(event, this.dataset.id)" data-id="' + id + '">' +
+    return '<a href="/' + id + '" class="series-sub-card' + (isCurrent ? ' is-current-part' : '') + '" onclick="playShiurById(event, this.dataset.id)" data-id="' + id + '">' +
       '<div class="series-sub-header">' +
-        '<div class="series-sub-title"><span style="opacity:0.75; font-weight:700; margin-right:4px;">#' + partNumber + '</span> ' + displayTitle + '</div>' +
+        '<div class="series-sub-title"><span style="opacity:0.75; font-weight:700; margin-right:4px;">#' + partNumber + '</span> ' + displayTitle + (isCurrent ? ' <span class="series-now-playing">Now playing</span>' : '') + '</div>' +
         subAction +
       '</div>' +
       matchReasonHtml +
@@ -17674,6 +18190,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
 
     updateCardPlayBadges();
+    try { if (typeof hideSeriesStrip === 'function') hideSeriesStrip(); } catch (e) {}
     initialTimeApplied = false;
     // Never let a previous track's Daf classification bleed into this one.
     currentDafRef = null;
@@ -17773,6 +18290,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         uploadEl.textContent = '';
       }
       lastLectureData = data;
+
+      // Series strip: show sibling parts while the loaded track belongs
+      // to a multi-part series (audio and article paths alike). The raw
+      // title feeds the family fallback for null-seriesName tracks.
+      try {
+        updateSeriesStrip(id, data.seriesName || data.seriesname || '', title);
+      } catch (e) {}
 
       // Upload date feeds the metadata box (between Date and Topics):
       // lightweight Solr id-lookup, applied progressively.
@@ -18038,6 +18562,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     hasAudio = false;
     currentShiurId = '';
     updateCardPlayBadges();
+    try { if (typeof hideSeriesStrip === 'function') hideSeriesStrip(); } catch (e) {}
+    try { if (typeof clearLastSession === 'function') clearLastSession(); } catch (e) {}
     const newUrl = new URL(window.location.href);
     newUrl.pathname = '/';
     // Keep playlist + theme context; drop only player/search-specific keys.
@@ -19696,6 +20222,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         u.searchParams.delete('mode');
         u.searchParams.delete('dark');
         u.searchParams.delete('light');
+        u.searchParams.delete('restored');
         url = u.toString();
       } catch (e2) {}
       if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -23847,6 +24374,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     url.searchParams.delete('mode');
     url.searchParams.delete('dark');
     url.searchParams.delete('light');
+    url.searchParams.delete('restored');
     navigator.clipboard.writeText(url.toString()).then(() => {
       const btn = document.getElementById('copyLinkBtn');
       btn.textContent = '✅ Copied (' + formatTime(curSec) + ')!';
@@ -23979,9 +24507,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   // search) show Playing/Paused immediately instead of waiting for the
   // next play/pause event. updateCardPlayBadges keeps them live after.
   // Client-only globals are guarded (SSR templates never call this).
-  function cardPlayBadgeHtml(id, isArticle, label, onclickJs) {
+  function cardPlayBadgeHtml(id, isArticle, label, onclickJs, cls) {
+    const badgeCls = cls || 'quick-play-badge';
     if (isArticle) {
-      return '<span class="quick-play-badge" style="background:#10b981; color:#fff;">📄 Read</span>';
+      return '<span class="' + badgeCls + '" style="background:#10b981; color:#fff;">📄 Read</span>';
     }
     let sel = false, playing = false;
     try {
@@ -23990,9 +24519,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       playing = sel && (typeof audio === 'undefined' || !audio || !audio.src || !audio.paused);
     } catch (e) {}
     if (!sel) {
-      return '<span class="quick-play-badge" role="button" tabindex="0" data-kbplay onclick="' + onclickJs + '">' + escapeHtml(label) + '</span>';
+      return '<span class="' + badgeCls + '" role="button" tabindex="0" data-kbplay onclick="' + onclickJs + '">' + escapeHtml(label) + '</span>';
     }
-    return '<span class="quick-play-badge is-playing" role="button" tabindex="0" data-kbplay data-orig-text="' + escapeHtml(label) + '" onclick="' + onclickJs + '">' + (playing ? '▶ Playing' : '‖ Paused') + '</span>';
+    return '<span class="' + badgeCls + ' is-playing" role="button" tabindex="0" data-kbplay data-orig-text="' + escapeHtml(label) + '" onclick="' + onclickJs + '">' + (playing ? '▶ Playing' : '‖ Paused') + '</span>';
   }
 
   // Card play-badge 3 states: default "▶ Play" (or "▶ Resume" on history
@@ -24003,7 +24532,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   function updateCardPlayBadges() {
     try {
       const sel = String(currentShiurId || '');
-      const badges = document.querySelectorAll('.quick-card-link .quick-play-badge');
+      const badges = document.querySelectorAll('.quick-card-link .quick-play-badge, .series-sub-card .series-sub-play');
       if (!badges || badges.length === 0) return;
       badges.forEach(badge => {
         if (badge.textContent.indexOf('📄') !== -1) return;
@@ -24012,7 +24541,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         }
         let cardId = '';
         try {
-          const card = badge.closest('.quick-card-link');
+          const card = badge.closest('.quick-card-link') || badge.closest('.series-sub-card');
           cardId = card && card.dataset ? String(card.dataset.id || '') : '';
         } catch (e) {}
         const isSel = Boolean(sel && cardId && cardId === sel);
@@ -24163,10 +24692,28 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     applyInitialTime();
   }
 
+  // Last-session snapshot: which track was loaded when the app went
+  // away (PWA close included). Position itself is already persisted by
+  // updateUrlTimestamp/heartbeat; this only records the track identity.
+  function saveLastSession() {
+    try {
+      if (typeof currentShiurId !== 'undefined' && currentShiurId &&
+          (hasAudio || isCurrentShiurArticle)) {
+        localStorage.setItem('yutorah_last_session',
+          JSON.stringify({ id: String(currentShiurId), at: Date.now() }));
+      }
+    } catch (e) {}
+  }
+  function clearLastSession() {
+    try { localStorage.removeItem('yutorah_last_session'); } catch (e) {}
+  }
+
   // Save timestamp when page/tab is backgrounded or closed
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
       updateUrlTimestamp(true);
+      try { if (typeof devRecordHeartbeat === 'function') devRecordHeartbeat(true); } catch (e) {}
+      saveLastSession();
       try {
         if (typeof markCloudDirty === 'function') markCloudDirty('history');
         if (typeof scheduleCloudSync === 'function') scheduleCloudSync();
@@ -24175,10 +24722,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   });
   window.addEventListener('beforeunload', () => {
     updateUrlTimestamp(true);
+    try { if (typeof devRecordHeartbeat === 'function') devRecordHeartbeat(true); } catch (e) {}
+    saveLastSession();
     try { if (typeof flushCloudSync === 'function') flushCloudSync(); } catch (e) {}
   });
   window.addEventListener('pagehide', () => {
     updateUrlTimestamp(true);
+    try { if (typeof devRecordHeartbeat === 'function') devRecordHeartbeat(true); } catch (e) {}
+    saveLastSession();
     try { if (typeof flushCloudSync === 'function') flushCloudSync(); } catch (e) {}
   });
 
@@ -26140,8 +26691,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     loadArticlePdf(INITIAL_ARTICLE_PDF);
   }
 
-  // If page loaded with audio, try to autoplay or wait for user touch
-  if (hasAudio) {
+  // If page loaded with audio, try to autoplay or wait for user touch.
+  // Restored sessions (?restored=1) stay paused by design — the user
+  // explicitly left, so we never resume sound uninvited.
+  let bootRestored = false;
+  try {
+    bootRestored = new URLSearchParams(window.location.search).get('restored') === '1';
+  } catch (e) {}
+  if (hasAudio && !bootRestored) {
     audio.play().catch(() => {
       console.log('Autoplay deferred for user tap');
     });

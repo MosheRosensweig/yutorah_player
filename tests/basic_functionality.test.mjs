@@ -1314,9 +1314,32 @@ async function testCardPlayStatesAndMiniPop() {
   assert.ok(workerSrc.includes('function resolveResumeSec(id)'), 'unified resume resolver must exist (F2)');
   assert.ok(workerSrc.includes('let resumeSec = resolveResumeSec(id);'), 'track loads must use the unified resolver (F2)');
   assert.ok(workerSrc.includes('targetSec = resolveResumeSec(currentShiurId);'), 'initial-time path must use the unified resolver (F2)');
-  assert.ok(workerSrc.includes('function cardPlayBadgeHtml(id, isArticle, label, onclickJs)'), 'badges must paint current state at render time (F4)');
+  assert.ok(workerSrc.includes('function cardPlayBadgeHtml(id, isArticle, label, onclickJs, cls)'), 'badges must paint current state at render time (F4/G1)');
   assert.ok(workerSrc.includes("cardPlayBadgeHtml(id, isArticle, '▶ Play', badgePlay)"), 'search cards must use the state-aware badge (F4)');
   assert.ok(workerSrc.includes("cardPlayBadgeHtml(item.id, isDoc, '▶ Resume'"), 'history cards must use the state-aware badge (F4)');
+  assert.ok(workerSrc.includes("newUrl.pathname = '/' + String(currentShiurId);"), 'search must keep the loaded shiur path (G2)');
+  assert.ok(workerSrc.includes('if (!isDafRoute && (searchQuery || hasFilterParams))'), 'server must prefetch search even with a shiur loaded (G2)');
+  assert.ok(workerSrc.includes("'series-sub-play')"), 'series drawer badges must use the state-aware badge (G1)');
+  assert.ok(workerSrc.includes('.series-sub-play.is-playing'), 'series drawer badges need playing-state styling (G1)');
+  assert.ok(workerSrc.includes('.series-sub-card .series-sub-play'), 'badge updater must scan series drawer badges (G1)');
+  assert.ok(workerSrc.includes('function resolveSeriesDocs('), 'series sibling resolver must exist (G3)');
+  assert.ok(workerSrc.includes('function updateSeriesStrip('), 'big-player series strip updater must exist (G3)');
+  assert.ok(workerSrc.includes('id="seriesStrip"'), 'player card must contain the series strip (G3)');
+  assert.ok(workerSrc.includes('function toggleCardSeries('), 'single cards need lazy series drawers (G3)');
+  assert.ok(workerSrc.includes('series-now-playing'), 'current part must be marked in drawers (G3)');
+  assert.ok(workerSrc.includes('function seriesFamilyQuery('), 'title-family fallback must exist (H1)');
+  assert.ok(workerSrc.includes('most specific run'), 'resolver must prefer the most specific run (H1)');
+  assert.ok(workerSrc.includes('then the catalog name carries them'), 'resolver must fall back to the catalog name when family is too specific (H1b)');
+  assert.ok(workerSrc.includes('function fetchSeriesPage('), 'paged drawers need a load-more fetcher (H1c)');
+  assert.ok(workerSrc.includes('data-page-mode'), 'drawers must carry paging state (H1c)');
+  assert.ok(workerSrc.includes('Load more'), 'drawers must offer to load more (H1c)');
+  assert.ok(workerSrc.includes('function listeningUrlPath()'), 'home/brand must preserve the loaded track URL (H2)');
+  assert.ok(workerSrc.includes("newUrl.searchParams.delete('restored')"), 'search must drop the one-shot flag (H2/G4)');
+  assert.ok(workerSrc.includes('yutorah_last_session'), 'app must snapshot the loaded track on hide/unload (G4)');
+  assert.ok(workerSrc.includes('function saveLastSession()') && workerSrc.includes('function clearLastSession()'), 'session save/clear helpers must exist (G4)');
+  assert.ok(workerSrc.includes('Session restore: reopen where you left off'), 'bare launches must restore the snapshot paused (G4)');
+  assert.ok(workerSrc.includes("get('restored') === '1'"), 'restored loads must skip boot autoplay (G4)');
+  assert.ok(workerSrc.includes("ru.pathname === '/daf'"), 'restore must never hijack Daf links (G4)');
   console.log('  ✅ Card play states & mini-player pop verified.');
 }
 

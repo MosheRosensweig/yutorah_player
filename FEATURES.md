@@ -29,6 +29,8 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 - **No Installations Required**: Runs directly in any web browser on desktop, tablet, and mobile. No browser extensions, mobile apps, or local software needed.
 - **Clean REST URLs**: Direct shareable routes for every shiur:
   - `https://yutorah-player.mrosensweig.workers.dev/<shiurId>` (e.g. `/1187082`).
+  - Searching while listening keeps the loaded shiur in the path (`/1179518?t=48&search=…`), so reload/share restores both the player position and the results (server prefetches search even with a shiur loaded).
+  - The brand/home button and Daf→search entry preserve the loaded track the same way (`/<id>?t=…` + playback prefs; full reset only with no track loaded) — the URL always carries the playing shiur.
 - **Server-Side Rendered (SSR)**: Direct links immediately arrive with complete title, speaker name, duration, and metadata already in the HTML.
 - **Rich Social Sharing**: Generates dynamic OpenGraph metadata so links shared via WhatsApp, iMessage, Slack, or email display the shiur title and rabbi portrait preview.
 
@@ -124,6 +126,7 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
   - Default: blue `▶ Play` (history cards keep their `▶ Resume` label).
   - The card whose shiur is loaded in the player turns green: `▶ Playing` while audio runs (including while the new track loads), `‖ Paused` while paused. Article `📄 Read` badges are never touched.
   - States refresh on track switch, play/pause/ended, and player close (original label restored verbatim).
+  - Series-drawer badges (`.series-sub-play`) share the same 3 states via a badge-class parameter (hover stays green while selected).
   - Cards also paint the current state at render time (`cardPlayBadgeHtml`), so scrolling to more results, switching tabs, or fresh searches show `Playing`/`Paused` on the loaded track immediately — plus one boot pass for server-rendered cards.
 - **Mini-Player Pops Immediately**: card-badge play sets track state before minimizing (previously `minimizePlayer()` early-returned on the still-false `hasAudio` and the bar only appeared on the next scroll). The mini-player now shows `.visible` on the same tap.
 - **Pure Vector Play / Pause Controls**:
@@ -158,6 +161,7 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
   - Forces an instant sync on **pause**, **scrubber seek**, **±10s/±30s skip**, **tab switch / minimize** (`visibilitychange`), and **window/tab close** (`beforeunload`, `pagehide`).
 - **Seamless Session Recovery**:
   - If you close your browser or tab and reopen/restore it, the URL retains the exact `?t=...` parameter and immediately seeks to that exact position.
+  - **Relaunch restore (PWA included)**: closing the app snapshots the loaded track (`yutorah_last_session` on hide/unload); a later bare launch reopens `/<id>?t=<pos>` into the big player, paused at the saved spot (completed tracks and >30-day snapshots fall through to the homepage; explicit ✕ close clears the snapshot so nothing resurrects).
 - **LocalStorage Secondary Backup**:
   - Automatically saves progress to `localStorage` under `yutorah_progress_<id>` so that even reopening `/<shiurId>` without `?t=` restores where you left off.
   - Automatically clears saved progress when the shiur reaches the end (`ended` event).
@@ -194,6 +198,12 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
   - Automatically queries and renders up to 6 other lectures given by the same speaker.
 - **📚 More in this Category**:
   - Automatically queries and renders up to 6 other lectures in the same topic or subcategory.
+- **📚 Series Strip & Card Drawers (`updateSeriesStrip`, `toggleCardSeries`)**:
+  - While the loaded track belongs to a multi-part series, the big player shows a series strip (`View N more in ‘<Title>’ Series`, same language as cover drawers) with an expandable drawer of all parts in order — before and after the current one, which carries a green ring + `Now playing` tag. Drawer parts play in the big player (no minimize).
+  - Single cards that belong to a series (including mid-series parts outside a rendered group) get their own `View series` drawer, resolved lazily: cache hit from expanded search groups, else a series-title search regrouped client-side (membership always verified by shiur id). Cards whose siblings can't be resolved remove their button on first open.
+  - Title-family fallback (`seriesFamilyQuery`): tracks with no lecture `seriesName` (e.g. "Muktzeh Part 3") resolve via part-marker-stripped title search, preferring the smallest containing group — topical scoping that stays out of firehose series like "Daily Shiur" (30-part cap; family-labeled drawers).
+  - Catalog-name fallback: when the family query only matches the track itself (e.g. one-off titled parts of a real collection), the resolver retries with the catalog/series name and takes the key-matched group — so "AYS Rosh Hashanah 5787" opens its 87-part "Answering YUr Shailos" run instead of silently dropping the button.
+  - Key-targeted windows + Load more: real series ids fetch exact enumeration pages (`seriesId` + `start`); collections page the catalog query (3 windows) until the track surfaces. Drawers carry paging state and a `↓ Load more` button that appends window after window until a short page ends the run — so 96-part collections (e.g. "Rosh Hashana Tefillot") open incrementally instead of dying when the track sits past row 30.
 
 ---
 
