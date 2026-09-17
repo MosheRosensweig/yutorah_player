@@ -9896,8 +9896,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       cursor: default;
     }
     .transcript-opt.quiz-selected {
+      background: var(--primary);
       border-color: var(--primary);
+      color: #fff;
       box-shadow: 0 0 0 1px var(--primary);
+    }
+    [data-theme="dark"] .transcript-opt.quiz-selected {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
     }
     .transcript-quiz-actions {
       display: flex;
