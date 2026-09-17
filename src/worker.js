@@ -1231,6 +1231,9 @@ async function handleSyncRoutes(request, env, url) {
 
 const TARGET_API_ORIGIN = 'https://www.yutorah.org';
 const API_ORIGIN = 'https://api.yutorah.org';
+// Guest token for the transcriptions API (empty = none sent). If the
+// upstream ever rate-limits the shared worker egress, rotate this value.
+const TRANSCRIPT_GUEST_TOKEN = '';
 
 // Decode HTML entities from scraped upstream text BEFORE our own escaping,
 // or sequences like l&#x27;ilui double-escape into visible "l&#x27;ilui".
@@ -2346,6 +2349,48 @@ export default {
     }
 
     // 2b. Teacher Info Proxy: /api/teacher?id=...
+    // Transcripts + AI study aids (summary, chapters, quiz) for the beta
+    // lecture experience. Upstream: api.yutorah.org/transcriptions/*
+    // (OpenAPI: YUTorahAPI-CoreAPI). Edge-cached 1h; transcripts are
+    // ~1MB, so the client fetches lazily per track, never on lists.
+    // Rate limits (if any) ride on the guest token below — rotating it
+    // in this one place unblocks the proxy without touching callers.
+    if (url.pathname === '/api/transcript') {
+      const shiurId = url.searchParams.get('shiurId') || url.searchParams.get('shiurID') || url.searchParams.get('id');
+      if (!shiurId || !/^\d+$/.test(shiurId)) {
+        return new Response(JSON.stringify({ error: 'Missing numeric shiurId parameter' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+        });
+      }
+      try {
+        const tHeaders = {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+          'Accept': 'application/json'
+        };
+        if (typeof TRANSCRIPT_GUEST_TOKEN !== 'undefined' && TRANSCRIPT_GUEST_TOKEN) {
+          tHeaders['Authorization'] = 'Bearer ' + TRANSCRIPT_GUEST_TOKEN;
+        }
+        const upstream = await fetch(`${API_ORIGIN}/transcriptions/shiur/${encodeURIComponent(shiurId)}`, {
+          headers: tHeaders
+        });
+        const data = await upstream.text();
+        return new Response(data, {
+          status: upstream.status,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'public, max-age=3600'
+          }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 502,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+        });
+      }
+    }
+
     if (url.pathname === '/api/teacher') {
       const teacherId = url.searchParams.get('id') || url.searchParams.get('teacherId');
       if (!teacherId) {
@@ -2442,12 +2487,15 @@ export default {
           }
         });
         const data = await upstream.text();
+        // Cache successes only: a missing transcript may publish later,
+        // and error pages must never edge-cache as JSON.
+        const okUpstream = upstream.status >= 200 && upstream.status < 300;
         return new Response(data, {
           status: upstream.status,
           headers: {
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*',
-            'Cache-Control': 'public, max-age=3600',
+            'Cache-Control': okUpstream ? 'public, max-age=3600' : 'no-store'
           }
         });
       } catch (err) {
@@ -9724,6 +9772,96 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       margin-left: 6px;
       white-space: nowrap;
     }
+    /* Transcript & study aids (beta lecture experience). */
+    .transcript-subhead {
+      font-weight: 800;
+      font-size: 14px;
+      margin: 12px 0 6px;
+      color: var(--text);
+    }
+    .transcript-subhead:first-child {
+      margin-top: 2px;
+    }
+    .transcript-hint {
+      font-weight: 400;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .transcript-summary {
+      font-size: 14px;
+      line-height: 1.55;
+      color: var(--text);
+      margin: 0 0 4px;
+    }
+    .transcript-chapters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .transcript-chapter-time {
+      font-variant-numeric: tabular-nums;
+      opacity: 0.75;
+    }
+    .transcript-text {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      max-height: 320px;
+      overflow-y: auto;
+    }
+    .transcript-chunk {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--text);
+      cursor: pointer;
+      padding: 6px 8px;
+      border-radius: 8px;
+    }
+    .transcript-chunk:hover {
+      background: rgba(43, 76, 126, 0.08);
+    }
+    .transcript-chunk.is-current {
+      background: rgba(22, 163, 74, 0.14);
+      outline: 1px solid #16a34a;
+    }
+    .transcript-quiz {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .transcript-question-text {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    .transcript-options {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .transcript-opt.quiz-correct {
+      background: #16a34a;
+      border-color: #16a34a;
+      color: #fff;
+    }
+    .transcript-opt.quiz-wrong {
+      background: #dc2626;
+      border-color: #dc2626;
+      color: #fff;
+    }
+    .transcript-opt:disabled {
+      cursor: default;
+    }
+    .transcript-hear {
+      margin-top: 6px;
+    }
+    .transcript-discuss {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
 
     .series-sub-meta {
       font-size: 11px;
@@ -12828,6 +12966,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       <div id="seriesStripDrawer" class="series-drawer" style="display: none;"></div>
     </div>
 
+    <!-- Transcript & study aids (beta lecture experience) -->
+    <div id="transcriptSection" style="display: none; margin: 10px 0 4px;">
+      <button type="button" class="series-expand-btn" id="transcriptToggleBtn" onclick="toggleTranscriptSection(event)">
+        <span class="series-expand-icon">📝</span> <span class="series-expand-text">Transcript &amp; Study Aids</span>
+      </button>
+      <div id="transcriptBody" class="series-drawer" style="display: none;"></div>
+    </div>
+
     <!-- Metadata Chips -->
     <div class="shiur-metadata-box" id="shiurMetadataBox" style="${(shiurTeachers.length || shiurLocations.length || Object.keys(shiurCategories).length || shiurKeywords.length) ? '' : 'display:none;'}">
       ${shiurTeachers.length > 0 ? `
@@ -15510,6 +15656,191 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     });
   }
 
+  // Transcript + AI study aids (summary, chapters, quiz) from the beta
+  // lecture pipeline: GET /api/transcript?shiurId= (word timestamps,
+  // refined text, chapters, quiz). Lazy per track, audio only (click-seek
+  // needs the audio clock); cached in-memory for the session.
+  const transcriptCache = {};
+  let transcriptTrackId = '';
+  let transcriptChunks = [];
+  let transcriptCurIdx = -1;
+  function transcriptSeek(sec) {
+    try {
+      if (typeof audio === 'undefined' || !audio || !audio.src) return;
+      audio.currentTime = Math.max(0, Number(sec) || 0);
+      if (typeof updateUrlTimestamp === 'function') updateUrlTimestamp(true);
+    } catch (e) {}
+  }
+  function toggleTranscriptSection(e) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    const body = document.getElementById('transcriptBody');
+    if (!body) return;
+    body.style.display = (body.style.display === 'none') ? 'flex' : 'none';
+  }
+  function transcriptChunkHtml(words) {
+    // Gap-based paragraphs (pause > 1.2s), capped ~70 words each.
+    const chunks = [];
+    let cur = [];
+    let curStart = 0;
+    let prevEnd = 0;
+    const flush = () => {
+      if (cur.length > 0) chunks.push({ start: curStart, text: cur.join(' ') });
+      cur = [];
+    };
+    for (const w of words) {
+      const txt = String((w && w.word) || '').trim();
+      if (!txt) continue;
+      const st = Number((w && w.start) || 0);
+      const en = (w && w.end != null) ? Number(w.end) : st;
+      if (cur.length === 0) {
+        curStart = st;
+      } else if ((st - prevEnd) > 1.2 || cur.length >= 70) {
+        flush();
+        curStart = st;
+      }
+      cur.push(txt);
+      prevEnd = en;
+    }
+    flush();
+    return chunks.map((c, i) =>
+      '<p class="transcript-chunk" data-start="' + c.start + '" data-chunk="' + i + '"' +
+      ' onclick="transcriptSeek(' + c.start + ')" title="Jump to ' + formatTime(c.start) + '">' +
+      escapeHtml(c.text) + '</p>').join('');
+  }
+  function shuffleInPlace(a) {
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const t = a[i];
+      a[i] = a[j];
+      a[j] = t;
+    }
+    return a;
+  }
+  function renderTranscriptBody(data, trackId) {
+    const body = document.getElementById('transcriptBody');
+    if (!body) return false;
+    const esc = (s) => escapeHtml(String(s == null ? '' : s));
+    let html = '';
+    const summary = data && data.Summary ? String(data.Summary) : '';
+    if (summary) {
+      html += '<div class="transcript-subhead">📋 Summary</div>' +
+        '<p class="transcript-summary">' + esc(summary) + '</p>';
+    }
+    const chapters = (data && Array.isArray(data.Chapters)) ? data.Chapters : [];
+    if (chapters.length > 0) {
+      html += '<div class="transcript-subhead">📑 Chapters</div><div class="transcript-chapters">';
+      chapters.forEach((c, i) => {
+        const st = Number(c.start_seconds || 0);
+        html += '<button type="button" class="card-mini-btn transcript-chapter" onclick="transcriptSeek(' + st + ')"' +
+          ' title="' + esc(c.summary || '') + '">' +
+          '<span class="transcript-chapter-time">' + formatTime(st) + '</span> ' + esc(c.title || ('Part ' + (i + 1))) + '</button>';
+      });
+      html += '</div>';
+    }
+    const words = (data && Array.isArray(data.RefinedTranscription) && data.RefinedTranscription.length > 0)
+      ? data.RefinedTranscription
+      : ((data && Array.isArray(data.TranscriptionText)) ? data.TranscriptionText : []);
+    if (words.length > 0) {
+      html += '<div class="transcript-subhead">📝 Transcript <span class="transcript-hint">(tap a paragraph to jump)</span></div>' +
+        '<div class="transcript-text">' + transcriptChunkHtml(words) + '</div>';
+    }
+    const quiz = (data && data.Quiz && typeof data.Quiz === 'object') ? data.Quiz : null;
+    const review = (quiz && Array.isArray(quiz.ReviewQuestions)) ? quiz.ReviewQuestions : [];
+    const discuss = (quiz && Array.isArray(quiz.DiscussionQuestions)) ? quiz.DiscussionQuestions : [];
+    if (review.length > 0 || discuss.length > 0) {
+      html += '<div class="transcript-subhead">❓ Quiz</div><div class="transcript-quiz">';
+      review.forEach((q, qi) => {
+        const opts = shuffleInPlace([
+          { t: q.CorrectAnswer, ok: true },
+          { t: q.WrongAnswer1, ok: false },
+          { t: q.WrongAnswer2, ok: false },
+          { t: q.WrongAnswer3, ok: false }
+        ].filter(o => o.t));
+        const ss = Number(q.StartSeconds || 0);
+        html += '<div class="transcript-question" data-q="' + qi + '">' +
+          '<div class="transcript-question-text">' + esc(q.Question) + '</div>' +
+          '<div class="transcript-options">' +
+          opts.map(o => '<button type="button" class="card-mini-btn transcript-opt" data-ok="' + (o.ok ? '1' : '0') + '"' +
+            ' onclick="answerTranscriptQuiz(this)">' + esc(o.t) + '</button>').join('') +
+          '</div>' +
+          '<button type="button" class="card-mini-btn transcript-hear" onclick="transcriptSeek(' + ss + ')" title="Hear it in context">↩ ' + formatTime(ss) + '</button>' +
+          '</div>';
+      });
+      discuss.forEach(d => {
+        const dt = (d && d.Question) ? d.Question : (typeof d === 'string' ? d : '');
+        if (dt) html += '<div class="transcript-discuss">💬 ' + esc(dt) + '</div>';
+      });
+      html += '</div>';
+    }
+    if (!html) return false;
+    body.innerHTML = html;
+    transcriptTrackId = String(trackId || '');
+    transcriptCurIdx = -1;
+    transcriptChunks = Array.prototype.slice.call(body.querySelectorAll('.transcript-chunk')).map(el => ({
+      start: parseFloat(el.getAttribute('data-start')) || 0,
+      el: el
+    }));
+    return true;
+  }
+  function answerTranscriptQuiz(btn) {
+    try {
+      const box = btn.closest('.transcript-question');
+      if (!box || box.getAttribute('data-done') === '1') return;
+      box.setAttribute('data-done', '1');
+      const ok = btn.getAttribute('data-ok') === '1';
+      btn.classList.add(ok ? 'quiz-correct' : 'quiz-wrong');
+      if (!ok) {
+        const right = box.querySelector('.transcript-opt[data-ok="1"]');
+        if (right) right.classList.add('quiz-correct');
+      }
+      box.querySelectorAll('.transcript-opt').forEach(b => { b.disabled = true; });
+    } catch (e) {}
+  }
+  function hideTranscriptSection() {
+    transcriptTrackId = '';
+    transcriptChunks = [];
+    transcriptCurIdx = -1;
+    try {
+      const s = document.getElementById('transcriptSection');
+      if (s) s.style.display = 'none';
+      const b = document.getElementById('transcriptBody');
+      if (b) {
+        b.style.display = 'none';
+        b.innerHTML = '';
+      }
+    } catch (e) {}
+  }
+  function loadTranscriptSection(id) {
+    hideTranscriptSection();
+    const sid = String(id || '');
+    if (!sid) return;
+    if (transcriptCache[sid] !== undefined) {
+      const cached = transcriptCache[sid];
+      if (cached && renderTranscriptBody(cached, sid)) {
+        document.getElementById('transcriptSection').style.display = 'block';
+      }
+      return;
+    }
+    fetch('/api/transcript?shiurId=' + encodeURIComponent(sid)).then(r => {
+      if (!r.ok) return null;
+      return r.json();
+    }).then(data => {
+      transcriptCache[sid] = data || null;
+      if (!data) return;
+      // Track moved on while fetching: never paint a stale transcript.
+      if (String(currentShiurId) !== sid) return;
+      if (renderTranscriptBody(data, sid)) {
+        const s = document.getElementById('transcriptSection');
+        if (s) s.style.display = 'block';
+      }
+    }).catch(() => {
+      transcriptCache[sid] = null;
+    });
+  }
+
   // Big-player series strip: always-available indicator + drawer while the
   // loaded track belongs to a multi-part series. Hidden otherwise.
   let currentSeriesName = '';
@@ -16315,6 +16646,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     currentShiurId = '';
     updateCardPlayBadges();
     try { if (typeof hideSeriesStrip === 'function') hideSeriesStrip(); } catch (e) {}
+    try { if (typeof hideTranscriptSection === 'function') hideTranscriptSection(); } catch (e) {}
     try { if (typeof clearLastSession === 'function') clearLastSession(); } catch (e) {}
     const miniPlayer = document.getElementById('miniPlayer');
     if (miniPlayer) miniPlayer.classList.remove('visible');
@@ -16859,6 +17191,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           // Direct links/reloads/shares skip playShiurById, so the series
           // strip needs its own hydrate here (race-guard inside matches).
           try { if (typeof updateSeriesStrip === 'function') updateSeriesStrip(String(currentShiurId), data.seriesName || data.seriesname || '', data.shiurTitle || data.title || ''); } catch (e) {}
+          try { if (hasAudio && typeof loadTranscriptSection === 'function') loadTranscriptSection(String(currentShiurId)); } catch (e) {}
           const rawD = data.shiurDateFormatted || data.shiurDate || '';
           fetchUploadDate(String(currentShiurId), rawD ? formatShiurDate(rawD) : '');
         }).catch(() => {});
@@ -18209,6 +18542,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
     updateCardPlayBadges();
     try { if (typeof hideSeriesStrip === 'function') hideSeriesStrip(); } catch (e) {}
+    try { if (typeof hideTranscriptSection === 'function') hideTranscriptSection(); } catch (e) {}
     initialTimeApplied = false;
     // Never let a previous track's Daf classification bleed into this one.
     currentDafRef = null;
@@ -18431,6 +18765,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         }
         updateCardPlayBadges();
         resyncMiniChrome();
+        try { if (typeof hideTranscriptSection === 'function') hideTranscriptSection(); } catch (e) {}
         loadArticlePdf(currentArticlePdf);
         return;
       }
@@ -18446,6 +18781,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         dlBtn.innerHTML = '⬇️ Download';
       }
       resyncMiniChrome();
+      try { if (typeof loadTranscriptSection === 'function') loadTranscriptSection(id); } catch (e) {}
 
       // Unified resume: explicit ?t=, then synced heartbeat progress,
       // then the device-local per-shiur key (see resolveResumeSec).
@@ -18581,6 +18917,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     currentShiurId = '';
     updateCardPlayBadges();
     try { if (typeof hideSeriesStrip === 'function') hideSeriesStrip(); } catch (e) {}
+    try { if (typeof hideTranscriptSection === 'function') hideTranscriptSection(); } catch (e) {}
     try { if (typeof clearLastSession === 'function') clearLastSession(); } catch (e) {}
     const newUrl = new URL(window.location.href);
     newUrl.pathname = '/';
@@ -24664,6 +25001,26 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (now - lastMediaSessionPosUpdate > 1000) {
       lastMediaSessionPosUpdate = now;
       updateMediaSessionPosition();
+      // Transcript follow-along: highlight the current paragraph.
+      try {
+        if (transcriptChunks.length > 0 && transcriptTrackId &&
+            String(transcriptTrackId) === String(currentShiurId)) {
+          const t = audio.currentTime || 0;
+          let cur = -1;
+          for (let i = transcriptChunks.length - 1; i >= 0; i--) {
+            if (t >= transcriptChunks[i].start) { cur = i; break; }
+          }
+          if (cur !== transcriptCurIdx) {
+            if (transcriptCurIdx >= 0 && transcriptChunks[transcriptCurIdx]) {
+              transcriptChunks[transcriptCurIdx].el.classList.remove('is-current');
+            }
+            transcriptCurIdx = cur;
+            if (cur >= 0 && transcriptChunks[cur]) {
+              transcriptChunks[cur].el.classList.add('is-current');
+            }
+          }
+        }
+      } catch (e) {}
     }
   });
   audio.addEventListener('loadedmetadata', () => {

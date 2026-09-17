@@ -1263,6 +1263,16 @@ async function testPwaThemePlaylistDeleteClearHistory() {
   assert.ok(workerSrc.includes('yutorah_theme=(light|dark)(?:;|$)'), 'theme cookie match must be value-anchored (darkish must not match dark)');
   assert.ok(workerSrc.includes("matches) saved = 'light'"), 'fresh contexts with no saved choice must follow the device appearance (isolated iOS PWA fix)');
 
+  // Transcript proxy: deterministic 400-path (no live upstream needed).
+  const badRes = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/api/transcript'), mockEnv, mockCtx);
+  assert.equal(badRes.status, 400, '/api/transcript without id should return 400');
+  const badNon = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/api/transcript?shiurId=abc'), mockEnv, mockCtx);
+  assert.equal(badNon.status, 400, '/api/transcript with non-numeric id should return 400');
+  assert.ok(workerSrc.includes('/transcriptions/shiur/'), 'transcript proxy must target the upstream transcriptions API');
+  assert.ok(workerSrc.includes('id="transcriptSection"'), 'player must contain the transcript section');
+  assert.ok(workerSrc.includes('function loadTranscriptSection('), 'transcript loader must exist');
+  assert.ok(workerSrc.includes('function answerTranscriptQuiz('), 'quiz answering must exist');
+
   // Issue 2: a pending inline remove-confirm must survive grid re-renders
   // (background cloudPush/pull → adoptCloudState → renderPlaylistsGrid).
   assert.ok(workerSrc.includes('let devPendingRemove = null'), 'pending remove-confirm must be tracked');
