@@ -9801,6 +9801,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     .transcript-chapter-time {
       font-variant-numeric: tabular-nums;
       opacity: 0.75;
+      margin-right: 6px;
     }
     .transcript-text {
       display: flex;
