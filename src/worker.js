@@ -16856,6 +16856,21 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
   }
 
+  // Bringing the big player into focus centers the pause/play button
+  // on screen (not the card top), so the transport is where you look.
+  function scrollPlayButtonIntoView() {
+    try {
+      const btn = document.getElementById('playBtn');
+      if (btn && btn.scrollIntoView) {
+        btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+      const playerCard = document.getElementById('playerCard');
+      if (playerCard && playerCard.scrollIntoView) {
+        playerCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    } catch (e) {}
+  }
   function expandPlayer() {
     isManuallyMinimized = false;
     isExpandingUntil = Date.now() + 800;
@@ -16872,7 +16887,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const miniPlayer = document.getElementById('miniPlayer');
     if (playerCard) {
       playerCard.style.display = 'block';
-      playerCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      scrollPlayButtonIntoView();
     }
     if (miniPlayer) miniPlayer.classList.remove('visible');
     document.body.classList.remove('mini-player-active');
@@ -18799,8 +18814,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     } else {
       isExpandingUntil = Date.now() + 800;
       expandPlayer();
-      const playerCard = document.getElementById('playerCard');
-      if (playerCard) playerCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      // expandPlayer already centered the play button; no second scroll.
     }
 
     updateCardPlayBadges();

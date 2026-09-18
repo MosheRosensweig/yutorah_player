@@ -1346,6 +1346,7 @@ async function testCardPlayStatesAndMiniPop() {
   assert.ok(workerSrc.includes('most specific run'), 'resolver must prefer the most specific run (H1)');
   assert.ok(workerSrc.includes('then the catalog name carries them'), 'resolver must fall back to the catalog name when family is too specific (H1b)');
   assert.ok(workerSrc.includes('function fetchSeriesPage('), 'paged drawers need a load-more fetcher (H1c)');
+  assert.ok(workerSrc.includes('function scrollPlayButtonIntoView()'), 'expanding the player must center the play button');
   assert.ok(workerSrc.includes('function seriesDiagOn()'), 'strip diagnostics must exist (?diag=series)');
   assert.ok(workerSrc.includes('data-page-mode'), 'drawers must carry paging state (H1c)');
   assert.ok(workerSrc.includes('Load more'), 'drawers must offer to load more (H1c)');
