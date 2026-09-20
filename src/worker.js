@@ -9838,6 +9838,28 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       opacity: 0.75;
       margin-right: 6px;
     }
+    .transcript-chapter {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .transcript-chapter-dur {
+      opacity: 0.7;
+      font-variant-numeric: tabular-nums;
+      font-size: 11px;
+      margin-left: auto;
+      padding-left: 8px;
+    }
+    /* Inline chapter dividers inside the running transcript: line +
+       bold header, metadata only (never interactive, never highlighted). */
+    .transcript-chapter-div {
+      font-weight: 800;
+      font-size: 14px;
+      color: var(--text);
+      border-top: 1px solid var(--border);
+      padding-top: 10px;
+      margin-top: 10px;
+    }
     .transcript-text {
       display: flex;
       flex-direction: column;
@@ -9977,6 +9999,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     #playerCard.transcript-enlarged .transcript-pane[data-pane="summary"],
     #playerCard.transcript-enlarged .transcript-pane[data-pane="quiz"],
     #playerCard.transcript-enlarged .transcript-chapters,
+    #playerCard.transcript-enlarged .transcript-chapter-div,
     #playerCard.transcript-enlarged .transcript-pane .transcript-subhead {
       display: none;
     }
@@ -15809,6 +15832,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   // retrigger the suspension.
   let transcriptFollowUntil = 0;
   let transcriptSuppressScrollUntil = 0;
+  let transcriptHiRafPending = false;
+  let transcriptLastHiScroll = -1;
   // Chapter ticks on the scrubber + live chapter title. Driven by the
   // transcript payload (works whether or not the transcript section is
   // open); cleared with the section on switch/close.
@@ -15909,6 +15934,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       el.classList.add('is-current');
       transcriptSuppressScrollUntil = Date.now() + 300;
       cont.scrollTop = Math.max(0, el.offsetTop - lh * 2);
+      try { if (typeof refreshChapterHighlight === 'function') refreshChapterHighlight(); } catch (e2) {}
       return true;
     } catch (e) {
       return false;
@@ -16007,8 +16033,28 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (on && typeof scrollPlayButtonIntoView === 'function') scrollPlayButtonIntoView();
     } catch (err) {}
   }
-  function transcriptChunkHtml(words) {
-    // Gap-based paragraphs (pause > 1.2s), capped ~70 words each.
+  // Single chapter normalizer for buttons, dividers, markers, and seek:
+  // one table everywhere so indices can never drift apart.
+  function normalizeTranscriptChapters(chapters) {
+    try {
+      return (Array.isArray(chapters) ? chapters : [])
+        .map(c => ({
+          start: Number(c.start_seconds || 0),
+          end: Number(c.end_seconds || 0),
+          title: String(c.title || ''),
+          summary: String(c.summary || '')
+        }))
+        .filter(c => c.title && !isNaN(c.start))
+        .sort((a, b) => a.start - b.start);
+    } catch (e) {
+      return [];
+    }
+  }
+  function transcriptChunkHtml(words, chapters) {
+    // Gap-based paragraphs (pause > 1.2s), capped ~70 words each, with
+    // chapter divider lines interleaved at boundaries. Dividers are pure
+    // metadata: no click target, never highlight-matched (the highlight
+    // loop only scans .transcript-chunk nodes).
     const chunks = [];
     let cur = [];
     let curStart = 0;
@@ -16032,10 +16078,24 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       prevEnd = en;
     }
     flush();
-    return chunks.map((c, i) =>
-      '<p class="transcript-chunk" data-start="' + c.start + '" data-chunk="' + i + '"' +
-      ' onclick="transcriptSeek(' + c.start + ')" title="Jump to ' + formatTime(c.start) + '">' +
-      escapeHtml(c.text) + '</p>').join('');
+    const chaps = Array.isArray(chapters) ? chapters : [];
+    let html = '';
+    let lastCi = -1;
+    chunks.forEach((c, i) => {
+      let ci = -1;
+      chaps.forEach((ch, j) => {
+        if (c.start >= ch.start) ci = j;
+      });
+      c.chapter = ci;
+      if (ci !== lastCi && ci >= 0 && chaps[ci] && chaps[ci].title) {
+        html += '<div class="transcript-chapter-div" data-chapter="' + ci + '">📑 ' + escapeHtml(chaps[ci].title) + '</div>';
+        lastCi = ci;
+      }
+      html += '<p class="transcript-chunk" data-start="' + c.start + '" data-chunk="' + i + '" data-chapter="' + ci + '"' +
+        ' onclick="transcriptSeek(' + c.start + ')" title="Jump to ' + formatTime(c.start) + '">' +
+        escapeHtml(c.text) + '</p>';
+    });
+    return html;
   }
   function shuffleInPlace(a) {
     for (let i = a.length - 1; i > 0; i--) {
@@ -16062,6 +16122,48 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (name === 'transcript' && typeof audio !== 'undefined' && audio && audio.src) {
         snapTranscriptToTime(audio.currentTime || 0);
       }
+    } catch (e) {}
+  }
+  // Clicking a chapter seeks its start AND scrolls the transcript to
+  // its first block (falls back to seek-only when the pane is hidden).
+  function seekTranscriptChapter(idx) {
+    try {
+      const i = Number(idx);
+      const ch = transcriptChapters[i];
+      if (!ch) return;
+      transcriptSeek(ch.start);
+      const body = document.getElementById('transcriptBody');
+      if (!body || body.style.display === 'none') return;
+      const cont = body.querySelector('.transcript-text');
+      if (!cont) return;
+      const first = cont.querySelector('.transcript-chunk[data-chapter="' + i + '"]');
+      if (first && first.offsetParent) {
+        transcriptSuppressScrollUntil = Date.now() + 300;
+        cont.scrollTop = Math.max(0, first.offsetTop - 8);
+      }
+      refreshChapterHighlight();
+    } catch (e) {}
+  }
+  // Highlights the chapter containing the top-visible transcript block.
+  // Runs on scroll + tick; enlarged view has no headers so nothing shows
+  // there by construction (buttons are hidden with the panes).
+  function refreshChapterHighlight() {
+    try {
+      const body = document.getElementById('transcriptBody');
+      if (!body || body.style.display === 'none') return;
+      const cont = body.querySelector('.transcript-text');
+      if (!cont) return;
+      const y = cont.scrollTop + 8;
+      let ci = -1;
+      const nodes = cont.querySelectorAll('.transcript-chunk');
+      for (let k = 0; k < nodes.length; k++) {
+        const el = nodes[k];
+        if (el.offsetTop <= y) ci = parseInt(el.getAttribute('data-chapter') || '-1', 10);
+        else break;
+      }
+      body.querySelectorAll('.transcript-chapter').forEach(b => {
+        b.classList.toggle('active-save', b.getAttribute('data-idx') === String(ci));
+      });
     } catch (e) {}
   }
   // Single choke point for "transcript pane visible now". The switch
@@ -16093,22 +16195,31 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (words.length > 0) {
       let inner = '';
       const enlargeBtn = '<button type="button" class="card-mini-btn" id="transcriptEnlargeBtn" onclick="toggleTranscriptEnlarge(event)" title="Focused reading view">⤢ Enlarge</button>';
-      if (chapters.length > 0) {
+      // One shared table so buttons, dividers, markers, and seek agree.
+      const normChapters = normalizeTranscriptChapters(chapters);
+      if (normChapters.length > 0) {
         inner += '<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">' +
           '<div class="transcript-subhead" style="margin: 0;">📑 Chapters</div>' + enlargeBtn + '</div>' +
           '<div class="transcript-chapters">';
-        chapters.forEach((c, i) => {
-          const st = Number(c.start_seconds || 0);
-          inner += '<button type="button" class="card-mini-btn transcript-chapter" onclick="transcriptSeek(' + st + ')"' +
-            ' title="' + esc(c.summary || '') + '">' +
-            '<span class="transcript-chapter-time">' + formatTime(st) + '</span> ' + esc(c.title || ('Part ' + (i + 1))) + '</button>';
+        normChapters.forEach((c, i) => {
+          // Missing end falls back to the next chapter start (last
+          // chapter) so every button shows a duration.
+          const endRef = (c.end > c.start) ? c.end :
+            ((i + 1 < normChapters.length && normChapters[i + 1].start > c.start) ? normChapters[i + 1].start : 0);
+          const dur = endRef > c.start ? Math.round((endRef - c.start) / 60) : 0;
+          inner += '<button type="button" class="card-mini-btn transcript-chapter" data-idx="' + i + '"' +
+            ' onclick="seekTranscriptChapter(' + i + ')"' +
+            ' title="' + esc(c.summary || c.title) + '">' +
+            '<span class="transcript-chapter-time">' + formatTime(c.start) + '</span> ' +
+            '<span class="transcript-chapter-name">' + esc(c.title) + '</span>' +
+            (dur > 0 ? '<span class="transcript-chapter-dur">' + dur + ' min</span>' : '') + '</button>';
         });
         inner += '</div>';
       } else {
         inner += '<div style="display: flex; justify-content: flex-end; margin-bottom: 8px;">' + enlargeBtn + '</div>';
       }
       inner += '<div class="transcript-subhead">📝 Transcript <span class="transcript-hint">(tap a paragraph to jump)</span></div>' +
-        '<div class="transcript-text">' + transcriptChunkHtml(words) + '</div>';
+        '<div class="transcript-text">' + transcriptChunkHtml(words, normChapters) + '</div>';
       panes.push('<div class="transcript-pane" data-pane="transcript" style="display:none;">' + inner + '</div>');
       paneNames.push('transcript');
       tabs.push('<button type="button" class="card-mini-btn transcript-tab" data-tab="transcript" onclick="switchTranscriptTab(&quot;transcript&quot;)">📝 Transcript</button>');
@@ -16155,10 +16266,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     switchTranscriptTab(first);
     transcriptTrackId = String(trackId || '');
     transcriptCurIdx = -1;
-    transcriptChapters = chapters
-      .map(c => ({ start: Number(c.start_seconds || 0), end: Number(c.end_seconds || 0), title: String(c.title || '') }))
-      .filter(c => c.title && !isNaN(c.start))
-      .sort((a, b) => a.start - b.start);
+    transcriptChapters = normalizeTranscriptChapters(chapters);
     renderChapterMarkers();
     transcriptChunks = Array.prototype.slice.call(body.querySelectorAll('.transcript-chunk')).map(el => ({
       start: parseFloat(el.getAttribute('data-start')) || 0,
@@ -16178,6 +16286,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           try {
             if (Date.now() < transcriptSuppressScrollUntil) return;
             transcriptFollowUntil = Date.now() + 5000;
+            if (!transcriptHiRafPending && typeof requestAnimationFrame === 'function') {
+              transcriptHiRafPending = true;
+              requestAnimationFrame(() => {
+                transcriptHiRafPending = false;
+                refreshChapterHighlight();
+              });
+            } else if (!transcriptHiRafPending) {
+              refreshChapterHighlight();
+            }
           } catch (e) {}
         }, { passive: true });
       }
@@ -16230,6 +16347,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     transcriptChapters = [];
     transcriptFollowUntil = 0;
     transcriptSuppressScrollUntil = 0;
+    transcriptHiRafPending = false;
+    transcriptLastHiScroll = -1;
     // Enlarged mode never leaks across tracks: every switch/close hides
     // first, so the next track starts normal (auto-enlarge re-adds when
     // the setting is on).
@@ -25595,6 +25714,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       lastMediaSessionPosUpdate = now;
       updateMediaSessionPosition();
       try { if (typeof updateChapterTitle === 'function') updateChapterTitle(); } catch (e) {}
+      // Keep chapter buttons in sync when follow-scroll moved the pane.
+      try {
+        const tBody = document.getElementById('transcriptBody');
+        const tCont = tBody ? tBody.querySelector('.transcript-text') : null;
+        if (tCont && tCont.scrollTop !== transcriptLastHiScroll) {
+          transcriptLastHiScroll = tCont.scrollTop;
+          if (typeof refreshChapterHighlight === 'function') refreshChapterHighlight();
+        }
+      } catch (e) {}
       // Transcript follow-along: highlight the current paragraph.
       try {
         if (transcriptChunks.length > 0 && transcriptTrackId &&

@@ -1282,6 +1282,10 @@ async function testPwaThemePlaylistDeleteClearHistory() {
   assert.ok(workerSrc.includes('curEl.offsetTop - lh * 2'), 'follow-scroll must pin the active first line as 3rd visible line');
   assert.ok(workerSrc.includes('function snapTranscriptToTime('), 'transcript must snap to position on load/resume/open');
   assert.ok(workerSrc.includes('function showTranscriptPane('), 'all transcript-open paths must share one positioned entry');
+  assert.ok(workerSrc.includes('transcript-chapter-div'), 'transcript must carry inline chapter dividers (C1)');
+  assert.ok(workerSrc.includes('transcript-chapter-dur'), 'chapter buttons must show durations (C2)');
+  assert.ok(workerSrc.includes('function seekTranscriptChapter('), 'chapter click must jump to its first block (C3)');
+  assert.ok(workerSrc.includes('function refreshChapterHighlight('), 'scrolling must highlight the chapter in view (C3)');
   assert.ok(workerSrc.includes('Opening while playing lands on the Transcript tab'), 'opening the section while playing must show the transcript pane');
   assert.ok(workerSrc.includes('id="chapterMarkers"') && workerSrc.includes('id="chapterTitle"'), 'scrubber must carry chapter ticks + live title');
   assert.ok(workerSrc.includes('function renderChapterMarkers(') && workerSrc.includes('function updateChapterTitle('), 'chapter markers/title updaters must exist');
