@@ -8,6 +8,7 @@ Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://
 ## 🎯 In Progress: Transcript Enlarge + Top-Align (branch `feat/transcript-enlarge`)
 - [x] **T1: Active paragraph pins to window top** — unconditional pin (top − 8px) on paragraph change; guards unchanged. Review: PASS (LOW UX note only). *Status: ✅ dev-deployed (`44a1444c`, HTTP 200).*
 - [x] **T2: Enlarge reading mode** — "Enlarge" button at top of transcript section → focused view: everything between the audio transport and the transcript hides (speed/copy/download row, Daf action, series strip, toggle row, metadata, description); transcript expands (~65vh) under the player with a "Transcript" header + "Collapse" button; collapse restores. Big-player-only. Review: FAIL→fixed (unreachable Collapse, class leak). *Status: ✅ dev-deployed (`6a5d833a`, HTTP 200).*
+- [x] **T2b: Enlarge text-only + button moved** — enlarged hides tabs/chapters/quiz/summary (raw transcription only; tracks without text toast instead of enlarging); Enlarge button moved inside the Transcript tab above Chapters. *Status: ✅ dev-deployed (`d026cf2c`, HTTP 200).*
 - [x] **T3: Auto-enlarge setting (logged-in, default off)** — account-menu checkbox "Enlarge transcript by default" (localStorage `yutorah_transcript_enlarge`, honored only when logged in); transcript tracks open directly enlarged.
 ## 🎯 Transcript Follow-Along Parity (beta parity) — DONE: branch `feat/transcript-follow`, dual review PASS/PASS, dev `b7f566f5` (HTTP 200), pushed
 ### Beta live-transcript: how it works (evidence-based)
