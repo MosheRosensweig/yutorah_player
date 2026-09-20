@@ -15884,6 +15884,36 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       return false;
     }
   }
+  // Logged-in-only setting (default off): open transcript tracks already
+  // enlarged. Stored locally; honored only while signed in.
+  function transcriptEnlargeDefault() {
+    try {
+      if (typeof cloudUser === 'undefined' || !cloudUser) return false;
+      return localStorage.getItem('yutorah_transcript_enlarge') === '1';
+    } catch (e) {
+      return false;
+    }
+  }
+  function toggleTranscriptEnlargeDefault(btn) {
+    try {
+      const on = !transcriptEnlargeDefault();
+      localStorage.setItem('yutorah_transcript_enlarge', on ? '1' : '0');
+      if (btn) {
+        const ic = btn.querySelector('.menu-item-icon');
+        if (ic) ic.textContent = on ? '✅' : '⬜';
+      }
+    } catch (e) {}
+  }
+  function maybeAutoEnlargeTranscript() {
+    try {
+      if (!transcriptEnlargeDefault() || isTranscriptEnlarged()) return;
+      const card = document.getElementById('playerCard');
+      const body = document.getElementById('transcriptBody');
+      if (!card || !body) return;
+      body.style.display = 'flex';
+      card.classList.add('transcript-enlarged');
+    } catch (e) {}
+  }
   function toggleTranscriptEnlarge(e) {
     if (e) {
       e.preventDefault();
@@ -16126,6 +16156,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       const cached = transcriptCache[sid];
       if (cached && renderTranscriptBody(cached, sid)) {
         document.getElementById('transcriptSection').style.display = 'block';
+        maybeAutoEnlargeTranscript();
       }
       return;
     }
@@ -16140,6 +16171,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (renderTranscriptBody(data, sid)) {
         const s = document.getElementById('transcriptSection');
         if (s) s.style.display = 'block';
+        maybeAutoEnlargeTranscript();
       }
     }).catch(() => {
       transcriptCache[sid] = null;
@@ -23053,6 +23085,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); devScrollToPlaylists();"><span class="menu-item-icon">🎧</span> <span>My Playlists</span></button>';
       html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); openDisplayNameModal();"><span class="menu-item-icon">✏️</span> <span>Display name</span></button>';
       html += '<button type="button" class="settings-menu-item menu-theme-toggle-btn" onclick="toggleTheme();"><span class="menu-item-icon menu-theme-icon">' + themeIcon + '</span> <span>Light / Dark Mode</span></button>';
+      html += '<button type="button" class="settings-menu-item" onclick="toggleTranscriptEnlargeDefault(this);" title="Open transcript tracks in the enlarged reading view"><span class="menu-item-icon">' + (transcriptEnlargeDefault() ? '✅' : '⬜') + '</span> <span>Enlarge transcript by default</span></button>';
       try {
         const calEl = document.getElementById('hebrewDateBadge');
         const calRaw = calEl ? (calEl.textContent || '') : '';

@@ -1274,6 +1274,9 @@ async function testPwaThemePlaylistDeleteClearHistory() {
   assert.ok(workerSrc.includes('function loadTranscriptSection('), 'transcript loader must exist');
   assert.ok(workerSrc.includes('function answerTranscriptQuiz('), 'quiz answering must exist');
   assert.ok(workerSrc.includes('function submitTranscriptQuiz('), 'quiz must have a submit step with results');
+  assert.ok(workerSrc.includes('function toggleTranscriptEnlarge('), 'transcript enlarge toggle must exist (T2)');
+  assert.ok(workerSrc.includes('transcript-enlarged'), 'enlarged reading mode styles must exist (T2)');
+  assert.ok(workerSrc.includes('function transcriptEnlargeDefault('), 'auto-enlarge setting must exist, logged-in only, default off (T3)');
   assert.ok(workerSrc.includes('transcriptFollowUntil'), 'manual scroll must suspend follow-scroll');
   assert.ok(workerSrc.includes("closest('.transcript-text')"), 'follow-scroll must stay container-relative (never steal page scroll)');
   assert.ok(workerSrc.includes('id="chapterMarkers"') && workerSrc.includes('id="chapterTitle"'), 'scrubber must carry chapter ticks + live title');
