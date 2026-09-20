@@ -9971,6 +9971,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     #playerCard.transcript-enlarged .transcript-text {
       max-height: 65vh;
     }
+    /* Enlarged = transcription only: no tabs, no chapter list, no
+       subheads, no quiz/summary panes — just the running text. */
+    #playerCard.transcript-enlarged .transcript-tabs,
+    #playerCard.transcript-enlarged .transcript-pane[data-pane="summary"],
+    #playerCard.transcript-enlarged .transcript-pane[data-pane="quiz"],
+    #playerCard.transcript-enlarged .transcript-chapters,
+    #playerCard.transcript-enlarged .transcript-pane .transcript-subhead {
+      display: none;
+    }
     .transcript-qnum {
       font-weight: 800;
       margin-right: 4px;
@@ -13090,12 +13099,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
     <!-- Transcript & study aids (beta lecture experience) -->
     <div id="transcriptSection" style="display: none; margin: 10px 0 4px;">
-      <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-        <button type="button" class="series-expand-btn" id="transcriptToggleBtn" onclick="toggleTranscriptSection(event)" style="flex: 1;">
-          <span class="series-expand-icon">📝</span> <span class="series-expand-text">Transcript &amp; Study Aids</span>
-        </button>
-        <button type="button" class="card-mini-btn" id="transcriptEnlargeBtn" onclick="toggleTranscriptEnlarge(event)" title="Focused reading view">⤢ Enlarge</button>
-      </div>
+      <button type="button" class="series-expand-btn" id="transcriptToggleBtn" onclick="toggleTranscriptSection(event)">
+        <span class="series-expand-icon">📝</span> <span class="series-expand-text">Transcript &amp; Study Aids</span>
+      </button>
       <div id="transcriptEnlargeHeader">
         <span class="transcript-enlarge-title">📝 Transcript</span>
         <button type="button" class="card-mini-btn" onclick="toggleTranscriptEnlarge(event)">Collapse</button>
@@ -15925,8 +15931,23 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       const body = document.getElementById('transcriptBody');
       if (!card || !body) return;
       const on = !card.classList.contains('transcript-enlarged');
-      // Enlarging always opens the transcript; collapsing leaves it open.
-      if (on) body.style.display = 'flex';
+      // Enlarging always opens the transcript on the transcript pane
+      // (enlarged shows text only); collapsing leaves it open. Tracks
+      // without transcript text cannot enlarge (nothing to show).
+      if (on) {
+        let tPane = null;
+        try {
+          tPane = body.querySelector('.transcript-pane[data-pane="transcript"]');
+        } catch (e) {}
+        if (!tPane) {
+          try { flashToast('No transcript text for this shiur', true, false); } catch (e) {}
+          return;
+        }
+        body.style.display = 'flex';
+        try {
+          if (typeof switchTranscriptTab === 'function') switchTranscriptTab('transcript');
+        } catch (e) {}
+      }
       card.classList.toggle('transcript-enlarged', on);
       if (on && typeof scrollPlayButtonIntoView === 'function') scrollPlayButtonIntoView();
     } catch (err) {}
@@ -16002,7 +16023,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       ? data.RefinedTranscription
       : ((data && Array.isArray(data.TranscriptionText)) ? data.TranscriptionText : []);
     if (words.length > 0) {
-      let inner = '';
+      let inner = '<button type="button" class="card-mini-btn" id="transcriptEnlargeBtn" onclick="toggleTranscriptEnlarge(event)" title="Focused reading view" style="margin-bottom: 8px;">⤢ Enlarge</button>';
       if (chapters.length > 0) {
         inner += '<div class="transcript-subhead">📑 Chapters</div><div class="transcript-chapters">';
         chapters.forEach((c, i) => {
