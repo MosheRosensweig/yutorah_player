@@ -25538,10 +25538,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
             if (cur >= 0 && transcriptChunks[cur]) {
               const curEl = transcriptChunks[cur].el;
               curEl.classList.add('is-current');
-              // Beta parity: pin the active paragraph's first line to the
-              // top of the transcript window on every paragraph change,
-              // unless the user scrolled manually in the last ~5s.
-              // Container-relative only — never steals page scroll.
+              // Beta parity: center the active paragraph in the transcript
+              // window on every paragraph change, unless the user scrolled
+              // manually in the last ~5s. Container-relative only — never
+              // steals page scroll.
               try {
                 const tBody = document.getElementById('transcriptBody');
                 if (tBody && tBody.style.display !== 'none' &&
@@ -25550,7 +25550,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
                   const cont = curEl.closest('.transcript-text');
                   if (cont) {
                     transcriptSuppressScrollUntil = Date.now() + 300;
-                    cont.scrollTop = Math.max(0, curEl.offsetTop - 8);
+                    cont.scrollTop = Math.max(0,
+                      curEl.offsetTop - (cont.clientHeight / 2) + (curEl.offsetHeight / 2));
                   }
                 }
               } catch (e) {}
