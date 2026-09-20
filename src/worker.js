@@ -9844,6 +9844,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       gap: 4px;
       max-height: 320px;
       overflow-y: auto;
+      position: relative;
     }
     .transcript-chunk {
       margin: 0;
@@ -15758,6 +15759,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   let transcriptChunks = [];
   let transcriptCurIdx = -1;
   let transcriptChapters = [];
+  // Follow-scroll state: manual scrolling suspends auto-follow ~5s;
+  // programmatic scrolls set a brief suppress window so they don't
+  // retrigger the suspension.
+  let transcriptFollowUntil = 0;
+  let transcriptSuppressScrollUntil = 0;
   // Chapter ticks on the scrubber + live chapter title. Driven by the
   // transcript payload (works whether or not the transcript section is
   // open); cleared with the section on switch/close.
@@ -15973,6 +15979,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       start: parseFloat(el.getAttribute('data-start')) || 0,
       el: el
     }));
+    // Manual scrolls suspend follow-scroll briefly (beta behavior).
+    try {
+      const tCont = body.querySelector('.transcript-text');
+      if (tCont) {
+        tCont.addEventListener('scroll', () => {
+          try {
+            if (Date.now() < transcriptSuppressScrollUntil) return;
+            transcriptFollowUntil = Date.now() + 5000;
+          } catch (e) {}
+        }, { passive: true });
+      }
+    } catch (e) {}
     return true;
   }
   // Two-phase quiz like the beta site: tap an option to select it, then
@@ -16019,6 +16037,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     transcriptChunks = [];
     transcriptCurIdx = -1;
     transcriptChapters = [];
+    transcriptFollowUntil = 0;
+    transcriptSuppressScrollUntil = 0;
     try {
       const box = document.getElementById('chapterMarkers');
       if (box) box.innerHTML = '';
@@ -25304,7 +25324,30 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
             }
             transcriptCurIdx = cur;
             if (cur >= 0 && transcriptChunks[cur]) {
-              transcriptChunks[cur].el.classList.add('is-current');
+              const curEl = transcriptChunks[cur].el;
+              curEl.classList.add('is-current');
+              // Beta parity: keep the active paragraph visible, unless
+              // the user scrolled manually in the last ~5s. Container-
+              // relative only — never steals page scroll.
+              try {
+                const tBody = document.getElementById('transcriptBody');
+                if (tBody && tBody.style.display !== 'none' &&
+                    Date.now() > transcriptFollowUntil &&
+                    curEl && curEl.offsetParent) {
+                  const cont = curEl.closest('.transcript-text');
+                  if (cont) {
+                    const top = curEl.offsetTop;
+                    const bottom = top + curEl.offsetHeight;
+                    if (top < cont.scrollTop + 4) {
+                      transcriptSuppressScrollUntil = Date.now() + 300;
+                      cont.scrollTop = Math.max(0, top - 12);
+                    } else if (bottom > cont.scrollTop + cont.clientHeight - 4) {
+                      transcriptSuppressScrollUntil = Date.now() + 300;
+                      cont.scrollTop = bottom - cont.clientHeight + 12;
+                    }
+                  }
+                }
+              } catch (e) {}
             }
           }
         }

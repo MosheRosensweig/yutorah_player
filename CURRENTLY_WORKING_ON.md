@@ -5,6 +5,14 @@ Last updated: **2026-09-16, 09:15 ET**
 Current branch: `feat/player-followups` (Player Follow-ups F1–F4; based on `feat/player-ux-batch` @ `6c66a1d`)  
 Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev) (`72685143`)  
 Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://yutorah-player.mrosensweig.workers.dev) (`f3175ebf`) — plus holiday light-var leak fix on toggle (review PASS); markers verified
+## 🎯 In Progress: Transcript Follow-Along Parity (beta parity) — branch `feat/transcript-follow`
+### Beta live-transcript: how it works (evidence-based)
+- Beta lecture pages load `/js/vtt-transcript.js` (WebVTT timed-text captions) inside a **VidStack** player (`cdn.vidstack.io`), with accordion-js collapsible UI. Direct fetch blocked (CF challenge), so endpoint shapes come from observation + their public OpenAPI `transcriptions` API, which we use instead (word timestamps + refined text + chapters + quiz).
+- Observed beta behavior: (1) the active caption highlights as audio crosses cue boundaries; (2) the transcript pane **auto-scrolls to keep the active cue visible**; (3) clicking any cue seeks the media to that timestamp.
+- Our data path differs (word-timestamp JSON regrouped into gap paragraphs vs their VTT cues) but supports the same three behaviors.
+### Gap analysis (pre-fix)
+- Ours already had (1) highlight (1s tick) and (3) click-to-seek. Missing: (2) auto-scroll follow — the highlight moved but the pane never scrolled, so on long shiurim the active paragraph scrolls out of view.
+- Fix: container-relative follow-scroll on chapter/paragrah change, suspended ~5s after manual scroll (standard beta-style behavior), no page-level scroll theft.
 ## 🎯 In Progress: Holiday-Theme Toggle Leak — DONE (dual-verified review PASS, dev `3e04417d` + prod `f3175ebf`, both 200)
 - Root cause + fix as spec'd below; no follow-ups except pre-existing LOWs (unused accentBorder data, ghost-purim edge, weak test tripwire).
 - User-reported root cause on their device: the iPhone's **browser version** (too old for `prefers-color-scheme`/isolated-PWA behavior) — our `matchMedia` guard intentionally keeps the dark default there; fix covers all browsers with system-theme support
