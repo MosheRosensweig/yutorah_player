@@ -5,6 +5,9 @@ Last updated: **2026-09-16, 09:15 ET**
 Current branch: `feat/player-followups` (Player Follow-ups F1–F4; based on `feat/player-ux-batch` @ `6c66a1d`)  
 Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev) (`72685143`)  
 Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://yutorah-player.mrosensweig.workers.dev) (`70b5a0f1`) — transcript enlarge/top-pin/series-symmetry batch; markers verified
+## 🎯 Series Asymmetry, Explained (cold #7-type tracks)
+- Detection is query-driven, not membership-driven: #6's title contains the run's shared vocabulary ("Prepare for Yom Kippur The Three" → 8-doc group); #7's title ("Shabbat Teshuvah Derasha…") shares none of it, has no lecture seriesName, and no catalog name — so on a cold load there is literally no query that reunites it with its siblings (verified live against the index). The index KNOWS the membership (coll_15436) but offers no "which collections contain X" API.
+- Covered flows: sibling clicks (memory), shared/reloaded URLs (?seriesKey), click-from-search (page-doc scan). Cold direct loads of oddly-titled parts remain best-effort by API limitation, not app logic.
 ## 🎯 Series Symmetry Verification (user retest pending)
 - User re-reported #6-has-strip/#7-missing. Verified live on dev: memory handoff + `paintSeriesStrip` URL write + `playShiurById`/`goHome` key carrying all present in served code. Likely cause: stale SPA tab predating the symmetry deploy (app never self-reloads). Asked user to hard-reload and re-run #6→#7; `?diag=series` available if still missing.
 ## 🎯 In Progress: Transcript Enlarge + Top-Align (branch `feat/transcript-enlarge`)
