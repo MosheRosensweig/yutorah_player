@@ -4,7 +4,9 @@ Living status doc & audit log — updated on every milestone and user request.
 Last updated: **2026-09-16, 09:15 ET**  
 Current branch: `feat/player-followups` (Player Follow-ups F1–F4; based on `feat/player-ux-batch` @ `6c66a1d`)  
 Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev) (`72685143`)  
-Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://yutorah-player.mrosensweig.workers.dev) (`bb62bdb8`) — plus centered play button on expand (v1.5.2); markers verified  
+Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://yutorah-player.mrosensweig.workers.dev) (`f3175ebf`) — plus holiday light-var leak fix on toggle (review PASS); markers verified
+## 🎯 In Progress: Holiday-Theme Toggle Leak — DONE (dual-verified review PASS, dev `3e04417d` + prod `f3175ebf`, both 200)
+- Root cause + fix as spec'd below; no follow-ups except pre-existing LOWs (unused accentBorder data, ghost-purim edge, weak test tripwire).
 - User-reported root cause on their device: the iPhone's **browser version** (too old for `prefers-color-scheme`/isolated-PWA behavior) — our `matchMedia` guard intentionally keeps the dark default there; fix covers all browsers with system-theme support
 ## 🎯 In Progress: Holiday-Theme Toggle Leak (link/speaker color wrong after light→dark)
 - **Root cause**: `applyHolidayTheme()` sets inline `--primary`/`--accent`/`--banner-bg` on `documentElement` for light mode only; on toggle-to-dark the inline light value survived (inline beats `[data-theme="dark"]` sheet) → wrong blue until reload. Active in Elul (locked variant A with primary override).
