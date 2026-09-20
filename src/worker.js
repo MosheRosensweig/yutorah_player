@@ -16023,9 +16023,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       ? data.RefinedTranscription
       : ((data && Array.isArray(data.TranscriptionText)) ? data.TranscriptionText : []);
     if (words.length > 0) {
-      let inner = '<button type="button" class="card-mini-btn" id="transcriptEnlargeBtn" onclick="toggleTranscriptEnlarge(event)" title="Focused reading view" style="margin-bottom: 8px;">⤢ Enlarge</button>';
+      let inner = '';
+      const enlargeBtn = '<button type="button" class="card-mini-btn" id="transcriptEnlargeBtn" onclick="toggleTranscriptEnlarge(event)" title="Focused reading view">⤢ Enlarge</button>';
       if (chapters.length > 0) {
-        inner += '<div class="transcript-subhead">📑 Chapters</div><div class="transcript-chapters">';
+        inner += '<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">' +
+          '<div class="transcript-subhead" style="margin: 0;">📑 Chapters</div>' + enlargeBtn + '</div>' +
+          '<div class="transcript-chapters">';
         chapters.forEach((c, i) => {
           const st = Number(c.start_seconds || 0);
           inner += '<button type="button" class="card-mini-btn transcript-chapter" onclick="transcriptSeek(' + st + ')"' +
@@ -16033,6 +16036,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
             '<span class="transcript-chapter-time">' + formatTime(st) + '</span> ' + esc(c.title || ('Part ' + (i + 1))) + '</button>';
         });
         inner += '</div>';
+      } else {
+        inner += '<div style="display: flex; justify-content: flex-end; margin-bottom: 8px;">' + enlargeBtn + '</div>';
       }
       inner += '<div class="transcript-subhead">📝 Transcript <span class="transcript-hint">(tap a paragraph to jump)</span></div>' +
         '<div class="transcript-text">' + transcriptChunkHtml(words) + '</div>';
