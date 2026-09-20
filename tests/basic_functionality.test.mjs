@@ -1349,6 +1349,10 @@ async function testCardPlayStatesAndMiniPop() {
   assert.ok(workerSrc.includes('most specific run'), 'resolver must prefer the most specific run (H1)');
   assert.ok(workerSrc.includes('then the catalog name carries them'), 'resolver must fall back to the catalog name when family is too specific (H1b)');
   assert.ok(workerSrc.includes('function fetchSeriesPage('), 'paged drawers need a load-more fetcher (H1c)');
+  assert.ok(workerSrc.includes('function seriesIdentityFromPage('), 'player must reuse in-memory search docs for series identity');
+  assert.ok(workerSrc.includes('currentSeriesGroup'), 'sibling clicks must reuse the resolved group');
+  assert.ok(workerSrc.includes('seriesKey'), 'series context must travel in the URL');
+  assert.ok(workerSrc.includes('function paintSeriesStrip('), 'strip paint must be shared by fresh/memory/URL paths');
   assert.ok(workerSrc.includes('function scrollPlayButtonIntoView()'), 'expanding the player must center the play button');
   assert.ok(workerSrc.includes('function seriesDiagOn()'), 'strip diagnostics must exist (?diag=series)');
   assert.ok(workerSrc.includes('data-page-mode'), 'drawers must carry paging state (H1c)');

@@ -9943,6 +9943,33 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       flex-wrap: wrap;
       margin: 2px 0 10px;
     }
+    /* Enlarged reading mode: everything between the transport and the
+       transcript hides; the transcript fills the view under the player. */
+    #transcriptEnlargeHeader {
+      align-items: center;
+      justify-content: space-between;
+      margin: 2px 0 8px;
+    }
+    .transcript-enlarge-title {
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--text);
+    }
+    #playerCard.transcript-enlarged .controls-grid,
+    #playerCard.transcript-enlarged #seriesStrip,
+    #playerCard.transcript-enlarged #transcriptToggleBtn,
+    #playerCard.transcript-enlarged #transcriptEnlargeBtn,
+    #playerCard.transcript-enlarged #shiurMetadataBox,
+    #playerCard.transcript-enlarged #shiurDesc,
+    #playerCard.transcript-enlarged .shortcuts-hint {
+      display: none;
+    }
+    #playerCard.transcript-enlarged #transcriptEnlargeHeader {
+      display: flex;
+    }
+    #playerCard.transcript-enlarged .transcript-text {
+      max-height: 65vh;
+    }
     .transcript-qnum {
       font-weight: 800;
       margin-right: 4px;
@@ -13062,9 +13089,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
     <!-- Transcript & study aids (beta lecture experience) -->
     <div id="transcriptSection" style="display: none; margin: 10px 0 4px;">
-      <button type="button" class="series-expand-btn" id="transcriptToggleBtn" onclick="toggleTranscriptSection(event)">
-        <span class="series-expand-icon">📝</span> <span class="series-expand-text">Transcript &amp; Study Aids</span>
-      </button>
+      <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+        <button type="button" class="series-expand-btn" id="transcriptToggleBtn" onclick="toggleTranscriptSection(event)" style="flex: 1;">
+          <span class="series-expand-icon">📝</span> <span class="series-expand-text">Transcript &amp; Study Aids</span>
+        </button>
+        <button type="button" class="card-mini-btn" id="transcriptEnlargeBtn" onclick="toggleTranscriptEnlarge(event)" title="Focused reading view">⤢ Enlarge</button>
+      </div>
+      <div id="transcriptEnlargeHeader" style="display: none;">
+        <span class="transcript-enlarge-title">📝 Transcript</span>
+        <button type="button" class="card-mini-btn" onclick="toggleTranscriptEnlarge(event)">Collapse</button>
+      </div>
       <div id="transcriptBody" class="series-drawer" style="display: none;"></div>
     </div>
 
@@ -15478,7 +15512,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           if (docs.length > 1 && docs.some(d => docSid(d) === sid)) {
             // Paged entries keep their paging so reopened big series can
             // still Load more (legacy entries simply have none).
-            return Promise.resolve({ title: entry.title || catTitle, docs: docs, paging: entry.paging || null });
+            return Promise.resolve({ key: entry.key || '', title: entry.title || catTitle, docs: docs, paging: entry.paging || null });
           }
         }
       }
@@ -15488,7 +15522,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const storeCache = (ckey, title, docs, paging) => {
       try {
         if (typeof devSeriesCache !== 'undefined' && devSeriesCache) {
-          devSeriesCache['q:' + ckey] = { title: title, docs: docs, paging: paging || null };
+          devSeriesCache['q:' + ckey] = { key: ckey, title: title, docs: docs, paging: paging || null };
         }
       } catch (e) {}
     };
@@ -15519,7 +15553,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         if (!best) return null;
         const title = isFamily ? q : (best.title || q);
         storeCache(best.key, title, best.docs);
-        return { title: title, docs: best.docs.slice(0, 30), paging: null };
+        return { key: best.key || '', title: title, docs: best.docs.slice(0, 30), paging: null };
       });
     };
     // Series-id windows: exact enumeration, paged. Probes sequential
@@ -15560,6 +15594,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         const pg = lastFull ? { mode: 'series', key: seriesId, next: all[all.length - 1].start + 30 } : null;
         storeCache(key, title, combined.slice(0, 120), pg);
         return {
+          key: key,
           title: title,
           docs: combined.slice(0, 120),
           paging: pg
@@ -15585,6 +15620,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           : null;
         storeCache(best.key, best.title || catTitle, best.docs.slice(0, 90), pgc);
         return {
+          key: best.key || '',
           title: best.title || catTitle,
           docs: best.docs.slice(0, 90),
           paging: pgc
@@ -15839,6 +15875,30 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const body = document.getElementById('transcriptBody');
     if (!body) return;
     body.style.display = (body.style.display === 'none') ? 'flex' : 'none';
+  }
+  function isTranscriptEnlarged() {
+    try {
+      const card = document.getElementById('playerCard');
+      return Boolean(card && card.classList.contains('transcript-enlarged'));
+    } catch (e) {
+      return false;
+    }
+  }
+  function toggleTranscriptEnlarge(e) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    try {
+      const card = document.getElementById('playerCard');
+      const body = document.getElementById('transcriptBody');
+      if (!card || !body) return;
+      const on = !card.classList.contains('transcript-enlarged');
+      // Enlarging always opens the transcript; collapsing leaves it open.
+      if (on) body.style.display = 'flex';
+      card.classList.toggle('transcript-enlarged', on);
+      if (on && typeof scrollPlayButtonIntoView === 'function') scrollPlayButtonIntoView();
+    } catch (err) {}
   }
   function transcriptChunkHtml(words) {
     // Gap-based paragraphs (pause > 1.2s), capped ~70 words each.
@@ -16127,18 +16187,100 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       box.textContent += msg + String.fromCharCode(10);
     } catch (e) {}
   }
+  // Last resolved group: sibling clicks reuse it instantly (same button
+  // on every part) instead of re-resolving per track.
+  let currentSeriesGroup = null;
+  // The current search results (and cached expansions) may already hold
+  // this track's document with its collection/series identity — the only
+  // signal available when the lecture API and title both come up empty
+  // (e.g. oddly-titled parts clicked from a search page).
+  function seriesIdentityFromPage(id) {
+    try {
+      const sid = String(id || '');
+      if (!sid) return null;
+      const pools = [];
+      if (typeof currentSearchDocs !== 'undefined' && Array.isArray(currentSearchDocs)) {
+        pools.push(currentSearchDocs);
+      }
+      if (typeof devSeriesCache !== 'undefined' && devSeriesCache) {
+        for (const entry of Object.values(devSeriesCache)) {
+          if (entry && Array.isArray(entry.docs)) pools.push(entry.docs);
+        }
+      }
+      for (const pool of pools) {
+        for (const d of pool) {
+          if (!d) continue;
+          if (String(d.shiurid || d.shiurID || d.id || '') !== sid) continue;
+          const ident = seriesIdentityOf(d);
+          if (ident) return ident;
+        }
+      }
+    } catch (e) {}
+    return null;
+  }
+  // Paints the strip from a resolved group (shared by fresh resolves
+  // and instant memory/URL handoffs). Also persists the series context
+  // (?seriesKey/&seriesTitle) so sibling tracks, reloads, and shares all
+  // resolve the SAME group — every part shows the same button.
+  function paintSeriesStrip(group) {
+    const strip = document.getElementById('seriesStrip');
+    const btn = document.getElementById('seriesStripBtn');
+    const drawer = document.getElementById('seriesStripDrawer');
+    if (!strip || !btn || !drawer) return;
+    btn.setAttribute('data-drawer-target', 'seriesStripDrawer');
+    btn.setAttribute('data-sub-count', String(group.docs.length - 1));
+    btn.setAttribute('data-series-title', group.title || '');
+    btn.innerHTML = '<span class="series-expand-icon">➕</span> <span class="series-expand-text">View ' + (group.docs.length - 1) + ' more in \u2018' + escapeHtml(group.title || '') + '\u2019 Series</span>';
+    seriesDrawerFill('seriesStripDrawer', group, false);
+    strip.style.display = 'block';
+    try {
+      const u = new URL(window.location.href);
+      if (group.key) {
+        u.searchParams.set('seriesKey', group.key);
+        u.searchParams.set('seriesTitle', group.title || '');
+      } else {
+        u.searchParams.delete('seriesKey');
+        u.searchParams.delete('seriesTitle');
+      }
+      history.replaceState(history.state || {}, '', u.toString());
+    } catch (e) {}
+  }
   function updateSeriesStrip(id, seriesName, trackTitle) {
     hideSeriesStrip();
     if (seriesDiagOn()) seriesDiag('strip: id=' + id + ' seriesName=' + (seriesName || '(none)'));
     if (!id) return;
     const myId = String(id);
     currentSeriesName = String(seriesName || '');
+    // 1. Memory handoff: a sibling's group already contains this track —
+    // same button instantly, no fetch. Checked BEFORE clearing.
+    try {
+      if (currentSeriesGroup && currentSeriesGroup.ids && currentSeriesGroup.ids[myId] &&
+          Array.isArray(currentSeriesGroup.docs) && currentSeriesGroup.docs.length > 1) {
+        if (seriesDiagOn()) seriesDiag('strip: memory handoff (' + currentSeriesGroup.docs.length + ' docs)');
+        paintSeriesStrip(currentSeriesGroup);
+        return;
+      }
+    } catch (e) {}
+    currentSeriesGroup = null;
+    // 2. URL context (?seriesKey/&seriesTitle from a sibling, reload, or
+    // share) seeds the resolver ident alongside the track's own data.
+    let urlKey = '';
+    let urlTitle = '';
+    try {
+      const p = new URL(window.location.href).searchParams;
+      urlKey = p.get('seriesKey') || '';
+      urlTitle = p.get('seriesTitle') || '';
+    } catch (e) {}
+    // 3. In-memory page docs (current search results + cached expansions).
+    const pageIdent = seriesIdentityFromPage(myId);
+    const effKey = (pageIdent && pageIdent.key) || urlKey;
+    const effTitle = (pageIdent && pageIdent.title) || urlTitle || currentSeriesName;
     // Family query first (topical scoping); the catalog name covers
     // short/generic titles that yield no family. Either may be empty —
     // the resolver requires at least one.
     const fam = seriesFamilyQuery(trackTitle);
-    if (seriesDiagOn()) seriesDiag('strip: family query=' + (fam || '(none)'));
-    resolveSeriesDocs(myId, { key: '', title: currentSeriesName }, fam).then(group => {
+    if (seriesDiagOn()) seriesDiag('strip: family query=' + (fam || '(none)') + ' key=' + (effKey || '(none)'));
+    resolveSeriesDocs(myId, { key: effKey, title: effTitle }, fam).then(group => {
       if (seriesDiagOn()) {
         seriesDiag('strip: resolved=' + (!group ? 'null' :
           ('title=' + group.title + ' docs=' + (group.docs || []).length)));
@@ -16148,16 +16290,17 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         if (seriesDiagOn()) seriesDiag('strip: stale (track moved on)');
         return;
       }
-      const strip = document.getElementById('seriesStrip');
-      const btn = document.getElementById('seriesStripBtn');
-      const drawer = document.getElementById('seriesStripDrawer');
-      if (!strip || !btn || !drawer) return;
-      btn.setAttribute('data-drawer-target', 'seriesStripDrawer');
-      btn.setAttribute('data-sub-count', String(group.docs.length - 1));
-      btn.setAttribute('data-series-title', group.title || currentSeriesName);
-      btn.innerHTML = '<span class="series-expand-icon">➕</span> <span class="series-expand-text">View ' + (group.docs.length - 1) + ' more in \u2018' + escapeHtml(group.title || currentSeriesName) + '\u2019 Series</span>';
-      seriesDrawerFill('seriesStripDrawer', group, false);
-      strip.style.display = 'block';
+      try {
+        const ids = {};
+        group.docs.forEach(d => {
+          const k = docSid(d);
+          if (k) ids[k] = 1;
+        });
+        currentSeriesGroup = { key: group.key || '', title: group.title || '', ids: ids, docs: group.docs, paging: group.paging || null };
+      } catch (e) {
+        currentSeriesGroup = null;
+      }
+      paintSeriesStrip(group);
     }).catch(() => {});
   }
 
@@ -16510,9 +16653,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       try {
         const keep = new URLSearchParams();
         const cur = new URL(window.location.href).searchParams;
-        ['t', 'speed', 'rate', 'theme', 'mode', 'dark', 'light'].forEach(k => {
-          cur.getAll(k).forEach(v => keep.append(k, v));
-        });
+      ['t', 'speed', 'rate', 'theme', 'mode', 'dark', 'light', 'seriesKey', 'seriesTitle'].forEach(k => {
+        cur.getAll(k).forEach(v => keep.append(k, v));
+      });
         newUrl.search = keep.toString();
       } catch (e) {}
     } else {
@@ -18880,8 +19023,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     // Carry playlist context onto the shiur page so reload keeps the tab,
     // filters, and search the listener came from (shareable as one link).
+    // Series context rides along too: a sibling's strip resolves instantly
+    // on arrival (overwritten with fresh values on resolve).
     try {
-      ['tab', 'pl', 'plq', 'plteachers', 'plvenues', 'pltopics', 'plscope', 'plsort'].forEach(k => {
+      ['tab', 'pl', 'plq', 'plteachers', 'plvenues', 'pltopics', 'plscope', 'plsort', 'seriesKey', 'seriesTitle'].forEach(k => {
         curParams.getAll(k).forEach(v => newUrl.searchParams.append(k, v));
       });
       if (curParams.get('return_to')) newUrl.searchParams.set('return_to', curParams.get('return_to'));
