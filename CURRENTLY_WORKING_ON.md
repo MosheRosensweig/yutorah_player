@@ -11,9 +11,9 @@ Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://
 ## 🎯 Series Symmetry Verification (user retest pending)
 - User re-reported #6-has-strip/#7-missing. Verified live on dev: memory handoff + `paintSeriesStrip` URL write + `playShiurById`/`goHome` key carrying all present in served code. Likely cause: stale SPA tab predating the symmetry deploy (app never self-reloads). Asked user to hard-reload and re-run #6→#7; `?diag=series` available if still missing.
 ## 🎯 In Progress: Transcript Chapters Inline (branch `feat/transcript-chapters`)
-- [ ] **C1: Inline chapter dividers** — divider + bold header inside the transcript flow at each chapter boundary (metadata only: never highlight-targeted, never click-seek).
-- [ ] **C2: Chapter durations** — chapter buttons gain right-side `N min` (rounded) like the beta site.
-- [ ] **C3: Live chapter highlight + jump** — scrolling the transcript highlights the chapter in view; clicking a chapter scrolls to its first block (and seeks). N/A in enlarged (no headers shown). Light/dark correct.
+- [x] **C1: Inline chapter dividers** — divider + bold header inside the transcript flow at each chapter boundary (metadata only: never highlight-targeted, never click-seek).
+- [x] **C2: Chapter durations** — chapter buttons gain right-side `N min` (rounded, next-chapter fallback for the last) like the beta site.
+- [x] **C3: Live chapter highlight + jump** — scrolling the transcript highlights the chapter in view; clicking a chapter scrolls to its first block (and seeks). N/A in enlarged (no headers shown). Light/dark correct. Review: PASS (3 MEDs folded in: shared table, duration fallback, snap refresh). *Status: ✅ dev-deployed (`9c7136e4`, HTTP 200).*
 ## 🎯 In Progress: Transcript Position Coverage (branch `fix/transcript-center-scroll`)
 - [x] Reload-no-follow: opening the section while playing now lands on the Transcript tab (paused opens keep tab).
 - [x] 3rd-line positioning (measured line-height, was center).
