@@ -25326,9 +25326,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
             if (cur >= 0 && transcriptChunks[cur]) {
               const curEl = transcriptChunks[cur].el;
               curEl.classList.add('is-current');
-              // Beta parity: keep the active paragraph visible, unless
-              // the user scrolled manually in the last ~5s. Container-
-              // relative only — never steals page scroll.
+              // Beta parity: pin the active paragraph's first line to the
+              // top of the transcript window on every paragraph change,
+              // unless the user scrolled manually in the last ~5s.
+              // Container-relative only — never steals page scroll.
               try {
                 const tBody = document.getElementById('transcriptBody');
                 if (tBody && tBody.style.display !== 'none' &&
@@ -25336,15 +25337,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
                     curEl && curEl.offsetParent) {
                   const cont = curEl.closest('.transcript-text');
                   if (cont) {
-                    const top = curEl.offsetTop;
-                    const bottom = top + curEl.offsetHeight;
-                    if (top < cont.scrollTop + 4) {
-                      transcriptSuppressScrollUntil = Date.now() + 300;
-                      cont.scrollTop = Math.max(0, top - 12);
-                    } else if (bottom > cont.scrollTop + cont.clientHeight - 4) {
-                      transcriptSuppressScrollUntil = Date.now() + 300;
-                      cont.scrollTop = bottom - cont.clientHeight + 12;
-                    }
+                    transcriptSuppressScrollUntil = Date.now() + 300;
+                    cont.scrollTop = Math.max(0, curEl.offsetTop - 8);
                   }
                 }
               } catch (e) {}

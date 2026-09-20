@@ -5,6 +5,10 @@ Last updated: **2026-09-16, 09:15 ET**
 Current branch: `feat/player-followups` (Player Follow-ups F1–F4; based on `feat/player-ux-batch` @ `6c66a1d`)  
 Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev) (`72685143`)  
 Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://yutorah-player.mrosensweig.workers.dev) (`cc4684e7`) — plus transcript follow-scroll (v1.5.3); markers verified
+## 🎯 In Progress: Transcript Enlarge + Top-Align (branch `feat/transcript-enlarge`)
+- [ ] **T1: Active paragraph pins to window top** — follow-scroll currently does minimal-visibility scrolling (bottom-aligned when entering from below). Change: on paragraph change, scroll so the active chunk's first line is the window's first line (8px pad). Manual-scroll suspension unchanged.
+- [ ] **T2: Enlarge reading mode** — "Enlarge" button at top of transcript section → focused view: everything between the audio transport and the transcript hides (speed/copy/download row, Daf action, series strip, toggle row, metadata, description); transcript expands (~65vh) under the player with a "Transcript" header + "Collapse" button; collapse restores. Big-player-only.
+- [ ] **T3: Auto-enlarge setting (logged-in, default off)** — account-menu checkbox "Enlarge transcript by default" (localStorage `yutorah_transcript_enlarge`, honored only when logged in); transcript tracks open directly enlarged.
 ## 🎯 Transcript Follow-Along Parity (beta parity) — DONE: branch `feat/transcript-follow`, dual review PASS/PASS, dev `b7f566f5` (HTTP 200), pushed
 ### Beta live-transcript: how it works (evidence-based)
 - Beta lecture pages load `/js/vtt-transcript.js` (WebVTT timed-text captions) inside a **VidStack** player (`cdn.vidstack.io`), with accordion-js collapsible UI. Direct fetch blocked (CF challenge), so endpoint shapes come from observation + their public OpenAPI `transcriptions` API, which we use instead (word timestamps + refined text + chapters + quiz).
