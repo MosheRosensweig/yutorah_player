@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import worker from '../src/worker.js';
+import { escapeHtml as serverEscapeHtml } from '../src/utils/html.mjs';
 
 console.log('🧪 Running Basic Functionality & Article Viewer Automated Regression Tests...\n');
 
@@ -50,6 +51,26 @@ async function testHomepage() {
     'devDoRemove history branch must mark cloud dirty');
   assert.ok(html.includes('function flushCloudSync()'), 'unload sync flush must exist');
   assert.ok(html.includes('keepalive: true'), 'unload flush must use keepalive');
+  // Phase 1 module extraction: utils bundle route + single-source wiring.
+  const utilsRes = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/js/yt-utils.js'), mockEnv, mockCtx);
+  assert.equal(utilsRes.status, 200, '/js/yt-utils.js should return 200 OK');
+  const utilsJs = await utilsRes.text();
+  assert.ok(utilsJs.includes('window.YTUtils.escapeHtml'), 'bundle must expose escapeHtml');
+  assert.ok(html.includes('<script src="/js/yt-utils.js"></script>'), 'app shell must load the utils bundle before the inline script');
+  // Behavioral equivalence: server import ≡ bundle ≡ inline fallback.
+  // This is what makes the fallback comment ("pinned by tests") true.
+  const corpus = ['', null, 0, 'plain', '<a href="x">A&B</a>', '"double" and \'single\'', 'a<b>c&d"e\'f', 'a/b?c=d&e=f', 'line1\nline2', 'שלום & <world>'];
+  const fakeWindow = {};
+  const bundleFn = new Function('window', utilsJs + '; return window.YTUtils.escapeHtml;')(fakeWindow);
+  const workerSrcForFallback = fs.readFileSync(new URL('../src/worker.js', import.meta.url), 'utf8');
+  const fbMatch = workerSrcForFallback.match(/const escapeHtml = \(window\.YTUtils && window\.YTUtils\.escapeHtml\) \|\| (function\(str\) \{[\s\S]*?\n  \};)/);
+  assert.ok(fbMatch, 'inline fallback must exist in the expected shape');
+  const fallbackFn = new Function('return (' + fbMatch[1].replace(/;\s*$/, '') + ')')();
+  for (const sample of corpus) {
+    const expected = serverEscapeHtml(sample);
+    assert.equal(bundleFn(sample), expected, `bundle mismatch on ${JSON.stringify(sample)}`);
+    assert.equal(fallbackFn(sample), expected, `fallback mismatch on ${JSON.stringify(sample)}`);
+  }
   console.log('  ✅ Homepage renders successfully with all controls and viewer containers.');
 }
 

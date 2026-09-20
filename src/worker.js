@@ -22,6 +22,10 @@ import {
 } from './phonetic_engine.js';
 import AUTOCOMPLETE_META from './autocomplete_data.json' with { type: 'json' };
 import CHANGELOG from './changelog.json' with { type: 'json' };
+// Phase 1 module extraction: shared pure utils (server imports directly;
+// the inline classic client script consumes them via window.YTUtils,
+// served by the /js/yt-utils.js route below).
+import { escapeHtml } from './utils/html.mjs';
 
 // Safe JSON embed for <script> contexts: neutralizes </script> breakouts.
 function jsEmbed(val) {
@@ -1616,6 +1620,34 @@ async function executeSearchInternal(searchParams) {
     return true;
   }
 
+  // Upstream fetch with a hard timeout: a hanging Solr page (observed:
+  // start=3 stalling indefinitely) must degrade to an empty page, never
+  // stall a fanout's Promise.all. Portable (no AbortSignal.timeout dep).
+  function fetchWithTimeout(url, opts, ms) {
+    const timeoutMs = ms || 10000;
+    let controller = null;
+    try {
+      controller = new AbortController();
+    } catch (e) {
+      return fetch(url, opts);
+    }
+    let timer = null;
+    try {
+      timer = setTimeout(() => { try { controller.abort(); } catch (e) {} }, timeoutMs);
+    } catch (e) {}
+    let p = null;
+    try {
+      const merged = Object.assign({}, opts, { signal: controller.signal });
+      p = fetch(url, merged);
+    } catch (e) {
+      if (timer) clearTimeout(timer);
+      throw e;
+    }
+    return p.then(
+      res => { if (timer) clearTimeout(timer); return res; },
+      err => { if (timer) clearTimeout(timer); throw err; }
+    );
+  }
   async function fetchSolrSingle(query, startOffset, tId, catId, locId, sId) {
     let targetUrl = `${API_ORIGIN}/search?searchTerm=${encodeURIComponent(query)}&start=${encodeURIComponent(startOffset)}`;
     if (tId) targetUrl += `&teacherId=${encodeURIComponent(tId)}`;
@@ -1624,7 +1656,7 @@ async function executeSearchInternal(searchParams) {
     if (sId) targetUrl += `&seriesId=${encodeURIComponent(sId)}`;
 
     try {
-      const upstream = await fetch(targetUrl, {
+      const upstream = await fetchWithTimeout(targetUrl, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
           'Accept': 'application/json'
@@ -1987,7 +2019,8 @@ const PRECACHE_URLS = [
   '/',
   '/manifest.json?v=8',
   '/icons/icon-shield-192.png?v=8',
-  '/icons/icon-shield-512.png?v=8'
+  '/icons/icon-shield-512.png?v=8',
+  '/js/yt-utils.js'
 ];
 
 self.addEventListener('install', (event) => {
@@ -2145,6 +2178,21 @@ function handlePwaRoutes(request, url) {
         'Service-Worker-Allowed': '/',
         'Cache-Control': 'public, max-age=0, must-revalidate',
         'Access-Control-Allow-Origin': '*'
+      }
+    });
+  }
+
+  // Phase 1 module extraction: classic client bundle generated FROM the
+  // ESM sources (function .toString()), so server and browser can never
+  // drift. Loaded synchronously before the inline app script.
+  if (url.pathname === '/js/yt-utils.js') {
+    const body = 'window.YTUtils = window.YTUtils || {};\n' +
+      'window.YTUtils.escapeHtml = ' + escapeHtml.toString() + ';\n';
+    return new Response(body, {
+      headers: {
+        'Content-Type': 'application/javascript; charset=utf-8',
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'public, max-age=3600'
       }
     });
   }
@@ -13552,8 +13600,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   <p>YUTorah Enhanced Player · Standalone zero-friction audio player for <a href="https://www.yutorah.org" target="_blank" rel="noopener noreferrer">YUTorah.org</a> · <a href="https://www.givecampus.com/campaigns/50770/donations/new" target="_blank" rel="noopener noreferrer" style="font-weight: 600;">❤️ Support YUTorah</a></p>
 </footer>
 
+<script src="/js/yt-utils.js"></script>
 <script>
-  function escapeHtml(str) {
+  // escapeHtml comes from window.YTUtils (single source: src/utils/html.mjs).
+  // Inline fallback keeps offline-cached pages working if the bundle is
+  // ever missing; behavior is pinned by tests, never fork it.
+  const escapeHtml = (window.YTUtils && window.YTUtils.escapeHtml) || function(str) {
     if (!str) return '';
     return String(str)
       .replace(/&/g, '&amp;')
@@ -13561,7 +13613,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#039;');
-  }
+  };
 
   let autocompleteCache = null;
   let autocompleteData = null;
@@ -28041,12 +28093,4 @@ function renderSeriesCardHtml(s) {
   `;
 }
 
-function escapeHtml(str) {
-  if (!str) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
+// escapeHtml now lives in src/utils/html.mjs (imported at top).
