@@ -4,7 +4,7 @@ Living status doc & audit log — updated on every milestone and user request.
 Last updated: **2026-09-16, 09:15 ET**  
 Current branch: `feat/player-followups` (Player Follow-ups F1–F4; based on `feat/player-ux-batch` @ `6c66a1d`)  
 Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev) (`72685143`)  
-Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://yutorah-player.mrosensweig.workers.dev) (`cc4684e7`) — plus transcript follow-scroll (v1.5.3); markers verified
+Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://yutorah-player.mrosensweig.workers.dev) (`70b5a0f1`) — transcript enlarge/top-pin/series-symmetry batch; markers verified
 ## 🎯 In Progress: Transcript Enlarge + Top-Align (branch `feat/transcript-enlarge`)
 - [x] **T1: Active paragraph pins to window top** — unconditional pin (top − 8px) on paragraph change; guards unchanged. Review: PASS (LOW UX note only). *Status: ✅ dev-deployed (`44a1444c`, HTTP 200).*
 - [x] **T2: Enlarge reading mode** — "Enlarge" button at top of transcript section → focused view: everything between the audio transport and the transcript hides (speed/copy/download row, Daf action, series strip, toggle row, metadata, description); transcript expands (~65vh) under the player with a "Transcript" header + "Collapse" button; collapse restores. Big-player-only. Review: FAIL→fixed (unreachable Collapse, class leak). *Status: ✅ dev-deployed (`6a5d833a`, HTTP 200).*
