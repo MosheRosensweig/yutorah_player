@@ -9946,6 +9946,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     /* Enlarged reading mode: everything between the transport and the
        transcript hides; the transcript fills the view under the player. */
     #transcriptEnlargeHeader {
+      display: none;
       align-items: center;
       justify-content: space-between;
       margin: 2px 0 8px;
@@ -13095,7 +13096,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         </button>
         <button type="button" class="card-mini-btn" id="transcriptEnlargeBtn" onclick="toggleTranscriptEnlarge(event)" title="Focused reading view">⤢ Enlarge</button>
       </div>
-      <div id="transcriptEnlargeHeader" style="display: none;">
+      <div id="transcriptEnlargeHeader">
         <span class="transcript-enlarge-title">📝 Transcript</span>
         <button type="button" class="card-mini-btn" onclick="toggleTranscriptEnlarge(event)">Collapse</button>
       </div>
@@ -16129,6 +16130,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     transcriptChapters = [];
     transcriptFollowUntil = 0;
     transcriptSuppressScrollUntil = 0;
+    // Enlarged mode never leaks across tracks: every switch/close hides
+    // first, so the next track starts normal (auto-enlarge re-adds when
+    // the setting is on).
+    try {
+      const card = document.getElementById('playerCard');
+      if (card) card.classList.remove('transcript-enlarged');
+    } catch (e) {}
     try {
       const box = document.getElementById('chapterMarkers');
       if (box) box.innerHTML = '';
