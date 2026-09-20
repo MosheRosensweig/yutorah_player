@@ -5,6 +5,18 @@ Last updated: **2026-09-16, 09:15 ET**
 Current branch: `feat/player-followups` (Player Follow-ups F1–F4; based on `feat/player-ux-batch` @ `6c66a1d`)  
 Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev) (`72685143`)  
 Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://yutorah-player.mrosensweig.workers.dev) (`b7bfa536`) — transcript chapters inline + durations + highlight (v1.5.3+); markers verified
+## 🎯 Research Q&A — DONE (no code changed; full write-up delivered 2026-09-20)
+### Q1: Can summaries/transcripts power search? YES — verified path below
+- Upstream Solr CANNOT search transcript text today (probed: no transcript/fulltext field, no query-builder support). Data is fetchable per-track (`/transcriptions/shiur/<id>`: ~569-char summaries, 5 chapter anchors, word timestamps, batch endpoint works) — so we index it ourselves.
+- Ranking must be capped + length-normalized so body text widens recall but never outranks titles: summary +40 (cap 120), chapters +25 (cap 75), body saturating TF (cap +150 total, below title whole-word +200 / exact-phrase +1000), distinct-term bonus +30, intro-position ×1.5, BM25-ish length norm, phonetic-matched tokens.
+- Filters stay conjunctive (AND); transcript matching only widens recall inside active filters. UI: separate "📝 Include transcript matches" toggle (default OFF until tuned), distinct badge with timestamped snippet; Recent rail stays metadata-only.
+- Phased plan: Phase 0 coverage spike (~500 IDs: % State-4, sizes) → Phase 1 summary+chapters D1 FTS index + merge-by-ID → Phase 2 scoped deep-search fanout (top-10 batch) → Phase 3 full-body index with capped scoring → Phase 4 tune + graduate default ON.
+- Open unknowns: catalog-wide transcription coverage %, D1 FTS headroom, upstream rate limits, worker CPU per query.
+### Q2: Module refactor plan for OG-site reuse — verdicts + phases
+- Verdicts: player+mini transport chrome IS one clean unit, but `playShiurById` is a God function that must stay out of it (OG site writes its own ~50-line orchestrator against a `PlayerFacade`); search splits into engine + UI; daf fragment is already the most shareable piece (formalize handoff protocol); transcript extracts behind player time-events; theme/holiday is the easiest first extraction (data files already ES modules).
+- Do NOT extract: playlists/queue/history/sync/auth (one entangled store), article/PDF pipeline, series+grids split, `playShiurById` itself, sponsorship/MediaSession/restore standalone, SSR shell.
+- Packaging: one ES module + one prebuilt single-file bundle + one prefixed CSS file (`ytp-*`) per unit; mount-point contract; `data-theme` + CSS vars as the only cross-unit contract; no shadow DOM yet (308 inline `onclick` strings).
+- Phases: 0 freeze+baseline (~0.5d) → 1 pure utils (~300–500 lines) → 2 PlayerFacade transport+mini (~700–900) → 3 search engine+UI → 4 daf+transcript guests → 5 theme (anytime) → 6 OG pilot. Total ~3.5–4.5k lines (~12–16%). Each phase verified by the existing 5 suites.
 ## 🎯 In Progress: Research Q&A (search over transcripts/summaries + module refactor plan)
 ## 🎯 Series Asymmetry, Explained (cold #7-type tracks)
 - Detection is query-driven, not membership-driven: #6's title contains the run's shared vocabulary ("Prepare for Yom Kippur The Three" → 8-doc group); #7's title ("Shabbat Teshuvah Derasha…") shares none of it, has no lecture seriesName, and no catalog name — so on a cold load there is literally no query that reunites it with its siblings (verified live against the index). The index KNOWS the membership (coll_15436) but offers no "which collections contain X" API.
