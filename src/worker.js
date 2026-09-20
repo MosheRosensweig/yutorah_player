@@ -14487,6 +14487,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (shiurObj.resumeSec > 0) {
         audio.currentTime = Math.min(shiurObj.resumeSec, (audio.duration || Infinity) - 1);
         updateUrlTimestamp(true);
+        try { if (typeof snapTranscriptToTime === 'function') snapTranscriptToTime(audio.currentTime); } catch (e) {}
       }
     };
     audio.addEventListener('loadedmetadata', onLoaded);
@@ -14570,6 +14571,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           updateUrlTimestamp(true);
         } catch(e) {}
       }
+      try { if (typeof snapTranscriptToTime === 'function') snapTranscriptToTime(audio.currentTime); } catch (e) {}
     }
   }
 
@@ -15874,6 +15876,44 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (typeof updateUrlTimestamp === 'function') updateUrlTimestamp(true);
     } catch (e) {}
   }
+  // Snap the transcript window to a time (first line = 3rd visible line),
+  // used on load/resume/open — not just on paragraph change. Syncs the
+  // highlight state too so the tick doesn't fight it.
+  function snapTranscriptToTime(sec) {
+    try {
+      const tBody = document.getElementById('transcriptBody');
+      if (!tBody || tBody.style.display === 'none') return false;
+      if (!transcriptChunks.length) return false;
+      // Stale chunks (previous track mid-render) must never position.
+      if (transcriptTrackId && typeof currentShiurId !== 'undefined' &&
+          String(transcriptTrackId) !== String(currentShiurId)) return false;
+      const t = Number(sec);
+      if (isNaN(t) || t < 0) return false;
+      let cur = -1;
+      for (let i = transcriptChunks.length - 1; i >= 0; i--) {
+        if (t >= transcriptChunks[i].start) { cur = i; break; }
+      }
+      if (cur < 0) return false;
+      const el = transcriptChunks[cur].el;
+      if (!el || !el.offsetParent) return false;
+      const cont = el.closest('.transcript-text');
+      if (!cont) return false;
+      let lh = 22;
+      try {
+        lh = parseFloat(getComputedStyle(el).lineHeight) || 22;
+      } catch (e2) {}
+      if (transcriptCurIdx >= 0 && transcriptChunks[transcriptCurIdx]) {
+        transcriptChunks[transcriptCurIdx].el.classList.remove('is-current');
+      }
+      transcriptCurIdx = cur;
+      el.classList.add('is-current');
+      transcriptSuppressScrollUntil = Date.now() + 300;
+      cont.scrollTop = Math.max(0, el.offsetTop - lh * 2);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
   function toggleTranscriptSection(e) {
     if (e) {
       e.preventDefault();
@@ -15883,15 +15923,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (!body) return;
     const opening = body.style.display === 'none';
     body.style.display = opening ? 'flex' : 'none';
-    // Opening while playing lands on the Transcript tab: follow-scroll
-    // can only track visible chunks, and an open section implies intent
-    // to read along. Paused opens keep the current tab.
+    // Opening while playing lands on the Transcript tab, positioned:
+    // follow-scroll can only track visible chunks, and an open section
+    // implies intent to read along. Paused opens keep the current tab.
     if (opening) {
       try {
         const playing = (typeof audio !== 'undefined' && audio && audio.src && !audio.paused);
         const tPane = body.querySelector('.transcript-pane[data-pane="transcript"]');
-        if (playing && tPane && typeof switchTranscriptTab === 'function') {
-          switchTranscriptTab('transcript');
+        if (playing && tPane && typeof showTranscriptPane === 'function') {
+          showTranscriptPane();
         }
       } catch (err) {}
     }
@@ -15930,8 +15970,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       const card = document.getElementById('playerCard');
       const body = document.getElementById('transcriptBody');
       if (!card || !body) return;
+      if (!body.querySelector('.transcript-pane[data-pane="transcript"]')) return;
       body.style.display = 'flex';
       card.classList.add('transcript-enlarged');
+      if (typeof showTranscriptPane === 'function') showTranscriptPane();
     } catch (e) {}
   }
   function toggleTranscriptEnlarge(e) {
@@ -15944,9 +15986,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       const body = document.getElementById('transcriptBody');
       if (!card || !body) return;
       const on = !card.classList.contains('transcript-enlarged');
-      // Enlarging always opens the transcript on the transcript pane
-      // (enlarged shows text only); collapsing leaves it open. Tracks
-      // without transcript text cannot enlarge (nothing to show).
+      // Enlarging always opens the transcript on the transcript pane,
+      // positioned (enlarged shows text only); collapsing leaves it open.
+      // Tracks without transcript text cannot enlarge (nothing to show).
       if (on) {
         let tPane = null;
         try {
@@ -15958,7 +16000,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         }
         body.style.display = 'flex';
         try {
-          if (typeof switchTranscriptTab === 'function') switchTranscriptTab('transcript');
+          if (typeof showTranscriptPane === 'function') showTranscriptPane();
         } catch (e) {}
       }
       card.classList.toggle('transcript-enlarged', on);
@@ -16015,6 +16057,19 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       body.querySelectorAll('.transcript-pane').forEach(p => {
         p.style.display = (p.getAttribute('data-pane') === name) ? '' : 'none';
       });
+      // Manual tab taps land positioned too (snap no-ops when hidden or
+      // chunkless, so render-time calls are safe).
+      if (name === 'transcript' && typeof audio !== 'undefined' && audio && audio.src) {
+        snapTranscriptToTime(audio.currentTime || 0);
+      }
+    } catch (e) {}
+  }
+  // Single choke point for "transcript pane visible now". The switch
+  // itself snaps (see above); used by section open and enlarge paths.
+  // No-ops safely when chunks/track mismatch.
+  function showTranscriptPane() {
+    try {
+      if (typeof switchTranscriptTab === 'function') switchTranscriptTab('transcript');
     } catch (e) {}
   }
   function renderTranscriptBody(data, trackId) {
@@ -16109,6 +16164,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       start: parseFloat(el.getAttribute('data-start')) || 0,
       el: el
     }));
+    // Re-renders mid-playback land on the current block immediately.
+    try {
+      if (typeof audio !== 'undefined' && audio && audio.src && (audio.currentTime || 0) > 0) {
+        snapTranscriptToTime(audio.currentTime);
+      }
+    } catch (e) {}
     // Manual scrolls suspend follow-scroll briefly (beta behavior).
     try {
       const tCont = body.querySelector('.transcript-text');
