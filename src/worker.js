@@ -15881,7 +15881,20 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     const body = document.getElementById('transcriptBody');
     if (!body) return;
-    body.style.display = (body.style.display === 'none') ? 'flex' : 'none';
+    const opening = body.style.display === 'none';
+    body.style.display = opening ? 'flex' : 'none';
+    // Opening while playing lands on the Transcript tab: follow-scroll
+    // can only track visible chunks, and an open section implies intent
+    // to read along. Paused opens keep the current tab.
+    if (opening) {
+      try {
+        const playing = (typeof audio !== 'undefined' && audio && audio.src && !audio.paused);
+        const tPane = body.querySelector('.transcript-pane[data-pane="transcript"]');
+        if (playing && tPane && typeof switchTranscriptTab === 'function') {
+          switchTranscriptTab('transcript');
+        }
+      } catch (err) {}
+    }
   }
   function isTranscriptEnlarged() {
     try {
@@ -25538,10 +25551,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
             if (cur >= 0 && transcriptChunks[cur]) {
               const curEl = transcriptChunks[cur].el;
               curEl.classList.add('is-current');
-              // Beta parity: center the active paragraph in the transcript
-              // window on every paragraph change, unless the user scrolled
-              // manually in the last ~5s. Container-relative only — never
-              // steals page scroll.
+              // Beta parity: the active paragraph's first line sits as the
+              // 3rd visible line on every paragraph change, unless the
+              // user scrolled manually in the last ~5s. Container-
+              // relative only — never steals page scroll.
               try {
                 const tBody = document.getElementById('transcriptBody');
                 if (tBody && tBody.style.display !== 'none' &&
@@ -25549,9 +25562,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
                     curEl && curEl.offsetParent) {
                   const cont = curEl.closest('.transcript-text');
                   if (cont) {
+                    let lh = 22;
+                    try {
+                      lh = parseFloat(getComputedStyle(curEl).lineHeight) || 22;
+                    } catch (e2) {}
                     transcriptSuppressScrollUntil = Date.now() + 300;
-                    cont.scrollTop = Math.max(0,
-                      curEl.offsetTop - (cont.clientHeight / 2) + (curEl.offsetHeight / 2));
+                    cont.scrollTop = Math.max(0, curEl.offsetTop - lh * 2);
                   }
                 }
               } catch (e) {}
