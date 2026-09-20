@@ -10,6 +10,10 @@ Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://
 - Covered flows: sibling clicks (memory), shared/reloaded URLs (?seriesKey), click-from-search (page-doc scan). Cold direct loads of oddly-titled parts remain best-effort by API limitation, not app logic.
 ## 🎯 Series Symmetry Verification (user retest pending)
 - User re-reported #6-has-strip/#7-missing. Verified live on dev: memory handoff + `paintSeriesStrip` URL write + `playShiurById`/`goHome` key carrying all present in served code. Likely cause: stale SPA tab predating the symmetry deploy (app never self-reloads). Asked user to hard-reload and re-run #6→#7; `?diag=series` available if still missing.
+## 🎯 In Progress: Transcript Position Coverage (branch `fix/transcript-center-scroll`)
+- [x] Reload-no-follow: opening the section while playing now lands on the Transcript tab (paused opens keep tab).
+- [x] 3rd-line positioning (measured line-height, was center).
+- [x] Snap on load/resume/open via `snapTranscriptToTime` (4 sites). Review: FAIL→centralized on `showTranscriptPane` (closes enlarge/auto-enlarge/tab-switch gaps) → re-review PASS. *Status: ✅ dev-deployed (`4e20b9ea`, HTTP 200).*
 ## 🎯 In Progress: Transcript Enlarge + Top-Align (branch `feat/transcript-enlarge`)
 - [x] **T1: Active paragraph pins to window top** — unconditional pin (top − 8px) on paragraph change; guards unchanged. Review: PASS (LOW UX note only). *Status: ✅ dev-deployed (`44a1444c`, HTTP 200).*
 - [x] **T2: Enlarge reading mode** — "Enlarge" button at top of transcript section → focused view: everything between the audio transport and the transcript hides (speed/copy/download row, Daf action, series strip, toggle row, metadata, description); transcript expands (~65vh) under the player with a "Transcript" header + "Collapse" button; collapse restores. Big-player-only. Review: FAIL→fixed (unreachable Collapse, class leak). *Status: ✅ dev-deployed (`6a5d833a`, HTTP 200).*
