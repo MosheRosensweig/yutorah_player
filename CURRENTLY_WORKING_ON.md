@@ -4,7 +4,7 @@ Living status doc & audit log — updated on every milestone and user request.
 Last updated: **2026-09-16, 09:15 ET**  
 Current branch: `feat/player-followups` (Player Follow-ups F1–F4; based on `feat/player-ux-batch` @ `6c66a1d`)  
 Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev) (`72685143`)  
-Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://yutorah-player.mrosensweig.workers.dev) (`70b5a0f1`) — transcript enlarge/top-pin/series-symmetry batch; markers verified
+Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://yutorah-player.mrosensweig.workers.dev) (`b61e46ae`) — transcript 3rd-line + snap coverage (v1.5.3); markers verified
 ## 🎯 Series Asymmetry, Explained (cold #7-type tracks)
 - Detection is query-driven, not membership-driven: #6's title contains the run's shared vocabulary ("Prepare for Yom Kippur The Three" → 8-doc group); #7's title ("Shabbat Teshuvah Derasha…") shares none of it, has no lecture seriesName, and no catalog name — so on a cold load there is literally no query that reunites it with its siblings (verified live against the index). The index KNOWS the membership (coll_15436) but offers no "which collections contain X" API.
 - Covered flows: sibling clicks (memory), shared/reloaded URLs (?seriesKey), click-from-search (page-doc scan). Cold direct loads of oddly-titled parts remain best-effort by API limitation, not app logic.
