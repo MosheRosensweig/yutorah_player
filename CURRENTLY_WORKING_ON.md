@@ -5,7 +5,10 @@ Last updated: **2026-09-16, 09:15 ET**
 Current branch: `feat/player-followups` (Player Follow-ups F1–F4; based on `feat/player-ux-batch` @ `6c66a1d`)  
 Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev) (`72685143`)  
 Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://yutorah-player.mrosensweig.workers.dev) (`bb62bdb8`) — plus centered play button on expand (v1.5.2); markers verified  
-- User-reported root cause on their device: the iPhone's **browser version** (too old for `prefers-color-scheme`/isolated-PWA behavior) — our `matchMedia` guard intentionally keeps the dark default there; fix covers all browsers with system-theme support  
+- User-reported root cause on their device: the iPhone's **browser version** (too old for `prefers-color-scheme`/isolated-PWA behavior) — our `matchMedia` guard intentionally keeps the dark default there; fix covers all browsers with system-theme support
+## 🎯 In Progress: Holiday-Theme Toggle Leak (link/speaker color wrong after light→dark)
+- **Root cause**: `applyHolidayTheme()` sets inline `--primary`/`--accent`/`--banner-bg` on `documentElement` for light mode only; on toggle-to-dark the inline light value survived (inline beats `[data-theme="dark"]` sheet) → wrong blue until reload. Active in Elul (locked variant A with primary override).
+- **Fix**: clear the three inline props at the top of `applyHolidayTheme()` before the light-only re-apply (covers toggle both ways + no-theme path). Test assert added.  
 Tests: **5/5 test suites passing (100% green, 31/31 basic functionality checks)**
 Production status: **DEPLOYED & VERIFIED (HTTP 200 on both Dev & Prod)** — prod now serves Player UX Batch A–E + Follow-ups F1–F4 (main @ `1ed56f2`); no schema migration needed (clearHistory uses existing table)
 

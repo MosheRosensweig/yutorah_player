@@ -24468,6 +24468,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     // Clean up previous dynamic theme style tag
     let themeStyleEl = document.getElementById('holidayThemeDynamicStyles');
     if (themeStyleEl) themeStyleEl.remove();
+    // Clear any inline holiday vars FIRST. They are set below for light
+    // mode only, and inline style beats the [data-theme="dark"] sheet —
+    // without this, toggling light→dark keeps the light --primary (wrong
+    // link/speaker blue) until a reload. Dark mode must never inherit
+    // light-mode inline vars.
+    try {
+      document.documentElement.style.removeProperty('--primary');
+      document.documentElement.style.removeProperty('--accent');
+      document.documentElement.style.removeProperty('--banner-bg');
+    } catch (e) {}
 
     let resolvedKey = activeThemeKey;
     let chanukahDay = 0;

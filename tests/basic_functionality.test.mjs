@@ -1262,6 +1262,7 @@ async function testPwaThemePlaylistDeleteClearHistory() {
   assert.ok(workerSrc.includes('persistDafTheme') && workerSrc.includes('function persistThemeChoice'), 'daf/main toggles must persist the theme the same way');
   assert.ok(workerSrc.includes('yutorah_theme=(light|dark)(?:;|$)'), 'theme cookie match must be value-anchored (darkish must not match dark)');
   assert.ok(workerSrc.includes("matches) saved = 'light'"), 'fresh contexts with no saved choice must follow the device appearance (isolated iOS PWA fix)');
+  assert.ok(workerSrc.includes("removeProperty('--primary')"), 'holiday light-mode vars must be cleared so toggling to dark cannot inherit them');
 
   // Transcript proxy: deterministic 400-path (no live upstream needed).
   const badRes = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/api/transcript'), mockEnv, mockCtx);
