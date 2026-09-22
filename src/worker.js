@@ -34,6 +34,8 @@ import { DAF_MASECHTOT, DAF_CYCLE_DAYS, DAF_ANCHOR_UTC, dafRefForIndexUTC, dafIn
 // script — zero scope/semantics change) and served raw for reuse.
 import PLAYER_CHROME_SRC from './client/player-chrome.js.txt';
 import SEARCH_UI_SRC from './client/search-ui.js.txt';
+import TRANSCRIPT_PANE_SRC from './client/transcript-pane.js.txt';
+import DAF_GUEST_SRC from './client/daf-guest.js.txt';
 
 // Unit sources hold intended client bytes directly (standalone-correct:
 // what you read is what the browser parses). Emission is RAW — any
@@ -2038,7 +2040,9 @@ const PRECACHE_URLS = [
   '/icons/icon-shield-512.png?v=8',
   '/js/yt-utils.js',
   '/js/player-chrome.js',
-  '/js/search-ui.js'
+  '/js/search-ui.js',
+  '/js/transcript-pane.js',
+  '/js/daf-guest.js'
 ];
 
 self.addEventListener('install', (event) => {
@@ -2213,6 +2217,24 @@ function handlePwaRoutes(request, url) {
   }
   if (url.pathname === '/js/search-ui.js') {
     return new Response(SEARCH_UI_SRC, {
+      headers: {
+        'Content-Type': 'application/javascript; charset=utf-8',
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'public, max-age=3600'
+      }
+    });
+  }
+  if (url.pathname === '/js/transcript-pane.js') {
+    return new Response(TRANSCRIPT_PANE_SRC, {
+      headers: {
+        'Content-Type': 'application/javascript; charset=utf-8',
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'public, max-age=3600'
+      }
+    });
+  }
+  if (url.pathname === '/js/daf-guest.js') {
+    return new Response(DAF_GUEST_SRC, {
       headers: {
         'Content-Type': 'application/javascript; charset=utf-8',
         'Access-Control-Allow-Origin': '*',
@@ -13509,6 +13531,12 @@ ${emitClientUnit(PLAYER_CHROME_SRC)}
 ${emitClientUnit(SEARCH_UI_SRC)}
 </script>
 <script>
+${emitClientUnit(TRANSCRIPT_PANE_SRC)}
+</script>
+<script>
+${emitClientUnit(DAF_GUEST_SRC)}
+</script>
+<script>
   // escapeHtml comes from window.YTUtils (single source: src/utils/html.mjs).
   // Inline fallback keeps offline-cached pages working if the bundle is
   // ever missing; behavior is pinned by tests, never fork it.
@@ -13924,20 +13952,7 @@ ${emitClientUnit(SEARCH_UI_SRC)}
   let lastUrlUpdateTime = 0;
   let isManuallyMinimized = false;
   let dafHandoffState = null;
-  function saveDafHandoff(playing) {
-    if (!currentShiurId) return;
-    try {
-      const u = new URL(window.location.href);
-      const returnTo = u.searchParams.get('return_to') || '';
-      if (!returnTo) return;
-      const r = new URL(returnTo, window.location.origin);
-      const m = r.searchParams.get('m');
-      const d = r.searchParams.get('d');
-      if (!m || !/^\d{1,3}$/.test(d || '')) return;
-      const state = { playing: !!playing, id: String(currentShiurId), m, d: Number(d), time: Number(audio && audio.currentTime || 0), savedAt: Date.now(), return_to: r.pathname + r.search };
-      sessionStorage.setItem('yutorah_daf_audio_state', JSON.stringify(state));
-    } catch (e) {}
-  }
+  // → src/client/daf-guest.js.txt (saveDafHandoff).
   try {
     const u = new URL(window.location.href);
     const returnTo = u.searchParams.get('return_to') || '';
@@ -13954,31 +13969,9 @@ ${emitClientUnit(SEARCH_UI_SRC)}
   let currentSpeakerName = ${jsEmbed(speaker || '')};
   let currentDafRef = ${jsEmbed(initialDafRef || null)};
 
-  function updateDafActions() {
-    const dafBtn = document.getElementById('dafOpenBtn');
-    const hasValidRef = Boolean(currentDafRef && currentDafRef.m && Number.isFinite(Number(currentDafRef.d)));
-    const href = hasValidRef
-      ? '/daf?m=' + encodeURIComponent(currentDafRef.m) + '&d=' + encodeURIComponent(String(currentDafRef.d))
-      : '/daf';
-    const visible = hasValidRef && hasAudio && !isCurrentShiurArticle;
-    if (dafBtn) {
-      dafBtn.href = href;
-      dafBtn.style.display = visible ? 'inline-flex' : 'none';
-    }
-  }
+  // → src/client/daf-guest.js.txt (updateDafActions).
 
-  function persistDafAudioState() {
-    if (!currentShiurId || !currentDafRef || !audio) return;
-    try {
-      sessionStorage.setItem('yutorah_daf_audio_state', JSON.stringify({
-        id: String(currentShiurId),
-        m: currentDafRef.m,
-        d: currentDafRef.d,
-        time: Number(audio.currentTime || 0),
-        savedAt: Date.now()
-      }));
-    } catch (e) {}
-  }
+  // → src/client/daf-guest.js.txt (persistDafAudioState).
   window.addEventListener('pagehide', persistDafAudioState);
 
   function handleSpeakerClick() {
@@ -15315,202 +15308,21 @@ ${emitClientUnit(SEARCH_UI_SRC)}
   // Chapter ticks on the scrubber + live chapter title. Driven by the
   // transcript payload (works whether or not the transcript section is
   // open); cleared with the section on switch/close.
-  function renderChapterMarkers() {
-    try {
-      const box = document.getElementById('chapterMarkers');
-      if (!box) return;
-      box.innerHTML = '';
-      const dur = (typeof audio !== 'undefined' && audio && audio.duration && !isNaN(audio.duration)) ? audio.duration : 0;
-      if (!dur || transcriptChapters.length === 0) {
-        updateChapterTitle();
-        return;
-      }
-      transcriptChapters.forEach((c, i) => {
-        if (i === 0) return; // first chapter starts at 0, no tick needed
-        const pct = Math.max(0, Math.min(100, (c.start / dur) * 100));
-        const tick = document.createElement('div');
-        tick.className = 'chapter-tick';
-        tick.style.left = pct + '%';
-        tick.title = c.title || ('Part ' + (i + 1));
-        tick.setAttribute('role', 'button');
-        tick.setAttribute('aria-label', 'Jump to ' + (c.title || ('part ' + (i + 1))));
-        tick.addEventListener('click', (ev) => {
-          try {
-            ev.stopPropagation();
-            ev.preventDefault();
-            transcriptSeek(c.start);
-          } catch (e) {}
-        });
-        box.appendChild(tick);
-      });
-      updateChapterTitle();
-    } catch (e) {}
-  }
-  function updateChapterTitle() {
-    try {
-      const el = document.getElementById('chapterTitle');
-      if (!el) return;
-      if (!transcriptChapters.length || !transcriptTrackId ||
-          String(transcriptTrackId) !== String(typeof currentShiurId !== 'undefined' ? currentShiurId : '')) {
-        el.style.display = 'none';
-        el.textContent = '';
-        return;
-      }
-      const t = (typeof audio !== 'undefined' && audio) ? (audio.currentTime || 0) : 0;
-      let cur = transcriptChapters[0];
-      for (const c of transcriptChapters) {
-        if (t >= c.start) cur = c;
-        else break;
-      }
-      if (cur && cur.title) {
-        el.textContent = '📑 ' + cur.title;
-        el.title = cur.title;
-        el.style.display = 'block';
-      } else {
-        el.style.display = 'none';
-        el.textContent = '';
-      }
-    } catch (e) {}
-  }
-  function transcriptSeek(sec) {
-    try {
-      if (typeof audio === 'undefined' || !audio || !audio.src) return;
-      audio.currentTime = Math.max(0, Number(sec) || 0);
-      if (typeof updateUrlTimestamp === 'function') updateUrlTimestamp(true);
-    } catch (e) {}
-  }
+  // → src/client/transcript-pane.js.txt (renderChapterMarkers).
+  // → src/client/transcript-pane.js.txt (updateChapterTitle).
+  // → src/client/transcript-pane.js.txt (transcriptSeek).
   // Snap the transcript window to a time (first line = 3rd visible line),
   // used on load/resume/open — not just on paragraph change. Syncs the
   // highlight state too so the tick doesn't fight it.
-  function snapTranscriptToTime(sec) {
-    try {
-      const tBody = document.getElementById('transcriptBody');
-      if (!tBody || tBody.style.display === 'none') return false;
-      if (!transcriptChunks.length) return false;
-      // Stale chunks (previous track mid-render) must never position.
-      if (transcriptTrackId && typeof currentShiurId !== 'undefined' &&
-          String(transcriptTrackId) !== String(currentShiurId)) return false;
-      const t = Number(sec);
-      if (isNaN(t) || t < 0) return false;
-      let cur = -1;
-      for (let i = transcriptChunks.length - 1; i >= 0; i--) {
-        if (t >= transcriptChunks[i].start) { cur = i; break; }
-      }
-      if (cur < 0) return false;
-      const el = transcriptChunks[cur].el;
-      if (!el || !el.offsetParent) return false;
-      const cont = el.closest('.transcript-text');
-      if (!cont) return false;
-      let lh = 22;
-      try {
-        lh = parseFloat(getComputedStyle(el).lineHeight) || 22;
-      } catch (e2) {}
-      if (transcriptCurIdx >= 0 && transcriptChunks[transcriptCurIdx]) {
-        transcriptChunks[transcriptCurIdx].el.classList.remove('is-current');
-      }
-      transcriptCurIdx = cur;
-      el.classList.add('is-current');
-      transcriptSuppressScrollUntil = Date.now() + 300;
-      cont.scrollTop = Math.max(0, el.offsetTop - lh * 2);
-      try { if (typeof refreshChapterHighlight === 'function') refreshChapterHighlight(); } catch (e2) {}
-      return true;
-    } catch (e) {
-      return false;
-    }
-  }
-  function toggleTranscriptSection(e) {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    const body = document.getElementById('transcriptBody');
-    if (!body) return;
-    const opening = body.style.display === 'none';
-    body.style.display = opening ? 'flex' : 'none';
-    // Opening while playing lands on the Transcript tab, positioned:
-    // follow-scroll can only track visible chunks, and an open section
-    // implies intent to read along. Paused opens keep the current tab.
-    if (opening) {
-      try {
-        const playing = (typeof audio !== 'undefined' && audio && audio.src && !audio.paused);
-        const tPane = body.querySelector('.transcript-pane[data-pane="transcript"]');
-        if (playing && tPane && typeof showTranscriptPane === 'function') {
-          showTranscriptPane();
-        }
-      } catch (err) {}
-    }
-  }
-  function isTranscriptEnlarged() {
-    try {
-      const card = document.getElementById('playerCard');
-      return Boolean(card && card.classList.contains('transcript-enlarged'));
-    } catch (e) {
-      return false;
-    }
-  }
+  // → src/client/transcript-pane.js.txt (snapTranscriptToTime).
+  // → src/client/transcript-pane.js.txt (toggleTranscriptSection).
+  // → src/client/transcript-pane.js.txt (isTranscriptEnlarged).
   // Logged-in-only setting (default off): open transcript tracks already
   // enlarged. Stored locally; honored only while signed in.
-  function transcriptEnlargeDefault() {
-    try {
-      if (typeof cloudUser === 'undefined' || !cloudUser) return false;
-      return localStorage.getItem('yutorah_transcript_enlarge') === '1';
-    } catch (e) {
-      return false;
-    }
-  }
-  function toggleTranscriptEnlargeDefault(btn) {
-    try {
-      const on = !transcriptEnlargeDefault();
-      localStorage.setItem('yutorah_transcript_enlarge', on ? '1' : '0');
-      if (btn) {
-        const ic = btn.querySelector('.menu-item-icon');
-        if (ic) ic.textContent = on ? '✅' : '⬜';
-      }
-    } catch (e) {}
-  }
-  function maybeAutoEnlargeTranscript() {
-    try {
-      if (!transcriptEnlargeDefault() || isTranscriptEnlarged()) return;
-      const card = document.getElementById('playerCard');
-      const body = document.getElementById('transcriptBody');
-      if (!card || !body) return;
-      if (!body.querySelector('.transcript-pane[data-pane="transcript"]')) return;
-      body.style.display = 'flex';
-      card.classList.add('transcript-enlarged');
-      if (typeof showTranscriptPane === 'function') showTranscriptPane();
-    } catch (e) {}
-  }
-  function toggleTranscriptEnlarge(e) {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    try {
-      const card = document.getElementById('playerCard');
-      const body = document.getElementById('transcriptBody');
-      if (!card || !body) return;
-      const on = !card.classList.contains('transcript-enlarged');
-      // Enlarging always opens the transcript on the transcript pane,
-      // positioned (enlarged shows text only); collapsing leaves it open.
-      // Tracks without transcript text cannot enlarge (nothing to show).
-      if (on) {
-        let tPane = null;
-        try {
-          tPane = body.querySelector('.transcript-pane[data-pane="transcript"]');
-        } catch (e) {}
-        if (!tPane) {
-          try { flashToast('No transcript text for this shiur', true, false); } catch (e) {}
-          return;
-        }
-        body.style.display = 'flex';
-        try {
-          if (typeof showTranscriptPane === 'function') showTranscriptPane();
-        } catch (e) {}
-      }
-      card.classList.toggle('transcript-enlarged', on);
-      if (on && typeof scrollPlayButtonIntoView === 'function') scrollPlayButtonIntoView();
-    } catch (err) {}
-  }
+  // → src/client/transcript-pane.js.txt (transcriptEnlargeDefault).
+  // → src/client/transcript-pane.js.txt (toggleTranscriptEnlargeDefault).
+  // → src/client/transcript-pane.js.txt (maybeAutoEnlargeTranscript).
+  // → src/client/transcript-pane.js.txt (toggleTranscriptEnlarge).
   // Single chapter normalizer for buttons, dividers, markers, and seek:
   // one table everywhere so indices can never drift apart.
   function normalizeTranscriptChapters(chapters) {
@@ -15575,313 +15387,26 @@ ${emitClientUnit(SEARCH_UI_SRC)}
     });
     return html;
   }
-  function shuffleInPlace(a) {
-    for (let i = a.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      const t = a[i];
-      a[i] = a[j];
-      a[j] = t;
-    }
-    return a;
-  }
-  function switchTranscriptTab(name) {
-    try {
-      const body = document.getElementById('transcriptBody');
-      if (!body) return;
-      body.querySelectorAll('.transcript-tab').forEach(b => {
-        const on = b.getAttribute('data-tab') === name;
-        b.classList.toggle('active-save', on);
-      });
-      body.querySelectorAll('.transcript-pane').forEach(p => {
-        p.style.display = (p.getAttribute('data-pane') === name) ? '' : 'none';
-      });
-      // Manual tab taps land positioned too (snap no-ops when hidden or
-      // chunkless, so render-time calls are safe).
-      if (name === 'transcript' && typeof audio !== 'undefined' && audio && audio.src) {
-        snapTranscriptToTime(audio.currentTime || 0);
-      }
-    } catch (e) {}
-  }
+  // → src/client/transcript-pane.js.txt (shuffleInPlace).
+  // → src/client/transcript-pane.js.txt (switchTranscriptTab).
   // Clicking a chapter seeks its start AND scrolls the transcript to
   // its first block (falls back to seek-only when the pane is hidden).
-  function seekTranscriptChapter(idx) {
-    try {
-      const i = Number(idx);
-      const ch = transcriptChapters[i];
-      if (!ch) return;
-      transcriptSeek(ch.start);
-      const body = document.getElementById('transcriptBody');
-      if (!body || body.style.display === 'none') return;
-      const cont = body.querySelector('.transcript-text');
-      if (!cont) return;
-      const first = cont.querySelector('.transcript-chunk[data-chapter="' + i + '"]');
-      if (first && first.offsetParent) {
-        transcriptSuppressScrollUntil = Date.now() + 300;
-        cont.scrollTop = Math.max(0, first.offsetTop - 8);
-      }
-      refreshChapterHighlight();
-    } catch (e) {}
-  }
+  // → src/client/transcript-pane.js.txt (seekTranscriptChapter).
   // Highlights the chapter containing the top-visible transcript block.
   // Runs on scroll + tick; enlarged view has no headers so nothing shows
   // there by construction (buttons are hidden with the panes).
-  function refreshChapterHighlight() {
-    try {
-      const body = document.getElementById('transcriptBody');
-      if (!body || body.style.display === 'none') return;
-      const cont = body.querySelector('.transcript-text');
-      if (!cont) return;
-      const y = cont.scrollTop + 8;
-      let ci = -1;
-      const nodes = cont.querySelectorAll('.transcript-chunk');
-      for (let k = 0; k < nodes.length; k++) {
-        const el = nodes[k];
-        if (el.offsetTop <= y) ci = parseInt(el.getAttribute('data-chapter') || '-1', 10);
-        else break;
-      }
-      body.querySelectorAll('.transcript-chapter').forEach(b => {
-        b.classList.toggle('active-save', b.getAttribute('data-idx') === String(ci));
-      });
-    } catch (e) {}
-  }
+  // → src/client/transcript-pane.js.txt (refreshChapterHighlight).
   // Single choke point for "transcript pane visible now". The switch
   // itself snaps (see above); used by section open and enlarge paths.
   // No-ops safely when chunks/track mismatch.
-  function showTranscriptPane() {
-    try {
-      if (typeof switchTranscriptTab === 'function') switchTranscriptTab('transcript');
-    } catch (e) {}
-  }
-  function renderTranscriptBody(data, trackId) {
-    const body = document.getElementById('transcriptBody');
-    if (!body) return false;
-    const esc = (s) => escapeHtml(String(s == null ? '' : s));
-    const panes = [];
-    const tabs = [];
-    const paneNames = [];
-    const summary = data && data.Summary ? String(data.Summary) : '';
-    if (summary) {
-      paneNames.push('summary');
-      panes.push('<div class="transcript-pane" data-pane="summary" style="display:none;">' +
-        '<p class="transcript-summary">' + esc(summary) + '</p></div>');
-      tabs.push('<button type="button" class="card-mini-btn transcript-tab" data-tab="summary" onclick="switchTranscriptTab(&quot;summary&quot;)">📋 Summary</button>');
-    }
-    const chapters = (data && Array.isArray(data.Chapters)) ? data.Chapters : [];
-    const words = (data && Array.isArray(data.RefinedTranscription) && data.RefinedTranscription.length > 0)
-      ? data.RefinedTranscription
-      : ((data && Array.isArray(data.TranscriptionText)) ? data.TranscriptionText : []);
-    if (words.length > 0) {
-      let inner = '';
-      const enlargeBtn = '<button type="button" class="card-mini-btn" id="transcriptEnlargeBtn" onclick="toggleTranscriptEnlarge(event)" title="Focused reading view">⤢ Enlarge</button>';
-      // One shared table so buttons, dividers, markers, and seek agree.
-      const normChapters = normalizeTranscriptChapters(chapters);
-      if (normChapters.length > 0) {
-        inner += '<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">' +
-          '<div class="transcript-subhead" style="margin: 0;">📑 Chapters</div>' + enlargeBtn + '</div>' +
-          '<div class="transcript-chapters">';
-        normChapters.forEach((c, i) => {
-          // Missing end falls back to the next chapter start (last
-          // chapter) so every button shows a duration.
-          const endRef = (c.end > c.start) ? c.end :
-            ((i + 1 < normChapters.length && normChapters[i + 1].start > c.start) ? normChapters[i + 1].start : 0);
-          const dur = endRef > c.start ? Math.round((endRef - c.start) / 60) : 0;
-          inner += '<button type="button" class="card-mini-btn transcript-chapter" data-idx="' + i + '"' +
-            ' onclick="seekTranscriptChapter(' + i + ')"' +
-            ' title="' + esc(c.summary || c.title) + '">' +
-            '<span class="transcript-chapter-time">' + formatTime(c.start) + '</span> ' +
-            '<span class="transcript-chapter-name">' + esc(c.title) + '</span>' +
-            (dur > 0 ? '<span class="transcript-chapter-dur">' + dur + ' min</span>' : '') + '</button>';
-        });
-        inner += '</div>';
-      } else {
-        inner += '<div style="display: flex; justify-content: flex-end; margin-bottom: 8px;">' + enlargeBtn + '</div>';
-      }
-      inner += '<div class="transcript-subhead">📝 Transcript <span class="transcript-hint">(tap a paragraph to jump)</span></div>' +
-        '<div class="transcript-text">' + transcriptChunkHtml(words, normChapters) + '</div>';
-      panes.push('<div class="transcript-pane" data-pane="transcript" style="display:none;">' + inner + '</div>');
-      paneNames.push('transcript');
-      tabs.push('<button type="button" class="card-mini-btn transcript-tab" data-tab="transcript" onclick="switchTranscriptTab(&quot;transcript&quot;)">📝 Transcript</button>');
-    }
-    const quiz = (data && data.Quiz && typeof data.Quiz === 'object') ? data.Quiz : null;
-    const review = (quiz && Array.isArray(quiz.ReviewQuestions)) ? quiz.ReviewQuestions : [];
-    const discuss = (quiz && Array.isArray(quiz.DiscussionQuestions)) ? quiz.DiscussionQuestions : [];
-    if (review.length > 0 || discuss.length > 0) {
-      let inner = '<div class="transcript-quiz">';
-      review.forEach((q, qi) => {
-        const opts = shuffleInPlace([
-          { t: q.CorrectAnswer, ok: true },
-          { t: q.WrongAnswer1, ok: false },
-          { t: q.WrongAnswer2, ok: false },
-          { t: q.WrongAnswer3, ok: false }
-        ].filter(o => o.t));
-        const ss = Number(q.StartSeconds || 0);
-        inner += '<div class="transcript-question" data-q="' + qi + '">' +
-          '<div class="transcript-question-text"><span class="transcript-qnum">' + (qi + 1) + '.</span> ' + esc(q.Question) + '</div>' +
-          '<div class="transcript-options">' +
-          opts.map(o => '<button type="button" class="card-mini-btn transcript-opt" data-ok="' + (o.ok ? '1' : '0') + '"' +
-            ' aria-pressed="false" onclick="answerTranscriptQuiz(this)">' + esc(o.t) + '</button>').join('') +
-          '</div>' +
-          '<div class="transcript-quiz-actions">' +
-          '<button type="button" class="card-mini-btn transcript-submit" onclick="submitTranscriptQuiz(this)">Submit answer</button>' +
-          '<button type="button" class="card-mini-btn transcript-hear" onclick="transcriptSeek(' + ss + ')" title="Hear it in context">↩ ' + formatTime(ss) + '</button>' +
-          '</div>' +
-          '<div class="transcript-result" style="display: none;" aria-live="polite"></div>' +
-          '</div>';
-      });
-      discuss.forEach(d => {
-        const dt = (d && d.Question) ? d.Question : (typeof d === 'string' ? d : '');
-        if (dt) inner += '<div class="transcript-discuss">💬 ' + esc(dt) + '</div>';
-      });
-      inner += '</div>';
-      panes.push('<div class="transcript-pane" data-pane="quiz" style="display:none;">' + inner + '</div>');
-      paneNames.push('quiz');
-      tabs.push('<button type="button" class="card-mini-btn transcript-tab" data-tab="quiz" onclick="switchTranscriptTab(&quot;quiz&quot;)">❓ Quiz</button>');
-    }
-    if (panes.length === 0) return false;
-    const first = paneNames.length > 0 ? paneNames[0] : 'summary';
-    let html = '<div class="transcript-tabs">' + tabs.join('') + '</div>' + panes.join('');
-    body.innerHTML = html;
-    switchTranscriptTab(first);
-    transcriptTrackId = String(trackId || '');
-    transcriptCurIdx = -1;
-    transcriptChapters = normalizeTranscriptChapters(chapters);
-    renderChapterMarkers();
-    transcriptChunks = Array.prototype.slice.call(body.querySelectorAll('.transcript-chunk')).map(el => ({
-      start: parseFloat(el.getAttribute('data-start')) || 0,
-      el: el
-    }));
-    // Re-renders mid-playback land on the current block immediately.
-    try {
-      if (typeof audio !== 'undefined' && audio && audio.src && (audio.currentTime || 0) > 0) {
-        snapTranscriptToTime(audio.currentTime);
-      }
-    } catch (e) {}
-    // Manual scrolls suspend follow-scroll briefly (beta behavior).
-    try {
-      const tCont = body.querySelector('.transcript-text');
-      if (tCont) {
-        tCont.addEventListener('scroll', () => {
-          try {
-            if (Date.now() < transcriptSuppressScrollUntil) return;
-            transcriptFollowUntil = Date.now() + 5000;
-            if (!transcriptHiRafPending && typeof requestAnimationFrame === 'function') {
-              transcriptHiRafPending = true;
-              requestAnimationFrame(() => {
-                transcriptHiRafPending = false;
-                refreshChapterHighlight();
-              });
-            } else if (!transcriptHiRafPending) {
-              refreshChapterHighlight();
-            }
-          } catch (e) {}
-        }, { passive: true });
-      }
-    } catch (e) {}
-    return true;
-  }
+  // → src/client/transcript-pane.js.txt (showTranscriptPane).
+  // → src/client/transcript-pane.js.txt (renderTranscriptBody).
   // Two-phase quiz like the beta site: tap an option to select it, then
   // Submit to lock in and see the correct results.
-  function answerTranscriptQuiz(btn) {
-    try {
-      const box = btn.closest('.transcript-question');
-      if (!box || box.getAttribute('data-done') === '1') return;
-      box.querySelectorAll('.transcript-opt').forEach(b => {
-        const on = (b === btn);
-        b.classList.toggle('quiz-selected', on);
-        b.setAttribute('aria-pressed', on ? 'true' : 'false');
-      });
-    } catch (e) {}
-  }
-  function submitTranscriptQuiz(btn) {
-    try {
-      const box = btn.closest('.transcript-question');
-      if (!box || box.getAttribute('data-done') === '1') return;
-      const picked = box.querySelector('.transcript-opt.quiz-selected');
-      if (!picked) {
-        try { flashToast('Tap an answer first, then Submit', true, false); } catch (e) {}
-        return;
-      }
-      box.setAttribute('data-done', '1');
-      const ok = picked.getAttribute('data-ok') === '1';
-      picked.classList.remove('quiz-selected');
-      picked.classList.add(ok ? 'quiz-correct' : 'quiz-wrong');
-      const right = box.querySelector('.transcript-opt[data-ok="1"]');
-      if (right) right.classList.add('quiz-correct');
-      box.querySelectorAll('.transcript-opt').forEach(b => { b.disabled = true; });
-      try { btn.disabled = true; } catch (e) {}
-      const res = box.querySelector('.transcript-result');
-      if (res) {
-        res.style.display = 'block';
-        res.textContent = ok ? '✓ Correct!' : '✗ Not quite — the highlighted answer is correct.';
-        res.classList.toggle('quiz-result-ok', ok);
-        res.classList.toggle('quiz-result-bad', !ok);
-      }
-    } catch (e) {}
-  }
-  function hideTranscriptSection() {
-    transcriptTrackId = '';
-    transcriptChunks = [];
-    transcriptCurIdx = -1;
-    transcriptChapters = [];
-    transcriptFollowUntil = 0;
-    transcriptSuppressScrollUntil = 0;
-    transcriptHiRafPending = false;
-    transcriptLastHiScroll = -1;
-    // Enlarged mode never leaks across tracks: every switch/close hides
-    // first, so the next track starts normal (auto-enlarge re-adds when
-    // the setting is on).
-    try {
-      const card = document.getElementById('playerCard');
-      if (card) card.classList.remove('transcript-enlarged');
-    } catch (e) {}
-    try {
-      const box = document.getElementById('chapterMarkers');
-      if (box) box.innerHTML = '';
-      const ct = document.getElementById('chapterTitle');
-      if (ct) {
-        ct.style.display = 'none';
-        ct.textContent = '';
-      }
-    } catch (e) {}
-    try {
-      const s = document.getElementById('transcriptSection');
-      if (s) s.style.display = 'none';
-      const b = document.getElementById('transcriptBody');
-      if (b) {
-        b.style.display = 'none';
-        b.innerHTML = '';
-      }
-    } catch (e) {}
-  }
-  function loadTranscriptSection(id) {
-    hideTranscriptSection();
-    const sid = String(id || '');
-    if (!sid) return;
-    if (transcriptCache[sid] !== undefined) {
-      const cached = transcriptCache[sid];
-      if (cached && renderTranscriptBody(cached, sid)) {
-        document.getElementById('transcriptSection').style.display = 'block';
-        maybeAutoEnlargeTranscript();
-      }
-      return;
-    }
-    fetch('/api/transcript?shiurId=' + encodeURIComponent(sid)).then(r => {
-      if (!r.ok) return null;
-      return r.json();
-    }).then(data => {
-      transcriptCache[sid] = data || null;
-      if (!data) return;
-      // Track moved on while fetching: never paint a stale transcript.
-      if (String(currentShiurId) !== sid) return;
-      if (renderTranscriptBody(data, sid)) {
-        const s = document.getElementById('transcriptSection');
-        if (s) s.style.display = 'block';
-        maybeAutoEnlargeTranscript();
-      }
-    }).catch(() => {
-      transcriptCache[sid] = null;
-    });
-  }
+  // → src/client/transcript-pane.js.txt (answerTranscriptQuiz).
+  // → src/client/transcript-pane.js.txt (submitTranscriptQuiz).
+  // → src/client/transcript-pane.js.txt (hideTranscriptSection).
+  // → src/client/transcript-pane.js.txt (loadTranscriptSection).
 
   // Big-player series strip: always-available indicator + drawer while the
   // loaded track belongs to a multi-part series. Hidden otherwise.
@@ -16208,43 +15733,7 @@ ${emitClientUnit(SEARCH_UI_SRC)}
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  async function openDafView(e) {
-    if (e) e.preventDefault();
-    const regularView = document.getElementById('regularAppView');
-    let dafView = document.getElementById('dafAppView');
-    const target = new URL(e && e.currentTarget && e.currentTarget.href ? e.currentTarget.href : '/daf', window.location.origin);
-    if (!dafView) {
-      const qs = target.search ? target.search : '';
-      try {
-        const response = await fetch('/api/daf-view' + qs);
-        if (!response.ok) throw new Error('Daf view request failed');
-        const fragment = await response.json();
-        const style = document.createElement('style');
-        style.id = 'dafEmbeddedStyles';
-        style.textContent = fragment.css || '';
-        document.head.appendChild(style);
-        dafView = document.createElement('section');
-        dafView.id = 'dafAppView';
-        dafView.setAttribute('aria-label', 'Daf Yomi Hub');
-        dafView.innerHTML = fragment.html || '';
-        const main = document.querySelector('main');
-        if (!main) throw new Error('Application main view is unavailable');
-        main.appendChild(dafView);
-        const script = document.createElement('script');
-        script.id = 'dafEmbeddedScript';
-        script.textContent = fragment.script || '';
-        document.body.appendChild(script);
-      } catch (err) {
-        console.error('Unable to open Daf view:', err);
-        window.location.href = target.pathname + target.search;
-        return;
-      }
-    }
-    if (regularView) regularView.style.display = 'none';
-    dafView.style.display = '';
-    history.pushState({}, '', target.pathname + target.search);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }
+  // → src/client/daf-guest.js.txt (openDafView).
   window.openDafView = openDafView;
 
   function openSearchView(query, returnTo) {

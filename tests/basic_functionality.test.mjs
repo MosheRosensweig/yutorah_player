@@ -23,7 +23,9 @@ function clientAllSrc(workerSrc) {
   if (!_unitSrcCache) {
     _unitSrcCache = workerSrc + '\n' +
       fs.readFileSync(new URL('../src/client/player-chrome.js.txt', import.meta.url), 'utf8') + '\n' +
-      fs.readFileSync(new URL('../src/client/search-ui.js.txt', import.meta.url), 'utf8');
+      fs.readFileSync(new URL('../src/client/search-ui.js.txt', import.meta.url), 'utf8') + '\n' +
+      fs.readFileSync(new URL('../src/client/transcript-pane.js.txt', import.meta.url), 'utf8') + '\n' +
+      fs.readFileSync(new URL('../src/client/daf-guest.js.txt', import.meta.url), 'utf8');
   }
   return _unitSrcCache;
 }
@@ -84,6 +86,14 @@ async function testHomepage() {
   // AFTER const audio (parse-time TDZ otherwise kills the whole block).
   assert.ok(!/^(audio|window)\.addEventListener/m.test(clientUnitSrc), 'unit must not register listeners at top level');
   assert.ok(!clientUnitSrc.includes('addEventListener'), 'unit must contain zero listener registrations');
+  // Client units hygiene (player-chrome checked above; same rules apply).
+  for (const [label, file] of [['search-ui', '../src/client/search-ui.js.txt'], ['transcript-pane', '../src/client/transcript-pane.js.txt'], ['daf-guest', '../src/client/daf-guest.js.txt']]) {
+    const srcText = fs.readFileSync(new URL(file, import.meta.url), 'utf8');
+    assert.ok(!srcText.includes('`'), label + ' must not contain backticks');
+    assert.ok(!srcText.includes('${'), label + ' must not contain ${');
+    assert.ok(!srcText.includes('</script'), label + ' must not contain a closing script tag');
+    assert.ok(!/^(audio|window|document)\.addEventListener/m.test(srcText), label + ' must not register listeners at top level');
+  }
   // SearchUI unit: same hygiene + route + emission order.
   const searchUnitSrc = fs.readFileSync(new URL('../src/client/search-ui.js.txt', import.meta.url), 'utf8');
   assert.ok(!searchUnitSrc.includes('`'), 'search unit must not contain backticks');
@@ -93,6 +103,16 @@ async function testHomepage() {
   const searchRouteRes = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/js/search-ui.js'), mockEnv, mockCtx);
   assert.equal(searchRouteRes.status, 200, '/js/search-ui.js should return 200 OK');
   assert.ok(html.indexOf('SearchUI unit') !== -1 && html.indexOf('SearchUI unit') < html.indexOf('function playShiurById'), 'search unit script must precede the app script');
+  // New guest units: routes + byte-identical emission + order (units before app).
+  for (const [label, route, marker] of [['transcript-pane', '/js/transcript-pane.js', 'TranscriptPane unit'], ['daf-guest', '/js/daf-guest.js', 'DafGuest unit']]) {
+    const rRes = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev' + route), mockEnv, mockCtx);
+    assert.equal(rRes.status, 200, route + ' should return 200 OK');
+    const rText = await rRes.text();
+    const rSrc = fs.readFileSync(new URL('../src/client/' + label + '.js.txt', import.meta.url), 'utf8');
+    assert.ok(rText === rSrc, route + ' must serve the unit file verbatim');
+    assert.ok(html.includes(rSrc), label + ' must be emitted byte-identical');
+    assert.ok(html.indexOf(marker) !== -1 && html.indexOf(marker) < html.indexOf('function playShiurById'), label + ' script must precede the app script');
+  }
   // Emission fidelity: served inline blocks must be byte-identical to the
   // unit sources (catches double-escaping or truncation regressions).
   for (const [label, file] of [['player-chrome', '../src/client/player-chrome.js.txt'], ['search-ui', '../src/client/search-ui.js.txt']]) {
@@ -1328,19 +1348,19 @@ async function testDafHub() {
   assert.ok(!workerSrc.includes('id="dafMiniPlayer"') && !workerSrc.includes('loadDafShiur'), 'Daf page must not render a second custom audio player');
   assert.ok(workerSrc.includes('id="dafOpenBtn"') && workerSrc.includes('detectDafReference'), 'Audio player must expose Open Daf for identifiable Daf shiurim');
   assert.ok(workerSrc.includes('openDafView(event)') && workerSrc.includes('>📜 Daf</a>'), 'Main audio player Daf action must open the shared in-app Daf view');
-  assert.ok(workerSrc.includes("href=\"${initialDafRef ? '/daf?m='") && workerSrc.includes("${initialDafRef ? '' : 'style=\"display:none;\"'}") && workerSrc.includes("const visible = hasValidRef && hasAudio && !isCurrentShiurArticle;"), 'Main audio player Daf action must remain hidden unless the shiur has a Daf reference');
-  assert.ok(workerSrc.includes('function updateDafActions()') && workerSrc.includes('currentDafRef = null;') && workerSrc.includes("const hasValidRef = Boolean(currentDafRef") && workerSrc.includes("const href = hasValidRef") && workerSrc.includes(": '/daf';"), 'Switching shiurim must reset and recompute both Daf actions for the newly loaded track');
+  assert.ok(workerSrc.includes("href=\"${initialDafRef ? '/daf?m='") && workerSrc.includes("${initialDafRef ? '' : 'style=\"display:none;\"'}") && clientAllSrc(workerSrc).includes("const visible = hasValidRef && hasAudio && !isCurrentShiurArticle;"), 'Main audio player Daf action must remain hidden unless the shiur has a Daf reference');
+  assert.ok(clientAllSrc(workerSrc).includes('function updateDafActions()') && workerSrc.includes('currentDafRef = null;') && clientAllSrc(workerSrc).includes("const hasValidRef = Boolean(currentDafRef") && clientAllSrc(workerSrc).includes("const href = hasValidRef") && clientAllSrc(workerSrc).includes(": '/daf';"), 'Switching shiurim must reset and recompute both Daf actions for the newly loaded track');
   assert.ok(workerSrc.includes("\\\\s+daf\\\\s*") && workerSrc.includes("const match = new RegExp('(?:^|\\\\W)' + escaped + '(?:\\\\s+daf\\\\s*|\\\\s+|"), 'Client and server Daf detection must recognize titles formatted as Tractate Daf Folio');
   assert.ok(workerSrc.includes('currentDafRef = null;\n    let inheritedDafRef = null;\n    updateDafActions();'), 'Daf actions must be cleared synchronously before metadata for a newly clicked shiur arrives');
   assert.ok(workerSrc.includes('if (String(currentShiurId) !== String(id)) return;'), 'Late shiur metadata responses must not overwrite the selected track or its Daf action');
   assert.ok(workerSrc.includes("var lowerText = text.toLowerCase();") && workerSrc.includes("if (tail.slice(0, 3).toLowerCase() === 'daf')"), 'Client Daf detection must deterministically parse tractate titles with optional Daf label');
   assert.ok(workerSrc.includes("Baba\\s+Batra") && workerSrc.includes("Bava Basra"), 'Daf detection must normalize the common Baba Batra spelling to the canonical tractate');
-  assert.ok(workerSrc.includes("const visible = hasValidRef && hasAudio && !isCurrentShiurArticle;"), 'Video-backed YUTorah items must be eligible for the same Daf action when treated as playable media');
+  assert.ok(clientAllSrc(workerSrc).includes("const visible = hasValidRef && hasAudio && !isCurrentShiurArticle;"), 'Video-backed YUTorah items must be eligible for the same Daf action when treated as playable media');
   assert.ok(workerSrc.includes('saveDafHandoff(!audio.paused)') && workerSrc.includes('sessionStorage'), 'Regular player must persist the Daf handoff state');
   assert.ok(workerSrc.includes('saveDafHandoff(!audio.paused)') && workerSrc.includes('id="returnToDafBtn"'), 'Normal player must persist handoff and expose Return to Daf');
   assert.ok(!html.includes('id="dafShiurimLink" href="#" target="_blank"'), 'Daf Shiurim must stay in the same tab');
   assert.ok(!workerSrc.includes('id="miniDafBtn"'), 'Mini player must not render a daf button');
-  assert.ok(workerSrc.includes('currentDafRef = dafMatch || inheritedDafRef') && workerSrc.includes('let inheritedDafRef = null;') && workerSrc.includes('hasValidRef'), 'Daf Shiurim selections must retain the originating Daf when metadata is incomplete without leaking it to unrelated shiurim');
+  assert.ok(workerSrc.includes('currentDafRef = dafMatch || inheritedDafRef') && workerSrc.includes('let inheritedDafRef = null;') && clientAllSrc(workerSrc).includes('hasValidRef'), 'Daf Shiurim selections must retain the originating Daf when metadata is incomplete without leaking it to unrelated shiurim');
   assert.ok(html.includes('var CYCLE_DAYS = 2711'), 'served daf page must embed the module cycle constant');
   assert.ok(html.includes('var ANCHOR_UTC = 1577491200000'), 'served daf page must embed the module anchor (2019-12-28)');
   assert.ok(workerSrc.includes('${DAF_CYCLE_DAYS}') && workerSrc.includes('${DAF_ANCHOR_UTC}'), 'fragment must interpolate (not hardcode) the module constants');
@@ -1409,24 +1429,24 @@ async function testPwaThemePlaylistDeleteClearHistory() {
   assert.equal(badNon.status, 400, '/api/transcript with non-numeric id should return 400');
   assert.ok(workerSrc.includes('/transcriptions/shiur/'), 'transcript proxy must target the upstream transcriptions API');
   assert.ok(workerSrc.includes('id="transcriptSection"'), 'player must contain the transcript section');
-  assert.ok(workerSrc.includes('function loadTranscriptSection('), 'transcript loader must exist');
-  assert.ok(workerSrc.includes('function answerTranscriptQuiz('), 'quiz answering must exist');
-  assert.ok(workerSrc.includes('function submitTranscriptQuiz('), 'quiz must have a submit step with results');
-  assert.ok(workerSrc.includes('function toggleTranscriptEnlarge('), 'transcript enlarge toggle must exist (T2)');
+  assert.ok(clientAllSrc(workerSrc).includes('function loadTranscriptSection('), 'transcript loader must exist');
+  assert.ok(clientAllSrc(workerSrc).includes('function answerTranscriptQuiz('), 'quiz answering must exist');
+  assert.ok(clientAllSrc(workerSrc).includes('function submitTranscriptQuiz('), 'quiz must have a submit step with results');
+  assert.ok(clientAllSrc(workerSrc).includes('function toggleTranscriptEnlarge('), 'transcript enlarge toggle must exist (T2)');
   assert.ok(workerSrc.includes('transcript-enlarged'), 'enlarged reading mode styles must exist (T2)');
-  assert.ok(workerSrc.includes('function transcriptEnlargeDefault('), 'auto-enlarge setting must exist, logged-in only, default off (T3)');
+  assert.ok(clientAllSrc(workerSrc).includes('function transcriptEnlargeDefault('), 'auto-enlarge setting must exist, logged-in only, default off (T3)');
   assert.ok(clientAllSrc(workerSrc).includes('transcriptFollowUntil'), 'manual scroll must suspend follow-scroll');
   assert.ok(clientAllSrc(workerSrc).includes("closest('.transcript-text')"), 'follow-scroll must stay container-relative (never steal page scroll)');
   assert.ok(clientAllSrc(workerSrc).includes('curEl.offsetTop - lh * 2'), 'follow-scroll must pin the active first line as 3rd visible line');
-  assert.ok(workerSrc.includes('function snapTranscriptToTime('), 'transcript must snap to position on load/resume/open');
-  assert.ok(workerSrc.includes('function showTranscriptPane('), 'all transcript-open paths must share one positioned entry');
+  assert.ok(clientAllSrc(workerSrc).includes('function snapTranscriptToTime('), 'transcript must snap to position on load/resume/open');
+  assert.ok(clientAllSrc(workerSrc).includes('function showTranscriptPane('), 'all transcript-open paths must share one positioned entry');
   assert.ok(workerSrc.includes('transcript-chapter-div'), 'transcript must carry inline chapter dividers (C1)');
   assert.ok(workerSrc.includes('transcript-chapter-dur'), 'chapter buttons must show durations (C2)');
-  assert.ok(workerSrc.includes('function seekTranscriptChapter('), 'chapter click must jump to its first block (C3)');
-  assert.ok(workerSrc.includes('function refreshChapterHighlight('), 'scrolling must highlight the chapter in view (C3)');
-  assert.ok(workerSrc.includes('Opening while playing lands on the Transcript tab'), 'opening the section while playing must show the transcript pane');
+  assert.ok(clientAllSrc(workerSrc).includes('function seekTranscriptChapter('), 'chapter click must jump to its first block (C3)');
+  assert.ok(clientAllSrc(workerSrc).includes('function refreshChapterHighlight('), 'scrolling must highlight the chapter in view (C3)');
+  assert.ok(clientAllSrc(workerSrc).includes('Opening while playing lands on the Transcript tab'), 'opening the section while playing must show the transcript pane');
   assert.ok(workerSrc.includes('id="chapterMarkers"') && workerSrc.includes('id="chapterTitle"'), 'scrubber must carry chapter ticks + live title');
-  assert.ok(workerSrc.includes('function renderChapterMarkers(') && workerSrc.includes('function updateChapterTitle('), 'chapter markers/title updaters must exist');
+  assert.ok(clientAllSrc(workerSrc).includes('function renderChapterMarkers(') && clientAllSrc(workerSrc).includes('function updateChapterTitle('), 'chapter markers/title updaters must exist');
 
   // Issue 2: a pending inline remove-confirm must survive grid re-renders
   // (background cloudPush/pull → adoptCloudState → renderPlaylistsGrid).

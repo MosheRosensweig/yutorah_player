@@ -1,0 +1,88 @@
+/**
+ * DafGuest unit — app-side Daf handoff glue (player <-> Daf hub).
+ * Protocol (frozen): sessionStorage key yutorah_daf_audio_state holds
+ * {playing, id, m, d, time, return_to}; deep links carry ?m=&d=&return_to.
+ * Classic script semantics: emitted as its own <script> block AND served
+ * at /js/daf-guest.js for reuse. Function declarations only.
+ * Rules for this file: no backticks, no dollar-brace, no closing
+ * script tags in strings (any of those breaks the inline emission).
+ */
+
+  function saveDafHandoff(playing) {
+    if (!currentShiurId) return;
+    try {
+      const u = new URL(window.location.href);
+      const returnTo = u.searchParams.get('return_to') || '';
+      if (!returnTo) return;
+      const r = new URL(returnTo, window.location.origin);
+      const m = r.searchParams.get('m');
+      const d = r.searchParams.get('d');
+      if (!m || !/^\d{1,3}$/.test(d || '')) return;
+      const state = { playing: !!playing, id: String(currentShiurId), m, d: Number(d), time: Number(audio && audio.currentTime || 0), savedAt: Date.now(), return_to: r.pathname + r.search };
+      sessionStorage.setItem('yutorah_daf_audio_state', JSON.stringify(state));
+    } catch (e) {}
+  }
+
+  function updateDafActions() {
+    const dafBtn = document.getElementById('dafOpenBtn');
+    const hasValidRef = Boolean(currentDafRef && currentDafRef.m && Number.isFinite(Number(currentDafRef.d)));
+    const href = hasValidRef
+      ? '/daf?m=' + encodeURIComponent(currentDafRef.m) + '&d=' + encodeURIComponent(String(currentDafRef.d))
+      : '/daf';
+    const visible = hasValidRef && hasAudio && !isCurrentShiurArticle;
+    if (dafBtn) {
+      dafBtn.href = href;
+      dafBtn.style.display = visible ? 'inline-flex' : 'none';
+    }
+  }
+
+  async function openDafView(e) {
+    if (e) e.preventDefault();
+    const regularView = document.getElementById('regularAppView');
+    let dafView = document.getElementById('dafAppView');
+    const target = new URL(e && e.currentTarget && e.currentTarget.href ? e.currentTarget.href : '/daf', window.location.origin);
+    if (!dafView) {
+      const qs = target.search ? target.search : '';
+      try {
+        const response = await fetch('/api/daf-view' + qs);
+        if (!response.ok) throw new Error('Daf view request failed');
+        const fragment = await response.json();
+        const style = document.createElement('style');
+        style.id = 'dafEmbeddedStyles';
+        style.textContent = fragment.css || '';
+        document.head.appendChild(style);
+        dafView = document.createElement('section');
+        dafView.id = 'dafAppView';
+        dafView.setAttribute('aria-label', 'Daf Yomi Hub');
+        dafView.innerHTML = fragment.html || '';
+        const main = document.querySelector('main');
+        if (!main) throw new Error('Application main view is unavailable');
+        main.appendChild(dafView);
+        const script = document.createElement('script');
+        script.id = 'dafEmbeddedScript';
+        script.textContent = fragment.script || '';
+        document.body.appendChild(script);
+      } catch (err) {
+        console.error('Unable to open Daf view:', err);
+        window.location.href = target.pathname + target.search;
+        return;
+      }
+    }
+    if (regularView) regularView.style.display = 'none';
+    dafView.style.display = '';
+    history.pushState({}, '', target.pathname + target.search);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function persistDafAudioState() {
+    if (!currentShiurId || !currentDafRef || !audio) return;
+    try {
+      sessionStorage.setItem('yutorah_daf_audio_state', JSON.stringify({
+        id: String(currentShiurId),
+        m: currentDafRef.m,
+        d: currentDafRef.d,
+        time: Number(audio.currentTime || 0),
+        savedAt: Date.now()
+      }));
+    } catch (e) {}
+  }
