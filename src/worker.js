@@ -33,13 +33,14 @@ import { DAF_MASECHTOT, DAF_CYCLE_DAYS, DAF_ANCHOR_UTC, dafRefForIndexUTC, dafIn
 // their own <script> blocks (same global lexical env as the inline app
 // script — zero scope/semantics change) and served raw for reuse.
 import PLAYER_CHROME_SRC from './client/player-chrome.js.txt';
+import SEARCH_UI_SRC from './client/search-ui.js.txt';
 
-// Escape raw unit source for interpolation into the outer template literal.
+// Unit sources hold intended client bytes directly (standalone-correct:
+// what you read is what the browser parses). Emission is RAW — any
+// escaping here would corrupt the served script. The hygiene test pins
+// the corollary: no backticks, no ${, no </script> in unit sources.
 function emitClientUnit(src) {
-  return String(src || '')
-    .replace(/\\/g, '\\\\')
-    .replace(/`/g, '\\`')
-    .replace(/\$\{/g, '\\${');
+  return String(src || '');
 }
 
 // Safe JSON embed for <script> contexts: neutralizes </script> breakouts.
@@ -2036,7 +2037,8 @@ const PRECACHE_URLS = [
   '/icons/icon-shield-192.png?v=8',
   '/icons/icon-shield-512.png?v=8',
   '/js/yt-utils.js',
-  '/js/player-chrome.js'
+  '/js/player-chrome.js',
+  '/js/search-ui.js'
 ];
 
 self.addEventListener('install', (event) => {
@@ -2202,6 +2204,15 @@ function handlePwaRoutes(request, url) {
   // loaded synchronously in dependency order (utils → units → app).
   if (url.pathname === '/js/player-chrome.js') {
     return new Response(PLAYER_CHROME_SRC, {
+      headers: {
+        'Content-Type': 'application/javascript; charset=utf-8',
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'public, max-age=3600'
+      }
+    });
+  }
+  if (url.pathname === '/js/search-ui.js') {
+    return new Response(SEARCH_UI_SRC, {
       headers: {
         'Content-Type': 'application/javascript; charset=utf-8',
         'Access-Control-Allow-Origin': '*',
@@ -13495,6 +13506,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 ${emitClientUnit(PLAYER_CHROME_SRC)}
 </script>
 <script>
+${emitClientUnit(SEARCH_UI_SRC)}
+</script>
+<script>
   // escapeHtml comes from window.YTUtils (single source: src/utils/html.mjs).
   // Inline fallback keeps offline-cached pages working if the bundle is
   // ever missing; behavior is pinned by tests, never fork it.
@@ -14747,280 +14761,9 @@ ${emitClientUnit(PLAYER_CHROME_SRC)}
     }
   });
 
-  async function fetchSearchPreview(query) {
-    if (previewAbortCtrl) previewAbortCtrl.abort();
-    previewAbortCtrl = new AbortController();
-    const thisReqId = ++currentPreviewReqId;
+  // → src/client/search-ui.js (fetchSearchPreview).
 
-    try {
-      // 1. Check local entity matches (speakers and categories from cached AUTOCOMPLETE_META)
-      const suggestions = [];
-      const qLower = query.toLowerCase();
-
-      // Look up speakers
-      if (typeof autocompleteCache !== 'undefined' && autocompleteCache?.teachers) {
-        const matchedTeachers = autocompleteCache.teachers
-          .filter(t => t.name.toLowerCase().includes(qLower))
-          .slice(0, 3);
-        matchedTeachers.forEach(t => {
-          suggestions.push({
-            type: 'speaker',
-            icon: '👤',
-            title: t.name,
-            sub: (t.count ? t.count.toLocaleString() + ' shiurim' : 'Speaker'),
-            action: () => {
-              closeSearchPreview();
-              searchInput.value = '';
-              activeAdvancedFilters = {
-                keywords: '',
-                teachers: [{ id: t.id, name: t.name }],
-                categories: [],
-                locations: [],
-                series: [],
-                minDuration: '',
-                maxDuration: '',
-                durationLabel: '',
-                year: '',
-                yearLabel: '',
-                fromDate: '',
-                toDate: '',
-                dateQuick: '',
-                dateQuickLabel: '',
-                dateRangeLabel: '',
-                mediaType: 'all',
-                mediaTypeLabel: '',
-                enablePhonetics: true
-              };
-              syncDateQuickChips();
-              executeLiveSearch('', { ...activeAdvancedFilters, speakerView: true, label: 'Shiurim by ' + t.name });
-            }
-          });
-        });
-      }
-
-      // Look up categories
-      if (typeof autocompleteCache !== 'undefined' && autocompleteCache?.categories) {
-        const matchedCats = autocompleteCache.categories
-          .filter(c => c.name.toLowerCase().includes(qLower))
-          .slice(0, 2);
-        matchedCats.forEach(c => {
-          suggestions.push({
-            type: 'category',
-            icon: '🏷️',
-            title: c.name,
-            sub: (c.count ? c.count.toLocaleString() + ' shiurim' : 'Topic'),
-            action: () => {
-              closeSearchPreview();
-              searchInput.value = '';
-              activeAdvancedFilters = {
-                keywords: '',
-                teachers: [],
-                categories: [{ id: c.id, name: c.name }],
-                locations: [],
-                series: [],
-                minDuration: '',
-                maxDuration: '',
-                durationLabel: '',
-                year: '',
-                yearLabel: '',
-                fromDate: '',
-                toDate: '',
-                dateQuick: '',
-                dateQuickLabel: '',
-                dateRangeLabel: '',
-                mediaType: 'all',
-                mediaTypeLabel: '',
-                enablePhonetics: true
-              };
-              syncDateQuickChips();
-              executeLiveSearch('', { ...activeAdvancedFilters, label: 'Topic: ' + c.name });
-            }
-          });
-        });
-      }
-
-      // ROADMAP §5.4: fuzzy fallback — when substring matches are thin,
-      // offer Levenshtein-ranked teacher/topic/venue candidates. Clicking
-      // one puts the corrected term in the search box and runs the search.
-      if (suggestions.length < 5) {
-        const haveTitles = new Set(suggestions.map(s => s.title.toLowerCase()));
-        const fuzzyIcons = { teacher: '👤', topic: '🏷️', venue: '📍' };
-        clientFuzzySuggest(query, 5).forEach(f => {
-          if (haveTitles.has(f.text.toLowerCase())) return;
-          haveTitles.add(f.text.toLowerCase());
-          suggestions.push({
-            type: f.type,
-            icon: fuzzyIcons[f.type] || '🔍',
-            title: f.text,
-            sub: (f.type === 'teacher' ? 'Speaker' : f.type === 'venue' ? 'Venue' : 'Topic') + ' · Did you mean?',
-            action: () => {
-              closeSearchPreview();
-              searchInput.value = f.text;
-              if (typeof clearSearchBtn !== 'undefined' && clearSearchBtn) clearSearchBtn.style.display = 'block';
-              doSearch();
-            }
-          });
-        });
-      }
-
-      // 2. Fetch live preview shiur results from /api/search?q=...&start=1
-      const phoneticsParam = (typeof activeAdvancedFilters !== 'undefined' && activeAdvancedFilters?.enablePhonetics === false) ? '&exact=1' : '';
-      const mediaParam = (typeof activeAdvancedFilters !== 'undefined' && activeAdvancedFilters?.mediaType && activeAdvancedFilters.mediaType !== 'all') ? ('&mediaType=' + encodeURIComponent(activeAdvancedFilters.mediaType)) : '';
-      const res = await fetch('/api/search?q=' + encodeURIComponent(query) + '&start=1' + phoneticsParam + mediaParam, {
-        signal: previewAbortCtrl.signal
-      });
-      if (!res.ok) return;
-      const data = await res.json();
-      if (thisReqId !== currentPreviewReqId) return;
-      const docs = (data?.response?.docs || []).slice(0, 5);
-      const totalCount = data?.response?.numFound || 0;
-
-      if (!searchPreviewDropdown) return;
-      if (suggestions.length === 0 && docs.length === 0) {
-        closeSearchPreview();
-        return;
-      }
-
-      let html = '';
-
-      // Render entity suggestions (speakers/topics)
-      if (suggestions.length > 0) {
-        html += '<div class="preview-section-title"><span>Suggested Topics &amp; Speakers</span></div>';
-        suggestions.forEach((s, idx) => {
-          html += '<div class="preview-item" data-suggestion-idx="' + idx + '">' +
-            '<span class="preview-item-icon">' + s.icon + '</span>' +
-            '<div class="preview-item-body">' +
-              '<div class="preview-item-title">' + escapeHtml(s.title) + '</div>' +
-              '<div class="preview-item-sub">' + escapeHtml(s.sub) + '</div>' +
-            '</div>' +
-            '<span class="preview-item-badge">Filter</span>' +
-          '</div>';
-        });
-      }
-
-      // Render top matching shiurim
-      if (docs.length > 0) {
-        html += '<div class="preview-section-title"><span>Matching Shiurim</span><span>' + totalCount.toLocaleString() + ' found</span></div>';
-        docs.forEach(d => {
-          const id = escapeHtml(String(d.shiurid || d.shiurID || ''));
-          const title = d.shiurtitle || d.shiurTitle || 'Untitled';
-          const speaker = d.teacherfullname || (d.shiurTeachers && d.shiurTeachers[0] ? d.shiurTeachers[0].teacherFullName : 'YUTorah');
-          const duration = d.durationformatted || (d.duration ? d.duration + ' min' : '');
-          const rawDate = d.shiurdateformatted || d.shiurDateFormatted || d.shiurdate || d.shiurDate || d.shiurdatesubmitted || d.shiurDateSubmitted || '';
-          const date = typeof formatShiurDate === 'function' ? formatShiurDate(rawDate) : '';
-
-          const subParts = [speaker];
-          if (date) subParts.push(date);
-          if (duration) subParts.push(duration);
-
-          const dMediaCat = (d.mediatypecategory || d.mediaTypeCategory || '').toLowerCase();
-          const dUrlCheck = d.shiururl || d.shiurURL || d.playerDownloadURL || d.downloadURL || '';
-          const dIsArticle = dMediaCat === 'text' || dMediaCat === 'article' || /[.]pdf($|[?])/i.test(dUrlCheck);
-          const previewIcon = dIsArticle ? '📄' : '🎧';
-          const previewBadge = dIsArticle ? '📄 Read' : '▶ Play';
-
-          html += '<a href="/' + id + '" class="preview-item preview-shiur-item" data-id="' + id + '">' +
-            '<span class="preview-item-icon">' + previewIcon + '</span>' +
-            '<div class="preview-item-body">' +
-              '<div class="preview-item-title">' + escapeHtml(title) + '</div>' +
-              '<div class="preview-item-sub">' + escapeHtml(subParts.join(' · ')) + '</div>' +
-            '</div>' +
-            '<span class="preview-item-badge">' + previewBadge + '</span>' +
-          '</a>';
-        });
-
-        html += '<div class="preview-footer-view-all" id="previewViewAllBtn">' +
-          'View all ' + totalCount.toLocaleString() + ' results for "' + escapeHtml(query) + '" →' +
-        '</div>';
-      }
-
-      searchPreviewDropdown.innerHTML = html;
-      searchPreviewDropdown.style.display = 'block';
-
-      // Attach click events for suggestions
-      searchPreviewDropdown.querySelectorAll('[data-suggestion-idx]').forEach(el => {
-        el.addEventListener('click', () => {
-          const idx = parseInt(el.getAttribute('data-suggestion-idx'), 10);
-          if (suggestions[idx]) suggestions[idx].action();
-        });
-      });
-
-      // Attach click events for shiur results
-      searchPreviewDropdown.querySelectorAll('.preview-shiur-item').forEach(el => {
-        el.addEventListener('click', (e) => {
-          e.preventDefault();
-          const id = el.getAttribute('data-id');
-          closeSearchPreview();
-          playShiurById(null, id);
-        });
-      });
-
-      // Attach click event for "View all" footer
-      const viewAllBtn = document.getElementById('previewViewAllBtn');
-      if (viewAllBtn) {
-        viewAllBtn.addEventListener('click', () => {
-          closeSearchPreview();
-          doSearch();
-        });
-      }
-      collectPreviewFocusables();
-    } catch (err) {
-      if (err.name !== 'AbortError') {
-        console.error('Preview fetch error:', err);
-      }
-    }
-  }
-
-  function onSearchInput() {
-    const val = searchInput.value;
-    clearSearchBtn.style.display = val.trim() ? 'block' : 'none';
-
-    clearTimeout(searchDebounceTimer);
-    const query = val.trim();
-    if (!query) {
-      closeSearchPreview();
-      clearSearch();
-      return;
-    }
-
-    // Easter egg: typing "dev mode" in the search bar activates Dev Mode
-    if (query.toLowerCase() === 'dev mode') {
-      searchInput.value = '';
-      clearSearchBtn.style.display = 'none';
-      closeSearchPreview();
-      if (!isDevMode) {
-        activateDevMode();
-        flashToast('🛠️ Dev Mode Unlocked!', false, true);
-      } else {
-        flashToast('🛠️ Dev Mode already active', false, true);
-      }
-      return;
-    }
-
-    // Typing "exit dev mode" (case-insensitive) leaves Dev Mode.
-    if (query.toLowerCase() === 'exit dev mode') {
-      searchInput.value = '';
-      clearSearchBtn.style.display = 'none';
-      closeSearchPreview();
-      if (isDevMode) {
-        deactivateDevMode();
-        flashToast('👋 Dev Mode Off', false, false);
-      } else {
-        flashToast('Dev Mode is not active', false, false);
-      }
-      return;
-    }
-
-    if (query.length < 2) {
-      closeSearchPreview();
-      return;
-    }
-
-    // Debounced Live Preview Dropdown (250ms)
-    searchDebounceTimer = setTimeout(() => {
-      fetchSearchPreview(query);
-    }, 250);
-  }
+  // → src/client/search-ui.js (onSearchInput).
 
   // Helper: check if any advanced filters are actively set
   function hasActiveFilters() {
@@ -15033,76 +14776,9 @@ ${emitClientUnit(PLAYER_CHROME_SRC)}
       (activeAdvancedFilters.mediaType && activeAdvancedFilters.mediaType !== 'all');
   }
 
-  function doSearch() {
-    clearTimeout(searchDebounceTimer);
-    closeSearchPreview();
-    const rawBarValue = searchInput.value.trim();
+  // → src/client/search-ui.js (doSearch).
 
-    // If advanced filters are active:
-    if (hasActiveFilters()) {
-      const teacherDisplayNames = (activeAdvancedFilters.teachers || []).map(t => t.name).join(', ');
-      let effectiveKeywords;
-      if (rawBarValue === teacherDisplayNames || (!rawBarValue && activeAdvancedFilters.teachers.length > 0)) {
-        effectiveKeywords = activeAdvancedFilters.keywords || '';
-        executeLiveSearch(effectiveKeywords, { ...activeAdvancedFilters });
-        scrollToSearchResults();
-        return;
-      } else {
-        // User typed a new search query into the search bar:
-        // Clear previous teacher filter so it doesn't silently trap or conflict with the new search!
-        activeAdvancedFilters.teachers = [];
-        activeAdvancedFilters.keywords = rawBarValue;
-        executeLiveSearch(rawBarValue, { ...activeAdvancedFilters });
-        scrollToSearchResults();
-        return;
-      }
-    }
-
-    if (!rawBarValue) return;
-
-    if (rawBarValue.toLowerCase() === 'dev mode') {
-      searchInput.value = '';
-      if (clearSearchBtn) clearSearchBtn.style.display = 'none';
-      if (!isDevMode) {
-        activateDevMode();
-        flashToast('🛠️ Dev Mode Unlocked!', false, true);
-      } else {
-        flashToast('🛠️ Dev Mode already active', false, true);
-      }
-      return;
-    }
-
-    if (rawBarValue.toLowerCase() === 'exit dev mode') {
-      searchInput.value = '';
-      if (clearSearchBtn) clearSearchBtn.style.display = 'none';
-      if (isDevMode) {
-        deactivateDevMode();
-        flashToast('👋 Dev Mode Off', false, false);
-      } else {
-        flashToast('Dev Mode is not active', false, false);
-      }
-      return;
-    }
-
-    // Smart detect: is it a Shiur ID or YUTorah URL?
-    const id = extractShiurId(rawBarValue);
-    if (id) {
-      playShiurById(null, id);
-      return;
-    }
-
-    executeLiveSearch(rawBarValue);
-    scrollToSearchResults();
-  }
-
-  function handleSearchSubmit(e) {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    doSearch();
-    return false;
-  }
+  // → src/client/search-ui.js (handleSearchSubmit).
 
   searchInput.addEventListener('input', onSearchInput);
   searchInput.addEventListener('keydown', (e) => {
@@ -15236,142 +14912,11 @@ ${emitClientUnit(PLAYER_CHROME_SRC)}
     return Array.from(terms).sort((a, b) => b.length - a.length);
   }
 
-  function highlightMatches(text, terms) {
-    if (!text || !terms || terms.length === 0) return escapeHtml(text);
-    const lower = text.toLowerCase();
-    const ranges = [];
+  // → src/client/search-ui.js (highlightMatches).
 
-    for (const term of terms) {
-      if (!term || term.length < 2) continue;
-      const termLower = term.toLowerCase();
-      let pos = 0;
-      while ((pos = lower.indexOf(termLower, pos)) !== -1) {
-        ranges.push([pos, pos + termLower.length]);
-        pos += termLower.length;
-      }
-    }
+  // → src/client/search-ui.js (extractSnippet).
 
-    if (ranges.length === 0) return escapeHtml(text);
-
-    ranges.sort((a, b) => a[0] - b[0] || b[1] - a[1]);
-
-    const merged = [ranges[0]];
-    for (let i = 1; i < ranges.length; i++) {
-      const prev = merged[merged.length - 1];
-      const curr = ranges[i];
-      if (curr[0] <= prev[1]) {
-        prev[1] = Math.max(prev[1], curr[1]);
-      } else {
-        merged.push(curr);
-      }
-    }
-
-    let result = '';
-    let lastIdx = 0;
-    for (const [start, end] of merged) {
-      result += escapeHtml(text.slice(lastIdx, start));
-      result += '<mark class="match-mark">' + escapeHtml(text.slice(start, end)) + '</mark>';
-      lastIdx = end;
-    }
-    result += escapeHtml(text.slice(lastIdx));
-    return result;
-  }
-
-  function extractSnippet(text, terms, windowBefore = 45, windowAfter = 65) {
-    if (!text || !terms || terms.length === 0) return null;
-    const lower = text.toLowerCase();
-    let firstPos = -1;
-    let matchedTerm = '';
-
-    for (const term of terms) {
-      if (!term || term.length < 2) continue;
-      const termLower = term.toLowerCase();
-      const pos = lower.indexOf(termLower);
-      if (pos !== -1) {
-        if (firstPos === -1 || pos < firstPos) {
-          firstPos = pos;
-          matchedTerm = termLower;
-        }
-      }
-    }
-
-    if (firstPos === -1) return null;
-
-    let start = Math.max(0, firstPos - windowBefore);
-    let end = Math.min(text.length, firstPos + matchedTerm.length + windowAfter);
-
-    let prefix = '...';
-    let suffix = '...';
-
-    if (start === 0) prefix = '';
-    else {
-      const spaceIdx = text.indexOf(' ', start);
-      if (spaceIdx !== -1 && spaceIdx < firstPos) {
-        start = spaceIdx + 1;
-      }
-    }
-
-    if (end === text.length) suffix = '';
-    else {
-      const spaceIdx = text.lastIndexOf(' ', end);
-      if (spaceIdx !== -1 && spaceIdx > firstPos + matchedTerm.length) {
-        end = spaceIdx;
-      }
-    }
-
-    const rawSnippet = prefix + text.slice(start, end).trim() + suffix;
-    return highlightMatches(rawSnippet, terms);
-  }
-
-  function buildMatchReasons(doc, terms) {
-    const reasons = [];
-
-    const desc = doc.shiurdescription || doc.description || '';
-    if (desc) {
-      const descSnippet = extractSnippet(desc, terms, 45, 65);
-      if (descSnippet && descSnippet.includes('<mark class="match-mark">')) {
-        reasons.push({
-          badge: '📄 Description Match',
-          snippet: descSnippet
-        });
-      }
-    }
-
-    const loc = Array.isArray(doc.location) ? doc.location.join(', ') : (doc.location || '');
-    if (loc) {
-      const locSnippet = extractSnippet(loc, terms, 60, 60);
-      if (locSnippet && locSnippet.includes('<mark class="match-mark">')) {
-        reasons.push({
-          badge: '📍 Venue Match',
-          snippet: locSnippet
-        });
-      }
-    }
-
-    const kw = Array.isArray(doc.shiurkeywords) ? doc.shiurkeywords.join(', ') : (doc.shiurkeywords || doc.keywords || '');
-    if (kw) {
-      const kwSnippet = extractSnippet(kw, terms, 50, 50);
-      if (kwSnippet && kwSnippet.includes('<mark class="match-mark">')) {
-        reasons.push({
-          badge: '🏷️ Keywords Match',
-          snippet: kwSnippet
-        });
-      }
-    }
-
-    const series = Array.isArray(doc.seriesname) ? doc.seriesname.join(', ') : (doc.seriesname || doc.series || '');
-    if (series) {
-      const seriesSnippet = extractSnippet(series, terms, 50, 50);
-      if (seriesSnippet && seriesSnippet.includes('<mark class="match-mark">')) {
-        reasons.push({
-          badge: '📚 Series Match',
-          snippet: seriesSnippet
-        });
-      }
-    }
-
-    return reasons;
-  }
+  // → src/client/search-ui.js (buildMatchReasons).
 
   function onToggleMatchExplain(checked) {
     showMatchReasons = !!checked;
@@ -15383,135 +14928,9 @@ ${emitClientUnit(PLAYER_CHROME_SRC)}
 
   const SEARCH_STOP_WORDS = new Set(['of', 'the', 'in', 'on', 'a', 'an', 'and', 'for', 'to', 'with', 'at', 'by', 'from', 'about']);
 
-  function computeRelevanceScore(d, queryTerms = [], rawQuery = '') {
-    if (!d) return 0;
-    const title = (d.shiurtitle || d.shiurTitle || d.title || '').toLowerCase();
-    const speaker = (d.teacherfullname || d.speaker || '').toLowerCase();
-    const series = (Array.isArray(d.seriesname) ? d.seriesname.join(' ') : (d.seriesname || d.series || '')).toLowerCase();
-    const collection = (Array.isArray(d.collectionname) ? d.collectionname.join(' ') : (d.collectionname || '')).toLowerCase();
-    const category = (Array.isArray(d.categoryname) ? d.categoryname.join(' ') : (d.category || '')).toLowerCase();
-    const desc = (d.shiurdescription || d.description || '').toLowerCase();
+  // → src/client/search-ui.js (computeRelevanceScore).
 
-    let score = 0;
-
-    const cleanRaw = (rawQuery || '').toLowerCase().trim();
-    if (cleanRaw && title.includes(cleanRaw)) {
-      score += 1000;
-    }
-
-    const terms = (queryTerms || []).map(t => t.toLowerCase()).filter(t => t.length >= 2 && !SEARCH_STOP_WORDS.has(t));
-    if (terms.length === 0) return score;
-
-    const titleWords = title.split(/[^a-z0-9א-ת]+/);
-    let titleMatches = 0;
-    let speakerMatches = 0;
-    let seriesMatches = 0;
-
-    for (const t of terms) {
-      if (title.includes(t)) {
-        score += 120;
-        titleMatches++;
-        if (titleWords.includes(t)) {
-          score += 80;
-        }
-      }
-      if (speaker.includes(t)) {
-        score += 100;
-        speakerMatches++;
-      }
-      if (series.includes(t) || collection.includes(t)) {
-        score += 60;
-        seriesMatches++;
-      }
-      if (category.includes(t)) {
-        score += 40;
-      }
-      if (desc.includes(t)) {
-        score += 5;
-      }
-    }
-
-    if (titleMatches >= 2 && titleMatches === terms.length) {
-      score += 300;
-    } else if ((titleMatches + seriesMatches) >= terms.length) {
-      score += 200;
-    }
-
-    return score;
-  }
-
-  function groupAndRankDocs(docs, queryTerms = [], rawQuery = '') {
-    if (!Array.isArray(docs)) return [];
-    const groups = new Map();
-    const standalone = [];
-
-    for (const doc of docs) {
-      let groupKey = null;
-      let groupTitle = null;
-
-      if (Array.isArray(doc.collectionid) && doc.collectionid.length > 0 && doc.collectionname && doc.collectionname[0]) {
-        const parts = doc.collectionname[0].split('|');
-        groupKey = 'coll_' + doc.collectionid[0];
-        groupTitle = parts[0].trim();
-      } else if (doc.seriesid && doc.seriesname) {
-        groupKey = 'series_' + doc.seriesid;
-        groupTitle = doc.seriesname;
-      }
-
-      if (groupKey) {
-        if (!groups.has(groupKey)) {
-          groups.set(groupKey, { key: groupKey, title: groupTitle, docs: [] });
-        }
-        groups.get(groupKey).docs.push(doc);
-      } else {
-        standalone.push(doc);
-      }
-    }
-
-    const items = [];
-    for (const [k, g] of groups.entries()) {
-      if (g.docs.length >= 2) {
-        g.docs.sort((a, b) => {
-          const da = a.shiurdate || a.shiurdatesubmitted || '';
-          const db = b.shiurdate || b.shiurdatesubmitted || '';
-          return da.localeCompare(db);
-        });
-        const maxScore = Math.max(...g.docs.map(d => computeRelevanceScore(d, queryTerms, rawQuery)));
-        items.push({
-          isSeries: true,
-          key: g.key,
-          title: g.title,
-          docs: g.docs,
-          cover: g.docs[0],
-          subDocs: g.docs.slice(1),
-          score: maxScore
-        });
-      } else {
-        items.push({
-          isSeries: false,
-          doc: g.docs[0],
-          score: computeRelevanceScore(g.docs[0], queryTerms, rawQuery)
-        });
-      }
-    }
-
-    for (const doc of standalone) {
-      items.push({
-        isSeries: false,
-        doc,
-        score: computeRelevanceScore(doc, queryTerms, rawQuery)
-      });
-    }
-
-    items.sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      const dateA = a.isSeries ? (a.cover.shiurdate || a.cover.shiurdatesubmitted || '') : (a.doc.shiurdate || a.doc.shiurdatesubmitted || '');
-      const dateB = b.isSeries ? (b.cover.shiurdate || b.cover.shiurdatesubmitted || '') : (b.doc.shiurdate || b.doc.shiurdatesubmitted || '');
-      return dateB.localeCompare(dateA);
-    });
-
-    return items;
-  }
+  // → src/client/search-ui.js (groupAndRankDocs).
 
   function toggleSeriesDrawer(e, drawerId) {
     if (e) {
@@ -16710,89 +16129,9 @@ ${emitClientUnit(PLAYER_CHROME_SRC)}
     return d[m][n];
   }
 
-  function clientFuzzySuggest(query, limit) {
-    const q = String(query || '').trim().toLowerCase();
-    limit = limit || 5;
-    if (q.length < 2 || typeof autocompleteCache === 'undefined' || !autocompleteCache) return [];
-    const pools = [
-      ['teacher', autocompleteCache.teachers || []],
-      ['topic', autocompleteCache.categories || []],
-      ['venue', autocompleteCache.venues || []]
-    ];
-    const out = [];
-    const seen = new Set();
-    for (const pair of pools) {
-      const type = pair[0];
-      for (const c of pair[1]) {
-        const name = typeof c === 'string' ? c : (c && c.name);
-        if (!name) continue;
-        if (String(name).trim().toLowerCase() === q) continue;
-        const norm = String(name).replace(/^(rabbi|rav|dr|doctor|prof|dayan|maran|chacham|harav|reb|mrs|ms|mr)\\.?[\\s]+/i, '').toLowerCase().trim();
-        if (!norm || seen.has(type + '|' + norm)) continue;
-        const targets = [norm].concat(norm.split(/\\s+/).filter(w => w.length >= 3));
-        let best = Infinity;
-        for (const target of targets) {
-          if ((target.indexOf(q) !== -1 && q.length >= 3) ||
-              (q.indexOf(target) !== -1 && target.length >= q.length * 0.6)) { best = 0; break; }
-          const probe = target.length > q.length ? target.slice(0, q.length) : target;
-          const dist = clientLevenshtein(q, probe);
-          if (dist < best) best = dist;
-          if (best === 1) break;
-        }
-        const gate = Math.min(2, Math.floor(Math.max(q.length, 4) * 0.25) + 1);
-        if (q.length <= 3 && best > 0) continue;
-        if (best <= gate) {
-          seen.add(type + '|' + norm);
-          out.push({ text: String(name), type: type, id: (c && c.id) ? String(c.id) : '', distance: best, count: (c && c.count) || 0 });
-        }
-      }
-    }
-    // Compact synset twin (mirrors edge SYNSETS variants) so concept typos
-    // get as-you-type chips too — "same engine" on both surfaces (§5.4).
-    if (q.length > 3) {
-      const synPairs = [
-        ['shabbat', 'shabbat'], ['shabbos', 'shabbat'], ['shabos', 'shabbat'],
-        ['sukkah', 'sukkah'], ['sukka', 'sukkah'], ['succah', 'sukkah'], ['succa', 'sukkah'],
-        ['chanukah', 'chanukah'], ['hanukkah', 'chanukah'], ['chanuka', 'chanukah'],
-        ['teshuvah', 'teshuvah'], ['teshuva', 'teshuvah'], ['tshuva', 'teshuvah'],
-        ['pesach', 'pesach'], ['passover', 'pesach'],
-        ['muktzah', 'muktzah'], ['muktza', 'muktzah'],
-        ['kashrus', 'kashrus'], ['kashrut', 'kashrus'], ['kosher', 'kashrus'],
-        ['tefillah', 'tefillah'], ['tefila', 'tefillah'], ['tefillos', 'tefillah'],
-        ['brachos', 'brachos'], ['berachos', 'brachos'], ['bracha', 'brachos'], ['beracha', 'brachos'],
-        ['motzoei', 'motzoei'], ['motzei', 'motzoei'], ['motsai', 'motzoei'],
-        ['gemara', 'gemara'], ['gemora', 'gemara'], ['talmud', 'gemara'], ['shas', 'gemara'],
-        ['tanach', 'tanach'], ['tanakh', 'tanach'], ['bible', 'tanach'],
-        ['torah', 'torah'], ['tora', 'torah'], ['chumash', 'torah'], ['pentateuch', 'torah'],
-        ['nach', 'nach'], ['mishna', 'mishna'], ['mishnah', 'mishna'],
-        ['midrash', 'midrash'], ['medrash', 'midrash'], ['aggadah', 'midrash'],
-        ['aggada', 'midrash'], ['agada', 'midrash'], ['midrashim', 'midrash'],
-        ['halacha', 'halacha'], ['halakha', 'halacha'], ['halachos', 'halacha'],
-        ['halachot', 'halacha'], ['talmod', 'gemara'], ['shass', 'gemara'],
-        ['chumosh', 'torah'], ['mishnayos', 'mishna'], ['mishnayot', 'mishna'],
-        ['nack', 'nach'], ['hebrew bible', 'tanach'], ['five books', 'torah']
-      ];
-      for (const pair of synPairs) {
-        const dist = clientLevenshtein(q, pair[0]);
-        if (dist <= 2 && !seen.has('topic|' + pair[0])) {
-          seen.add('topic|' + pair[0]);
-          out.push({ text: pair[1], type: 'topic', id: '', distance: dist, count: 0 });
-          break;
-        }
-      }
-    }
-    out.sort((a, b) => (a.distance - b.distance) || ((b.count || 0) - (a.count || 0)));
-    return out.slice(0, limit);
-  }
+  // → src/client/search-ui.js (clientFuzzySuggest).
 
-  function renderDidYouMeanStrip(suggestions) {
-    const chips = suggestions.map(s =>
-      '<button type="button" class="did-you-mean-chip" data-text="' + encodeURIComponent(s.text) + '"' +
-      ' onclick="applyDidYouMean(decodeURIComponent(this.getAttribute(\\'data-text\\')))"' +
-      ' title="' + escapeHtml(s.type) + '">' + escapeHtml(s.text) + '</button>'
-    ).join('');
-    return '<div class="did-you-mean-strip"><span>🔍 Did you mean:</span>' + chips + '</div>';
-  }
+  // → src/client/search-ui.js (renderDidYouMeanStrip).
 
   function applyDidYouMean(text) {
     if (!text) return;
@@ -16802,122 +16141,7 @@ ${emitClientUnit(PLAYER_CHROME_SRC)}
     doSearch();
   }
 
-  function renderCurrentSearchResults() {
-    const grid = document.getElementById('searchResultsGrid');
-    if (!grid) return;
-    // Zero-hit state (e.g. SSR reload): still restore the disclaimer +
-    // did-you-mean strips from hydrated state.
-    if ((!currentRecentDocs || currentRecentDocs.length === 0) && (!currentSearchDocs || currentSearchDocs.length === 0)) {
-      let eHtml = '';
-      if (currentQueryResolution && currentQueryResolution.display) {
-        eHtml += '<div class="did-you-mean-strip resolution-note"><span>🔍 Showing results for &quot;' +
-          escapeHtml(currentQueryResolution.display) + '&quot; — you searched &quot;' +
-          escapeHtml(currentQueryResolution.original) + '&quot;.</span></div>';
-      }
-      if (currentDidYouMean && currentDidYouMean.length > 0) {
-        eHtml += renderDidYouMeanStrip(currentDidYouMean);
-      }
-      if (eHtml) {
-        eHtml += '<div style="padding: 30px; text-align: center; color: var(--text-muted); grid-column: 1/-1;">No shiurim found matching these criteria. Try adjusting your filters or search keywords.</div>';
-        grid.innerHTML = eHtml;
-      }
-      return;
-    }
-
-    const terms = getActiveSearchTerms();
-    // Chronological sorts render in server order: any client re-ranking
-    // would silently undo newest/oldest.
-    const chronoSort = currentFilterParams.sort === 'newest' || currentFilterParams.sort === 'oldest';
-    function renderList(docs) {
-      if (chronoSort) {
-        return docs.map(d => renderDocToCard(d)).join('');
-      }
-      if (stackSeriesEnabled) {
-        const grouped = groupAndRankDocs(docs, terms, currentSearchQuery);
-        return grouped.map(renderGroupItem).join('');
-      }
-      const unstacked = [...docs].sort((a, b) => {
-        const sa = computeRelevanceScore(a, terms, currentSearchQuery);
-        const sb = computeRelevanceScore(b, terms, currentSearchQuery);
-        if (sb !== sa) return sb - sa;
-        const da = a.shiurdate || a.shiurdatesubmitted || '';
-        const db = b.shiurdate || b.shiurdatesubmitted || '';
-        return db.localeCompare(da);
-      });
-      return unstacked.map(d => renderDocToCard(d)).join('');
-    }
-
-    let html = '';
-    // "Showing results for X (you searched Y)" shown only when the query
-    // was rewritten (no speaker auto-resolution anymore).
-    if (currentQueryResolution && currentQueryResolution.display) {
-      html += '<div class="did-you-mean-strip resolution-note"><span>🔍 Showing results for &quot;' +
-        escapeHtml(currentQueryResolution.display) + '&quot; — you searched &quot;' +
-        escapeHtml(currentQueryResolution.original) + '&quot;.</span></div>';
-    }
-    // Did-you-mean strip always goes ON TOP when suggestions exist,
-    // whether zero hits or a thin (<10) result set.
-
-    // Speaker view (OG yutorah style): Most Recent 6 + Top Lectures.
-    const isSpeakerView = currentFilterParams && currentFilterParams.speakerView;
-    if (isSpeakerView && currentSearchDocs && currentSearchDocs.length > 0) {
-      const docKey = d => String(d.shiurID || d.shiurid || d.id || '');
-      const docDate = d => String(d.shiurdate || d.shiurdatesubmitted || d.shiurDate || d.shiurDateSubmitted || '');
-      const docPop = d => (parseInt(d.shiurvisitsnum, 10) || 0) + (parseInt(d.shiurdownloadsnum, 10) || 0);
-      if (!currentSpeakerViewCache) {
-        const byDate = [...currentSearchDocs].sort((a, b) => docDate(b).localeCompare(docDate(a)));
-        const recent6 = byDate.slice(0, 6);
-        const recentIds = new Set(recent6.map(docKey).filter(Boolean));
-        const byPop = [...currentSearchDocs].filter(d => { const k = docKey(d); return k && !recentIds.has(k); }).sort((a,b)=>docPop(b)-docPop(a));
-        const top10 = byPop.slice(0, 10);
-        const shownIds = new Set([...recent6, ...top10].map(docKey).filter(Boolean));
-        const rest = currentSearchDocs.filter(d => { const k = docKey(d); return !k || !shownIds.has(k); });
-        currentSpeakerViewCache = { recent6, top10, rest };
-      }
-      const { recent6, top10, rest } = currentSpeakerViewCache;
-      if (currentDidYouMean && currentDidYouMean.length) html += renderDidYouMeanStrip(currentDidYouMean);
-      if (recent6.length) { html += '<div class="search-results-subheading"><span>🆕</span><span>Most Recent</span></div>'; html += renderList(recent6); }
-      if (top10.length) { html += '<div class="search-results-subheading"><span>🏆</span><span>Top Lectures</span></div>'; html += renderList(top10); }
-      if (rest.length) { html += '<div class="search-results-subheading"><span>📚</span><span>All Shiurim</span></div>'; html += renderList(rest); }
-      grid.innerHTML = html;
-      grid.classList.toggle('explain-matches-active', showMatchReasons);
-      try { if (typeof devUpgradeCards === 'function') devUpgradeCards(grid); } catch(e){}
-      return;
-    }
-
-    // Recent Results rail: fixed top-3 freshest, no expansion control.
-    const visibleRecent = (currentRecentDocs || []).slice(0, 3);
-    if (visibleRecent.length > 0) {
-      const recentTotal = recentNumFound || currentRecentDocs.length;
-      html += '<div class="search-results-subheading"><span>🕒</span><span>Recent Results</span>' +
-        '<span class="sub-count">' + recentTotal.toLocaleString() + ' matching</span></div>';
-      html += renderList(visibleRecent);
-    }
-
-    // 🎯 Relevance sub-section (own separate Load More).
-    if (currentSearchDocs && currentSearchDocs.length > 0) {
-      if (visibleRecent.length > 0) {
-        html += '<div class="search-results-subheading"><span>🎯</span><span>Most Relevant Results</span></div>';
-      }
-      html += renderList(currentSearchDocs);
-    }
-
-    // Did-you-mean strip goes ON TOP whenever suggestions exist —
-    // zero hits or thin result sets alike.
-    if (currentDidYouMean && currentDidYouMean.length > 0) {
-      const strip = renderDidYouMeanStrip(currentDidYouMean);
-      const firstSection = html.indexOf('<div class="search-results-subheading"');
-      html = firstSection >= 0
-        ? html.slice(0, firstSection) + strip + html.slice(firstSection)
-        : strip + html;
-    }
-
-    grid.innerHTML = html;
-    grid.classList.toggle('explain-matches-active', showMatchReasons);
-    // Live-search path: drawer sub-cards and fresh cards get dev buttons +
-    // progress immediately (retrofit is idempotent).
-    try { if (typeof devUpgradeCards === 'function') devUpgradeCards(grid); } catch (e) {}
-  }
+  // → src/client/search-ui.js (renderCurrentSearchResults).
 
   // Homepage/brand/search-entry navigations preserve the loaded track:
   // the URL always carries the playing shiur id (path + fresh t), so
@@ -17171,76 +16395,15 @@ ${emitClientUnit(PLAYER_CHROME_SRC)}
     }
   }
 
-  function searchFor(term) {
-    if (hasAudio) {
-      minimizePlayer();
-    }
-    const bioBanner = document.getElementById('bioBanner');
-    if (bioBanner) bioBanner.style.display = 'none';
-    searchInput.value = term;
-    clearSearchBtn.style.display = 'block';
-    executeLiveSearch(term);
-    scrollToSearchResults();
-  }
+  // → src/client/search-ui.js (searchFor).
 
-  function filterByTeacher(teacherId, teacherName) {
-    if (hasAudio) {
-      minimizePlayer();
-    }
-    loadTeacherBio(teacherId, teacherName);
-    searchInput.value = teacherName;
-    clearSearchBtn.style.display = 'block';
-    executeLiveSearch('', {
-      teacherId: teacherId,
-      speakerView: true,
-      label: 'Shiurim by ' + teacherName
-    });
-    scrollToSearchResults();
-  }
+  // → src/client/search-ui.js (filterByTeacher).
 
-  function filterByLocation(locationId, locationName) {
-    if (hasAudio) {
-      minimizePlayer();
-    }
-    loadVenueDescription(locationId, locationName);
-    searchInput.value = locationName;
-    clearSearchBtn.style.display = 'block';
-    executeLiveSearch('', {
-      locationId: locationId,
-      label: 'Shiurim at ' + locationName
-    });
-    scrollToSearchResults();
-  }
+  // → src/client/search-ui.js (filterByLocation).
 
-  function filterByCategory(subCategoryId, categoryName) {
-    if (hasAudio) {
-      minimizePlayer();
-    }
-    const bioBanner = document.getElementById('bioBanner');
-    if (bioBanner) bioBanner.style.display = 'none';
-    searchInput.value = categoryName;
-    clearSearchBtn.style.display = 'block';
-    executeLiveSearch('', {
-      subCategoryId: subCategoryId,
-      label: 'Shiurim in ' + categoryName
-    });
-    scrollToSearchResults();
-  }
+  // → src/client/search-ui.js (filterByCategory).
 
-  function filterBySeries(seriesId, seriesName) {
-    if (hasAudio) {
-      minimizePlayer();
-    }
-    const bioBanner = document.getElementById('bioBanner');
-    if (bioBanner) bioBanner.style.display = 'none';
-    searchInput.value = seriesName;
-    clearSearchBtn.style.display = 'block';
-    executeLiveSearch('', {
-      seriesId: seriesId,
-      label: 'Series: ' + seriesName
-    });
-    scrollToSearchResults();
-  }
+  // → src/client/search-ui.js (filterBySeries).
 
   // → src/client/player-chrome.js (isPlayerCardInViewport).
 
@@ -17343,79 +16506,7 @@ ${emitClientUnit(PLAYER_CHROME_SRC)}
     series: []
   };
 
-  function openAdvancedModal() {
-    const modal = document.getElementById('advancedSearchModal');
-    if (!modal) return;
-
-    // Clone current active filters into temp editing state
-    modalTempFilters.teachers = [...(activeAdvancedFilters.teachers || [])];
-    modalTempFilters.categories = [...(activeAdvancedFilters.categories || [])];
-    modalTempFilters.locations = [...(activeAdvancedFilters.locations || [])];
-    modalTempFilters.series = [...(activeAdvancedFilters.series || [])];
-
-    document.getElementById('advKeywords').value = activeAdvancedFilters.keywords || '';
-    document.getElementById('advYearSelect').value = activeAdvancedFilters.year || '';
-    // datetime-local needs a full "YYYY-MM-DDTHH:MM": pad date-only values
-    // (e.g. from quick presets) so the round trip survives Apply.
-    function padDateTime(v) {
-      if (!v) return '';
-      return v.length === 10 ? v + 'T00:00' : v;
-    }
-    const advFrom = document.getElementById('advFromDateTime');
-    if (advFrom) advFrom.value = padDateTime(activeAdvancedFilters.fromDate || '');
-    const advTo = document.getElementById('advToDateTime');
-    if (advTo) advTo.value = padDateTime(activeAdvancedFilters.toDate || '');
-    const phonToggle = document.getElementById('advPhoneticsToggle');
-    if (phonToggle) {
-      phonToggle.checked = activeAdvancedFilters.enablePhonetics !== false;
-      const phonLabel = document.getElementById('advPhoneticsToggleLabel');
-      if (phonLabel) {
-        phonLabel.textContent = phonToggle.checked ? 'On' : 'Off';
-      }
-    }
-
-    // Render chips in modal comboboxes
-    renderComboboxChips('teacher');
-    renderComboboxChips('category');
-    renderComboboxChips('location');
-    renderComboboxChips('series');
-
-    // Set duration buttons
-    const minD = activeAdvancedFilters.minDuration;
-    const maxD = activeAdvancedFilters.maxDuration;
-    const btns = document.querySelectorAll('.duration-preset-btn');
-    btns.forEach(b => {
-      const bMin = b.getAttribute('data-min') || '';
-      const bMax = b.getAttribute('data-max') || '';
-      if (String(bMin) === String(minD || '') && String(bMax) === String(maxD || '')) {
-        b.classList.add('selected');
-      } else {
-        b.classList.remove('selected');
-      }
-    });
-
-    // Set media format buttons
-    const curMedia = activeAdvancedFilters.mediaType || 'all';
-    const mediaBtns = document.querySelectorAll('.media-preset-btn');
-    mediaBtns.forEach(b => {
-      const bMedia = b.getAttribute('data-media') || 'all';
-      if (bMedia === curMedia) {
-        b.classList.add('selected');
-      } else {
-        b.classList.remove('selected');
-      }
-    });
-    const mediaHint = document.getElementById('mediaTypeHint');
-    if (mediaHint) {
-      if (curMedia === 'audio') mediaHint.textContent = 'Audio Only';
-      else if (curMedia === 'article') mediaHint.textContent = 'Articles Only';
-      else mediaHint.textContent = 'Audio & Articles';
-    }
-
-    modal.classList.add('open');
-    loadAutocompleteMeta(); // Preload data in background
-    document.getElementById('advKeywords').focus();
-  }
+  // → src/client/search-ui.js (openAdvancedModal).
 
   function closeAdvancedModal() {
     const modal = document.getElementById('advancedSearchModal');
@@ -17437,44 +16528,7 @@ ${emitClientUnit(PLAYER_CHROME_SRC)}
   }
 
   // Multi-Select Combobox & Token Management
-  function renderComboboxChips(type) {
-    let containerId = '';
-    let inputId = '';
-    let list = [];
-
-    if (type === 'teacher') {
-      containerId = 'teacherChipsContainer';
-      inputId = 'advTeacherInput';
-      list = modalTempFilters.teachers;
-    } else if (type === 'category') {
-      containerId = 'categoryChipsContainer';
-      inputId = 'advCategoryInput';
-      list = modalTempFilters.categories;
-    } else if (type === 'location') {
-      containerId = 'locationChipsContainer';
-      inputId = 'advLocationInput';
-      list = modalTempFilters.locations;
-    } else if (type === 'series') {
-      containerId = 'seriesChipsContainer';
-      inputId = 'advSeriesInput';
-      list = modalTempFilters.series;
-    }
-
-    const container = document.getElementById(containerId);
-    const input = document.getElementById(inputId);
-    if (!container || !input) return;
-
-    // Remove existing tokens
-    container.querySelectorAll('.combobox-token').forEach(el => el.remove());
-
-    // Insert tokens before input
-    list.forEach((item, index) => {
-      const token = document.createElement('span');
-      token.className = 'combobox-token';
-      token.innerHTML = '<span>' + escapeHtml(item.name) + '</span><button type="button" class="token-remove-btn" onclick="removeComboboxToken(&quot;' + type + '&quot;, ' + index + ')" title="Remove">✕</button>';
-      container.insertBefore(token, input);
-    });
-  }
+  // → src/client/search-ui.js (renderComboboxChips).
 
   function removeComboboxToken(type, index) {
     if (type === 'teacher') {
@@ -17528,163 +16582,9 @@ ${emitClientUnit(PLAYER_CHROME_SRC)}
   // The dropdown's OWN type is excluded from the query so its options show
   // counts under the other active filters (never self-zeroed).
   const facetCountCache = { sig: '', at: 0, counts: null };
-  async function loadFacetCounts(skipType) {
-    const kwInput = document.getElementById('advKeywords');
-    const kw = ((kwInput && kwInput.value) || (activeAdvancedFilters && activeAdvancedFilters.keywords) || '').trim();
-    const parts = ['q:' + kw,
-      't:' + (modalTempFilters.teachers || []).map(t => t.id).sort().join(','),
-      'c:' + (modalTempFilters.categories || []).map(t => t.id).sort().join(','),
-      'l:' + (modalTempFilters.locations || []).map(t => t.id).sort().join(','),
-      's:' + (modalTempFilters.series || []).map(t => t.id).sort().join(','),
-      'skip:' + (skipType || '')];
-    const sig = parts.join('|');
-    if (facetCountCache.counts && facetCountCache.sig === sig && Date.now() - facetCountCache.at < 45000) {
-      return facetCountCache.counts;
-    }
-    try {
-      const q = new URLSearchParams();
-      if (kw) q.set('q', kw);
-      if (skipType !== 'teacher') (modalTempFilters.teachers || []).forEach(t => q.append('teacherId', t.id));
-      if (skipType !== 'category') (modalTempFilters.categories || []).forEach(t => q.append('subCategoryId', t.id));
-      if (skipType !== 'location') (modalTempFilters.locations || []).forEach(t => q.append('locationId', t.id));
-      if (skipType !== 'series') (modalTempFilters.series || []).forEach(t => q.append('seriesId', t.id));
-      const res = await fetch('/api/facets?' + q.toString());
-      if (!res.ok) return null;
-      const body = await res.json();
-      facetCountCache.sig = sig;
-      facetCountCache.at = Date.now();
-      facetCountCache.counts = body;
-      return body;
-    } catch (e) {
-      return null;
-    }
-  }
+  // → src/client/search-ui.js (loadFacetCounts).
 
-  function setupAutocompleteInput(type, inputId, dropdownId, dataKey) {
-    const input = document.getElementById(inputId);
-    const dropdown = document.getElementById(dropdownId);
-    if (!input || !dropdown) return;
-
-    let debounceTimer = null;
-
-    input.addEventListener('input', () => {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(async () => {
-        const val = input.value.trim().toLowerCase();
-        if (val.length < 1) {
-          dropdown.style.display = 'none';
-          dropdown.innerHTML = '';
-          return;
-        }
-
-        const meta = await loadAutocompleteMeta();
-        if (!meta || !meta[dataKey]) return;
-
-        const items = meta[dataKey];
-        // Strip titles/honorifics from query if searching teachers
-        const cleanVal = type === 'teacher' ? val.replace(/^(rabbi|rav|dr\.|dr|mrs\.|mrs|rebbetzin|r')\s+/i, '').trim() : val;
-        
-        // Exclude already-selected options of this type (no duplicates).
-        const selectedIds = new Set(((type === 'teacher' ? modalTempFilters.teachers
-          : type === 'category' ? modalTempFilters.categories
-          : type === 'location' ? modalTempFilters.locations
-          : modalTempFilters.series) || []).map(t => String(t.id)));
-        // Dynamic facet counts for the OTHER active filters.
-        const facetKey = type === 'teacher' ? 'teachers' : type === 'category' ? 'categories'
-          : type === 'location' ? 'venues' : 'series';
-        let facetById = null;
-        try {
-          const fc = await loadFacetCounts(type);
-          if (fc && Array.isArray(fc[facetKey])) {
-            facetById = {};
-            for (const f of fc[facetKey]) facetById[String(f.id)] = f.count;
-          }
-        } catch (e) {}
-
-        let matches = [];
-        for (const item of items) {
-          if (selectedIds.has(String(item.id))) continue;
-          const itemName = (item.name || '').toLowerCase();
-          const cleanItemName = type === 'teacher' ? itemName.replace(/^(rabbi|rav|dr\.|dr|mrs\.|mrs|rebbetzin|r')\s+/i, '') : itemName;
-          if (itemName.includes(val) || cleanItemName.includes(cleanVal)) {
-            const m = { id: item.id, name: item.name, count: item.count };
-            if (facetById && Object.prototype.hasOwnProperty.call(facetById, String(item.id))) {
-              m.count = facetById[String(item.id)];
-              m.faceted = true;
-            }
-            matches.push(m);
-            if (matches.length >= 25) break;
-          }
-        }
-
-        if (matches.length === 0) {
-          dropdown.innerHTML = '<div style="padding:10px 12px; font-size:12.5px; color:var(--text-muted); text-align:center;">No matching ' + type + 's found</div>';
-          dropdown.style.display = 'block';
-          return;
-        }
-
-        dropdown.innerHTML = matches.map(m => {
-          const countBadge = m.count ? ('<span class="item-count-badge">' + Number(m.count).toLocaleString() + '</span>') : '';
-          return '<div class="autocomplete-item" data-id="' + escapeHtml(m.id) + '" data-name="' + escapeHtml(m.name) + '">' +
-            '<span>' + escapeHtml(m.name) + '</span>' + countBadge +
-          '</div>';
-        }).join('');
-        dropdown.style.display = 'block';
-      }, 100);
-    });
-
-    dropdown.addEventListener('click', (e) => {
-      const item = e.target.closest('.autocomplete-item');
-      if (!item) return;
-      const id = item.getAttribute('data-id');
-      const name = item.getAttribute('data-name');
-      if (id && name) {
-        addComboboxToken(type, id, name);
-      }
-    });
-
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && input.value.trim()) {
-        e.preventDefault();
-        const val = input.value.trim().toLowerCase();
-        // Try to find exact match in current dropdown or full list
-        const firstMatch = dropdown.querySelector('.autocomplete-item');
-        if (firstMatch) {
-          const id = firstMatch.getAttribute('data-id');
-          const name = firstMatch.getAttribute('data-name');
-          if (id && name) {
-            addComboboxToken(type, id, name);
-            input.value = '';
-            dropdown.style.display = 'none';
-            dropdown.innerHTML = '';
-            return;
-          }
-        }
-        // Fallback: check full list for exact match
-        loadAutocompleteMeta().then(meta => {
-          if (!meta || !meta[dataKey]) return;
-          const match = meta[dataKey].find(item => (item.name || '').toLowerCase() === val);
-          if (match) {
-            addComboboxToken(type, match.id, match.name);
-            input.value = '';
-            dropdown.style.display = 'none';
-            dropdown.innerHTML = '';
-          }
-        });
-        return;
-      }
-      if (e.key === 'Escape') {
-        dropdown.style.display = 'none';
-      } else if (e.key === 'Backspace' && input.value === '') {
-        // Backspace on empty input removes last chip
-        let list = type === 'teacher' ? modalTempFilters.teachers : (type === 'category' ? modalTempFilters.categories : (type === 'location' ? modalTempFilters.locations : modalTempFilters.series));
-        if (list.length > 0) {
-          list.pop();
-          renderComboboxChips(type);
-        }
-      }
-    });
-  }
+  // → src/client/search-ui.js (setupAutocompleteInput).
 
   // Deferred PWA install prompt (captured for the settings-menu item).
   let deferredInstallPrompt = null;
@@ -17932,190 +16832,11 @@ ${emitClientUnit(PLAYER_CHROME_SRC)}
     }
   }
 
-  function resetAdvancedFilters() {
-    document.getElementById('advKeywords').value = '';
-    document.getElementById('advYearSelect').value = '';
-    const rFrom = document.getElementById('advFromDateTime');
-    if (rFrom) rFrom.value = '';
-    const rTo = document.getElementById('advToDateTime');
-    if (rTo) rTo.value = '';
-    // Clear the in-memory quick preset too, or Reset→Apply would resurrect
-    // a highlighted chip with no date bounds behind it.
-    activeAdvancedFilters.dateQuick = '';
-    activeAdvancedFilters.dateQuickLabel = '';
-    syncDateQuickChips();
-    const phonToggle = document.getElementById('advPhoneticsToggle');
-    if (phonToggle) {
-      phonToggle.checked = true;
-      const phonLabel = document.getElementById('advPhoneticsToggleLabel');
-      if (phonLabel) phonLabel.textContent = 'On';
-    }
-    modalTempFilters.teachers = [];
-    modalTempFilters.categories = [];
-    modalTempFilters.locations = [];
-    modalTempFilters.series = [];
-    renderComboboxChips('teacher');
-    renderComboboxChips('category');
-    renderComboboxChips('location');
-    renderComboboxChips('series');
-    const defBtn = document.querySelector('.duration-preset-btn[data-min=""][data-max=""]');
-    if (defBtn) setDurationPreset(defBtn, '', '');
-    const defMediaBtn = document.querySelector('.media-preset-btn[data-media="all"]');
-    if (defMediaBtn) setMediaTypePreset(defMediaBtn, 'all');
-  }
+  // → src/client/search-ui.js (resetAdvancedFilters).
 
-  function applyAdvancedFilters() {
-    const kw = document.getElementById('advKeywords').value.trim();
-    const selDurationBtn = document.querySelector('.duration-preset-btn.selected');
-    const minDuration = selDurationBtn ? selDurationBtn.getAttribute('data-min') : '';
-    const maxDuration = selDurationBtn ? selDurationBtn.getAttribute('data-max') : '';
-    const durationLabel = selDurationBtn && selDurationBtn.getAttribute('data-min') !== '' ? selDurationBtn.textContent : '';
+  // → src/client/search-ui.js (applyAdvancedFilters).
 
-    const selMediaBtn = document.querySelector('.media-preset-btn.selected');
-    const mediaType = selMediaBtn ? (selMediaBtn.getAttribute('data-media') || 'all') : 'all';
-    let mediaTypeLabel = '';
-    if (mediaType === 'audio') mediaTypeLabel = 'Audio Only';
-    else if (mediaType === 'article') mediaTypeLabel = 'Articles Only';
-
-    const yearSelect = document.getElementById('advYearSelect');
-    const year = yearSelect.value;
-    const yearLabel = yearSelect.selectedIndex > 0 ? yearSelect.options[yearSelect.selectedIndex].text : '';
-    const phonToggle = document.getElementById('advPhoneticsToggle');
-    const enablePhonetics = phonToggle ? phonToggle.checked : true;
-
-    // Custom date-time range (mutually exclusive with Year + quick presets:
-    // whichever is set wins, the others are cleared).
-    const fromDtEl = document.getElementById('advFromDateTime');
-    const toDtEl = document.getElementById('advToDateTime');
-    const fromDate = fromDtEl ? fromDtEl.value.trim() : '';
-    const toDate = toDtEl ? toDtEl.value.trim() : '';
-    let finalYear = year;
-    let finalYearLabel = yearLabel;
-    let dateQuick = activeAdvancedFilters.dateQuick || '';
-    let dateQuickLabel = activeAdvancedFilters.dateQuickLabel || '';
-    let dateRangeLabel = '';
-    function fmtDt(v) {
-      if (!v) return '…';
-      const parts = v.split('T');
-      return parts[0] + (parts[1] ? ' ' + parts[1] : '');
-    }
-    if (fromDate || toDate) {
-      finalYear = '';
-      finalYearLabel = '';
-      dateQuick = '';
-      dateQuickLabel = '';
-      dateRangeLabel = fmtDt(fromDate) + ' → ' + fmtDt(toDate);
-    } else if (finalYear) {
-      dateQuick = '';
-      dateQuickLabel = '';
-    }
-
-    activeAdvancedFilters = {
-      keywords: kw,
-      teachers: [...modalTempFilters.teachers],
-      categories: [...modalTempFilters.categories],
-      locations: [...modalTempFilters.locations],
-      series: [...modalTempFilters.series],
-      minDuration,
-      maxDuration,
-      durationLabel,
-      year: finalYear,
-      yearLabel: finalYearLabel,
-      fromDate,
-      toDate,
-      dateQuick,
-      dateQuickLabel,
-      dateRangeLabel,
-      sort: activeAdvancedFilters.sort === 'newest' || activeAdvancedFilters.sort === 'oldest' ? activeAdvancedFilters.sort : 'relevance',
-      mediaType,
-      mediaTypeLabel,
-      enablePhonetics
-    };
-
-    closeAdvancedModal();
-
-    // Keep search bar clean: only populate searchInput if actual keywords were entered
-    if (kw) {
-      searchInput.value = kw;
-    } else {
-      searchInput.value = '';
-    }
-
-    // Execute multi-criteria search
-    executeLiveSearch(kw, {
-      ...activeAdvancedFilters,
-      fromAdvancedModal: true
-    });
-  }
-
-  function renderActiveFilterPills() {
-    const bar = document.getElementById('activeFiltersBar');
-    if (!bar) return;
-
-    const pills = [];
-
-    // Teacher pills
-    (activeAdvancedFilters.teachers || []).forEach((t, idx) => {
-      pills.push('<span class="active-filter-pill">👤 ' + escapeHtml(t.name) + ' <button type="button" onclick="removeFilterItem(&quot;teachers&quot;, ' + idx + ')" title="Remove">✕</button></span>');
-    });
-
-    // Category pills
-    (activeAdvancedFilters.categories || []).forEach((c, idx) => {
-      pills.push('<span class="active-filter-pill">🏷️ ' + escapeHtml(c.name) + ' <button type="button" onclick="removeFilterItem(&quot;categories&quot;, ' + idx + ')" title="Remove">✕</button></span>');
-    });
-
-    // Location pills
-    (activeAdvancedFilters.locations || []).forEach((l, idx) => {
-      pills.push('<span class="active-filter-pill">📍 ' + escapeHtml(l.name) + ' <button type="button" onclick="removeFilterItem(&quot;locations&quot;, ' + idx + ')" title="Remove">✕</button></span>');
-    });
-
-    // Series pills
-    (activeAdvancedFilters.series || []).forEach((s, idx) => {
-      pills.push('<span class="active-filter-pill">📚 ' + escapeHtml(s.name) + ' <button type="button" onclick="removeFilterItem(&quot;series&quot;, ' + idx + ')" title="Remove">✕</button></span>');
-    });
-
-    // Duration pill
-    if (activeAdvancedFilters.minDuration || activeAdvancedFilters.maxDuration) {
-      pills.push('<span class="active-filter-pill">⏱ ' + escapeHtml(activeAdvancedFilters.durationLabel) + ' <button type="button" onclick="removeSingleFilter(&quot;duration&quot;)" title="Remove">✕</button></span>');
-    }
-
-    // Year pill
-    if (activeAdvancedFilters.year) {
-      pills.push('<span class="active-filter-pill">📅 ' + escapeHtml(activeAdvancedFilters.yearLabel || activeAdvancedFilters.year) + ' <button type="button" onclick="removeSingleFilter(&quot;year&quot;)" title="Remove">✕</button></span>');
-    }
-
-    // Date-range pill (quick preset label or custom from→to label)
-    if (activeAdvancedFilters.fromDate || activeAdvancedFilters.toDate) {
-      const dl = activeAdvancedFilters.dateQuickLabel || activeAdvancedFilters.dateRangeLabel ||
-        ((activeAdvancedFilters.fromDate || '…') + ' → ' + (activeAdvancedFilters.toDate || '…'));
-      pills.push('<span class="active-filter-pill">🗓️ ' + escapeHtml(dl) + ' <button type="button" onclick="removeSingleFilter(&quot;dateRange&quot;)" title="Remove">✕</button></span>');
-    }
-
-    // Media Format pill
-    if (activeAdvancedFilters.mediaType && activeAdvancedFilters.mediaType !== 'all') {
-      const icon = activeAdvancedFilters.mediaType === 'audio' ? '🎙️' : '📄';
-      const label = activeAdvancedFilters.mediaType === 'audio' ? 'Audio Only' : 'Articles Only';
-      pills.push('<span class="active-filter-pill">' + icon + ' ' + escapeHtml(label) + ' <button type="button" onclick="removeSingleFilter(&quot;mediaType&quot;)" title="Remove">✕</button></span>');
-    }
-
-    // Transliteration indicator badge in pills bar
-    if (activeAdvancedFilters.enablePhonetics === false) {
-      pills.push('<span class="active-filter-pill" style="background:rgba(239, 68, 68, 0.1); border-color:rgba(239, 68, 68, 0.3); color:#dc2626;">🔤 Exact Match (Phonetics Off) <button type="button" onclick="toggleFilterPhonetics(true)" title="Turn Phonetics Back On">✕</button></span>');
-    }
-
-    if (pills.length > 0) {
-      bar.innerHTML = '<span style="font-size:12px; font-weight:700; color:var(--text-muted);">Active Filters:</span> ' + pills.join('') + ' <button type="button" class="modal-reset-btn" style="padding:2px 8px; font-size:12px;" onclick="clearAllFilters()">Clear All</button>';
-      bar.style.display = 'flex';
-      const advBtn = document.getElementById('advancedSearchBtn');
-      if (advBtn) advBtn.classList.add('active');
-    } else {
-      bar.innerHTML = '';
-      bar.style.display = 'none';
-      const advBtn = document.getElementById('advancedSearchBtn');
-      if (advBtn) advBtn.classList.remove('active');
-    }
-    syncDateQuickChips();
-  }
+  // → src/client/search-ui.js (renderActiveFilterPills).
 
   function toggleFilterPhonetics(enable) {
     activeAdvancedFilters.enablePhonetics = Boolean(enable);
@@ -18208,16 +16929,7 @@ ${emitClientUnit(PLAYER_CHROME_SRC)}
     executeLiveSearch(activeAdvancedFilters.keywords || searchInput.value.trim(), { ...activeAdvancedFilters });
   }
 
-  function syncDateQuickChips() {
-    const cur = (activeAdvancedFilters && activeAdvancedFilters.dateQuick) || 'all';
-    document.querySelectorAll('.date-quick-chip[data-preset]').forEach(b => {
-      b.classList.toggle('selected', (b.dataset && b.dataset.preset) === cur);
-    });
-    const sort = (activeAdvancedFilters && activeAdvancedFilters.sort) || 'relevance';
-    document.querySelectorAll('.date-quick-chip[data-sort]').forEach(b => {
-      b.classList.toggle('selected', (b.dataset && b.dataset.sort) === sort);
-    });
-  }
+  // → src/client/search-ui.js (syncDateQuickChips).
 
   // Result sort: relevance (default) / newest-first / oldest-first.
   // Orthogonal to the date bounds above; the Recent rail only shows
@@ -18254,30 +16966,7 @@ ${emitClientUnit(PLAYER_CHROME_SRC)}
     executeLiveSearch(searchInput.value.trim(), {});
   }
 
-  function scrollToSearchResults() {
-    const resSection = document.getElementById('searchResultsSection');
-    if (!resSection) return;
-    if (resSection.style.display === 'none') {
-      resSection.style.display = 'block';
-    }
-    const whenRow = document.getElementById('dateQuickRow');
-    const targetEl = whenRow || resSection;
-
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        const header = document.getElementById('mainHeader');
-        const headerHeight = header ? header.offsetHeight : 52;
-        const rect = targetEl.getBoundingClientRect();
-        const currentScrollY = window.scrollY || window.pageYOffset || document.documentElement.scrollTop || 0;
-        // Align so the "When" line is the first thing visible at the top of the screen right below the fixed header
-        const targetY = currentScrollY + rect.top - headerHeight - 6;
-        window.scrollTo({
-          top: Math.max(0, Math.round(targetY)),
-          behavior: 'smooth'
-        });
-      });
-    });
-  }
+  // → src/client/search-ui.js (scrollToSearchResults).
   window.scrollToSearchResults = scrollToSearchResults;
 
   function handleHeroSlideClick(event, el) {
@@ -18400,309 +17089,9 @@ ${emitClientUnit(PLAYER_CHROME_SRC)}
   }
   window.handleHeroSlideClick = handleHeroSlideClick;
 
-  async function executeLiveSearch(query, extraParams = {}) {
-    currentSearchQuery = query;
-    currentFilterParams = extraParams;
-    currentSearchPage = 1;
-    currentRecentDocs = [];
-    recentNumFound = 0;
-    currentDidYouMean = [];
-    currentQueryResolution = null;
-    currentSpeakerViewCache = null;
-    currentLoadedDocsCount = 0;
-    totalSearchResults = 0;
-    isLoadingMore = false;
+  // → src/client/search-ui.js (executeLiveSearch).
 
-    // Minimize player if loaded so search results take center stage
-    if (hasAudio) {
-      minimizePlayer();
-    }
-    const moreSpeaker = document.getElementById('moreFromSpeakerSection');
-    if (moreSpeaker) moreSpeaker.style.display = 'none';
-    const moreCat = document.getElementById('moreFromCategorySection');
-    if (moreCat) moreCat.style.display = 'none';
-
-    // Show results container, hide collections
-    document.getElementById('collectionsSection').style.display = 'none';
-    const resSection = document.getElementById('searchResultsSection');
-    resSection.style.display = 'block';
-    if (!extraParams.skipScroll) {
-      scrollToSearchResults();
-    }
-
-    const spinner = document.getElementById('searchSpinner');
-    const grid = document.getElementById('searchResultsGrid');
-    const label = document.getElementById('searchResultsLabel');
-    const loadMoreBox = document.getElementById('loadMoreContainer');
-    const phoneticBanner = document.getElementById('phoneticNoticeBanner');
-
-    renderActiveFilterPills();
-
-    const displayLabel = extraParams.label || (query ? ('Searching for "' + query + '"...') : 'Filtering shiurim...');
-    label.textContent = displayLabel;
-    grid.innerHTML = '';
-    spinner.style.display = 'block';
-    loadMoreBox.style.display = 'none';
-    if (phoneticBanner) phoneticBanner.style.display = 'none';
-
-    // Update browser URL without reload (search + date bounds survive reload).
-    // Keep the loaded shiur in the path while listening: searching from
-    // /1179518?t=48 must yield /1179518?t=48&search=... (not /?search=...),
-    // so reload/share preserves the listening context. The server
-    // prefetches search results even when a shiur is loaded (see fetch
-    // handler), so the combined URL renders both.
-    // Freeze t FIRST so the snapshot below carries the exact position.
-    try { if (typeof updateUrlTimestamp === 'function') updateUrlTimestamp(true); } catch (e) {}
-    const newUrl = new URL(window.location.href);
-    if (typeof currentShiurId !== 'undefined' && currentShiurId) {
-      newUrl.pathname = '/' + String(currentShiurId);
-    } else {
-      newUrl.pathname = '/';
-    }
-    if (query) newUrl.searchParams.set('search', query);
-    else newUrl.searchParams.delete('search');
-    if (extraParams.fromDate) newUrl.searchParams.set('fromDate', extraParams.fromDate);
-    else newUrl.searchParams.delete('fromDate');
-    if (extraParams.toDate) newUrl.searchParams.set('toDate', extraParams.toDate);
-    else newUrl.searchParams.delete('toDate');
-    if (extraParams.dateQuick) newUrl.searchParams.set('dateQuick', extraParams.dateQuick);
-    else newUrl.searchParams.delete('dateQuick');
-    if (extraParams.sort && extraParams.sort !== 'relevance') newUrl.searchParams.set('sort', extraParams.sort);
-    else newUrl.searchParams.delete('sort');
-    newUrl.searchParams.delete('shiurId');
-    newUrl.searchParams.delete('id');
-    newUrl.searchParams.delete('restored');
-    // Shiur search is its own view: drop playlist deep-link keys (one view
-    // per URL; in-memory playlist state is untouched and re-syncs on return).
-    try { clearPlaylistUrlKeys(newUrl); } catch (e) {}
-    history.pushState({ search: query, ...extraParams }, '', newUrl.toString());
-
-    if (currentSearchAbort) {
-      currentSearchAbort.abort();
-    }
-    currentSearchAbort = new AbortController();
-
-    let apiUrl = '/api/search?q=' + encodeURIComponent(query || '') + '&start=1';
-
-    // Build multi-valued teacher, category, and location params
-    const teachersList = extraParams.teachers || (extraParams.teacherId ? [{ id: extraParams.teacherId }] : []);
-    teachersList.forEach(t => {
-      apiUrl += '&teacherId=' + encodeURIComponent(t.id);
-    });
-
-    const categoriesList = extraParams.categories || (extraParams.subCategoryId ? [{ id: extraParams.subCategoryId }] : []);
-    categoriesList.forEach(c => {
-      apiUrl += '&subCategoryId=' + encodeURIComponent(c.id);
-    });
-
-    const locationsList = extraParams.locations || (extraParams.locationId ? [{ id: extraParams.locationId }] : []);
-    locationsList.forEach(l => {
-      apiUrl += '&locationId=' + encodeURIComponent(l.id);
-    });
-
-    const seriesList = extraParams.series || (extraParams.seriesId ? [{ id: extraParams.seriesId }] : []);
-    seriesList.forEach(s => {
-      apiUrl += '&seriesId=' + encodeURIComponent(s.id);
-    });
-
-    if (extraParams.minDuration) apiUrl += '&minDuration=' + encodeURIComponent(extraParams.minDuration);
-    if (extraParams.maxDuration) apiUrl += '&maxDuration=' + encodeURIComponent(extraParams.maxDuration);
-    if (extraParams.year) apiUrl += '&year=' + encodeURIComponent(extraParams.year);
-    if (extraParams.fromDate) apiUrl += '&fromDate=' + encodeURIComponent(extraParams.fromDate);
-    if (extraParams.toDate) apiUrl += '&toDate=' + encodeURIComponent(extraParams.toDate);
-    if (extraParams.sort && extraParams.sort !== 'relevance') apiUrl += '&sort=' + encodeURIComponent(extraParams.sort);
-    if (extraParams.mediaType && extraParams.mediaType !== 'all') {
-      apiUrl += '&mediaType=' + encodeURIComponent(extraParams.mediaType);
-    }
-    if (extraParams.enablePhonetics === false || (extraParams.enablePhonetics === undefined && useClassicSearch)) {
-      apiUrl += '&exact=1';
-    }
-
-    try {
-      const res = await fetch(apiUrl, {
-        signal: currentSearchAbort.signal
-      });
-      const data = await res.json();
-      spinner.style.display = 'none';
-
-      const docs = data?.response?.docs || [];
-      // Relevance pages are the paginated unit (full 30); the Recent rail
-      // sits on top and is counted separately via recentNumFound.
-      currentRecentDocs = data?.response?.recentDocs || [];
-      totalSearchResults = data?.response?.numFound || docs.length;
-      currentLoadedDocsCount = docs.length;
-      recentNumFound = data?.response?.recentNumFound || 0;
-      currentDidYouMean = data?.didYouMean || [];
-      currentQueryResolution = data?.queryResolution || null;
-
-      // Handle Phonetic Expansion Notice
-      if (data?.phoneticExpansion && !useClassicSearch) {
-        currentPhoneticTokens = data.phoneticExpansion.tokens || [];
-        const original = data.phoneticExpansion.original;
-        if (phoneticBanner && currentPhoneticTokens.length > 1) {
-          const tagsHtml = currentPhoneticTokens.slice(0, 8).map(t => '<span class="phonetic-tag">' + escapeHtml(t) + '</span>').join('');
-          phoneticBanner.innerHTML = '<div><span>✨ Phonetic Equivalence included synonyms:</span> <div class="phonetic-notice-tags">' + tagsHtml + '</div></div>' +
-            '<span style="font-size:11px; opacity:0.8;">Ashkenazic &amp; Sephardic variations searched</span>';
-          phoneticBanner.style.display = 'flex';
-        }
-      } else {
-        currentPhoneticTokens = [];
-        if (phoneticBanner) phoneticBanner.style.display = 'none';
-      }
-
-      const resultsTitle = extraParams.label
-        ? (extraParams.label + ' (' + currentLoadedDocsCount + (totalSearchResults ? ' of ' + totalSearchResults.toLocaleString() : '') + ')')
-        : ('Showing ' + currentLoadedDocsCount + (totalSearchResults ? ' of ' + totalSearchResults.toLocaleString() : '') + ' results' + (query ? ' for "' + query + '"' : ''));
-      label.textContent = resultsTitle;
-
-      if (docs.length === 0 && currentRecentDocs.length === 0) {
-        currentSearchDocs = [];
-        currentDidYouMean = currentDidYouMean.length > 0 ? currentDidYouMean : clientFuzzySuggest(query, 5);
-        let emptyHtml = '<div style="padding: 30px; text-align: center; color: var(--text-muted); grid-column: 1/-1;">No shiurim found matching these criteria. Try adjusting your filters or search keywords.</div>';
-        if (currentDidYouMean.length > 0) {
-          emptyHtml = renderDidYouMeanStrip(currentDidYouMean) + emptyHtml;
-        }
-        if (currentQueryResolution && currentQueryResolution.display) {
-          emptyHtml = '<div class="did-you-mean-strip resolution-note"><span>🔍 Showing results for &quot;' +
-            escapeHtml(currentQueryResolution.display) + '&quot; — you searched &quot;' +
-            escapeHtml(currentQueryResolution.original) + '&quot;.</span></div>' + emptyHtml;
-        }
-        grid.innerHTML = emptyHtml;
-        loadMoreBox.style.display = 'none';
-        if (!extraParams.skipScroll) {
-          scrollToSearchResults();
-        }
-        return;
-      }
-      // Keep the server's weak-hit suggestions: renderCurrentSearchResults
-      // appends the strip BELOW the list when 1+ weak hits exist (§5.4).
-
-      currentSearchDocs = docs;
-      renderCurrentSearchResults();
-      if (!extraParams.skipScroll) {
-        scrollToSearchResults();
-      }
-
-      // Setup Load More button
-      const totalInfo = document.getElementById('searchTotalInfo');
-      const btn = document.getElementById('loadMoreBtn');
-      const btnText = document.getElementById('loadMoreBtnText');
-      const loadSpinner = document.getElementById('loadMoreSpinner');
-
-      btn.disabled = false;
-      btn.style.display = 'inline-flex';
-      btnText.textContent = '🔽 Load More Results';
-      loadSpinner.style.display = 'none';
-
-      if (currentLoadedDocsCount < totalSearchResults) {
-        loadMoreBox.style.display = 'block';
-        totalInfo.textContent = 'Showing ' + currentLoadedDocsCount + ' of ' + totalSearchResults.toLocaleString() + ' shiurim';
-      } else {
-        loadMoreBox.style.display = 'none';
-      }
-    } catch (err) {
-      if (err.name === 'AbortError') return;
-      spinner.style.display = 'none';
-      label.textContent = 'Error loading results';
-      grid.innerHTML = '<div style="padding: 20px; text-align: center; color: #c0392b; grid-column: 1/-1;">Failed to load search results. Please try again.</div>';
-      loadMoreBox.style.display = 'none';
-    }
-  }
-
-  async function loadMoreResults() {
-    if (isLoadingMore || currentLoadedDocsCount >= totalSearchResults) return;
-    isLoadingMore = true;
-
-    const btn = document.getElementById('loadMoreBtn');
-    const btnText = document.getElementById('loadMoreBtnText');
-    const spinner = document.getElementById('loadMoreSpinner');
-    const totalInfo = document.getElementById('searchTotalInfo');
-
-    btn.disabled = true;
-    btnText.textContent = 'Loading more shiurim...';
-    spinner.style.display = 'inline-block';
-
-    const nextPage = currentSearchPage + 1;
-
-    // Chronological sorts paginate by ITEM offset (the date window treats
-    // start as 1-based offset, not page); relevance paginates by page.
-    const chronoMore = currentFilterParams.sort === 'newest' || currentFilterParams.sort === 'oldest';
-    let apiUrl = '/api/search?q=' + encodeURIComponent(currentSearchQuery || '');
-    if (chronoMore) {
-      apiUrl += '&sort=' + encodeURIComponent(currentFilterParams.sort) + '&start=' + (currentLoadedDocsCount + 1) + '&rows=30';
-    } else {
-      apiUrl += '&page=' + nextPage + '&start=' + nextPage;
-    }
-
-    const teachersList = currentFilterParams.teachers || (currentFilterParams.teacherId ? [{ id: currentFilterParams.teacherId }] : []);
-    teachersList.forEach(t => {
-      apiUrl += '&teacherId=' + encodeURIComponent(t.id);
-    });
-
-    const categoriesList = currentFilterParams.categories || (currentFilterParams.subCategoryId ? [{ id: currentFilterParams.subCategoryId }] : []);
-    categoriesList.forEach(c => {
-      apiUrl += '&subCategoryId=' + encodeURIComponent(c.id);
-    });
-
-    const locationsList = currentFilterParams.locations || (currentFilterParams.locationId ? [{ id: currentFilterParams.locationId }] : []);
-    locationsList.forEach(l => {
-      apiUrl += '&locationId=' + encodeURIComponent(l.id);
-    });
-
-    const seriesList = currentFilterParams.series || (currentFilterParams.seriesId ? [{ id: currentFilterParams.seriesId }] : []);
-    seriesList.forEach(s => {
-      apiUrl += '&seriesId=' + encodeURIComponent(s.id);
-    });
-
-    if (currentFilterParams.minDuration) apiUrl += '&minDuration=' + encodeURIComponent(currentFilterParams.minDuration);
-    if (currentFilterParams.maxDuration) apiUrl += '&maxDuration=' + encodeURIComponent(currentFilterParams.maxDuration);
-    if (currentFilterParams.year) apiUrl += '&year=' + encodeURIComponent(currentFilterParams.year);
-    if (currentFilterParams.fromDate) apiUrl += '&fromDate=' + encodeURIComponent(currentFilterParams.fromDate);
-    if (currentFilterParams.toDate) apiUrl += '&toDate=' + encodeURIComponent(currentFilterParams.toDate);
-    if (currentFilterParams.sort && currentFilterParams.sort !== 'relevance') apiUrl += '&sort=' + encodeURIComponent(currentFilterParams.sort);
-    if (currentFilterParams.mediaType && currentFilterParams.mediaType !== 'all') {
-      apiUrl += '&mediaType=' + encodeURIComponent(currentFilterParams.mediaType);
-    }
-    if (currentFilterParams.enablePhonetics === false || (currentFilterParams.enablePhonetics === undefined && useClassicSearch)) {
-      apiUrl += '&exact=1';
-    }
-
-    try {
-      const res = await fetch(apiUrl);
-      const data = await res.json();
-      const newDocs = data?.response?.docs || [];
-
-      if (newDocs.length > 0) {
-        currentSearchPage = nextPage;
-        currentLoadedDocsCount += newDocs.length;
-        currentSearchDocs = currentSearchDocs.concat(newDocs);
-        if (currentSpeakerViewCache) currentSpeakerViewCache.rest = currentSpeakerViewCache.rest.concat(newDocs);
-        renderCurrentSearchResults();
-
-        const resultsTitle = currentFilterParams.label
-          ? (currentFilterParams.label + ' (' + currentLoadedDocsCount + (totalSearchResults ? ' of ' + totalSearchResults.toLocaleString() : '') + ')')
-          : ('Showing ' + currentLoadedDocsCount + ' of ' + totalSearchResults.toLocaleString() + ' results for "' + currentSearchQuery + '"');
-        document.getElementById('searchResultsLabel').textContent = resultsTitle;
-      }
-
-      if (currentLoadedDocsCount >= totalSearchResults || newDocs.length === 0) {
-        btn.style.display = 'none';
-        totalInfo.textContent = 'All ' + currentLoadedDocsCount.toLocaleString() + ' shiurim loaded!';
-      } else {
-        totalInfo.textContent = 'Showing ' + currentLoadedDocsCount + ' of ' + totalSearchResults.toLocaleString() + ' shiurim';
-        btn.disabled = false;
-        btnText.textContent = '🔽 Load More Results';
-        spinner.style.display = 'none';
-      }
-    } catch (err) {
-      console.error('Failed to load more results:', err);
-      btn.disabled = false;
-      btnText.textContent = '🔽 Load More Results';
-      spinner.style.display = 'none';
-    } finally {
-      isLoadingMore = false;
-    }
-  }
+  // → src/client/search-ui.js (loadMoreResults).
 
   // Keyboard shortcut: Escape closes modal and search preview
   window.addEventListener('keydown', (e) => {
@@ -18742,83 +17131,7 @@ ${emitClientUnit(PLAYER_CHROME_SRC)}
     t.click();
   });
 
-  function clearSearch() {
-    closeSearchPreview();
-    searchInput.value = '';
-    clearSearchBtn.style.display = 'none';
-    document.getElementById('searchResultsSection').style.display = 'none';
-    document.getElementById('loadMoreContainer').style.display = 'none';
-    const bioBanner = document.getElementById('bioBanner');
-    if (bioBanner) bioBanner.style.display = 'none';
-    const bar = document.getElementById('activeFiltersBar');
-    if (bar) { bar.innerHTML = ''; bar.style.display = 'none'; }
-    const pNotice = document.getElementById('phoneticNoticeBanner');
-    if (pNotice) pNotice.style.display = 'none';
-
-    currentSearchDocs = [];
-    currentRecentDocs = [];
-    recentNumFound = 0;
-    currentDidYouMean = [];
-    currentQueryResolution = null;
-    currentSpeakerViewCache = null;
-    currentPhoneticTokens = [];
-    currentSearchPage = 1;
-    showMatchReasons = false;
-    useClassicSearch = false;
-    stackSeriesEnabled = true;
-    const matchToggle = document.getElementById('toggleMatchExplain');
-    if (matchToggle) matchToggle.checked = false;
-    const classicToggle = document.getElementById('toggleClassicSearch');
-    if (classicToggle) classicToggle.checked = false;
-    const stackToggle = document.getElementById('toggleStackSeries');
-    if (stackToggle) stackToggle.checked = true;
-    const resGrid = document.getElementById('searchResultsGrid');
-    if (resGrid) resGrid.classList.remove('explain-matches-active');
-
-    // Reset all advanced filters so they don't silently persist
-    activeAdvancedFilters = {
-      keywords: '',
-      teachers: [],
-      categories: [],
-      locations: [],
-      series: [],
-      minDuration: '',
-      maxDuration: '',
-      durationLabel: '',
-      year: '',
-      yearLabel: '',
-      fromDate: '',
-      toDate: '',
-      dateQuick: '',
-      dateQuickLabel: '',
-      dateRangeLabel: '',
-      mediaType: 'all',
-      mediaTypeLabel: '',
-      enablePhonetics: true
-    };
-    syncDateQuickChips();
-    const advBtn = document.getElementById('advancedSearchBtn');
-    if (advBtn) advBtn.classList.remove('active');
-
-    // If has audio and was on a shiur page, re-expand player and show recommendations
-    const playerCard = document.getElementById('playerCard');
-    if (hasAudio && currentShiurId && playerCard) {
-      expandPlayer();
-      const moreSpeaker = document.getElementById('moreFromSpeakerSection');
-      if (moreSpeaker) moreSpeaker.style.display = 'block';
-      const moreCat = document.getElementById('moreFromCategorySection');
-      if (moreCat) moreCat.style.display = 'block';
-    } else {
-      document.getElementById('collectionsSection').style.display = 'block';
-    }
-
-    const newUrl = new URL(window.location.href);
-    newUrl.searchParams.delete('search');
-    newUrl.searchParams.delete('q');
-    newUrl.searchParams.delete('exact');
-    newUrl.searchParams.delete('classic');
-    history.pushState({}, '', newUrl.toString());
-  }
+  // → src/client/search-ui.js (clearSearch).
 
   function renderDocToCard(d, options = {}) {
     const id = d.shiurid || d.shiurID || d.id || '';

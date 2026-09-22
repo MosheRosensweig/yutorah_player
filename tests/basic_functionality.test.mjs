@@ -21,9 +21,11 @@ const mockCtx = {
 let _unitSrcCache = null;
 function clientAllSrc(workerSrc) {
   if (!_unitSrcCache) {
-    _unitSrcCache = fs.readFileSync(new URL('../src/client/player-chrome.js.txt', import.meta.url), 'utf8');
+    _unitSrcCache = workerSrc + '\n' +
+      fs.readFileSync(new URL('../src/client/player-chrome.js.txt', import.meta.url), 'utf8') + '\n' +
+      fs.readFileSync(new URL('../src/client/search-ui.js.txt', import.meta.url), 'utf8');
   }
-  return workerSrc + '\n' + _unitSrcCache;
+  return _unitSrcCache;
 }
 
 async function testHomepage() {
@@ -82,6 +84,21 @@ async function testHomepage() {
   // AFTER const audio (parse-time TDZ otherwise kills the whole block).
   assert.ok(!/^(audio|window)\.addEventListener/m.test(clientUnitSrc), 'unit must not register listeners at top level');
   assert.ok(!clientUnitSrc.includes('addEventListener'), 'unit must contain zero listener registrations');
+  // SearchUI unit: same hygiene + route + emission order.
+  const searchUnitSrc = fs.readFileSync(new URL('../src/client/search-ui.js.txt', import.meta.url), 'utf8');
+  assert.ok(!searchUnitSrc.includes('`'), 'search unit must not contain backticks');
+  assert.ok(!searchUnitSrc.includes('${'), 'search unit must not contain ${');
+  assert.ok(!searchUnitSrc.includes('</script'), 'search unit must not contain a closing script tag');
+  assert.ok(!/^  (audio|window|document)\.addEventListener/m.test(searchUnitSrc), 'search unit must not register listeners at top level');
+  const searchRouteRes = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/js/search-ui.js'), mockEnv, mockCtx);
+  assert.equal(searchRouteRes.status, 200, '/js/search-ui.js should return 200 OK');
+  assert.ok(html.indexOf('SearchUI unit') !== -1 && html.indexOf('SearchUI unit') < html.indexOf('function playShiurById'), 'search unit script must precede the app script');
+  // Emission fidelity: served inline blocks must be byte-identical to the
+  // unit sources (catches double-escaping or truncation regressions).
+  for (const [label, file] of [['player-chrome', '../src/client/player-chrome.js.txt'], ['search-ui', '../src/client/search-ui.js.txt']]) {
+    const srcText = fs.readFileSync(new URL(file, import.meta.url), 'utf8');
+    assert.ok(html.includes(srcText), label + ' must be emitted byte-identical');
+  }
   const corpus = ['', null, 0, 'plain', '<a href="x">A&B</a>', '"double" and \'single\'', 'a<b>c&d"e\'f', 'a/b?c=d&e=f', 'line1\nline2', 'שלום & <world>'];
   const fakeWindow = {};
   const bundleFn = new Function('window', utilsJs + '; return window.YTUtils.escapeHtml;')(fakeWindow);
@@ -1466,7 +1483,7 @@ async function testCardPlayStatesAndMiniPop() {
   assert.ok(workerSrc.includes('function cardPlayBadgeHtml(id, isArticle, label, onclickJs, cls)'), 'badges must paint current state at render time (F4/G1)');
   assert.ok(workerSrc.includes("cardPlayBadgeHtml(id, isArticle, '▶ Play', badgePlay)"), 'search cards must use the state-aware badge (F4)');
   assert.ok(workerSrc.includes("cardPlayBadgeHtml(item.id, isDoc, '▶ Resume'"), 'history cards must use the state-aware badge (F4)');
-  assert.ok(workerSrc.includes("newUrl.pathname = '/' + String(currentShiurId);"), 'search must keep the loaded shiur path (G2)');
+  assert.ok(clientAllSrc(workerSrc).includes("newUrl.pathname = '/' + String(currentShiurId);"), 'search must keep the loaded shiur path (G2)');
   assert.ok(workerSrc.includes('if (!isDafRoute && (searchQuery || hasFilterParams))'), 'server must prefetch search even with a shiur loaded (G2)');
   assert.ok(workerSrc.includes("'series-sub-play')"), 'series drawer badges must use the state-aware badge (G1)');
   assert.ok(workerSrc.includes('.series-sub-play.is-playing'), 'series drawer badges need playing-state styling (G1)');
@@ -1498,7 +1515,7 @@ async function testCardPlayStatesAndMiniPop() {
   assert.ok(workerSrc.includes('data-page-mode'), 'drawers must carry paging state (H1c)');
   assert.ok(workerSrc.includes('Load more'), 'drawers must offer to load more (H1c)');
   assert.ok(workerSrc.includes('function listeningUrlPath()'), 'home/brand must preserve the loaded track URL (H2)');
-  assert.ok(workerSrc.includes("newUrl.searchParams.delete('restored')"), 'search must drop the one-shot flag (H2/G4)');
+  assert.ok(clientAllSrc(workerSrc).includes("newUrl.searchParams.delete('restored')"), 'search must drop the one-shot flag (H2/G4)');
   assert.ok(workerSrc.includes('yutorah_last_session'), 'app must snapshot the loaded track on hide/unload (G4)');
   assert.ok(clientAllSrc(workerSrc).includes('function saveLastSession()') && clientAllSrc(workerSrc).includes('function clearLastSession()'), 'session save/clear helpers must exist (G4)');
   assert.ok(workerSrc.includes('Session restore: reopen where you left off'), 'bare launches must restore the snapshot paused (G4)');
