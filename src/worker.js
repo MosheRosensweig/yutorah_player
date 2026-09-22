@@ -27,6 +27,8 @@ import CHANGELOG from './changelog.json' with { type: 'json' };
 // served by the /js/yt-utils.js route below).
 import { escapeHtml } from './utils/html.mjs';
 import { getNowInNewYork, parseLocalDate, formatShiurDate, isShiurNew } from './utils/dates.mjs';
+import { formatDuration, formatTime } from './utils/format.mjs';
+import { DAF_MASECHTOT, DAF_CYCLE_DAYS, DAF_ANCHOR_UTC, dafRefForIndexUTC, dafIndexForRefUTC, dafValidDateISO } from './utils/daf.mjs';
 
 // Safe JSON embed for <script> contexts: neutralizes </script> breakouts.
 function jsEmbed(val) {
@@ -2197,12 +2199,16 @@ function handlePwaRoutes(request, url) {
       'var parseLocalDate = ' + parseLocalDate.toString() + ';\n' +
       'var formatShiurDate = ' + formatShiurDate.toString() + ';\n' +
       'var isShiurNew = ' + isShiurNew.toString() + ';\n' +
+      'var formatDuration = ' + formatDuration.toString() + ';\n' +
+      'var formatTime = ' + formatTime.toString() + ';\n' +
       'window.YTUtils = window.YTUtils || {};\n' +
       'window.YTUtils.escapeHtml = escapeHtml;\n' +
       'window.YTUtils.getNowInNewYork = getNowInNewYork;\n' +
       'window.YTUtils.parseLocalDate = parseLocalDate;\n' +
       'window.YTUtils.formatShiurDate = formatShiurDate;\n' +
       'window.YTUtils.isShiurNew = isShiurNew;\n' +
+      'window.YTUtils.formatDuration = formatDuration;\n' +
+      'window.YTUtils.formatTime = formatTime;\n' +
       '})();\n';
     return new Response(body, {
       headers: {
@@ -2886,53 +2892,8 @@ export default {
   }
 };
 
-function formatDuration(lengthStr) {
-  if (!lengthStr) return '';
-  const s = String(lengthStr).trim();
-  if (!s) return '';
-  if (s.includes(':')) {
-    const parts = s.split(':');
-    if (parts.length === 2) {
-      const m = parseInt(parts[0], 10);
-      if (!isNaN(m)) {
-        if (m >= 60) {
-          const h = Math.floor(m / 60);
-          const remM = m % 60;
-          return remM > 0 ? `${h}h ${remM}m` : `${h}h`;
-        }
-        return `${m} min`;
-      }
-    } else if (parts.length === 3) {
-      const h = parseInt(parts[0], 10);
-      const m = parseInt(parts[1], 10);
-      if (!isNaN(h) && !isNaN(m)) {
-        if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`;
-        return `${m} min`;
-      }
-    }
-  }
-  const hm = s.match(/(\d+)\s*h(?:r)?(?:\s*(\d+)\s*m(?:in)?)?/i);
-  if (hm) {
-    const h = parseInt(hm[1], 10);
-    const m = hm[2] ? parseInt(hm[2], 10) : 0;
-    if (m > 0) return `${h}h ${m}m`;
-    return `${h}h`;
-  }
-  const mm = s.match(/(\d+)\s*min/i);
-  if (mm) {
-    return `${parseInt(mm[1], 10)} min`;
-  }
-  if (/^\d+$/.test(s)) {
-    const totalM = parseInt(s, 10);
-    if (totalM >= 60) {
-      const h = Math.floor(totalM / 60);
-      const remM = totalM % 60;
-      return remM > 0 ? `${h}h ${remM}m` : `${h}h`;
-    }
-    return `${totalM} min`;
-  }
-  return s;
-}
+// formatDuration now lives in src/utils/format.mjs (imported at top).
+
 
 // Date helpers now live in src/utils/dates.mjs (imported at top).
 function formatDate(dateStr) {
@@ -5159,56 +5120,8 @@ const DEV_PUBLIC_SEEDS = [
 // Cycle math verified: 36 masechtot (no Shekalim), 2711 dafim, anchor
 // 2019-12-28 = Berachos 2 (matches Sefaria + dafyomi.org live).
 // ==========================================================================
-const DAF_MASECHTOT = [
-  ['Berachos', 64], ['Shabbos', 157], ['Eruvin', 105], ['Pesachim', 121],
-  ['Yoma', 88], ['Sukkah', 56], ['Beitzah', 40], ['Rosh Hashanah', 35],
-  ['Taanis', 31], ['Megillah', 32], ['Moed Katan', 29], ['Chagigah', 27],
-  ['Yevamos', 122], ['Kesubos', 112], ['Nedarim', 91], ['Nazir', 66],
-  ['Sotah', 49], ['Gittin', 90], ['Kiddushin', 82], ['Bava Kamma', 119],
-  ['Bava Metzia', 119], ['Bava Basra', 176], ['Sanhedrin', 113], ['Makkos', 24],
-  ['Shevuos', 49], ['Avodah Zarah', 76], ['Horayos', 14], ['Zevachim', 120],
-  ['Menachos', 110], ['Chullin', 142], ['Bechoros', 61], ['Arachin', 34],
-  ['Temurah', 34], ['Kerisos', 28], ['Meilah', 22], ['Niddah', 73]
-];
-const DAF_CYCLE_DAYS = 2711;
-const DAF_ANCHOR_UTC = Date.UTC(2019, 11, 28); // cycle-14 day 0 = Berachos 2
-// Server-side mirror of the client cycle math (used to validate ?m=&d=&date=).
-function dafIndexForDateUTC(y, m, d) {
-  const days = Math.floor((Date.UTC(y, m - 1, d) - DAF_ANCHOR_UTC) / 86400000);
-  return ((days % DAF_CYCLE_DAYS) + DAF_CYCLE_DAYS) % DAF_CYCLE_DAYS;
-}
-function dafRefForIndexUTC(idx) {
-  let rest = idx;
-  for (const pair of DAF_MASECHTOT) {
-    if (rest < pair[1]) return { masechta: pair[0], daf: rest + 2, count: pair[1] };
-    rest -= pair[1];
-  }
-  return { masechta: 'Berachos', daf: 2, count: 64 };
-}
-function dafNormMasechta(s) {
-  return String(s || '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
-}
-function dafIndexForRefUTC(masechta, daf) {
-  let acc = 0;
-  const want = dafNormMasechta(masechta);
-  for (const pair of DAF_MASECHTOT) {
-    if (pair[0].toLowerCase() === want) {
-      const n = parseInt(daf, 10);
-      if (!isNaN(n) && n >= 2 && n <= pair[1] + 1) return acc + (n - 2);
-      return -1;
-    }
-    acc += pair[1];
-  }
-  return -1;
-}
-function dafValidDateISO(s) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || ''));
-  if (!m) return false;
-  const y = +m[1], mo = +m[2], d = +m[3];
-  if (mo < 1 || mo > 12 || d < 1 || d > 31) return false;
-  const dt = new Date(Date.UTC(y, mo - 1, d));
-  return dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d;
-}
+// Daf cycle math now lives in src/utils/daf.mjs (imported at top).
+// The fragment template below embeds its constants via ${}.
 function dafImageMasechtaName(masechta) {
   const names = {
     'berachos': 'Berachot',
@@ -5578,8 +5491,8 @@ function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', in
   'use strict';
   var MASECHTOT = ${JSON.stringify(DAF_MASECHTOT.map(p => p[0]))};
   var DAF_COUNTS = ${JSON.stringify(DAF_MASECHTOT.map(p => p[1]))};
-  var CYCLE_DAYS = 2711;
-  var ANCHOR_UTC = Date.UTC(2019, 11, 28); // cycle-14 day 0 = Berachos 2
+  var CYCLE_DAYS = ${DAF_CYCLE_DAYS};
+  var ANCHOR_UTC = ${DAF_ANCHOR_UTC}; // cycle-14 day 0 = Berachos 2
   var DAY_MS = 86400000;
   var initialShiurId = ${JSON.stringify(String(initShiurId || ''))};
 
@@ -5818,6 +5731,10 @@ function renderDafPage({ themeMode = 'dark', initMasechta = '', initDaf = '', in
     for (var i = 0; i < MASECHTOT.length; i++) if (MASECHTOT[i] === m) return DAF_COUNTS[i];
     return 64;
   }
+  // REFACTOR FOLLOW-UP (Phase 1d deferred): a second indexForRef shadows
+  // the one above via hoisting — only this normalized copy ever runs.
+  // Unify both against src/utils/daf.mjs (dafIndexForRefUTC) when the daf
+  // page loads the YTUtils bundle.
   function indexForRef(m, d) {
     var acc = 0;
     var want = normMasechta(m);
@@ -13565,7 +13482,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   let autocompleteCache = null;
   let autocompleteData = null;
-  function formatDuration(lengthStr) {
+
+
+  // Duration formatters come from window.YTUtils (src/utils/format.mjs).
+  const formatDuration = (window.YTUtils && window.YTUtils.formatDuration) || function(lengthStr) {
     if (!lengthStr) return '';
     const s = String(lengthStr).trim();
     if (!s) return '';
@@ -13598,9 +13518,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       return h + 'h';
     }
     const mm = s.match(/(\d+)\s*min/i);
-    if (mm) {
-      return parseInt(mm[1], 10) + ' min';
-    }
+    if (mm) return parseInt(mm[1], 10) + ' min';
     if (/^\d+$/.test(s)) {
       const totalM = parseInt(s, 10);
       if (totalM >= 60) {
@@ -13611,8 +13529,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       return totalM + ' min';
     }
     return s;
-  }
-
+  }; // fallback:formatDuration
   // Date helpers come from window.YTUtils (single source: src/utils/dates.mjs).
   // Inline fallbacks keep offline-cached pages working if the bundle is
   // ever missing (e.g. aggressive blockers); behavior pinned by tests.
@@ -14614,7 +14531,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     return 0;
   }
 
-  function formatTime(sec) {
+
+
+  // formatTime comes from window.YTUtils (single source: src/utils/format.mjs).
+  const formatTime = (window.YTUtils && window.YTUtils.formatTime) || function(sec) {
     if (!sec || isNaN(sec)) return '0:00';
     const s = Math.floor(sec);
     const h = Math.floor(s / 3600);
@@ -14622,8 +14542,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const seconds = s % 60;
     if (h > 0) return h + ':' + m.toString().padStart(2, '0') + ':' + seconds.toString().padStart(2, '0');
     return m + ':' + seconds.toString().padStart(2, '0');
-  }
-
+  }; // fallback:formatTime
   // Handle Search input
   const searchInput = document.getElementById('searchInput');
   const clearSearchBtn = document.getElementById('clearSearchBtn');

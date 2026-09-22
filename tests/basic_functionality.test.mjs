@@ -5,6 +5,8 @@ import fs from 'node:fs';
 import worker from '../src/worker.js';
 import { escapeHtml as serverEscapeHtml } from '../src/utils/html.mjs';
 import { getNowInNewYork as serverNowNY, parseLocalDate as serverParseDate, formatShiurDate as serverFormatDate, isShiurNew as serverIsNew } from '../src/utils/dates.mjs';
+import { formatDuration as serverFormatDuration, formatTime as serverFormatTime } from '../src/utils/format.mjs';
+import { DAF_MASECHTOT, DAF_CYCLE_DAYS, dafIndexForDateUTC, dafRefForIndexUTC, dafIndexForRefUTC, dafValidDateISO } from '../src/utils/daf.mjs';
 
 console.log('🧪 Running Basic Functionality & Article Viewer Automated Regression Tests...\n');
 
@@ -81,7 +83,8 @@ async function testHomepage() {
   assert.equal(aloneWindow.YTUtils.isShiurNew('2020-01-15'), serverIsNew('2020-01-15'), 'standalone bundle must evaluate newness without host bindings');
   // One shared eval scope mirrors the browser (bare sibling references
   // resolve exactly like the inline classic script scope).
-  const dateNames = ['getNowInNewYork', 'parseLocalDate', 'formatShiurDate', 'isShiurNew'];
+  const dateNames = ['getNowInNewYork', 'parseLocalDate', 'formatShiurDate', 'isShiurNew', 'formatDuration', 'formatTime'];
+  const serverFns = { getNowInNewYork: serverNowNY, parseLocalDate: serverParseDate, formatShiurDate: serverFormatDate, isShiurNew: serverIsNew, formatDuration: serverFormatDuration, formatTime: serverFormatTime };
   let fbSrc = '';
   for (const name of dateNames) {
     const marker = '// fallback:' + name;
@@ -97,11 +100,18 @@ async function testHomepage() {
     'const parseLocalDate = window.YTUtils.parseLocalDate;\n' +
     'const formatShiurDate = window.YTUtils.formatShiurDate;\n' +
     'const isShiurNew = window.YTUtils.isShiurNew;\n' +
+    'const formatDuration = window.YTUtils.formatDuration;\n' +
+    'const formatTime = window.YTUtils.formatTime;\n' +
     'const FB = {};\n' + fbSrc +
-    'return { bundle: { getNowInNewYork, parseLocalDate, formatShiurDate, isShiurNew }, fallback: FB };'
+    'return { bundle: { getNowInNewYork, parseLocalDate, formatShiurDate, isShiurNew, formatDuration, formatTime }, fallback: FB };'
   )(fakeWindow);
   const bundleDates = dateScope.bundle;
   const fallbackDates = dateScope.fallback;
+  // Standalone bundle check (no sibling bindings): catches IIFE regressions.
+  const aloneWindow2 = {};
+  new Function('window', utilsJs)(aloneWindow2);
+  assert.equal(aloneWindow2.YTUtils.formatDuration('90'), serverFns.formatDuration('90'), 'standalone bundle formatDuration must work');
+  assert.equal(aloneWindow2.YTUtils.formatTime(3661), serverFns.formatTime(3661), 'standalone bundle formatTime must work');
   const fmt = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   const today = new Date();
   const yesterday = new Date(today.getTime() - 86400000);
@@ -128,6 +138,17 @@ async function testHomepage() {
     assert.equal(fallbackDates.formatShiurDate(sample), serverFormatDate(sample), `fallback formatShiurDate mismatch on ${JSON.stringify(sample)}`);
     assert.equal(bundleDates.isShiurNew(sample), serverIsNew(sample), `bundle isShiurNew mismatch on ${JSON.stringify(sample)}`);
     assert.equal(fallbackDates.isShiurNew(sample), serverIsNew(sample), `fallback isShiurNew mismatch on ${JSON.stringify(sample)}`);
+  }
+  // formatDuration / formatTime corpus (both spellings + garbage).
+  const durInputs = ['', '  ', '90', '45', '120', '1:30', '90:00', '1:02:03', '0:45', '2h 15m', '1h', '90 min', '45min', 'abc', '1:2:3:4', null, 0, undefined];
+  for (const sample of durInputs) {
+    assert.equal(bundleDates.formatDuration(sample), serverFns.formatDuration(sample), `bundle formatDuration mismatch on ${JSON.stringify(sample)}`);
+    assert.equal(fallbackDates.formatDuration(sample), serverFns.formatDuration(sample), `fallback formatDuration mismatch on ${JSON.stringify(sample)}`);
+  }
+  const timeInputs = [0, -5, NaN, null, undefined, 'abc', 5, 65, 600, 3599, 3600, 3661, 7325, 36000];
+  for (const sample of timeInputs) {
+    assert.equal(bundleDates.formatTime(sample), serverFns.formatTime(sample), `bundle formatTime mismatch on ${JSON.stringify(sample)}`);
+    assert.equal(fallbackDates.formatTime(sample), serverFns.formatTime(sample), `fallback formatTime mismatch on ${JSON.stringify(sample)}`);
   }
   console.log('  ✅ Homepage renders successfully with all controls and viewer containers.');
 }
@@ -1283,11 +1304,10 @@ async function testDafHub() {
   assert.ok(!html.includes('id="dafShiurimLink" href="#" target="_blank"'), 'Daf Shiurim must stay in the same tab');
   assert.ok(!workerSrc.includes('id="miniDafBtn"'), 'Mini player must not render a daf button');
   assert.ok(workerSrc.includes('currentDafRef = dafMatch || inheritedDafRef') && workerSrc.includes('let inheritedDafRef = null;') && workerSrc.includes('hasValidRef'), 'Daf Shiurim selections must retain the originating Daf when metadata is incomplete without leaking it to unrelated shiurim');
-  assert.ok(workerSrc.includes('const DAF_CYCLE_DAYS = 2711'), 'cycle must be 2711 dafim');
-  assert.ok(workerSrc.includes('Date.UTC(2019, 11, 28)'), 'anchor must be 2019-12-28 (Berachos 2)');
-  assert.ok(!workerSrc.includes("['Shekalim'"), 'Shekalim must be excluded from the Bavli cycle');
-  assert.ok(workerSrc.includes('function dafIndexForDateUTC'), 'date→index math must exist');
-  assert.ok(workerSrc.includes('function dafRefForIndexUTC'), 'index→ref math must exist');
+  assert.ok(html.includes('var CYCLE_DAYS = 2711'), 'served daf page must embed the module cycle constant');
+  assert.ok(html.includes('var ANCHOR_UTC = 1577491200000'), 'served daf page must embed the module anchor (2019-12-28)');
+  assert.ok(workerSrc.includes('${DAF_CYCLE_DAYS}') && workerSrc.includes('${DAF_ANCHOR_UTC}'), 'fragment must interpolate (not hardcode) the module constants');
+  assert.ok(!DAF_MASECHTOT.some(([name]) => name === 'Shekalim'), 'Shekalim must be excluded from the Bavli cycle');
 
   // OG-style gestures: single-tap zoom at point, pan, pinch, buttons.
   assert.ok(workerSrc.includes('dzZoomAt(ch.clientX, ch.clientY, 2.4)'), 'single tap must zoom at the touch point');
@@ -1431,6 +1451,14 @@ async function testCardPlayStatesAndMiniPop() {
   assert.ok(workerSrc.includes('.series-sub-card .series-sub-play'), 'badge updater must scan series drawer badges (G1)');
   assert.ok(workerSrc.includes('function resolveSeriesDocs('), 'series sibling resolver must exist (G3)');
   assert.ok(workerSrc.includes('function updateSeriesStrip('), 'big-player series strip updater must exist (G3)');
+  // Phase 1d: Daf cycle invariants come from the module, not literals.
+  assert.equal(DAF_MASECHTOT.length, 36, 'cycle must have 36 masechtot');
+  assert.equal(DAF_MASECHTOT.reduce((a, p) => a + p[1], 0), DAF_CYCLE_DAYS, 'folio counts must sum to the cycle length');
+  assert.equal(DAF_CYCLE_DAYS, 2711, 'cycle must be 2711 dafim');
+  assert.deepEqual(dafRefForIndexUTC(0), { masechta: 'Berachos', daf: 2, count: 64 }, 'day 0 must be Berachos 2');
+  assert.deepEqual(dafRefForIndexUTC(dafIndexForDateUTC(2023, 5, 11)), { masechta: 'Gittin', daf: 7, count: 90 }, 'Gittin-May-2023 checkpoint must hold');
+  assert.ok(dafIndexForRefUTC('bava_kamma', 3) === dafIndexForRefUTC('Bava Kamma', 3) && dafIndexForRefUTC('Bava Kamma', 3) >= 0, 'tractate normalization must hold');
+  assert.equal(dafValidDateISO('2026-13-99'), false, 'impossible dates must be rejected');
   assert.ok(workerSrc.includes('id="seriesStrip"'), 'player card must contain the series strip (G3)');
   assert.ok(workerSrc.includes('function toggleCardSeries('), 'single cards need lazy series drawers (G3)');
   assert.ok(workerSrc.includes('series-now-playing'), 'current part must be marked in drawers (G3)');
