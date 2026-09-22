@@ -25,7 +25,8 @@ function clientAllSrc(workerSrc) {
       fs.readFileSync(new URL('../src/client/player-chrome.js.txt', import.meta.url), 'utf8') + '\n' +
       fs.readFileSync(new URL('../src/client/search-ui.js.txt', import.meta.url), 'utf8') + '\n' +
       fs.readFileSync(new URL('../src/client/transcript-pane.js.txt', import.meta.url), 'utf8') + '\n' +
-      fs.readFileSync(new URL('../src/client/daf-guest.js.txt', import.meta.url), 'utf8');
+      fs.readFileSync(new URL('../src/client/daf-guest.js.txt', import.meta.url), 'utf8') + '\n' +
+      fs.readFileSync(new URL('../src/client/theme-applier.js.txt', import.meta.url), 'utf8');
   }
   return _unitSrcCache;
 }
@@ -87,7 +88,7 @@ async function testHomepage() {
   assert.ok(!/^(audio|window)\.addEventListener/m.test(clientUnitSrc), 'unit must not register listeners at top level');
   assert.ok(!clientUnitSrc.includes('addEventListener'), 'unit must contain zero listener registrations');
   // Client units hygiene (player-chrome checked above; same rules apply).
-  for (const [label, file] of [['search-ui', '../src/client/search-ui.js.txt'], ['transcript-pane', '../src/client/transcript-pane.js.txt'], ['daf-guest', '../src/client/daf-guest.js.txt']]) {
+  for (const [label, file] of [['search-ui', '../src/client/search-ui.js.txt'], ['transcript-pane', '../src/client/transcript-pane.js.txt'], ['daf-guest', '../src/client/daf-guest.js.txt'], ['theme-applier', '../src/client/theme-applier.js.txt']]) {
     const srcText = fs.readFileSync(new URL(file, import.meta.url), 'utf8');
     assert.ok(!srcText.includes('`'), label + ' must not contain backticks');
     assert.ok(!srcText.includes('${'), label + ' must not contain ${');
@@ -104,7 +105,7 @@ async function testHomepage() {
   assert.equal(searchRouteRes.status, 200, '/js/search-ui.js should return 200 OK');
   assert.ok(html.indexOf('SearchUI unit') !== -1 && html.indexOf('SearchUI unit') < html.indexOf('function playShiurById'), 'search unit script must precede the app script');
   // New guest units: routes + byte-identical emission + order (units before app).
-  for (const [label, route, marker] of [['transcript-pane', '/js/transcript-pane.js', 'TranscriptPane unit'], ['daf-guest', '/js/daf-guest.js', 'DafGuest unit']]) {
+  for (const [label, route, marker] of [['transcript-pane', '/js/transcript-pane.js', 'TranscriptPane unit'], ['daf-guest', '/js/daf-guest.js', 'DafGuest unit'], ['theme-applier', '/js/theme-applier.js', 'ThemeApplier unit']]) {
     const rRes = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev' + route), mockEnv, mockCtx);
     assert.equal(rRes.status, 200, route + ' should return 200 OK');
     const rText = await rRes.text();
@@ -1417,10 +1418,10 @@ async function testPwaThemePlaylistDeleteClearHistory() {
   assert.ok(workerSrc.includes("request.headers.get('cookie')") && workerSrc.includes('yutorah_theme=(light|dark)') && workerSrc.includes('honor the theme cookie'), 'server must honor the yutorah_theme cookie when no URL theme param is present');
   assert.ok(workerSrc.includes("document.cookie = 'yutorah_theme='") && workerSrc.includes('Max-Age=31536000'), 'client must mirror the theme choice into a long-lived cookie');
   assert.ok(workerSrc.includes('var cmat = document.cookie.match') && workerSrc.includes('Cookie fallback: installed PWAs'), 'main boot must fall back to the cookie when localStorage is empty (PWA)');
-  assert.ok(workerSrc.includes('persistDafTheme') && workerSrc.includes('function persistThemeChoice'), 'daf/main toggles must persist the theme the same way');
+  assert.ok(workerSrc.includes('persistDafTheme') && clientAllSrc(workerSrc).includes('function persistThemeChoice'), 'daf/main toggles must persist the theme the same way');
   assert.ok(workerSrc.includes('yutorah_theme=(light|dark)(?:;|$)'), 'theme cookie match must be value-anchored (darkish must not match dark)');
   assert.ok(workerSrc.includes("matches) saved = 'light'"), 'fresh contexts with no saved choice must follow the device appearance (isolated iOS PWA fix)');
-  assert.ok(workerSrc.includes("removeProperty('--primary')"), 'holiday light-mode vars must be cleared so toggling to dark cannot inherit them');
+  assert.ok(clientAllSrc(workerSrc).includes("removeProperty('--primary')"), 'holiday light-mode vars must be cleared so toggling to dark cannot inherit them');
 
   // Transcript proxy: deterministic 400-path (no live upstream needed).
   const badRes = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/api/transcript'), mockEnv, mockCtx);

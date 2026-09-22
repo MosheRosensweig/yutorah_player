@@ -36,6 +36,7 @@ import PLAYER_CHROME_SRC from './client/player-chrome.js.txt';
 import SEARCH_UI_SRC from './client/search-ui.js.txt';
 import TRANSCRIPT_PANE_SRC from './client/transcript-pane.js.txt';
 import DAF_GUEST_SRC from './client/daf-guest.js.txt';
+import THEME_APPLIER_SRC from './client/theme-applier.js.txt';
 
 // Unit sources hold intended client bytes directly (standalone-correct:
 // what you read is what the browser parses). Emission is RAW — any
@@ -2042,7 +2043,8 @@ const PRECACHE_URLS = [
   '/js/player-chrome.js',
   '/js/search-ui.js',
   '/js/transcript-pane.js',
-  '/js/daf-guest.js'
+  '/js/daf-guest.js',
+  '/js/theme-applier.js'
 ];
 
 self.addEventListener('install', (event) => {
@@ -2235,6 +2237,15 @@ function handlePwaRoutes(request, url) {
   }
   if (url.pathname === '/js/daf-guest.js') {
     return new Response(DAF_GUEST_SRC, {
+      headers: {
+        'Content-Type': 'application/javascript; charset=utf-8',
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'public, max-age=3600'
+      }
+    });
+  }
+  if (url.pathname === '/js/theme-applier.js') {
+    return new Response(THEME_APPLIER_SRC, {
       headers: {
         'Content-Type': 'application/javascript; charset=utf-8',
         'Access-Control-Allow-Origin': '*',
@@ -13537,6 +13548,9 @@ ${emitClientUnit(TRANSCRIPT_PANE_SRC)}
 ${emitClientUnit(DAF_GUEST_SRC)}
 </script>
 <script>
+${emitClientUnit(THEME_APPLIER_SRC)}
+</script>
+<script>
   // escapeHtml comes from window.YTUtils (single source: src/utils/html.mjs).
   // Inline fallback keeps offline-cached pages working if the bundle is
   // ever missing; behavior is pinned by tests, never fork it.
@@ -22424,126 +22438,9 @@ ${emitClientUnit(DAF_GUEST_SRC)}
   // Holiday & Seasonal Theme Management (Light Mode Exclusively)
   const clientThemes = ${jsEmbed(THEMES)};
 
-  function getClientHebrewDate() {
-    try {
-      const formatter = new Intl.DateTimeFormat('en-u-ca-hebrew', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric'
-      });
-      const parts = formatter.formatToParts(new Date());
-      const day = parseInt(parts.find(p => p.type === 'day')?.value || '1', 10);
-      const month = (parts.find(p => p.type === 'month')?.value || 'Elul').trim();
-      const year = parseInt(parts.find(p => p.type === 'year')?.value || '5786', 10);
+  // → src/client/theme-applier.js.txt (getClientHebrewDate).
 
-      const d = new Date();
-      let omerDay = 0;
-      if (month === 'Nisan' && day >= 16) {
-        omerDay = day - 15;
-      } else if (month === 'Iyar') {
-        omerDay = 15 + day;
-      } else if (month === 'Sivan' && day <= 5) {
-        omerDay = 44 + day;
-      }
-
-      return { day, month, year, omerDay, gregorianMonth: d.getMonth() + 1, gregorianDay: d.getDate() };
-    } catch (e) {
-      return { day: 22, month: 'Elul', year: 5786, omerDay: 0, gregorianMonth: 9, gregorianDay: 4 };
-    }
-  }
-
-  function detectCurrentHoliday() {
-    const h = getClientHebrewDate();
-    const { day, month, omerDay, gregorianMonth, gregorianDay } = h;
-
-    if (gregorianMonth === 7 && gregorianDay === 4) return { key: 'july4', chanukahDay: 0 };
-
-    // Erev Yom Tov (Eve of Melacha-forbidden festivals) with 50/50 random overlap selection
-    // Erev Rosh Hashanah (29 Elul) -> 50/50 between Rosh Hashanah and Chodesh Elul
-    if (month === 'Elul' && day === 29) {
-      return Math.random() < 0.5
-        ? { key: 'rosh_hashanah', chanukahDay: 0 }
-        : { key: 'elul', chanukahDay: 0 };
-    }
-
-    // Erev Yom Kippur (9 Tishrei) -> 50/50 between Yom Kippur and Aseres Yemei Teshuva
-    if (month === 'Tishri' && day === 9) {
-      return Math.random() < 0.5
-        ? { key: 'yom_kippur', chanukahDay: 0 }
-        : { key: 'teshuva', chanukahDay: 0 };
-    }
-
-    // Erev Sukkos (14 Tishrei) -> Sukkos theme
-    if (month === 'Tishri' && day === 14) {
-      return { key: 'sukkos', chanukahDay: 0 };
-    }
-
-    // Erev Shemini Atzeres / Simchas Torah (21 Tishrei) -> 50/50 between Simchas Torah and Hoshana Rabbah
-    if (month === 'Tishri' && day === 21) {
-      return Math.random() < 0.5
-        ? { key: 'simchas_torah', chanukahDay: 0 }
-        : { key: 'hoshana_rabbah', chanukahDay: 0 };
-    }
-
-    // Erev Pesach (14 Nisan) -> 50/50 between Pesach and Nissan buildup
-    if (month === 'Nisan' && day === 14) {
-      return Math.random() < 0.5
-        ? { key: 'pesach', chanukahDay: 0 }
-        : { key: 'nissan_buildup', chanukahDay: 0 };
-    }
-
-    // Erev Shavuos (5 Sivan) -> 50/50 between Shavuos and Sefiras HaOmer (Day 49)
-    if (month === 'Sivan' && day === 5) {
-      return Math.random() < 0.5
-        ? { key: 'shavuos', chanukahDay: 0 }
-        : { key: 'omer', omerDay: 49, chanukahDay: 0 };
-    }
-
-    if (month === 'Tishri' && day === 10) return { key: 'yom_kippur', chanukahDay: 0 };
-    if (month === 'Tishri' && (day === 1 || day === 2)) return { key: 'rosh_hashanah', chanukahDay: 0 };
-    if (month === 'Tishri' && day >= 3 && day <= 8) return { key: 'teshuva', chanukahDay: 0 };
-    if (month === 'Tishri' && (day === 22 || day === 23)) return { key: 'simchas_torah', chanukahDay: 0 };
-    if (month === 'Tishri' && day >= 15 && day <= 20) return { key: 'sukkos', chanukahDay: 0 };
-
-    if ((month === 'Heshvan' && day === 1) || (month === 'Tishri' && day === 30)) {
-      return { key: 'rosh_chodesh_cheshvan', chanukahDay: 0 };
-    }
-
-    if (month === 'Kislev' && day >= 25) {
-      return { key: 'chanukah', chanukahDay: day - 24 };
-    }
-    if (month === 'Tevet' && day <= 3) {
-      return { key: 'chanukah', chanukahDay: Math.min(8, 5 + day) };
-    }
-
-    if (month === 'Shevat' && day === 15) return { key: 'tubshevat', chanukahDay: 0 };
-
-    const isPurimMonth = month === 'Adar II' || month === 'Adar';
-    if (isPurimMonth && (day === 14 || day === 15)) return { key: 'purim', chanukahDay: 0 };
-    if (isPurimMonth && (day === 13 || day === 11)) return { key: 'taanis_esther', chanukahDay: 0 };
-    if (isPurimMonth && day < 13) return { key: 'adar_buildup', chanukahDay: 0 };
-
-    if (month === 'Nisan' && day >= 15 && day <= 22) return { key: 'pesach', chanukahDay: 0 };
-    if (month === 'Nisan' && day < 15) return { key: 'nissan_buildup', chanukahDay: 0 };
-
-    if (month === 'Iyar' && (day === 3 || day === 4)) return { key: 'yom_hazikaron', chanukahDay: 0 };
-    if (month === 'Iyar' && (day === 5 || day === 6)) return { key: 'yom_haatzmaut', chanukahDay: 0 };
-    if (month === 'Iyar' && day === 18) return { key: 'lag_baomer', chanukahDay: 0 };
-    if (month === 'Iyar' && day === 28) return { key: 'yom_yerushalayim', chanukahDay: 0 };
-
-    if (month === 'Sivan' && (day === 6 || day === 7)) return { key: 'shavuos', chanukahDay: 0 };
-    if (omerDay > 0) return { key: 'omer', omerDay, chanukahDay: 0 };
-
-    if (month === 'Av' && (day === 9 || day === 10)) return { key: 'tisha_bav', chanukahDay: 0 };
-    if (month === 'Av' && day >= 1 && day <= 8) return { key: 'nine_days', chanukahDay: 0 };
-    if (month === 'Tamuz' && day >= 17) return { key: 'three_weeks', chanukahDay: 0 };
-    if (month === 'Av' && day === 15) return { key: 'tubav', chanukahDay: 0 };
-
-    if (month === 'Elul') return { key: 'elul', chanukahDay: 0 };
-    if (day === 1 || day === 30) return { key: 'rosh_chodesh', chanukahDay: 0 };
-
-    return { key: 'default', chanukahDay: 0 };
-  }
+  // → src/client/theme-applier.js.txt (detectCurrentHoliday).
 
   // [DEAD CODE / INACTIVE] Manual Theme Preview Override Controls
   // The theme engine now operates 100% automatically in the background using the Hebrew calendar.
@@ -22610,178 +22507,11 @@ ${emitClientUnit(DAF_GUEST_SRC)}
     tubav: 'ט״ו באב'
   };
 
-  function applyHolidayTheme() {
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    const motifWrap = document.getElementById('holidayMotifWrap');
-    const motifIcon = document.getElementById('holidayMotifIcon');
-    const motifTitle = document.getElementById('holidayMotifTitle');
-    const taglineBar = document.getElementById('holidayTaglineBar');
+  // → src/client/theme-applier.js.txt (applyHolidayTheme).
 
-    // Clean up previous dynamic theme style tag
-    let themeStyleEl = document.getElementById('holidayThemeDynamicStyles');
-    if (themeStyleEl) themeStyleEl.remove();
-    // Clear any inline holiday vars FIRST. They are set below for light
-    // mode only, and inline style beats the [data-theme="dark"] sheet —
-    // without this, toggling light→dark keeps the light --primary (wrong
-    // link/speaker blue) until a reload. Dark mode must never inherit
-    // light-mode inline vars.
-    try {
-      document.documentElement.style.removeProperty('--primary');
-      document.documentElement.style.removeProperty('--accent');
-      document.documentElement.style.removeProperty('--banner-bg');
-    } catch (e) {}
+  // → src/client/theme-applier.js.txt (onHolidayThemeSelect).
 
-    let resolvedKey = activeThemeKey;
-    let chanukahDay = 0;
-    if (resolvedKey.startsWith('chanukah_')) {
-      chanukahDay = parseInt(resolvedKey.replace('chanukah_', ''), 10);
-      resolvedKey = 'chanukah';
-    }
-
-    if (resolvedKey === 'auto') {
-      const detected = detectCurrentHoliday();
-      resolvedKey = detected.key;
-      chanukahDay = detected.chanukahDay || 1;
-    }
-
-    if (!resolvedKey || resolvedKey === 'default' || !clientThemes[resolvedKey]) {
-      if (motifWrap) { motifWrap.style.display = 'none'; motifWrap.dataset.holiday = '0'; }
-      if (taglineBar) taglineBar.style.display = 'none';
-      document.body.classList.remove('is-purim-theme');
-      checkCalendarOverflow();
-      return;
-    }
-
-    const themeDef = clientThemes[resolvedKey];
-    let variantData;
-
-    // For approved themes in auto mode (or if chosen in dropdown), randomly pick between A and B or lock to approved variant
-    let effectiveVariant = activeVariant;
-    const randomApprovedThemes = ['rosh_hashanah', 'sukkos', 'simchas_torah', 'adar_buildup', 'nissan_buildup', 'pesach', 'lag_baomer', 'shavuos', 'nine_days'];
-    if (randomApprovedThemes.includes(resolvedKey) && activeThemeKey === 'auto') {
-      effectiveVariant = Math.random() < 0.5 ? 'a' : 'b';
-    }
-    const lockedThemesToA = ['elul', 'yom_kippur', 'tubshevat', 'purim', 'taanis_esther', 'omer', 'yom_hazikaron', 'yom_yerushalayim', 'july4', 'three_weeks', 'tisha_bav', 'tubav', 'rosh_chodesh'];
-    if (lockedThemesToA.includes(resolvedKey) && activeThemeKey === 'auto') {
-      effectiveVariant = 'a';
-    }
-    const lockedThemesToB = ['yom_haatzmaut'];
-    if (lockedThemesToB.includes(resolvedKey) && activeThemeKey === 'auto') {
-      effectiveVariant = 'b';
-    }
-
-    if (resolvedKey === 'chanukah') {
-      const dayNum = chanukahDay || 1;
-      variantData = Object.assign({}, themeDef.variants['a']);
-      variantData.icon = 'chanukah_a_' + dayNum + '.svg';
-      variantData.title = 'Chanukah (Night ' + dayNum + ')';
-      variantData.tagline = 'חנוכה שמח · Night ' + dayNum + ' of 8';
-    } else if (resolvedKey === 'omer') {
-      variantData = Object.assign({}, themeDef.variants['a']);
-      // Randomly select between the two icons (flip calendar vs parchment scroll)
-      variantData.icon = Math.random() < 0.5 ? 'omer_a.svg' : 'omer_b.svg';
-      const h = getClientHebrewDate();
-      if (h.omerDay > 0) {
-        variantData.tagline = 'היום ' + h.omerDay + ' ימים לעומר · Count: Day ' + h.omerDay + ' of 49';
-      }
-    } else {
-      variantData = themeDef.variants[effectiveVariant] || themeDef.variants['a'];
-    }
-
-    if (!variantData) {
-      // No theme resolved: clear any stale holiday flag so the header
-      // overflow check cannot show a ghost motif badge.
-      if (motifWrap) { motifWrap.dataset.holiday = '0'; motifWrap.style.display = 'none'; }
-      return;
-    }
-
-    // Apply CSS Variables to root (light mode only)
-    if (!isDark) {
-      if (variantData.primary) document.documentElement.style.setProperty('--primary', variantData.primary);
-      if (variantData.accent) document.documentElement.style.setProperty('--accent', variantData.accent);
-      if (variantData.bannerBg) document.documentElement.style.setProperty('--banner-bg', variantData.bannerBg);
-    }
-
-    // Render Motif Badge in Header (both light and dark mode).
-    // dataset.holiday marks "a holiday is active" separately from the
-    // inline display style, which checkHeaderOverflow() may toggle for space.
-    if (motifWrap && motifIcon && motifTitle) {
-      motifWrap.style.display = 'inline-flex';
-      motifWrap.dataset.holiday = '1';
-      motifIcon.innerHTML = '<img src="/assets/themes/' + variantData.icon + '" alt="icon" style="width:100%; height:100%; display:block;" onerror="this.style.display=&quot;none&quot;">';
-      const tiers = (resolvedKey === 'chanukah' && chanukahDay)
-        ? ['Chanukah (Night ' + chanukahDay + ')', 'Chanukah', 'חנוכה (נר ' + chanukahDay + ')', 'חנוכה']
-        : (HOLIDAY_TEXT_TIERS[resolvedKey] || [themeDef.badge || themeDef.name || 'Holiday']);
-      motifWrap.dataset.tiers = JSON.stringify(tiers);
-      const titleEn = tiers[0];
-      const titleHe = tiers.find(t => /[\u0590-\u05FF]/.test(t)) || HOLIDAY_HEBREW_TITLES[resolvedKey] || titleEn;
-      motifWrap.dataset.titleEn = titleEn;
-      motifWrap.dataset.titleHe = titleHe;
-      motifTitle.textContent = titleEn;
-      motifWrap.title = variantData.title + ' (Tap 10 times to toggle pre-roll)';
-    }
-
-    // Toggle Purim Inverted Header Mode
-    if (resolvedKey === 'purim') {
-      document.body.classList.add('is-purim-theme');
-    } else {
-      document.body.classList.remove('is-purim-theme');
-    }
-
-    // Render Tagline Bar below sponsorship banner
-    if (taglineBar && variantData.tagline) {
-      taglineBar.style.display = 'block';
-      taglineBar.textContent = variantData.tagline;
-    } else if (taglineBar) {
-      taglineBar.style.display = 'none';
-    }
-
-    // Inject custom CSS for theme variant
-    if (variantData.css && !isDark) {
-      themeStyleEl = document.createElement('style');
-      themeStyleEl.id = 'holidayThemeDynamicStyles';
-      themeStyleEl.textContent = variantData.css;
-      document.head.appendChild(themeStyleEl);
-    }
-    checkCalendarOverflow();
-
-    // Update controls in Settings menu
-    const sel = document.getElementById('holidayThemeSelect');
-    if (sel) sel.value = activeThemeKey;
-    const btnA = document.getElementById('variantBtnA');
-    const btnB = document.getElementById('variantBtnB');
-    const btnC = document.getElementById('variantBtnC');
-    if (btnA) btnA.classList.toggle('active', activeVariant === 'a');
-    if (btnB) btnB.classList.toggle('active', activeVariant === 'b');
-    if (btnC) {
-      if (resolvedKey === 'elul') {
-        btnC.style.display = 'block';
-        btnC.classList.toggle('active', activeVariant === 'c');
-      } else {
-        btnC.style.display = 'none';
-      }
-    }
-
-    syncHeaderSpacer();
-  }
-
-  function onHolidayThemeSelect(val) {
-    activeThemeKey = val;
-    if (val === 'yom_haatzmaut') {
-      activeVariant = 'b';
-    } else if (lockedThemesToA.includes(val)) {
-      activeVariant = 'a';
-    }
-    try { localStorage.setItem('yutorah_preview_theme', val); } catch(e) {}
-    try { localStorage.setItem('yutorah_preview_variant', activeVariant); } catch(e) {}
-    applyHolidayTheme();
-  }
-
-  function setThemeVariant(variant) {
-    activeVariant = variant;
-    try { localStorage.setItem('yutorah_preview_variant', variant); } catch(e) {}
-    applyHolidayTheme();
-  }
+  // → src/client/theme-applier.js.txt (setThemeVariant).
 
   document.addEventListener('click', function(e) {
     const menu = document.getElementById('settingsMenu');
@@ -23355,61 +23085,9 @@ ${emitClientUnit(DAF_GUEST_SRC)}
   });
 
   // Theme Management (Dark / Light mode)
-  function initTheme() {
-    var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    var btn = document.getElementById('themeToggleBtn');
-    if (btn) {
-      btn.textContent = isDark ? '☀️' : '🌙';
-      btn.title = isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode';
-      btn.setAttribute('aria-label', isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode');
-    }
-    document.querySelectorAll('.menu-theme-icon').forEach(function(icon) {
-      icon.textContent = isDark ? '☀️' : '🌙';
-    });
-    try { checkHeaderOverflow(); } catch(e) {}
-  }
+  // → src/client/theme-applier.js.txt (initTheme).
 
-  function toggleTheme() {
-    var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    var nextDark = !isDark;
-    // Mirror into the theme cookie as well as localStorage, so the choice
-    // survives across same-profile contexts (desktop/Android PWAs, other
-    // browsers). Fully isolated iOS home-screen apps instead follow the
-    // device appearance until the user toggles in the app itself.
-    function persistThemeChoice(v) {
-      try { localStorage.setItem('yutorah_theme', v); } catch(e) {}
-      try { document.cookie = 'yutorah_theme=' + v + '; Path=/; Max-Age=31536000; SameSite=Lax'; } catch(e2) {}
-    }
-    if (nextDark) {
-      document.documentElement.setAttribute('data-theme', 'dark');
-      persistThemeChoice('dark');
-    } else {
-      document.documentElement.removeAttribute('data-theme');
-      persistThemeChoice('light');
-    }
-    var btn = document.getElementById('themeToggleBtn');
-    if (btn) {
-      btn.textContent = nextDark ? '☀️' : '🌙';
-      btn.title = nextDark ? 'Switch to Light Mode' : 'Switch to Dark Mode';
-      btn.setAttribute('aria-label', nextDark ? 'Switch to Light Mode' : 'Switch to Dark Mode');
-    }
-    document.querySelectorAll('.menu-theme-icon').forEach(function(icon) {
-      icon.textContent = nextDark ? '☀️' : '🌙';
-    });
-    applyHolidayTheme();
-
-    try {
-      var url = new URL(window.location.href);
-      var key = url.searchParams.has('theme') ? 'theme' : 'mode';
-      url.searchParams.delete('dark');
-      url.searchParams.delete('light');
-      url.searchParams.delete('mode');
-      url.searchParams.delete('theme');
-      url.searchParams.set(key, nextDark ? 'dark' : 'light');
-      history.replaceState(history.state, '', url.toString());
-    } catch(e) {}
-    try { checkHeaderOverflow(); } catch(e) {}
-  }
+  // → src/client/theme-applier.js.txt (toggleTheme).
 
   function syncHeaderSpacer() {
     var h = document.getElementById('mainHeader');
