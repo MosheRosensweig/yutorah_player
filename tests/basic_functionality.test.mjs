@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import worker from '../src/worker.js';
 import { escapeHtml as serverEscapeHtml } from '../src/utils/html.mjs';
+import { getNowInNewYork as serverNowNY, parseLocalDate as serverParseDate, formatShiurDate as serverFormatDate, isShiurNew as serverIsNew } from '../src/utils/dates.mjs';
 
 console.log('🧪 Running Basic Functionality & Article Viewer Automated Regression Tests...\n');
 
@@ -70,6 +71,63 @@ async function testHomepage() {
     const expected = serverEscapeHtml(sample);
     assert.equal(bundleFn(sample), expected, `bundle mismatch on ${JSON.stringify(sample)}`);
     assert.equal(fallbackFn(sample), expected, `fallback mismatch on ${JSON.stringify(sample)}`);
+  }
+  // Dates equivalence: server module ≡ bundle ≡ inline fallbacks.
+  // Standalone check first: the bundle must work with NO sibling
+  // bindings (it ships as a self-contained IIFE).
+  const aloneWindow = {};
+  new Function('window', utilsJs)(aloneWindow);
+  assert.equal(aloneWindow.YTUtils.formatShiurDate('2020-01-15'), serverFormatDate('2020-01-15'), 'standalone bundle must format without host bindings');
+  assert.equal(aloneWindow.YTUtils.isShiurNew('2020-01-15'), serverIsNew('2020-01-15'), 'standalone bundle must evaluate newness without host bindings');
+  // One shared eval scope mirrors the browser (bare sibling references
+  // resolve exactly like the inline classic script scope).
+  const dateNames = ['getNowInNewYork', 'parseLocalDate', 'formatShiurDate', 'isShiurNew'];
+  let fbSrc = '';
+  for (const name of dateNames) {
+    const marker = '// fallback:' + name;
+    const startMark = 'const ' + name + ' = (window.YTUtils && window.YTUtils.' + name + ') || ';
+    const si = workerSrcForFallback.indexOf(startMark);
+    assert.ok(si !== -1, name + ' fallback wiring must exist');
+    const ei = workerSrcForFallback.indexOf(marker, si);
+    assert.ok(ei !== -1, name + ' fallback must carry its marker comment');
+    fbSrc += 'FB.' + name + ' = ' + workerSrcForFallback.slice(si + startMark.length, ei).trim() + '\n';
+  }
+  const dateScope = new Function('window', utilsJs + '\n' +
+    'const getNowInNewYork = window.YTUtils.getNowInNewYork;\n' +
+    'const parseLocalDate = window.YTUtils.parseLocalDate;\n' +
+    'const formatShiurDate = window.YTUtils.formatShiurDate;\n' +
+    'const isShiurNew = window.YTUtils.isShiurNew;\n' +
+    'const FB = {};\n' + fbSrc +
+    'return { bundle: { getNowInNewYork, parseLocalDate, formatShiurDate, isShiurNew }, fallback: FB };'
+  )(fakeWindow);
+  const bundleDates = dateScope.bundle;
+  const fallbackDates = dateScope.fallback;
+  const fmt = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const today = new Date();
+  const yesterday = new Date(today.getTime() - 86400000);
+  // getNowInNewYork: same calendar day (not instant).
+  for (const [label, fn] of [['bundle', bundleDates.getNowInNewYork], ['fallback', fallbackDates.getNowInNewYork]]) {
+    assert.equal(fmt(fn()), fmt(serverNowNY()), label + ' NY-midnight must match server');
+  }
+  // parseLocalDate: fixed + dynamic inputs (compare epoch ms).
+  const dateInputs = ['2020-01-15', '2020/01/15', '01/15/2020', '01-15-2020', '1/5/2020', ' 2020-01-15 ', 'not a date', '', '   ', null, 0, undefined];
+  for (const sample of dateInputs) {
+    const expected = serverParseDate(sample);
+    for (const [label, fns] of [['bundle', bundleDates], ['fallback', fallbackDates]]) {
+      const got = fns.parseLocalDate(sample);
+      assert.equal(got === null ? null : got.getTime(), expected === null ? null : expected.getTime(), `${label} parseLocalDate mismatch on ${JSON.stringify(sample)}`);
+    }
+  }
+  // formatShiurDate / isShiurNew incl. relative labels + ±2-day edges.
+  const tomorrow = new Date(today.getTime() + 86400000);
+  const twoAgo = new Date(today.getTime() - 2 * 86400000);
+  const twoAhead = new Date(today.getTime() + 2 * 86400000);
+  const strInputs = ['', 'Today', 'Yesterday', '2020-01-15', 'bogus!!', fmt(today), fmt(yesterday), fmt(tomorrow), fmt(twoAgo), fmt(twoAhead)];
+  for (const sample of strInputs) {
+    assert.equal(bundleDates.formatShiurDate(sample), serverFormatDate(sample), `bundle formatShiurDate mismatch on ${JSON.stringify(sample)}`);
+    assert.equal(fallbackDates.formatShiurDate(sample), serverFormatDate(sample), `fallback formatShiurDate mismatch on ${JSON.stringify(sample)}`);
+    assert.equal(bundleDates.isShiurNew(sample), serverIsNew(sample), `bundle isShiurNew mismatch on ${JSON.stringify(sample)}`);
+    assert.equal(fallbackDates.isShiurNew(sample), serverIsNew(sample), `fallback isShiurNew mismatch on ${JSON.stringify(sample)}`);
   }
   console.log('  ✅ Homepage renders successfully with all controls and viewer containers.');
 }

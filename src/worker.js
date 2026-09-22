@@ -26,6 +26,7 @@ import CHANGELOG from './changelog.json' with { type: 'json' };
 // the inline classic client script consumes them via window.YTUtils,
 // served by the /js/yt-utils.js route below).
 import { escapeHtml } from './utils/html.mjs';
+import { getNowInNewYork, parseLocalDate, formatShiurDate, isShiurNew } from './utils/dates.mjs';
 
 // Safe JSON embed for <script> contexts: neutralizes </script> breakouts.
 function jsEmbed(val) {
@@ -2186,8 +2187,23 @@ function handlePwaRoutes(request, url) {
   // ESM sources (function .toString()), so server and browser can never
   // drift. Loaded synchronously before the inline app script.
   if (url.pathname === '/js/yt-utils.js') {
-    const body = 'window.YTUtils = window.YTUtils || {};\n' +
-      'window.YTUtils.escapeHtml = ' + escapeHtml.toString() + ';\n';
+    // IIFE locals (not bare window assignments): sibling references
+    // inside the functions close over these bindings, so the artifact is
+    // self-contained and works standalone (no reliance on the host page
+    // defining the same names).
+    const body = '(function() {\n' +
+      'var escapeHtml = ' + escapeHtml.toString() + ';\n' +
+      'var getNowInNewYork = ' + getNowInNewYork.toString() + ';\n' +
+      'var parseLocalDate = ' + parseLocalDate.toString() + ';\n' +
+      'var formatShiurDate = ' + formatShiurDate.toString() + ';\n' +
+      'var isShiurNew = ' + isShiurNew.toString() + ';\n' +
+      'window.YTUtils = window.YTUtils || {};\n' +
+      'window.YTUtils.escapeHtml = escapeHtml;\n' +
+      'window.YTUtils.getNowInNewYork = getNowInNewYork;\n' +
+      'window.YTUtils.parseLocalDate = parseLocalDate;\n' +
+      'window.YTUtils.formatShiurDate = formatShiurDate;\n' +
+      'window.YTUtils.isShiurNew = isShiurNew;\n' +
+      '})();\n';
     return new Response(body, {
       headers: {
         'Content-Type': 'application/javascript; charset=utf-8',
@@ -2918,75 +2934,7 @@ function formatDuration(lengthStr) {
   return s;
 }
 
-function getNowInNewYork() {
-  try {
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/New_York',
-      year: 'numeric',
-      month: 'numeric',
-      day: 'numeric'
-    });
-    const parts = formatter.formatToParts(new Date());
-    const year = parseInt(parts.find(p => p.type === 'year')?.value || '2026', 10);
-    const month = parseInt(parts.find(p => p.type === 'month')?.value || '9', 10) - 1;
-    const day = parseInt(parts.find(p => p.type === 'day')?.value || '6', 10);
-    return new Date(year, month, day);
-  } catch (e) {
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  }
-}
-
-function parseLocalDate(str) {
-  if (!str) return null;
-  const s = String(str).trim();
-  const ymd = s.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
-  if (ymd) {
-    return new Date(parseInt(ymd[1], 10), parseInt(ymd[2], 10) - 1, parseInt(ymd[3], 10));
-  }
-  const mdy = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
-  if (mdy) {
-    return new Date(parseInt(mdy[3], 10), parseInt(mdy[1], 10) - 1, parseInt(mdy[2], 10));
-  }
-  const d = new Date(s);
-  if (!isNaN(d.getTime())) return d;
-  return null;
-}
-
-function formatShiurDate(rawDateStr) {
-  if (!rawDateStr) return '';
-  const trimmed = String(rawDateStr).trim();
-  if (trimmed === 'Today' || trimmed === 'Yesterday') return trimmed;
-
-  const d = parseLocalDate(trimmed);
-  if (!d || isNaN(d.getTime())) return trimmed;
-
-  const dMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-  const nyMidnight = getNowInNewYork().getTime();
-  const diffDays = Math.round((nyMidnight - dMidnight) / 86400000);
-
-  if (diffDays === 0) return 'Today';
-  if (diffDays === 1) return 'Yesterday';
-
-  const monthNames = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
-  ];
-  return `${monthNames[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
-}
-
-function isShiurNew(rawDateStr) {
-  if (!rawDateStr) return false;
-  const trimmed = String(rawDateStr).trim();
-  if (trimmed === 'Today' || trimmed === 'Yesterday') return true;
-  const d = parseLocalDate(trimmed);
-  if (!d || isNaN(d.getTime())) return false;
-  const dMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-  const nyMidnight = getNowInNewYork().getTime();
-  const diffDays = Math.round((nyMidnight - dMidnight) / 86400000);
-  return diffDays <= 1 && diffDays >= -1;
-}
-
+// Date helpers now live in src/utils/dates.mjs (imported at top).
 function formatDate(dateStr) {
   return formatShiurDate(dateStr);
 }
@@ -13665,14 +13613,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     return s;
   }
 
-  function getNowInNewYork() {
+  // Date helpers come from window.YTUtils (single source: src/utils/dates.mjs).
+  // Inline fallbacks keep offline-cached pages working if the bundle is
+  // ever missing (e.g. aggressive blockers); behavior pinned by tests.
+  const getNowInNewYork = (window.YTUtils && window.YTUtils.getNowInNewYork) || function() {
     try {
-      const formatter = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'America/New_York',
-        year: 'numeric',
-        month: 'numeric',
-        day: 'numeric'
-      });
+      const formatter = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: 'numeric', day: 'numeric' });
       const parts = formatter.formatToParts(new Date());
       const year = parseInt(parts.find(p => p.type === 'year')?.value || '2026', 10);
       const month = parseInt(parts.find(p => p.type === 'month')?.value || '9', 10) - 1;
@@ -13682,47 +13628,33 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       const now = new Date();
       return new Date(now.getFullYear(), now.getMonth(), now.getDate());
     }
-  }
-
-  function parseLocalDate(str) {
+  }; // fallback:getNowInNewYork
+  const parseLocalDate = (window.YTUtils && window.YTUtils.parseLocalDate) || function(str) {
     if (!str) return null;
     const s = String(str).trim();
     const ymd = s.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
-    if (ymd) {
-      return new Date(parseInt(ymd[1], 10), parseInt(ymd[2], 10) - 1, parseInt(ymd[3], 10));
-    }
+    if (ymd) return new Date(parseInt(ymd[1], 10), parseInt(ymd[2], 10) - 1, parseInt(ymd[3], 10));
     const mdy = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
-    if (mdy) {
-      return new Date(parseInt(mdy[3], 10), parseInt(mdy[1], 10) - 1, parseInt(mdy[2], 10));
-    }
+    if (mdy) return new Date(parseInt(mdy[3], 10), parseInt(mdy[1], 10) - 1, parseInt(mdy[2], 10));
     const d = new Date(s);
     if (!isNaN(d.getTime())) return d;
     return null;
-  }
-
-  function formatShiurDate(rawDateStr) {
+  }; // fallback:parseLocalDate
+  const formatShiurDate = (window.YTUtils && window.YTUtils.formatShiurDate) || function(rawDateStr) {
     if (!rawDateStr) return '';
     const trimmed = String(rawDateStr).trim();
     if (trimmed === 'Today' || trimmed === 'Yesterday') return trimmed;
-
     const d = parseLocalDate(trimmed);
     if (!d || isNaN(d.getTime())) return trimmed;
-
     const dMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
     const nyMidnight = getNowInNewYork().getTime();
     const diffDays = Math.round((nyMidnight - dMidnight) / 86400000);
-
     if (diffDays === 0) return 'Today';
     if (diffDays === 1) return 'Yesterday';
-
-    const monthNames = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
-    ];
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
     return monthNames[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
-  }
-
-  function isShiurNew(rawDateStr) {
+  }; // fallback:formatShiurDate
+  const isShiurNew = (window.YTUtils && window.YTUtils.isShiurNew) || function(rawDateStr) {
     if (!rawDateStr) return false;
     const trimmed = String(rawDateStr).trim();
     if (trimmed === 'Today' || trimmed === 'Yesterday') return true;
@@ -13732,8 +13664,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     const nyMidnight = getNowInNewYork().getTime();
     const diffDays = Math.round((nyMidnight - dMidnight) / 86400000);
     return diffDays <= 1 && diffDays >= -1;
-  }
-
+  }; // fallback:isShiurNew
   function toggleTimelyCollapse() {
     const menu = document.getElementById('timelyDropdownMenu');
     const trigger = document.getElementById('timelyTriggerBtn');
