@@ -29,6 +29,18 @@ import { escapeHtml } from './utils/html.mjs';
 import { getNowInNewYork, parseLocalDate, formatShiurDate, isShiurNew } from './utils/dates.mjs';
 import { formatDuration, formatTime } from './utils/format.mjs';
 import { DAF_MASECHTOT, DAF_CYCLE_DAYS, DAF_ANCHOR_UTC, dafRefForIndexUTC, dafIndexForRefUTC, dafValidDateISO } from './utils/daf.mjs';
+// Phase 2 client units: classic scripts imported as text, emitted as
+// their own <script> blocks (same global lexical env as the inline app
+// script — zero scope/semantics change) and served raw for reuse.
+import PLAYER_CHROME_SRC from './client/player-chrome.js.txt';
+
+// Escape raw unit source for interpolation into the outer template literal.
+function emitClientUnit(src) {
+  return String(src || '')
+    .replace(/\\/g, '\\\\')
+    .replace(/`/g, '\\`')
+    .replace(/\$\{/g, '\\${');
+}
 
 // Safe JSON embed for <script> contexts: neutralizes </script> breakouts.
 function jsEmbed(val) {
@@ -2023,7 +2035,8 @@ const PRECACHE_URLS = [
   '/manifest.json?v=8',
   '/icons/icon-shield-192.png?v=8',
   '/icons/icon-shield-512.png?v=8',
-  '/js/yt-utils.js'
+  '/js/yt-utils.js',
+  '/js/player-chrome.js'
 ];
 
 self.addEventListener('install', (event) => {
@@ -2181,6 +2194,18 @@ function handlePwaRoutes(request, url) {
         'Service-Worker-Allowed': '/',
         'Cache-Control': 'public, max-age=0, must-revalidate',
         'Access-Control-Allow-Origin': '*'
+      }
+    });
+  }
+
+  // Phase 2 client units: raw classic sources, one per shareable unit,
+  // loaded synchronously in dependency order (utils → units → app).
+  if (url.pathname === '/js/player-chrome.js') {
+    return new Response(PLAYER_CHROME_SRC, {
+      headers: {
+        'Content-Type': 'application/javascript; charset=utf-8',
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'public, max-age=3600'
       }
     });
   }
@@ -13467,6 +13492,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
 <script src="/js/yt-utils.js"></script>
 <script>
+${emitClientUnit(PLAYER_CHROME_SRC)}
+</script>
+<script>
   // escapeHtml comes from window.YTUtils (single source: src/utils/html.mjs).
   // Inline fallback keeps offline-cached pages working if the bundle is
   // ever missing; behavior is pinned by tests, never fork it.
@@ -13658,6 +13686,218 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   const audio = document.getElementById('audioElement');
+
+  // PlayerChrome wiring: event registrations live here (after
+  // const audio) — the unit file holds logic only, so its top
+  // level never touches uninitialized bindings.
+  audio.addEventListener('canplay', () => {
+    if (currentPlaybackRate) {
+      audio.playbackRate = currentPlaybackRate;
+    }
+    applyInitialTime();
+    try { if (typeof renderChapterMarkers === 'function') renderChapterMarkers(); } catch (e) {}
+  });
+
+  audio.addEventListener('ended', () => {
+    if (isSponsorPlaying && pendingShiur) {
+      startShiurPlayback(pendingShiur);
+      return;
+    }
+    updatePlayPauseIcons(false);
+    if (typeof devMarkCompleted === 'function' && !isSponsorPlaying) devMarkCompleted();
+    // Dev queue: auto-play the next queued shiur when a track ends.
+    if (!isSponsorPlaying) {
+      try {
+        if (typeof devPlayNextFromQueue === 'function' && devPlayNextFromQueue()) return;
+      } catch (e) {}
+    }
+    if (currentShiurId) {
+      try { localStorage.removeItem('yutorah_progress_' + currentShiurId); } catch(e) {}
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.delete('t');
+    history.replaceState(history.state, '', url.toString());
+  });
+
+  audio.addEventListener('error', () => {
+    if (isSponsorPlaying && pendingShiur) {
+      console.warn('Sponsor audio encountered error, advancing to shiur...');
+      skipSponsorAudio();
+      return;
+    }
+    console.warn('Audio element error with current source:', audio.src);
+    const dlBtn = document.getElementById('dlBtn');
+    if (dlBtn && dlBtn.href && dlBtn.href !== audio.src) {
+      console.log('Attempting fallback source:', dlBtn.href);
+      audio.src = dlBtn.href;
+      audio.load();
+      audio.play().catch(e => console.log('Fallback play error:', e));
+    }
+  });
+
+  audio.addEventListener('loadedmetadata', () => {
+    if (currentPlaybackRate) {
+      audio.playbackRate = currentPlaybackRate;
+    }
+    document.getElementById('totalTime').textContent = formatTime(audio.duration);
+    const miniTime = document.getElementById('miniTime');
+    if (miniTime) miniTime.textContent = formatTime(audio.currentTime) + ' / ' + formatTime(audio.duration);
+    if (isSponsorPlaying && audio.duration && !isNaN(audio.duration)) {
+      const countdownEl = document.getElementById('sponsorCountdown');
+      if (countdownEl) countdownEl.textContent = Math.ceil(audio.duration);
+    }
+    applyInitialTime();
+    try { if (typeof renderChapterMarkers === 'function') renderChapterMarkers(); } catch (e) {}
+  });
+
+  audio.addEventListener('pause', () => {
+    updatePlayPauseIcons(false);
+    updateUrlTimestamp(true);
+    if ('mediaSession' in navigator) {
+      try { navigator.mediaSession.playbackState = 'paused'; } catch (e) {}
+      updateMediaSessionPosition();
+    }
+    if (typeof devRecordHeartbeat === 'function') devRecordHeartbeat(true);
+    try {
+      if (typeof markCloudDirty === 'function') markCloudDirty('history');
+      if (typeof scheduleCloudSync === 'function') scheduleCloudSync();
+    } catch (e) {}
+    if (isSponsorPlaying) {
+      clearSponsorTimers();
+      stopSponsorRaf();
+    }
+  });
+
+  audio.addEventListener('play', () => {
+    updatePlayPauseIcons(true);
+    if ('mediaSession' in navigator) {
+      try { navigator.mediaSession.playbackState = 'playing'; } catch (e) {}
+      updateMediaSessionPosition();
+    }
+    if (isSponsorPlaying) {
+      resetSponsorWatchdog();
+      startSponsorRaf();
+    }
+  });
+
+  audio.addEventListener('playing', () => {
+    if (sponsorStallTimer) {
+      clearTimeout(sponsorStallTimer);
+      sponsorStallTimer = null;
+    }
+  });
+
+  audio.addEventListener('timeupdate', () => {
+    if (isSponsorPlaying) {
+      if (audio.duration && !isNaN(audio.duration)) {
+        if (audio.currentTime >= audio.duration - 0.25) {
+          startShiurPlayback(pendingShiur);
+          return;
+        }
+        const rem = Math.max(0, Math.ceil(audio.duration - audio.currentTime));
+        const countdownEl = document.getElementById('sponsorCountdown');
+        if (countdownEl) countdownEl.textContent = rem;
+        const pct = (audio.currentTime / audio.duration) * 100;
+        if (scrubberFill) scrubberFill.style.width = pct + '%';
+        curTimeEl.textContent = formatTime(audio.currentTime);
+        document.getElementById('totalTime').textContent = formatTime(audio.duration);
+        const miniFill = document.getElementById('miniProgressFill');
+        if (miniFill) miniFill.style.width = pct + '%';
+        const miniTime = document.getElementById('miniTime');
+        if (miniTime) miniTime.textContent = formatTime(audio.currentTime) + ' / ' + formatTime(audio.duration);
+      }
+      return;
+    }
+    if (isScrubbing) return;
+    if (!audio.duration) return;
+    const pct = (audio.currentTime / audio.duration) * 100;
+    scrubberFill.style.width = pct + '%';
+    curTimeEl.textContent = formatTime(audio.currentTime);
+
+    const miniFill = document.getElementById('miniProgressFill');
+    if (miniFill) miniFill.style.width = pct + '%';
+    const miniTime = document.getElementById('miniTime');
+    if (miniTime) miniTime.textContent = formatTime(audio.currentTime) + ' / ' + formatTime(audio.duration);
+
+    updateUrlTimestamp(false);
+    if (typeof devRecordHeartbeat === 'function') devRecordHeartbeat(false);
+    const now = Date.now();
+    if (now - lastMediaSessionPosUpdate > 1000) {
+      lastMediaSessionPosUpdate = now;
+      updateMediaSessionPosition();
+      try { if (typeof updateChapterTitle === 'function') updateChapterTitle(); } catch (e) {}
+      // Keep chapter buttons in sync when follow-scroll moved the pane.
+      try {
+        const tBody = document.getElementById('transcriptBody');
+        const tCont = tBody ? tBody.querySelector('.transcript-text') : null;
+        if (tCont && tCont.scrollTop !== transcriptLastHiScroll) {
+          transcriptLastHiScroll = tCont.scrollTop;
+          if (typeof refreshChapterHighlight === 'function') refreshChapterHighlight();
+        }
+      } catch (e) {}
+      // Transcript follow-along: highlight the current paragraph.
+      try {
+        if (transcriptChunks.length > 0 && transcriptTrackId &&
+            String(transcriptTrackId) === String(currentShiurId)) {
+          const t = audio.currentTime || 0;
+          let cur = -1;
+          for (let i = transcriptChunks.length - 1; i >= 0; i--) {
+            if (t >= transcriptChunks[i].start) { cur = i; break; }
+          }
+          if (cur !== transcriptCurIdx) {
+            if (transcriptCurIdx >= 0 && transcriptChunks[transcriptCurIdx]) {
+              transcriptChunks[transcriptCurIdx].el.classList.remove('is-current');
+            }
+            transcriptCurIdx = cur;
+            if (cur >= 0 && transcriptChunks[cur]) {
+              const curEl = transcriptChunks[cur].el;
+              curEl.classList.add('is-current');
+              // Beta parity: the active paragraph's first line sits as the
+              // 3rd visible line on every paragraph change, unless the
+              // user scrolled manually in the last ~5s. Container-
+              // relative only — never steals page scroll.
+              try {
+                const tBody = document.getElementById('transcriptBody');
+                if (tBody && tBody.style.display !== 'none' &&
+                    Date.now() > transcriptFollowUntil &&
+                    curEl && curEl.offsetParent) {
+                  const cont = curEl.closest('.transcript-text');
+                  if (cont) {
+                    let lh = 22;
+                    try {
+                      lh = parseFloat(getComputedStyle(curEl).lineHeight) || 22;
+                    } catch (e2) {}
+                    transcriptSuppressScrollUntil = Date.now() + 300;
+                    cont.scrollTop = Math.max(0, curEl.offsetTop - lh * 2);
+                  }
+                }
+              } catch (e) {}
+            }
+          }
+        }
+      } catch (e) {}
+    }
+  });
+
+  audio.addEventListener('waiting', () => {
+    if (isSponsorPlaying && pendingShiur) {
+      if (sponsorStallTimer) clearTimeout(sponsorStallTimer);
+      sponsorStallTimer = setTimeout(() => {
+        if (isSponsorPlaying && pendingShiur && audio.readyState < 3) {
+          console.warn('Sponsor audio stalled for >8s, advancing to shiur');
+          startShiurPlayback(pendingShiur);
+        }
+      }, 8000);
+    }
+  });
+
+  window.addEventListener('orientationchange', scheduleScrollAutoMiniPlayer, { passive: true });
+
+  window.addEventListener('resize', scheduleScrollAutoMiniPlayer, { passive: true });
+
+  window.addEventListener('resize', syncPlayerBottomPadding);
+
+  window.addEventListener('scroll', scheduleScrollAutoMiniPlayer, { passive: true });
   let initialTimestamp = ${jsEmbed(timestamp)};
   let initialPlaybackSpeed = ${jsEmbed(playbackSpeed || '')};
   let hasAudio = ${jsEmbed(Boolean(audioUrl))};
@@ -14195,34 +14435,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       .trim();
   }
 
-  function updateMediaSession(title, speaker, photoUrl) {
-    if (!('mediaSession' in navigator)) return;
-    try {
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: cleanMediaText(title) || 'YUTorah Shiur',
-        artist: cleanMediaText(speaker) || 'YUTorah',
-        album: 'YUTorah Online',
-        artwork: buildMediaSessionArtwork(photoUrl)
-      });
-      registerMediaSessionHandlers();
-      updateMediaSessionPosition();
-    } catch (e) {
-      console.warn('Error updating MediaSession metadata:', e);
-    }
-  }
+  // → src/client/player-chrome.js (updateMediaSession).
 
-  function updateMediaSessionPosition() {
-    if (!('mediaSession' in navigator) || !('setPositionState' in navigator.mediaSession)) return;
-    try {
-      if (audio && audio.duration && !isNaN(audio.duration) && isFinite(audio.duration) && audio.duration > 0) {
-        navigator.mediaSession.setPositionState({
-          duration: audio.duration,
-          playbackRate: audio.playbackRate || 1,
-          position: Math.min(Math.max(0, audio.currentTime || 0), audio.duration)
-        });
-      }
-    } catch (e) {}
-  }
+  // → src/client/player-chrome.js (updateMediaSessionPosition).
 
   function playSponsorPreRoll(shiurObj) {
     if (isPreRollDisabled() || !currentSponsorAudio) {
@@ -14436,67 +14651,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     audio.playbackRate = currentPlaybackRate;
   }
 
-  function updateUrlTimestamp(force) {
-    if (isSponsorPlaying) return;
-    if (!hasAudio || !audio.src) return;
-    const curTime = audio.currentTime;
-    if (isNaN(curTime) || curTime < 0) return;
-    const curSec = Math.floor(curTime);
+  // → src/client/player-chrome.js (updateUrlTimestamp).
 
-    const now = Date.now();
-    // Throttled: update URL at most once every 5 seconds, unless forced (pause, seek, tab close)
-    if (!force && (curSec === lastUrlUpdateSec || (now - lastUrlUpdateTime < 5000))) {
-      return;
-    }
-
-    lastUrlUpdateSec = curSec;
-    lastUrlUpdateTime = now;
-
-    // Save to localStorage for instant resume even without URL parameter
-    if (currentShiurId && curSec > 0) {
-      try {
-        localStorage.setItem('yutorah_progress_' + currentShiurId, curSec);
-      } catch (e) {}
-    }
-
-    // Update the browser URL in-place without polluting back-button history
-    try {
-      const url = new URL(window.location.href);
-      if (curSec > 0) {
-        url.searchParams.set('t', curSec);
-      } else {
-        url.searchParams.delete('t');
-      }
-      history.replaceState(history.state, '', url.toString());
-    } catch (e) {}
-  }
-
-  function applyInitialTime() {
-    if (isSponsorPlaying) return;
-    if (initialTimeApplied) return;
-    let targetSec = 0;
-    if (initialTimestamp) {
-      const p = parseFloat(initialTimestamp);
-      if (!isNaN(p) && p > 0) targetSec = p;
-    } else if (currentShiurId) {
-      targetSec = resolveResumeSec(currentShiurId);
-    }
-
-    if (targetSec > 0) {
-      if (audio.duration && !isNaN(audio.duration)) {
-        audio.currentTime = Math.min(targetSec, audio.duration - 1);
-        initialTimeApplied = true;
-        updateUrlTimestamp(true);
-      } else {
-        try {
-          audio.currentTime = targetSec;
-          initialTimeApplied = true;
-          updateUrlTimestamp(true);
-        } catch(e) {}
-      }
-      try { if (typeof snapTranscriptToTime === 'function') snapTranscriptToTime(audio.currentTime); } catch (e) {}
-    }
-  }
+  // → src/client/player-chrome.js (applyInitialTime).
 
   // Unified resume resolver: ONE precedence for every entry point
   // (card, badge, history, queue, search, daf, direct link).
@@ -17085,100 +17242,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     scrollToSearchResults();
   }
 
-  function isPlayerCardInViewport() {
-    const playerCard = document.getElementById('playerCard');
-    if (!playerCard || playerCard.style.display === 'none') return false;
-    const rect = playerCard.getBoundingClientRect();
-    const header = document.getElementById('mainHeader');
-    const isPurim = document.body.classList.contains('is-purim-theme');
-    const topBoundary = (header && !isPurim) ? header.getBoundingClientRect().bottom : 0;
-    const bottomBoundary = (header && isPurim) ? header.getBoundingClientRect().top : (window.innerHeight || document.documentElement.clientHeight);
-
-    return rect.bottom > topBoundary && rect.top < bottomBoundary;
-  }
+  // → src/client/player-chrome.js (isPlayerCardInViewport).
 
   let scrollCheckScheduled = false;
-  function syncPlayerBottomPadding() {
-    try {
-      const mini = document.getElementById('miniPlayer');
-      if (mini && (mini.classList.contains('visible') || mini.style.display === 'flex')) {
-        const h = mini.offsetHeight;
-        if (h > 0) {
-          document.documentElement.style.setProperty('--player-height', h + 'px');
-        }
-      } else {
-        document.documentElement.style.removeProperty('--player-height');
-      }
-    } catch (e) {}
-  }
-  window.addEventListener('resize', syncPlayerBottomPadding);
+  // → src/client/player-chrome.js (syncPlayerBottomPadding).
 
-  function handleScrollAutoMiniPlayer() {
-    if (!hasAudio || isManuallyMinimized || Date.now() < isExpandingUntil) return;
-    const visible = isPlayerCardInViewport();
-    const miniPlayer = document.getElementById('miniPlayer');
-    if (!miniPlayer) return;
+  // → src/client/player-chrome.js (handleScrollAutoMiniPlayer).
 
-    if (!visible) {
-      if (!miniPlayer.classList.contains('visible')) {
-        miniPlayer.classList.add('visible');
-        document.body.classList.add('mini-player-active');
-        syncPlayerBottomPadding();
-      }
-    } else {
-      if (miniPlayer.classList.contains('visible')) {
-        miniPlayer.classList.remove('visible');
-        document.body.classList.remove('mini-player-active');
-        syncPlayerBottomPadding();
-      }
-    }
-  }
+  // → src/client/player-chrome.js (scheduleScrollAutoMiniPlayer).
 
-  function scheduleScrollAutoMiniPlayer() {
-    if (scrollCheckScheduled) return;
-    scrollCheckScheduled = true;
-    requestAnimationFrame(() => {
-      handleScrollAutoMiniPlayer();
-      scrollCheckScheduled = false;
-    });
-  }
-
-  function minimizePlayer() {
-    if (!hasAudio && !isCurrentShiurArticle) return;
-    isManuallyMinimized = true;
-    const playerCard = document.getElementById('playerCard');
-    const miniPlayer = document.getElementById('miniPlayer');
-    if (playerCard) playerCard.style.display = 'none';
-    if (miniPlayer) {
-      const miniProgressTrack = document.getElementById('miniProgressTrack');
-      const miniPlayBtn = document.getElementById('miniPlayBtn');
-      const miniTime = document.getElementById('miniTime');
-      const skipBtns = miniPlayer.querySelectorAll('.skip-btn');
-      if (isCurrentShiurArticle) {
-        if (miniProgressTrack) miniProgressTrack.style.display = 'none';
-        if (miniPlayBtn) miniPlayBtn.style.display = 'none';
-        skipBtns.forEach(b => b.style.display = 'none');
-        if (miniTime) miniTime.textContent = '📄 Reading';
-      } else {
-        if (miniProgressTrack) miniProgressTrack.style.display = 'block';
-        if (miniPlayBtn) miniPlayBtn.style.display = 'block';
-        skipBtns.forEach(b => b.style.display = 'block');
-      }
-      miniPlayer.classList.add('visible');
-      syncPlayerBottomPadding();
-      setTimeout(syncPlayerBottomPadding, 60);
-    }
-    document.body.classList.add('mini-player-active');
-
-    const searchSection = document.getElementById('searchResultsSection');
-    const collSection = document.getElementById('collectionsSection');
-    if (collSection) {
-      collSection.style.display = 'block';
-    }
-    if (searchSection && collSection && searchSection.style.display === 'none' && collSection.style.display === 'none') {
-      collSection.style.display = 'block';
-    }
-  }
+  // → src/client/player-chrome.js (minimizePlayer).
 
   // Bringing the big player into focus centers the pause/play button
   // on screen (not the card top), so the transport is where you look.
@@ -17195,28 +17268,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       }
     } catch (e) {}
   }
-  function expandPlayer() {
-    isManuallyMinimized = false;
-    isExpandingUntil = Date.now() + 800;
-    // Daf is rendered as a sibling view inside the same app shell. Reveal
-    // the regular shell before expanding so its player card is not hidden by
-    // the Daf view's parent.
-    const dafView = document.getElementById('dafAppView');
-    const regularView = document.getElementById('regularAppView');
-    if (dafView && regularView && dafView.style.display !== 'none') {
-      dafView.style.display = 'none';
-      regularView.style.display = '';
-    }
-    const playerCard = document.getElementById('playerCard');
-    const miniPlayer = document.getElementById('miniPlayer');
-    if (playerCard) {
-      playerCard.style.display = 'block';
-      scrollPlayButtonIntoView();
-    }
-    if (miniPlayer) miniPlayer.classList.remove('visible');
-    document.body.classList.remove('mini-player-active');
-    syncPlayerBottomPadding();
-  }
+  // → src/client/player-chrome.js (expandPlayer).
 
   // Shared viewer teardown: closing the player must not orphan the source
   // sheet picker, its Escape listener, the toolbar close button, or the
@@ -17234,43 +17286,14 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       pdfDoc = null;
     } catch (e) {}
   }
-  function closeMiniPlayer() {
-    if (audio) audio.pause();
-    hasAudio = false;
-    isCurrentShiurArticle = false;
-    currentArticlePdf = '';
-    isManuallyMinimized = false;
-    teardownSourceSheetView();
-    currentShiurId = '';
-    updateCardPlayBadges();
-    try { if (typeof hideSeriesStrip === 'function') hideSeriesStrip(); } catch (e) {}
-    try { if (typeof hideTranscriptSection === 'function') hideTranscriptSection(); } catch (e) {}
-    try { if (typeof clearLastSession === 'function') clearLastSession(); } catch (e) {}
-    const miniPlayer = document.getElementById('miniPlayer');
-    if (miniPlayer) miniPlayer.classList.remove('visible');
-    document.body.classList.remove('mini-player-active');
-    syncPlayerBottomPadding();
-    const playerCard = document.getElementById('playerCard');
-    if (playerCard) playerCard.style.display = 'none';
-    const newUrl = new URL(window.location.href);
-    newUrl.pathname = '/';
-    newUrl.search = '';
-    history.pushState({}, '', newUrl.toString());
-  }
+  // → src/client/player-chrome.js (closeMiniPlayer).
 
   function handleMiniPlayerClick(e) {
     if (e.target.closest('button') || e.target.closest('.mini-progress-track')) return;
     expandPlayer();
   }
 
-  function seekMiniProgress(e) {
-    if (!audio.duration) return;
-    const track = document.getElementById('miniProgressTrack');
-    const rect = track.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    audio.currentTime = pct * audio.duration;
-    updateUrlTimestamp(true);
-  }
+  // → src/client/player-chrome.js (seekMiniProgress).
 
   // Autocomplete Metadata Cache
   let isFetchingAutocomplete = false;
@@ -25233,33 +25256,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   };
 
   // Audio Controls
-  function togglePlay() {
-    if (isCurrentShiurArticle) return;
-    if (!audio.src) {
-      if (pendingShiur) {
-        if (!sponsorPlayedForThisShiur && currentSponsorAudio && !isPreRollDisabled()) {
-          playSponsorPreRoll(pendingShiur);
-          return;
-        } else {
-          startShiurPlayback(pendingShiur);
-          return;
-        }
-      }
-      // If no audio loaded yet, play the first shiur
-      const firstCard = document.querySelector('.quick-card-link');
-      if (firstCard) firstCard.click();
-      return;
-    }
-    if (audio.paused) {
-      if (!sponsorPlayedForThisShiur && currentSponsorAudio && pendingShiur && !isSponsorPlaying && !isPreRollDisabled()) {
-        playSponsorPreRoll(pendingShiur);
-        return;
-      }
-      audio.play().catch(e => console.log('Play blocked:', e));
-    } else {
-      audio.pause();
-    }
-  }
+  // → src/client/player-chrome.js (togglePlay).
 
   let skipFlashTimer = null;
   function flashSkipFeedback(sec) {
@@ -25277,49 +25274,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       }, 650);
     } catch (e) {}
   }
-  function skip(sec) {
-    if (isCurrentShiurArticle || isSponsorPlaying) return;
-    if (!audio.src) return;
-    audio.currentTime = Math.max(0, Math.min(audio.duration || Infinity, audio.currentTime + sec));
-    updateUrlTimestamp(true);
-    flashSkipFeedback(sec);
-  }
+  // → src/client/player-chrome.js (skip).
 
-  function setSpeed(rate) {
-    const r = parseFloat(rate);
-    if (isNaN(r) || r <= 0) return;
-    currentPlaybackRate = r;
-    audio.playbackRate = r;
-    const sel = document.getElementById('speedSelect');
-    if (sel) {
-      let found = false;
-      for (let i = 0; i < sel.options.length; i++) {
-        if (parseFloat(sel.options[i].value) === r) {
-          sel.selectedIndex = i;
-          found = true;
-          break;
-        }
-      }
-      if (!found) {
-        const opt = document.createElement('option');
-        opt.value = String(r);
-        opt.textContent = r + 'x';
-        opt.selected = true;
-        sel.appendChild(opt);
-      }
-    }
-    try {
-      const url = new URL(window.location.href);
-      if (r === 1) {
-        url.searchParams.delete('speed');
-        url.searchParams.delete('rate');
-      } else {
-        url.searchParams.delete('rate');
-        url.searchParams.set('speed', r);
-      }
-      history.replaceState(history.state, '', url.toString());
-    } catch(e) {}
-  }
+  // → src/client/player-chrome.js (setSpeed).
 
   function copyShareLink() {
     const curSec = Math.floor(audio.currentTime);
@@ -25362,57 +25319,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   const scrubberFill = document.getElementById('scrubberFill');
   const curTimeEl = document.getElementById('curTime');
 
-  function getScrubPct(clientX) {
-    const rect = scrubberBar.getBoundingClientRect();
-    if (rect.width <= 0) return 0;
-    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-  }
+  // → src/client/player-chrome.js (getScrubPct).
 
-  function updateScrubberUi(pct) {
-    scrubPct = pct;
-    scrubberFill.style.width = (pct * 100) + '%';
-    if (scrubberBar) {
-      scrubberBar.setAttribute('aria-valuenow', String(Math.round(pct * 100)));
-    }
-    if (audio.duration && !isNaN(audio.duration)) {
-      curTimeEl.textContent = formatTime(pct * audio.duration);
-      if (scrubberBar) {
-        scrubberBar.setAttribute('aria-valuetext', formatTime(pct * audio.duration) + ' of ' + formatTime(audio.duration));
-      }
-      const miniFill = document.getElementById('miniProgressFill');
-      if (miniFill) miniFill.style.width = (pct * 100) + '%';
-      const miniTime = document.getElementById('miniTime');
-      if (miniTime) miniTime.textContent = formatTime(pct * audio.duration) + ' / ' + formatTime(audio.duration);
-    }
-  }
+  // → src/client/player-chrome.js (updateScrubberUi).
 
-  function onScrubStart(e) {
-    if (isSponsorPlaying || !audio.duration || isNaN(audio.duration)) return;
-    isScrubbing = true;
-    scrubberBar.classList.add('is-dragging');
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const pct = getScrubPct(clientX);
-    updateScrubberUi(pct);
-  }
+  // → src/client/player-chrome.js (onScrubStart).
 
-  function onScrubMove(e) {
-    if (!isScrubbing || !audio.duration || isNaN(audio.duration)) return;
-    if (e.cancelable) e.preventDefault();
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const pct = getScrubPct(clientX);
-    updateScrubberUi(pct);
-  }
+  // → src/client/player-chrome.js (onScrubMove).
 
-  function onScrubEnd() {
-    if (!isScrubbing) return;
-    isScrubbing = false;
-    scrubberBar.classList.remove('is-dragging');
-    if (audio.duration && !isNaN(audio.duration)) {
-      const targetSec = scrubPct * audio.duration;
-      audio.currentTime = targetSec;
-      updateUrlTimestamp(true);
-    }
-  }
+  // → src/client/player-chrome.js (onScrubEnd).
 
   scrubberBar.addEventListener('mousedown', onScrubStart);
   window.addEventListener('mousemove', onScrubMove);
@@ -25457,19 +25372,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   const PLAY_ICON_MINI = '<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style="display:block;"><path d="M8 5v14l11-7z"/></svg>';
   const PAUSE_ICON_MINI = '<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style="display:block;"><rect x="5" y="4" width="4" height="16" rx="1.5"/><rect x="15" y="4" width="4" height="16" rx="1.5"/></svg>';
 
-  function updatePlayPauseIcons(isPlaying) {
-    const mainBtn = document.getElementById('playBtn');
-    if (mainBtn) {
-      mainBtn.innerHTML = isPlaying ? PAUSE_ICON_MAIN : PLAY_ICON_MAIN;
-      mainBtn.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play');
-    }
-    const miniBtn = document.getElementById('miniPlayBtn');
-    if (miniBtn) {
-      miniBtn.innerHTML = isPlaying ? PAUSE_ICON_MINI : PLAY_ICON_MINI;
-      miniBtn.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play');
-    }
-    updateCardPlayBadges();
-  }
+  // → src/client/player-chrome.js (updatePlayPauseIcons).
 
   // Paints the play badge with the CURRENT playback state at render time,
   // so cards created while a track plays (Load More, tab switch, new
@@ -25532,183 +25435,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   // Audio Events
   let lastMediaSessionPosUpdate = 0;
-  audio.addEventListener('play', () => {
-    updatePlayPauseIcons(true);
-    if ('mediaSession' in navigator) {
-      try { navigator.mediaSession.playbackState = 'playing'; } catch (e) {}
-      updateMediaSessionPosition();
-    }
-    if (isSponsorPlaying) {
-      resetSponsorWatchdog();
-      startSponsorRaf();
-    }
-  });
-  audio.addEventListener('pause', () => {
-    updatePlayPauseIcons(false);
-    updateUrlTimestamp(true);
-    if ('mediaSession' in navigator) {
-      try { navigator.mediaSession.playbackState = 'paused'; } catch (e) {}
-      updateMediaSessionPosition();
-    }
-    if (typeof devRecordHeartbeat === 'function') devRecordHeartbeat(true);
-    try {
-      if (typeof markCloudDirty === 'function') markCloudDirty('history');
-      if (typeof scheduleCloudSync === 'function') scheduleCloudSync();
-    } catch (e) {}
-    if (isSponsorPlaying) {
-      clearSponsorTimers();
-      stopSponsorRaf();
-    }
-  });
-  audio.addEventListener('waiting', () => {
-    if (isSponsorPlaying && pendingShiur) {
-      if (sponsorStallTimer) clearTimeout(sponsorStallTimer);
-      sponsorStallTimer = setTimeout(() => {
-        if (isSponsorPlaying && pendingShiur && audio.readyState < 3) {
-          console.warn('Sponsor audio stalled for >8s, advancing to shiur');
-          startShiurPlayback(pendingShiur);
-        }
-      }, 8000);
-    }
-  });
-  audio.addEventListener('playing', () => {
-    if (sponsorStallTimer) {
-      clearTimeout(sponsorStallTimer);
-      sponsorStallTimer = null;
-    }
-  });
-  audio.addEventListener('timeupdate', () => {
-    if (isSponsorPlaying) {
-      if (audio.duration && !isNaN(audio.duration)) {
-        if (audio.currentTime >= audio.duration - 0.25) {
-          startShiurPlayback(pendingShiur);
-          return;
-        }
-        const rem = Math.max(0, Math.ceil(audio.duration - audio.currentTime));
-        const countdownEl = document.getElementById('sponsorCountdown');
-        if (countdownEl) countdownEl.textContent = rem;
-        const pct = (audio.currentTime / audio.duration) * 100;
-        if (scrubberFill) scrubberFill.style.width = pct + '%';
-        curTimeEl.textContent = formatTime(audio.currentTime);
-        document.getElementById('totalTime').textContent = formatTime(audio.duration);
-        const miniFill = document.getElementById('miniProgressFill');
-        if (miniFill) miniFill.style.width = pct + '%';
-        const miniTime = document.getElementById('miniTime');
-        if (miniTime) miniTime.textContent = formatTime(audio.currentTime) + ' / ' + formatTime(audio.duration);
-      }
-      return;
-    }
-    if (isScrubbing) return;
-    if (!audio.duration) return;
-    const pct = (audio.currentTime / audio.duration) * 100;
-    scrubberFill.style.width = pct + '%';
-    curTimeEl.textContent = formatTime(audio.currentTime);
-
-    const miniFill = document.getElementById('miniProgressFill');
-    if (miniFill) miniFill.style.width = pct + '%';
-    const miniTime = document.getElementById('miniTime');
-    if (miniTime) miniTime.textContent = formatTime(audio.currentTime) + ' / ' + formatTime(audio.duration);
-
-    updateUrlTimestamp(false);
-    if (typeof devRecordHeartbeat === 'function') devRecordHeartbeat(false);
-    const now = Date.now();
-    if (now - lastMediaSessionPosUpdate > 1000) {
-      lastMediaSessionPosUpdate = now;
-      updateMediaSessionPosition();
-      try { if (typeof updateChapterTitle === 'function') updateChapterTitle(); } catch (e) {}
-      // Keep chapter buttons in sync when follow-scroll moved the pane.
-      try {
-        const tBody = document.getElementById('transcriptBody');
-        const tCont = tBody ? tBody.querySelector('.transcript-text') : null;
-        if (tCont && tCont.scrollTop !== transcriptLastHiScroll) {
-          transcriptLastHiScroll = tCont.scrollTop;
-          if (typeof refreshChapterHighlight === 'function') refreshChapterHighlight();
-        }
-      } catch (e) {}
-      // Transcript follow-along: highlight the current paragraph.
-      try {
-        if (transcriptChunks.length > 0 && transcriptTrackId &&
-            String(transcriptTrackId) === String(currentShiurId)) {
-          const t = audio.currentTime || 0;
-          let cur = -1;
-          for (let i = transcriptChunks.length - 1; i >= 0; i--) {
-            if (t >= transcriptChunks[i].start) { cur = i; break; }
-          }
-          if (cur !== transcriptCurIdx) {
-            if (transcriptCurIdx >= 0 && transcriptChunks[transcriptCurIdx]) {
-              transcriptChunks[transcriptCurIdx].el.classList.remove('is-current');
-            }
-            transcriptCurIdx = cur;
-            if (cur >= 0 && transcriptChunks[cur]) {
-              const curEl = transcriptChunks[cur].el;
-              curEl.classList.add('is-current');
-              // Beta parity: the active paragraph's first line sits as the
-              // 3rd visible line on every paragraph change, unless the
-              // user scrolled manually in the last ~5s. Container-
-              // relative only — never steals page scroll.
-              try {
-                const tBody = document.getElementById('transcriptBody');
-                if (tBody && tBody.style.display !== 'none' &&
-                    Date.now() > transcriptFollowUntil &&
-                    curEl && curEl.offsetParent) {
-                  const cont = curEl.closest('.transcript-text');
-                  if (cont) {
-                    let lh = 22;
-                    try {
-                      lh = parseFloat(getComputedStyle(curEl).lineHeight) || 22;
-                    } catch (e2) {}
-                    transcriptSuppressScrollUntil = Date.now() + 300;
-                    cont.scrollTop = Math.max(0, curEl.offsetTop - lh * 2);
-                  }
-                }
-              } catch (e) {}
-            }
-          }
-        }
-      } catch (e) {}
-    }
-  });
-  audio.addEventListener('loadedmetadata', () => {
-    if (currentPlaybackRate) {
-      audio.playbackRate = currentPlaybackRate;
-    }
-    document.getElementById('totalTime').textContent = formatTime(audio.duration);
-    const miniTime = document.getElementById('miniTime');
-    if (miniTime) miniTime.textContent = formatTime(audio.currentTime) + ' / ' + formatTime(audio.duration);
-    if (isSponsorPlaying && audio.duration && !isNaN(audio.duration)) {
-      const countdownEl = document.getElementById('sponsorCountdown');
-      if (countdownEl) countdownEl.textContent = Math.ceil(audio.duration);
-    }
-    applyInitialTime();
-    try { if (typeof renderChapterMarkers === 'function') renderChapterMarkers(); } catch (e) {}
-  });
-  audio.addEventListener('canplay', () => {
-    if (currentPlaybackRate) {
-      audio.playbackRate = currentPlaybackRate;
-    }
-    applyInitialTime();
-    try { if (typeof renderChapterMarkers === 'function') renderChapterMarkers(); } catch (e) {}
-  });
-  audio.addEventListener('ended', () => {
-    if (isSponsorPlaying && pendingShiur) {
-      startShiurPlayback(pendingShiur);
-      return;
-    }
-    updatePlayPauseIcons(false);
-    if (typeof devMarkCompleted === 'function' && !isSponsorPlaying) devMarkCompleted();
-    // Dev queue: auto-play the next queued shiur when a track ends.
-    if (!isSponsorPlaying) {
-      try {
-        if (typeof devPlayNextFromQueue === 'function' && devPlayNextFromQueue()) return;
-      } catch (e) {}
-    }
-    if (currentShiurId) {
-      try { localStorage.removeItem('yutorah_progress_' + currentShiurId); } catch(e) {}
-    }
-    const url = new URL(window.location.href);
-    url.searchParams.delete('t');
-    history.replaceState(history.state, '', url.toString());
-  });
 
   if (audio.readyState >= 1) {
     applyInitialTime();
@@ -25717,18 +25443,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   // Last-session snapshot: which track was loaded when the app went
   // away (PWA close included). Position itself is already persisted by
   // updateUrlTimestamp/heartbeat; this only records the track identity.
-  function saveLastSession() {
-    try {
-      if (typeof currentShiurId !== 'undefined' && currentShiurId &&
-          (hasAudio || isCurrentShiurArticle)) {
-        localStorage.setItem('yutorah_last_session',
-          JSON.stringify({ id: String(currentShiurId), at: Date.now() }));
-      }
-    } catch (e) {}
-  }
-  function clearLastSession() {
-    try { localStorage.removeItem('yutorah_last_session'); } catch (e) {}
-  }
+  // → src/client/player-chrome.js (saveLastSession).
+  // → src/client/player-chrome.js (clearLastSession).
 
   // Save timestamp when page/tab is backgrounded or closed
   document.addEventListener('visibilitychange', () => {
@@ -25756,21 +25472,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   });
 
   // Fallback if primary audio stream errors
-  audio.addEventListener('error', () => {
-    if (isSponsorPlaying && pendingShiur) {
-      console.warn('Sponsor audio encountered error, advancing to shiur...');
-      skipSponsorAudio();
-      return;
-    }
-    console.warn('Audio element error with current source:', audio.src);
-    const dlBtn = document.getElementById('dlBtn');
-    if (dlBtn && dlBtn.href && dlBtn.href !== audio.src) {
-      console.log('Attempting fallback source:', dlBtn.href);
-      audio.src = dlBtn.href;
-      audio.load();
-      audio.play().catch(e => console.log('Fallback play error:', e));
-    }
-  });
 
   // Mobile Lock Screen & Notification Center (MediaSession API)
   if ('mediaSession' in navigator) {
@@ -26119,9 +25820,6 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   } catch(e) {}
 
   // Auto-switch mini player based on scroll position / viewport visibility
-  window.addEventListener('scroll', scheduleScrollAutoMiniPlayer, { passive: true });
-  window.addEventListener('resize', scheduleScrollAutoMiniPlayer, { passive: true });
-  window.addEventListener('orientationchange', scheduleScrollAutoMiniPlayer, { passive: true });
   if ('IntersectionObserver' in window) {
     var playerCardEl = document.getElementById('playerCard');
     if (playerCardEl) {

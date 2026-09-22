@@ -16,6 +16,16 @@ const mockCtx = {
   passThroughOnException: () => {}
 };
 
+// Phase 2 refactor: player-chrome code lives in src/client/*.js.txt and is
+// emitted into the page. String asserts on moved code must search BOTH.
+let _unitSrcCache = null;
+function clientAllSrc(workerSrc) {
+  if (!_unitSrcCache) {
+    _unitSrcCache = fs.readFileSync(new URL('../src/client/player-chrome.js.txt', import.meta.url), 'utf8');
+  }
+  return workerSrc + '\n' + _unitSrcCache;
+}
+
 async function testHomepage() {
   console.log('1. Testing Homepage & Basic Layout SSR...');
   const req = new Request('https://yutorah-player.mrosensweig.workers.dev/', {
@@ -62,6 +72,16 @@ async function testHomepage() {
   assert.ok(html.includes('<script src="/js/yt-utils.js"></script>'), 'app shell must load the utils bundle before the inline script');
   // Behavioral equivalence: server import ≡ bundle ≡ inline fallback.
   // This is what makes the fallback comment ("pinned by tests") true.
+  // Client-unit hygiene: raw unit sources must never contain backticks,
+  // ${, or a closing script tag (any would corrupt the inline emission).
+  const clientUnitSrc = fs.readFileSync(new URL('../src/client/player-chrome.js.txt', import.meta.url), 'utf8');
+  assert.ok(!clientUnitSrc.includes('`'), 'unit source must not contain backticks');
+  assert.ok(!clientUnitSrc.includes('${'), 'unit source must not contain ${');
+  assert.ok(!clientUnitSrc.includes('</script'), 'unit source must not contain a closing script tag');
+  // Unit holds logic only: event registrations live in the main script
+  // AFTER const audio (parse-time TDZ otherwise kills the whole block).
+  assert.ok(!/^(audio|window)\.addEventListener/m.test(clientUnitSrc), 'unit must not register listeners at top level');
+  assert.ok(!clientUnitSrc.includes('addEventListener'), 'unit must contain zero listener registrations');
   const corpus = ['', null, 0, 'plain', '<a href="x">A&B</a>', '"double" and \'single\'', 'a<b>c&d"e\'f', 'a/b?c=d&e=f', 'line1\nline2', 'שלום & <world>'];
   const fakeWindow = {};
   const bundleFn = new Function('window', utilsJs + '; return window.YTUtils.escapeHtml;')(fakeWindow);
@@ -1338,7 +1358,9 @@ async function testDafHub() {
   const homeHtml = await homeRes.text();
   assert.ok(homeHtml.includes('openDafView(event)'), 'homepage must open the Daf Hub as an in-app view');
   assert.ok(html.includes('id="miniPlayer"') && html.includes('id="regularAppView"') && html.includes('id="dafAppView"'), 'Daf route must use the regular app shell and shared mini-player');
-  assert.ok(workerSrc.includes("if (dafView && regularView && dafView.style.display !== 'none')") && workerSrc.includes("regularView.style.display = '';"), 'Expanding the shared mini-player from Daf must reveal the regular player view');
+  // expandPlayer lives in the PlayerChrome unit file (Phase 2 extraction).
+  const unitSrc = fs.readFileSync(new URL('../src/client/player-chrome.js.txt', import.meta.url), 'utf8');
+  assert.ok(unitSrc.includes("if (dafView && regularView && dafView.style.display !== 'none')") && unitSrc.includes("regularView.style.display = '';"), 'Expanding the shared mini-player from Daf must reveal the regular player view');
 
   // Init params must use breakout-safe embedding (XSS).
   assert.ok(workerSrc.includes('var sm = ${jsEmbed(') || workerSrc.includes('var sm = ${ jsEmbed('),
@@ -1376,9 +1398,9 @@ async function testPwaThemePlaylistDeleteClearHistory() {
   assert.ok(workerSrc.includes('function toggleTranscriptEnlarge('), 'transcript enlarge toggle must exist (T2)');
   assert.ok(workerSrc.includes('transcript-enlarged'), 'enlarged reading mode styles must exist (T2)');
   assert.ok(workerSrc.includes('function transcriptEnlargeDefault('), 'auto-enlarge setting must exist, logged-in only, default off (T3)');
-  assert.ok(workerSrc.includes('transcriptFollowUntil'), 'manual scroll must suspend follow-scroll');
-  assert.ok(workerSrc.includes("closest('.transcript-text')"), 'follow-scroll must stay container-relative (never steal page scroll)');
-  assert.ok(workerSrc.includes('curEl.offsetTop - lh * 2'), 'follow-scroll must pin the active first line as 3rd visible line');
+  assert.ok(clientAllSrc(workerSrc).includes('transcriptFollowUntil'), 'manual scroll must suspend follow-scroll');
+  assert.ok(clientAllSrc(workerSrc).includes("closest('.transcript-text')"), 'follow-scroll must stay container-relative (never steal page scroll)');
+  assert.ok(clientAllSrc(workerSrc).includes('curEl.offsetTop - lh * 2'), 'follow-scroll must pin the active first line as 3rd visible line');
   assert.ok(workerSrc.includes('function snapTranscriptToTime('), 'transcript must snap to position on load/resume/open');
   assert.ok(workerSrc.includes('function showTranscriptPane('), 'all transcript-open paths must share one positioned entry');
   assert.ok(workerSrc.includes('transcript-chapter-div'), 'transcript must carry inline chapter dividers (C1)');
@@ -1421,7 +1443,7 @@ async function testSkipFlashFeedback() {
   const workerSrc = fs.readFileSync(new URL('../src/worker.js', import.meta.url), 'utf8');
   assert.ok(workerSrc.includes('id="skipFlash"'), 'shell must contain the skip-flash overlay');
   assert.ok(workerSrc.includes('function flashSkipFeedback(sec)'), 'skip feedback function must exist');
-  assert.ok(workerSrc.includes('flashSkipFeedback(sec);'), 'skip() must trigger the flash after seeking');
+  assert.ok(clientAllSrc(workerSrc).includes('flashSkipFeedback(sec);'), 'skip() must trigger the flash after seeking');
   assert.ok(workerSrc.includes('.skip-flash'), 'skip-flash styling must exist');
   assert.ok(workerSrc.includes('skipFlashTimer'), 'skip flash must use its own timer (never fight toasts)');
   console.log('  ✅ Skip flash feedback verified.');
@@ -1440,7 +1462,7 @@ async function testCardPlayStatesAndMiniPop() {
   assert.ok(workerSrc.includes('Card tap: back to the big player'), 'card tap on the loaded track must expand the big player (F3)');
   assert.ok(workerSrc.includes('function resolveResumeSec(id)'), 'unified resume resolver must exist (F2)');
   assert.ok(workerSrc.includes('let resumeSec = resolveResumeSec(id);'), 'track loads must use the unified resolver (F2)');
-  assert.ok(workerSrc.includes('targetSec = resolveResumeSec(currentShiurId);'), 'initial-time path must use the unified resolver (F2)');
+  assert.ok(clientAllSrc(workerSrc).includes('targetSec = resolveResumeSec(currentShiurId);'), 'initial-time path must use the unified resolver (F2)');
   assert.ok(workerSrc.includes('function cardPlayBadgeHtml(id, isArticle, label, onclickJs, cls)'), 'badges must paint current state at render time (F4/G1)');
   assert.ok(workerSrc.includes("cardPlayBadgeHtml(id, isArticle, '▶ Play', badgePlay)"), 'search cards must use the state-aware badge (F4)');
   assert.ok(workerSrc.includes("cardPlayBadgeHtml(item.id, isDoc, '▶ Resume'"), 'history cards must use the state-aware badge (F4)');
@@ -1478,7 +1500,7 @@ async function testCardPlayStatesAndMiniPop() {
   assert.ok(workerSrc.includes('function listeningUrlPath()'), 'home/brand must preserve the loaded track URL (H2)');
   assert.ok(workerSrc.includes("newUrl.searchParams.delete('restored')"), 'search must drop the one-shot flag (H2/G4)');
   assert.ok(workerSrc.includes('yutorah_last_session'), 'app must snapshot the loaded track on hide/unload (G4)');
-  assert.ok(workerSrc.includes('function saveLastSession()') && workerSrc.includes('function clearLastSession()'), 'session save/clear helpers must exist (G4)');
+  assert.ok(clientAllSrc(workerSrc).includes('function saveLastSession()') && clientAllSrc(workerSrc).includes('function clearLastSession()'), 'session save/clear helpers must exist (G4)');
   assert.ok(workerSrc.includes('Session restore: reopen where you left off'), 'bare launches must restore the snapshot paused (G4)');
   assert.ok(workerSrc.includes("get('restored') === '1'"), 'restored loads must skip boot autoplay (G4)');
   assert.ok(workerSrc.includes("ru.pathname === '/daf'"), 'restore must never hijack Daf links (G4)');

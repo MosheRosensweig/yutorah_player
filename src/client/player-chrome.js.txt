@@ -1,0 +1,413 @@
+/**
+ * PlayerChrome unit — transport + mini-player + session persistence.
+ * Classic script semantics: emitted as its own <script> block AND served
+ * at /js/player-chrome.js for reuse. Shares the global lexical env with
+ * the app script (no imports/exports here); sees app state as globals.
+ * Rules for this file: no backticks, no dollar-brace, no closing
+ * script tags in strings (any of those breaks the inline emission).
+ */
+
+  function togglePlay() {
+    if (isCurrentShiurArticle) return;
+    if (!audio.src) {
+      if (pendingShiur) {
+        if (!sponsorPlayedForThisShiur && currentSponsorAudio && !isPreRollDisabled()) {
+          playSponsorPreRoll(pendingShiur);
+          return;
+        } else {
+          startShiurPlayback(pendingShiur);
+          return;
+        }
+      }
+      // If no audio loaded yet, play the first shiur
+      const firstCard = document.querySelector('.quick-card-link');
+      if (firstCard) firstCard.click();
+      return;
+    }
+    if (audio.paused) {
+      if (!sponsorPlayedForThisShiur && currentSponsorAudio && pendingShiur && !isSponsorPlaying && !isPreRollDisabled()) {
+        playSponsorPreRoll(pendingShiur);
+        return;
+      }
+      audio.play().catch(e => console.log('Play blocked:', e));
+    } else {
+      audio.pause();
+    }
+  }
+
+  function skip(sec) {
+    if (isCurrentShiurArticle || isSponsorPlaying) return;
+    if (!audio.src) return;
+    audio.currentTime = Math.max(0, Math.min(audio.duration || Infinity, audio.currentTime + sec));
+    updateUrlTimestamp(true);
+    flashSkipFeedback(sec);
+  }
+
+  function setSpeed(rate) {
+    const r = parseFloat(rate);
+    if (isNaN(r) || r <= 0) return;
+    currentPlaybackRate = r;
+    audio.playbackRate = r;
+    const sel = document.getElementById('speedSelect');
+    if (sel) {
+      let found = false;
+      for (let i = 0; i < sel.options.length; i++) {
+        if (parseFloat(sel.options[i].value) === r) {
+          sel.selectedIndex = i;
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        const opt = document.createElement('option');
+        opt.value = String(r);
+        opt.textContent = r + 'x';
+        opt.selected = true;
+        sel.appendChild(opt);
+      }
+    }
+    try {
+      const url = new URL(window.location.href);
+      if (r === 1) {
+        url.searchParams.delete('speed');
+        url.searchParams.delete('rate');
+      } else {
+        url.searchParams.delete('rate');
+        url.searchParams.set('speed', r);
+      }
+      history.replaceState(history.state, '', url.toString());
+    } catch(e) {}
+  }
+
+  function getScrubPct(clientX) {
+    const rect = scrubberBar.getBoundingClientRect();
+    if (rect.width <= 0) return 0;
+    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  }
+
+  function updateScrubberUi(pct) {
+    scrubPct = pct;
+    scrubberFill.style.width = (pct * 100) + '%';
+    if (scrubberBar) {
+      scrubberBar.setAttribute('aria-valuenow', String(Math.round(pct * 100)));
+    }
+    if (audio.duration && !isNaN(audio.duration)) {
+      curTimeEl.textContent = formatTime(pct * audio.duration);
+      if (scrubberBar) {
+        scrubberBar.setAttribute('aria-valuetext', formatTime(pct * audio.duration) + ' of ' + formatTime(audio.duration));
+      }
+      const miniFill = document.getElementById('miniProgressFill');
+      if (miniFill) miniFill.style.width = (pct * 100) + '%';
+      const miniTime = document.getElementById('miniTime');
+      if (miniTime) miniTime.textContent = formatTime(pct * audio.duration) + ' / ' + formatTime(audio.duration);
+    }
+  }
+
+  function onScrubStart(e) {
+    if (isSponsorPlaying || !audio.duration || isNaN(audio.duration)) return;
+    isScrubbing = true;
+    scrubberBar.classList.add('is-dragging');
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const pct = getScrubPct(clientX);
+    updateScrubberUi(pct);
+  }
+
+  function onScrubMove(e) {
+    if (!isScrubbing || !audio.duration || isNaN(audio.duration)) return;
+    if (e.cancelable) e.preventDefault();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const pct = getScrubPct(clientX);
+    updateScrubberUi(pct);
+  }
+
+  function onScrubEnd() {
+    if (!isScrubbing) return;
+    isScrubbing = false;
+    scrubberBar.classList.remove('is-dragging');
+    if (audio.duration && !isNaN(audio.duration)) {
+      const targetSec = scrubPct * audio.duration;
+      audio.currentTime = targetSec;
+      updateUrlTimestamp(true);
+    }
+  }
+
+  function updatePlayPauseIcons(isPlaying) {
+    const mainBtn = document.getElementById('playBtn');
+    if (mainBtn) {
+      mainBtn.innerHTML = isPlaying ? PAUSE_ICON_MAIN : PLAY_ICON_MAIN;
+      mainBtn.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play');
+    }
+    const miniBtn = document.getElementById('miniPlayBtn');
+    if (miniBtn) {
+      miniBtn.innerHTML = isPlaying ? PAUSE_ICON_MINI : PLAY_ICON_MINI;
+      miniBtn.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play');
+    }
+    updateCardPlayBadges();
+  }
+
+  function updateMediaSession(title, speaker, photoUrl) {
+    if (!('mediaSession' in navigator)) return;
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: cleanMediaText(title) || 'YUTorah Shiur',
+        artist: cleanMediaText(speaker) || 'YUTorah',
+        album: 'YUTorah Online',
+        artwork: buildMediaSessionArtwork(photoUrl)
+      });
+      registerMediaSessionHandlers();
+      updateMediaSessionPosition();
+    } catch (e) {
+      console.warn('Error updating MediaSession metadata:', e);
+    }
+  }
+
+  function updateMediaSessionPosition() {
+    if (!('mediaSession' in navigator) || !('setPositionState' in navigator.mediaSession)) return;
+    try {
+      if (audio && audio.duration && !isNaN(audio.duration) && isFinite(audio.duration) && audio.duration > 0) {
+        navigator.mediaSession.setPositionState({
+          duration: audio.duration,
+          playbackRate: audio.playbackRate || 1,
+          position: Math.min(Math.max(0, audio.currentTime || 0), audio.duration)
+        });
+      }
+    } catch (e) {}
+  }
+
+  function updateUrlTimestamp(force) {
+    if (isSponsorPlaying) return;
+    if (!hasAudio || !audio.src) return;
+    const curTime = audio.currentTime;
+    if (isNaN(curTime) || curTime < 0) return;
+    const curSec = Math.floor(curTime);
+
+    const now = Date.now();
+    // Throttled: update URL at most once every 5 seconds, unless forced (pause, seek, tab close)
+    if (!force && (curSec === lastUrlUpdateSec || (now - lastUrlUpdateTime < 5000))) {
+      return;
+    }
+
+    lastUrlUpdateSec = curSec;
+    lastUrlUpdateTime = now;
+
+    // Save to localStorage for instant resume even without URL parameter
+    if (currentShiurId && curSec > 0) {
+      try {
+        localStorage.setItem('yutorah_progress_' + currentShiurId, curSec);
+      } catch (e) {}
+    }
+
+    // Update the browser URL in-place without polluting back-button history
+    try {
+      const url = new URL(window.location.href);
+      if (curSec > 0) {
+        url.searchParams.set('t', curSec);
+      } else {
+        url.searchParams.delete('t');
+      }
+      history.replaceState(history.state, '', url.toString());
+    } catch (e) {}
+  }
+
+  function applyInitialTime() {
+    if (isSponsorPlaying) return;
+    if (initialTimeApplied) return;
+    let targetSec = 0;
+    if (initialTimestamp) {
+      const p = parseFloat(initialTimestamp);
+      if (!isNaN(p) && p > 0) targetSec = p;
+    } else if (currentShiurId) {
+      targetSec = resolveResumeSec(currentShiurId);
+    }
+
+    if (targetSec > 0) {
+      if (audio.duration && !isNaN(audio.duration)) {
+        audio.currentTime = Math.min(targetSec, audio.duration - 1);
+        initialTimeApplied = true;
+        updateUrlTimestamp(true);
+      } else {
+        try {
+          audio.currentTime = targetSec;
+          initialTimeApplied = true;
+          updateUrlTimestamp(true);
+        } catch(e) {}
+      }
+      try { if (typeof snapTranscriptToTime === 'function') snapTranscriptToTime(audio.currentTime); } catch (e) {}
+    }
+  }
+
+  function saveLastSession() {
+    try {
+      if (typeof currentShiurId !== 'undefined' && currentShiurId &&
+          (hasAudio || isCurrentShiurArticle)) {
+        localStorage.setItem('yutorah_last_session',
+          JSON.stringify({ id: String(currentShiurId), at: Date.now() }));
+      }
+    } catch (e) {}
+  }
+
+  function clearLastSession() {
+    try { localStorage.removeItem('yutorah_last_session'); } catch (e) {}
+  }
+
+  function isPlayerCardInViewport() {
+    const playerCard = document.getElementById('playerCard');
+    if (!playerCard || playerCard.style.display === 'none') return false;
+    const rect = playerCard.getBoundingClientRect();
+    const header = document.getElementById('mainHeader');
+    const isPurim = document.body.classList.contains('is-purim-theme');
+    const topBoundary = (header && !isPurim) ? header.getBoundingClientRect().bottom : 0;
+    const bottomBoundary = (header && isPurim) ? header.getBoundingClientRect().top : (window.innerHeight || document.documentElement.clientHeight);
+
+    return rect.bottom > topBoundary && rect.top < bottomBoundary;
+  }
+
+  function syncPlayerBottomPadding() {
+    try {
+      const mini = document.getElementById('miniPlayer');
+      if (mini && (mini.classList.contains('visible') || mini.style.display === 'flex')) {
+        const h = mini.offsetHeight;
+        if (h > 0) {
+          document.documentElement.style.setProperty('--player-height', h + 'px');
+        }
+      } else {
+        document.documentElement.style.removeProperty('--player-height');
+      }
+    } catch (e) {}
+  }
+
+  function handleScrollAutoMiniPlayer() {
+    if (!hasAudio || isManuallyMinimized || Date.now() < isExpandingUntil) return;
+    const visible = isPlayerCardInViewport();
+    const miniPlayer = document.getElementById('miniPlayer');
+    if (!miniPlayer) return;
+
+    if (!visible) {
+      if (!miniPlayer.classList.contains('visible')) {
+        miniPlayer.classList.add('visible');
+        document.body.classList.add('mini-player-active');
+        syncPlayerBottomPadding();
+      }
+    } else {
+      if (miniPlayer.classList.contains('visible')) {
+        miniPlayer.classList.remove('visible');
+        document.body.classList.remove('mini-player-active');
+        syncPlayerBottomPadding();
+      }
+    }
+  }
+
+  function scheduleScrollAutoMiniPlayer() {
+    if (scrollCheckScheduled) return;
+    scrollCheckScheduled = true;
+    requestAnimationFrame(() => {
+      handleScrollAutoMiniPlayer();
+      scrollCheckScheduled = false;
+    });
+  }
+
+  function minimizePlayer() {
+    if (!hasAudio && !isCurrentShiurArticle) return;
+    isManuallyMinimized = true;
+    const playerCard = document.getElementById('playerCard');
+    const miniPlayer = document.getElementById('miniPlayer');
+    if (playerCard) playerCard.style.display = 'none';
+    if (miniPlayer) {
+      const miniProgressTrack = document.getElementById('miniProgressTrack');
+      const miniPlayBtn = document.getElementById('miniPlayBtn');
+      const miniTime = document.getElementById('miniTime');
+      const skipBtns = miniPlayer.querySelectorAll('.skip-btn');
+      if (isCurrentShiurArticle) {
+        if (miniProgressTrack) miniProgressTrack.style.display = 'none';
+        if (miniPlayBtn) miniPlayBtn.style.display = 'none';
+        skipBtns.forEach(b => b.style.display = 'none');
+        if (miniTime) miniTime.textContent = '📄 Reading';
+      } else {
+        if (miniProgressTrack) miniProgressTrack.style.display = 'block';
+        if (miniPlayBtn) miniPlayBtn.style.display = 'block';
+        skipBtns.forEach(b => b.style.display = 'block');
+      }
+      miniPlayer.classList.add('visible');
+      syncPlayerBottomPadding();
+      setTimeout(syncPlayerBottomPadding, 60);
+    }
+    document.body.classList.add('mini-player-active');
+
+    const searchSection = document.getElementById('searchResultsSection');
+    const collSection = document.getElementById('collectionsSection');
+    if (collSection) {
+      collSection.style.display = 'block';
+    }
+    if (searchSection && collSection && searchSection.style.display === 'none' && collSection.style.display === 'none') {
+      collSection.style.display = 'block';
+    }
+  }
+
+  function expandPlayer() {
+    isManuallyMinimized = false;
+    isExpandingUntil = Date.now() + 800;
+    // Daf is rendered as a sibling view inside the same app shell. Reveal
+    // the regular shell before expanding so its player card is not hidden by
+    // the Daf view's parent.
+    const dafView = document.getElementById('dafAppView');
+    const regularView = document.getElementById('regularAppView');
+    if (dafView && regularView && dafView.style.display !== 'none') {
+      dafView.style.display = 'none';
+      regularView.style.display = '';
+    }
+    const playerCard = document.getElementById('playerCard');
+    const miniPlayer = document.getElementById('miniPlayer');
+    if (playerCard) {
+      playerCard.style.display = 'block';
+      scrollPlayButtonIntoView();
+    }
+    if (miniPlayer) miniPlayer.classList.remove('visible');
+    document.body.classList.remove('mini-player-active');
+    syncPlayerBottomPadding();
+  }
+
+  function closeMiniPlayer() {
+    if (audio) audio.pause();
+    hasAudio = false;
+    isCurrentShiurArticle = false;
+    currentArticlePdf = '';
+    isManuallyMinimized = false;
+    teardownSourceSheetView();
+    currentShiurId = '';
+    updateCardPlayBadges();
+    try { if (typeof hideSeriesStrip === 'function') hideSeriesStrip(); } catch (e) {}
+    try { if (typeof hideTranscriptSection === 'function') hideTranscriptSection(); } catch (e) {}
+    try { if (typeof clearLastSession === 'function') clearLastSession(); } catch (e) {}
+    const miniPlayer = document.getElementById('miniPlayer');
+    if (miniPlayer) miniPlayer.classList.remove('visible');
+    document.body.classList.remove('mini-player-active');
+    syncPlayerBottomPadding();
+    const playerCard = document.getElementById('playerCard');
+    if (playerCard) playerCard.style.display = 'none';
+    const newUrl = new URL(window.location.href);
+    newUrl.pathname = '/';
+    newUrl.search = '';
+    history.pushState({}, '', newUrl.toString());
+  }
+
+  function seekMiniProgress(e) {
+    if (!audio.duration) return;
+    const track = document.getElementById('miniProgressTrack');
+    const rect = track.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    audio.currentTime = pct * audio.duration;
+    updateUrlTimestamp(true);
+  }
+
+
+
+
+
+
+
+
+
+
+
+
+
