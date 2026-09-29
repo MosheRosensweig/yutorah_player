@@ -39,7 +39,7 @@ Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://
 ## 🎯 In Progress: Suggestion Parity PWA-vs-Browser (branch `fix/autocomplete-timeout-main`, off main)
 - Reported: mobile PWA shows "Suggested Topics & Speakers" first; browser shows only Matching Shiurim. Verified: zero viewport branches — same code everywhere.
 - Root cause: entity suggestions need `autocompleteCache`; a stalled `/api/autocomplete-meta` fetch leaves `isFetchingAutocomplete` set forever (no timeout/abort) → that session loses Topics & Speakers entirely. Whichever session stalls first shows the symptom.
-- Fix: 8s AbortController timeout + guaranteed flag reset in `finally`.
+- Fix: 8s AbortController timeout + guaranteed flag reset in `finally`. Review: PASS. *Status: ✅ dev-deployed (`8165c47a`, HTTP 200).*
 ## 🎯 Transcript Follow-Along Parity (beta parity) — DONE: branch `feat/transcript-follow`, dual review PASS/PASS, dev `b7f566f5` (HTTP 200), pushed
 ### Beta live-transcript: how it works (evidence-based)
 - Beta lecture pages load `/js/vtt-transcript.js` (WebVTT timed-text captions) inside a **VidStack** player (`cdn.vidstack.io`), with accordion-js collapsible UI. Direct fetch blocked (CF challenge), so endpoint shapes come from observation + their public OpenAPI `transcriptions` API, which we use instead (word timestamps + refined text + chapters + quiz).
