@@ -254,7 +254,7 @@ A standalone, zero-friction web portal and enhanced audio player for the [YUTora
 > Shipped on the `feat/discovery-wave` line (dev link). Items marked **(dev-only)** require Dev Mode: type `dev mode` in the search box to unlock, `exit dev mode` to leave.
 
 ### Search results
-- **Live suggestion dropdown**: typing shows "Suggested Topics & Speakers" (entity matches + fuzzy did-you-mean) above top "Matching Shiurim" (5 + view-all footer), identical on mobile/desktop/PWA. Entity data loads once per session with an 8s timeout so a stalled fetch can never suppress suggestions for the session.
+- **Live suggestion dropdown**: typing shows "Suggested Topics & Speakers" (entity matches + fuzzy did-you-mean) above top "Matching Shiurim" (5 + view-all footer), identical on mobile/desktop/PWA. Entity data warms at boot (plus an 8s-timeout fetch) so suggestions appear from the first keystroke and a stalled fetch can never suppress them for the session.
 - **🕒 Recent Results rail**: every search opens with the 3 freshest matches (global date query, all filters honored), followed by the full 30-result relevance list with its own Load More.
 - **Quick date chips** (every search): All Dates / Today / Yesterday / This Week / This Month. Mutually exclusive with year/custom-range; persist in the URL; survive reload.
 - **Sort chips**: Relevance (default) / Newest / Oldest. Chronological sorts render in true server order with no relevance re-ranking; the Recent rail hides under chrono sorts; Load-More paginates by item offset.

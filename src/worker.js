@@ -17855,6 +17855,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       }
     } catch (e) {}
     try { if (typeof bootAuth === 'function') bootAuth(); } catch (e) {}
+    // Warm entity metadata at boot so the suggestion dropdown shows
+    // Topics & Speakers from the first keystroke (previously it only
+    // loaded after visiting playlists/tags UI, leaving fresh sessions
+    // with Matching Shiurim alone).
+    try { if (typeof loadAutocompleteMeta === 'function') loadAutocompleteMeta().catch(() => {}); } catch (e) {}
     try {
       const hero = document.getElementById('heroSlideshow');
       if (hero) {

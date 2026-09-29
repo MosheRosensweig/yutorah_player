@@ -40,6 +40,7 @@ Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://
 - Reported: mobile PWA shows "Suggested Topics & Speakers" first; browser shows only Matching Shiurim. Verified: zero viewport branches — same code everywhere.
 - Root cause: entity suggestions need `autocompleteCache`; a stalled `/api/autocomplete-meta` fetch leaves `isFetchingAutocomplete` set forever (no timeout/abort) → that session loses Topics & Speakers entirely. Whichever session stalls first shows the symptom.
 - Fix: 8s AbortController timeout + guaranteed flag reset in `finally`. Review: PASS. *Status: ✅ dev-deployed (`8165c47a`, HTTP 200).*
+- Follow-up (real root cause): entities only rendered when some earlier UI path had warmed `autocompleteCache` — plain search typing never warmed it, so fresh sessions showed Matching Shiurim alone. Fix: warm at boot (DOMContentLoaded). Review: PASS. *Status: pending deploy.*
 ## 🎯 Transcript Follow-Along Parity (beta parity) — DONE: branch `feat/transcript-follow`, dual review PASS/PASS, dev `b7f566f5` (HTTP 200), pushed
 ### Beta live-transcript: how it works (evidence-based)
 - Beta lecture pages load `/js/vtt-transcript.js` (WebVTT timed-text captions) inside a **VidStack** player (`cdn.vidstack.io`), with accordion-js collapsible UI. Direct fetch blocked (CF challenge), so endpoint shapes come from observation + their public OpenAPI `transcriptions` API, which we use instead (word timestamps + refined text + chapters + quiz).

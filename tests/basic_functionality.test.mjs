@@ -51,6 +51,7 @@ async function testHomepage() {
   assert.ok(html.includes('function flushCloudSync()'), 'unload sync flush must exist');
   assert.ok(html.includes('keepalive: true'), 'unload flush must use keepalive');
   assert.ok(html.includes("fetch('/api/autocomplete-meta', { signal: ctrl.signal })"), 'autocomplete fetch must be abortable so a stall cannot kill suggestions for the session');
+  assert.ok(html.includes('Warm entity metadata at boot'), 'entity metadata must warm at boot so first keystrokes show Topics & Speakers');
   console.log('  ✅ Homepage renders successfully with all controls and viewer containers.');
 }
 
