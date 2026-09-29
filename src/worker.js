@@ -17378,8 +17378,16 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (autocompleteData) return autocompleteData;
     if (isFetchingAutocomplete) return null;
     isFetchingAutocomplete = true;
+    // Hard timeout: a stalled fetch must never leave the flag set, or
+    // entity suggestions vanish for the whole session (PWA-vs-browser
+    // mystery: whichever session stalls first loses Topics & Speakers).
+    let acTimer = null;
     try {
-      const res = await fetch('/api/autocomplete-meta');
+      const ctrl = new AbortController();
+      try {
+        acTimer = setTimeout(() => { try { ctrl.abort(); } catch (e) {} }, 8000);
+      } catch (e) {}
+      const res = await fetch('/api/autocomplete-meta', { signal: ctrl.signal });
       if (res.ok) {
         autocompleteData = await res.json();
         autocompleteCache = autocompleteData;
@@ -17388,6 +17396,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     } catch(e) {
       console.error('Failed to load autocomplete metadata:', e);
     } finally {
+      try { if (acTimer) clearTimeout(acTimer); } catch (e) {}
       isFetchingAutocomplete = false;
     }
     return autocompleteData;

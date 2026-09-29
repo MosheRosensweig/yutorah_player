@@ -50,6 +50,7 @@ async function testHomepage() {
     'devDoRemove history branch must mark cloud dirty');
   assert.ok(html.includes('function flushCloudSync()'), 'unload sync flush must exist');
   assert.ok(html.includes('keepalive: true'), 'unload flush must use keepalive');
+  assert.ok(html.includes("fetch('/api/autocomplete-meta', { signal: ctrl.signal })"), 'autocomplete fetch must be abortable so a stall cannot kill suggestions for the session');
   console.log('  ✅ Homepage renders successfully with all controls and viewer containers.');
 }
 
