@@ -5,6 +5,9 @@ compatibility_date = "2024-09-01"
 [observability]
 enabled = true
 
+[vars]
+ADMIN_EMAILS = "rosensweigmoshe@gmail.com,mrosens1@mail.yu.edu,moshegrosensweig@gmail.com"
+
 # Production bindings (top-level = production worker "yutorah-player").
 # NOTE: prod shares the single yutorah-db D1 (only DB in the account);
 # migrations 0001-0004 already applied. Secrets (GOOGLE_*, SESSION_SECRET)
@@ -19,6 +22,9 @@ migrations_dir = "migrations"
 #   npx wrangler deploy --env dev
 [env.dev]
 name = "yutorah-player-dev"
+
+[env.dev.vars]
+ADMIN_EMAILS = "rosensweigmoshe@gmail.com,mrosens1@mail.yu.edu,moshegrosensweig@gmail.com"
 
 [[env.dev.d1_databases]]
 binding = "yutorah_db"

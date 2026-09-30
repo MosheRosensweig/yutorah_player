@@ -2,6 +2,7 @@
 // Automated regression test suite for YUTorah Player
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { createHmac } from 'node:crypto';
 import worker from '../src/worker.js';
 
 console.log('🧪 Running Basic Functionality & Article Viewer Automated Regression Tests...\n');
@@ -56,6 +57,11 @@ async function testHomepage() {
   assert.equal(maintRes.status, 503, 'prod homepage under maintenance should return 503');
   const maintHtml = await maintRes.text();
   assert.ok(maintHtml.includes('Working on it'), 'maintenance page must show the banner');
+  // Admin switch: anonymous callers get 401 (never a state leak or flip).
+  const maintAnonGet = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/api/admin/maintenance'), mockEnv, mockCtx);
+  assert.equal(maintAnonGet.status, 401, 'anonymous maintenance read should return 401');
+  const maintAnonPost = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/api/admin/maintenance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }), mockEnv, mockCtx);
+  assert.equal(maintAnonPost.status, 401, 'anonymous maintenance flip should return 401');
   assert.equal(maintRes.headers.get('Retry-After'), '3600', 'maintenance must carry Retry-After');
   assert.ok((maintRes.headers.get('Cache-Control') || '').includes('no-store'), 'maintenance must not be cached');
   const maintApi = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/api/search?q=test'), maintEnv, mockCtx);
@@ -1418,6 +1424,106 @@ async function testThemeNoContagion() {
   console.log('  ✅ Theme isolation verified.');
 }
 
+async function testAdminMaintenance() {
+  console.log('32. Testing admin maintenance switch (authed, fake D1)...');
+  // Minimal in-memory D1 stub: only the queries these routes issue.
+  const makeFakeDb = (seed = {}) => {
+    const users = new Map(Object.entries(seed.users || {}));
+    const settings = new Map(Object.entries(seed.settings || {}));
+    const norm = (sql) => String(sql || '').replace(/\s+/g, ' ').trim().toUpperCase();
+    return {
+      __settings: settings,
+      prepare(sql) {
+        const q = norm(sql);
+        const bound = (...args) => ({
+          first: async () => {
+            if (q.startsWith('SELECT ID, EMAIL, NAME, PICTURE FROM USERS WHERE ID = ?')) {
+              return users.get(String(args[0])) || null;
+            }
+            if (q.startsWith('SELECT VALUE FROM APP_SETTINGS WHERE KEY =')) {
+              const v = settings.get('maintenance');
+              return (v === undefined) ? null : { value: v };
+            }
+            return null;
+          },
+          run: async () => {
+            if (q.startsWith('INSERT INTO APP_SETTINGS')) {
+              settings.set('maintenance', String(args[0]));
+            }
+            return { success: true };
+          },
+          all: async () => ({ results: [] })
+        });
+        // Real D1 allows .first() without .bind(); mirror that.
+        const unbound = bound();
+        unbound.bind = (...args) => bound(...args);
+        return unbound;
+      }
+    };
+  };
+  const b64url = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url');
+  const forgeSession = (uid, secret) => {
+    const h = b64url({ alg: 'HS256', typ: 'JWT' });
+    const b = b64url({ uid, exp: Date.now() + 3600000 });
+    const sig = createHmac('sha256', secret).update(h + '.' + b).digest('base64url');
+    return h + '.' + b + '.' + sig;
+  };
+  const adminUser = { id: 'u-admin', email: 'Admin@Example.com', name: 'Admin', picture: '' };
+  const plainUser = { id: 'u-bob', email: 'bob@example.com', name: 'Bob', picture: '' };
+  const db = makeFakeDb({ users: { 'u-admin': adminUser, 'u-bob': plainUser }, settings: { maintenance: '0' } });
+  const adminEnv = { SESSION_SECRET: 'test-secret', ADMIN_EMAILS: 'admin@example.com', yutorah_db: db };
+  const bobEnv = { SESSION_SECRET: 'test-secret', ADMIN_EMAILS: 'admin@example.com', yutorah_db: db };
+  const noAdminEnv = { SESSION_SECRET: 'test-secret', yutorah_db: db };
+  const adminCookie = 'yutorah_session=' + forgeSession('u-admin', 'test-secret');
+  const bobCookie = 'yutorah_session=' + forgeSession('u-bob', 'test-secret');
+  const apiPost = (env, cookie, body) => worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/api/admin/maintenance', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) }, body
+  }), env, mockCtx);
+  const apiGet = (env, cookie) => worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/api/admin/maintenance', {
+    headers: cookie ? { Cookie: cookie } : {}
+  }), env, mockCtx);
+
+  // Malformed / missing `on` must 400 WITHOUT writing (fail-safe).
+  let r = await apiPost(adminEnv, adminCookie, '{}');
+  assert.equal(r.status, 400, 'admin POST {} must return 400');
+  assert.equal(db.__settings.get('maintenance'), '0', 'malformed POST must not touch the row');
+  r = await apiPost(adminEnv, adminCookie, 'not-json{{{');
+  assert.equal(r.status, 400, 'admin POST garbage must return 400');
+  assert.equal(db.__settings.get('maintenance'), '0', 'garbage POST must not touch the row');
+
+  // Valid round-trip as admin (email match is case-insensitive).
+  r = await apiPost(adminEnv, adminCookie, JSON.stringify({ on: true }));
+  assert.equal(r.status, 200, 'admin POST {on:true} must return 200');
+  assert.equal((await r.json()).on, true, 'response must echo on:true');
+  assert.equal(db.__settings.get('maintenance'), '1', 'row must flip to 1');
+  r = await apiGet(adminEnv, adminCookie);
+  assert.equal((await r.json()).on, true, 'GET must report on:true');
+  r = await apiPost(adminEnv, adminCookie, JSON.stringify({ on: false }));
+  assert.equal((await r.json()).on, false, 'admin POST {on:false} must flip back');
+  assert.equal(db.__settings.get('maintenance'), '0', 'row must flip to 0');
+
+  // Non-admin: GET 200 (state), POST 403 without write.
+  r = await apiGet(bobEnv, bobCookie);
+  assert.equal(r.status, 200, 'logged-in GET must return 200');
+  r = await apiPost(bobEnv, bobCookie, JSON.stringify({ on: true }));
+  assert.equal(r.status, 403, 'non-admin POST must return 403');
+  assert.equal(db.__settings.get('maintenance'), '0', 'non-admin POST must not write');
+
+  // No ADMIN_EMAILS configured: even the admin is locked out (fail-closed).
+  r = await apiPost(noAdminEnv, adminCookie, JSON.stringify({ on: true }));
+  assert.equal(r.status, 403, 'POST without ADMIN_EMAILS must return 403');
+
+  // Gate honors the D1 row on prod host (session not required for the gate).
+  const gateEnv = { SESSION_SECRET: 'x', yutorah_db: makeFakeDb({ settings: { maintenance: '1' } }) };
+  r = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/'), gateEnv, mockCtx);
+  assert.equal(r.status, 503, 'prod homepage with row=1 must return 503');
+  const gateEnvOff = { SESSION_SECRET: 'x', yutorah_db: makeFakeDb({ settings: { maintenance: '0' } }) };
+  r = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/'), gateEnvOff, mockCtx);
+  assert.equal(r.status, 200, 'prod homepage with row=0 must return 200');
+
+  console.log('  ✅ Admin maintenance switch verified (fail-safe POST, RBAC, D1 gate).');
+}
+
 async function runAll() {
   try {
     await testHomepage();
@@ -1452,6 +1558,7 @@ async function runAll() {
     await testSkipFlashFeedback();
     await testCardPlayStatesAndMiniPop();
     await testThemeNoContagion();
+    await testAdminMaintenance();
     console.log('\n🎉 ALL BASIC FUNCTIONALITY, ARTICLE READER & LIQUID MODE TESTS PASSED SUCCESSFULLY!');
   } catch (err) {
     console.error('\n❌ Test failed:', err);

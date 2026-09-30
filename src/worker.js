@@ -196,6 +196,86 @@ async function handleAuthRoutes(request, env, url) {
     });
   }
 
+  // ---- Ops switch: read/flip prod maintenance mode ----
+  // GET returns state (login required); POST flips it (admin only).
+  // Served from either worker (shared D1); the prod gate reads it live.
+  const isAdminUser = (u) => {
+    try {
+      if (!u || !u.email) return false;
+      const allow = String((env && env.ADMIN_EMAILS) || '').toLowerCase()
+        .split(',').map(s => s.trim()).filter(Boolean);
+      return allow.includes(String(u.email).toLowerCase());
+    } catch (e) {
+      return false;
+    }
+  };
+  if (path === '/api/admin/maintenance') {
+    const user = await getSessionUser(request, env);
+    if (!user) {
+      return new Response(JSON.stringify({ error: 'login required' }), {
+        status: 401, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+      });
+    }
+    if (!env || !env.yutorah_db) {
+      return new Response(JSON.stringify({ error: 'no database bound' }), {
+        status: 503, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+      });
+    }
+    if (request.method === 'GET') {
+      let on = false;
+      try {
+        const row = await env.yutorah_db.prepare(
+          "SELECT value FROM app_settings WHERE key = 'maintenance'").first();
+        if (row && (row.value === '1' || row.value === '0')) {
+          on = row.value === '1';
+        } else if (env && env.MAINTENANCE_MODE === '1') {
+          on = true;
+        }
+      } catch (e) {
+        if (env && env.MAINTENANCE_MODE === '1') on = true;
+      }
+      return new Response(JSON.stringify({ on }), {
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' }
+      });
+    }
+    if (request.method === 'POST') {
+      if (!isAdminUser(user)) {
+        return new Response(JSON.stringify({ error: 'forbidden' }), {
+          status: 403, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+        });
+      }
+      // Strict schema: a malformed body or missing `on` must NEVER write
+      // (fail-safe — a glitch must not silently disable maintenance).
+      let on = null;
+      try {
+        const body = await request.json();
+        if (body && (body.on === true || body.on === '1' || body.on === 1)) on = true;
+        else if (body && (body.on === false || body.on === '0' || body.on === 0)) on = false;
+      } catch (e) {}
+      if (on === null) {
+        return new Response(JSON.stringify({ error: 'body.on must be true or false' }), {
+          status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+        });
+      }
+      try {
+        await env.yutorah_db.prepare(
+          "INSERT INTO app_settings (key, value, updated_at) VALUES ('maintenance', ?, ?) " +
+          "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at")
+          .bind(on ? '1' : '0', Date.now()).run();
+      } catch (e) {
+        return new Response(JSON.stringify({ error: 'database write failed' }), {
+          status: 502, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+        });
+      }
+      return new Response(JSON.stringify({ on }), {
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' }
+      });
+    }
+    return new Response(JSON.stringify({ error: 'method not allowed' }), {
+      status: 405, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+    });
+  }
+
   const secureCookies = isHttpsRequest(request);
   const allowedHosts = (env && (env.ALLOWED_HOSTS || '')).split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
   if (allowedHosts.length > 0 && !allowedHosts.includes(url.hostname.toLowerCase())) {
@@ -2195,37 +2275,61 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    // Maintenance gate (prod only, flipped via the MAINTENANCE_MODE env
-    // var — no code deploy needed to toggle). While on, every prod route
-    // except static assets serves an "under construction" page (503 +
-    // Retry-After, so crawlers treat it as temporary). Dev is never gated.
-    if (url.hostname === 'yutorah-player.mrosensweig.workers.dev' &&
-        env && env.MAINTENANCE_MODE === '1') {
-      const p = url.pathname;
-      const isStatic = p === '/favicon.ico' || p === '/sw.js' ||
-        p === '/manifest.json' || p === '/manifest.webmanifest' ||
-        p.startsWith('/icons/') || p.startsWith('/js/');
-      if (!isStatic) {
-        return new Response(
-          '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' +
-          '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
-          '<title>YUTorah Player — Working on it</title>' +
-          '<style>body{font-family:system-ui,-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#0f141c;color:#e7edf7;text-align:center;padding:24px;}' +
-          '.box{max-width:420px}h1{font-size:28px;margin:0 0 12px}p{color:#94a3b8;line-height:1.6}</style></head>' +
-          '<body><div class="box"><div style="font-size:48px;">🚧</div>' +
-          '<h1>Working on it</h1>' +
-          '<p>The YUTorah Player is briefly under construction while we make it better. In the meantime, please visit <a href="https://www.yutorah.org" style="color:#5c8ecc; font-weight:600;">YUTorah.org</a>.</p>' +
-          '</div></body></html>',
-          {
-            status: 503,
-            headers: {
-              'Content-Type': 'text/html; charset=utf-8',
-              'Retry-After': '3600',
-              'Cache-Control': 'no-store'
+    // Maintenance gate (prod only). Two redundant switches, either one
+    // gates: (1) D1 app_settings row, flipped live from the dev-mode UI
+    // (shared DB, so dev app flips prod instantly, no deploy); (2) the
+    // MAINTENANCE_MODE env var as break-glass (works even if D1 is down).
+    // While on, every prod route except static assets serves an "under
+    // construction" page (503 + Retry-After, so crawlers treat it as
+    // temporary). Fail-open: missing DB/row/error = site stays up.
+    // Dev hostname is never gated.
+    let maintenanceOn = false;
+    try {
+      if (url.hostname === 'yutorah-player.mrosensweig.workers.dev' && env) {
+        const p = url.pathname;
+        const isStatic = p === '/favicon.ico' || p === '/sw.js' ||
+          p === '/manifest.json' || p === '/manifest.webmanifest' ||
+          p.startsWith('/icons/') || p.startsWith('/js/') ||
+          p === '/api/admin/maintenance';
+        if (!isStatic) {
+          try {
+            if (env.yutorah_db) {
+              const row = await env.yutorah_db.prepare(
+                "SELECT value FROM app_settings WHERE key = 'maintenance'").first();
+              if (row && (row.value === '1' || row.value === '0')) {
+                maintenanceOn = row.value === '1';
+              } else if (env.MAINTENANCE_MODE === '1') {
+                maintenanceOn = true;
+              }
+            } else if (env.MAINTENANCE_MODE === '1') {
+              maintenanceOn = true;
             }
+          } catch (e) {
+            if (env.MAINTENANCE_MODE === '1') maintenanceOn = true;
           }
-        );
+        }
       }
+    } catch (e) {}
+    if (maintenanceOn) {
+      return new Response(
+        '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' +
+        '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+        '<title>YUTorah Player — Working on it</title>' +
+        '<style>body{font-family:system-ui,-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#0f141c;color:#e7edf7;text-align:center;padding:24px;}' +
+        '.box{max-width:420px}h1{font-size:28px;margin:0 0 12px}p{color:#94a3b8;line-height:1.6}</style></head>' +
+        '<body><div class="box"><div style="font-size:48px;">🚧</div>' +
+        '<h1>Working on it</h1>' +
+        '<p>The YUTorah Player is under construction while we make it better. In the meantime, please visit <a href="https://www.yutorah.org" style="color:#5c8ecc; font-weight:600;">YUTorah.org</a>.</p>' +
+        '</div></body></html>',
+        {
+          status: 503,
+          headers: {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Retry-After': '3600',
+            'Cache-Control': 'no-store'
+          }
+        }
+      );
     }
 
     // PWA: Manifest, Service Worker & Icons
@@ -2239,6 +2343,7 @@ export default {
         url.pathname === '/api/playlists/publish' || url.pathname === '/api/playlists/unpublish' ||
         url.pathname === '/api/playlists/save' || url.pathname === '/api/playlists/unsave' ||
         url.pathname === '/api/playlists/mine' ||
+        url.pathname === '/api/admin/maintenance' ||
         url.pathname === '/auth/google' || url.pathname === '/auth/callback' ||
         url.pathname === '/auth/logout') {
       const handled = await handleAuthRoutes(request, env, url) ||
@@ -23400,6 +23505,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
     if (isDevMode) {
       html += '<div class="settings-menu-label">Dev settings</div>';
+      html += '<button type="button" class="settings-menu-item" onclick="toggleProdMaintenance(this);"><span class="menu-item-icon" id="prodMaintIcon">🚧</span> <span id="prodMaintLabel">Prod site: …</span></button>';
       html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); openChangelogModal();"><span class="menu-item-icon">📋</span> <span>Change Log</span></button>';
       html += '<div class="settings-menu-label">Save button icon</div>';
       html += '<div id="saveIconPickerAuth" style="display:flex; gap:6px; padding:4px 10px 8px; flex-wrap:wrap;"></div>';
@@ -23407,6 +23513,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     menu.innerHTML = html;
     menu.style.display = 'block';
     positionAuthMenu();
+    if (isDevMode) {
+      try { refreshProdMaintenanceLabel(); } catch (e) {}
+    }
     if (isDevMode) {
       const wrap = document.getElementById('saveIconPickerAuth');
       if (wrap) {
@@ -23450,6 +23559,66 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (menu) menu.style.display = 'none';
     const btn = document.getElementById('authBtn');
     if (btn) btn.classList.remove('active-open');
+  }
+
+  // Prod maintenance switch (dev-mode UI; flips instantly, no deploy).
+  // Refreshes the row label from the server; POST toggles (admin only).
+  function refreshProdMaintenanceLabel() {
+    fetch('/api/admin/maintenance', { credentials: 'same-origin' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        const label = document.getElementById('prodMaintLabel');
+        const icon = document.getElementById('prodMaintIcon');
+        if (label) label.textContent = 'Prod site: ' + (!d ? 'UNKNOWN' : (d.on ? 'UNDER CONSTRUCTION' : 'LIVE'));
+        if (icon && d && typeof d.on === 'boolean') icon.textContent = d.on ? '🚧' : '🟢';
+      })
+      .catch(() => {
+        const label = document.getElementById('prodMaintLabel');
+        if (label) label.textContent = 'Prod site: UNKNOWN';
+      });
+  }
+  function toggleProdMaintenance(btn) {
+    fetch('/api/admin/maintenance', { credentials: 'same-origin' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d || typeof d.on !== 'boolean') {
+          flashToast('⚠️ Could not read switch state — not toggling', true, false);
+          refreshProdMaintenanceLabel();
+          return null;
+        }
+        const next = !d.on;
+        return fetch('/api/admin/maintenance', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ on: next })
+        }).then(r => r.json().then(p => ({ status: r.status, body: p })).catch(() => ({ status: r.status, body: {} })));
+      })
+      .then(res => {
+        if (!res) return;
+        const { status, body } = res;
+        if (status === 401) {
+          flashToast('🔑 Log in (as admin) to flip the prod switch', true, false);
+          return;
+        }
+        if (status === 403) {
+          flashToast('🔒 Admin only', true, false);
+          return;
+        }
+        if (status !== 200 || !body || typeof body.on !== 'boolean') {
+          flashToast('⚠️ Switch did not confirm (HTTP ' + status + ')', true, false);
+          refreshProdMaintenanceLabel();
+          return;
+        }
+        const label = document.getElementById('prodMaintLabel');
+        const icon = document.getElementById('prodMaintIcon');
+        if (label) label.textContent = 'Prod site: ' + (body.on ? 'UNDER CONSTRUCTION' : 'LIVE');
+        if (icon) icon.textContent = body.on ? '🚧' : '🟢';
+        flashToast(body.on ? '🚧 Prod is now under construction' : '✅ Prod is live', false, false);
+      })
+      .catch(() => {
+        flashToast('⚠️ Switch unreachable', true, false);
+      });
   }
 
   // Display-name dialog: the name shown on playlists + public shares.
