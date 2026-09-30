@@ -31,6 +31,9 @@ Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://
 - [x] Reload-no-follow: opening the section while playing now lands on the Transcript tab (paused opens keep tab).
 - [x] 3rd-line positioning (measured line-height, was center).
 - [x] Snap on load/resume/open via `snapTranscriptToTime` (4 sites). Review: FAIL→centralized on `showTranscriptPane` (closes enlarge/auto-enlarge/tab-switch gaps) → re-review PASS. *Status: ✅ dev-deployed (`4e20b9ea`, HTTP 200).*
+## 🎯 In Progress: Prod Maintenance Gate (branch `feat/maintenance-mode`, dev-only)
+- Prod-only kill switch: `MAINTENANCE_MODE==='1'` + prod hostname → 503 "Working on it" banner (Retry-After, no-store) on all non-static routes; dev never gated. Review: PASS.
+- RUNBOOK to flip: Cloudflare dashboard → Workers → yutorah-player → Settings → Variables → add `MAINTENANCE_MODE` = `1` → Save/Deploy (auto-redeploys same code, ~30s). Clear the variable to restore. No laptop deploy needed. NOTE: not in wrangler.toml — dashboard-only by design (a CLI deploy without `--var` keeps dashboard value; do NOT commit the var or every deploy resets it).
 ## 🎯 In Progress: Transcript Enlarge + Top-Align (branch `feat/transcript-enlarge`)
 - [x] **T1: Active paragraph pins to window top** — unconditional pin (top − 8px) on paragraph change; guards unchanged. Review: PASS (LOW UX note only). *Status: ✅ dev-deployed (`44a1444c`, HTTP 200).*
 - [x] **T2: Enlarge reading mode** — "Enlarge" button at top of transcript section → focused view: everything between the audio transport and the transcript hides (speed/copy/download row, Daf action, series strip, toggle row, metadata, description); transcript expands (~65vh) under the player with a "Transcript" header + "Collapse" button; collapse restores. Big-player-only. Review: FAIL→fixed (unreachable Collapse, class leak). *Status: ✅ dev-deployed (`6a5d833a`, HTTP 200).*

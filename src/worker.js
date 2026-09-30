@@ -2195,6 +2195,39 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
+    // Maintenance gate (prod only, flipped via the MAINTENANCE_MODE env
+    // var — no code deploy needed to toggle). While on, every prod route
+    // except static assets serves an "under construction" page (503 +
+    // Retry-After, so crawlers treat it as temporary). Dev is never gated.
+    if (url.hostname === 'yutorah-player.mrosensweig.workers.dev' &&
+        env && env.MAINTENANCE_MODE === '1') {
+      const p = url.pathname;
+      const isStatic = p === '/favicon.ico' || p === '/sw.js' ||
+        p === '/manifest.json' || p === '/manifest.webmanifest' ||
+        p.startsWith('/icons/') || p.startsWith('/js/');
+      if (!isStatic) {
+        return new Response(
+          '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' +
+          '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+          '<title>YUTorah Player — Working on it</title>' +
+          '<style>body{font-family:system-ui,-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#0f141c;color:#e7edf7;text-align:center;padding:24px;}' +
+          '.box{max-width:420px}h1{font-size:28px;margin:0 0 12px}p{color:#94a3b8;line-height:1.6}</style></head>' +
+          '<body><div class="box"><div style="font-size:48px;">🚧</div>' +
+          '<h1>Working on it</h1>' +
+          '<p>The YUTorah Player is briefly under construction while we make it better. Please check back soon.</p>' +
+          '</div></body></html>',
+          {
+            status: 503,
+            headers: {
+              'Content-Type': 'text/html; charset=utf-8',
+              'Retry-After': '3600',
+              'Cache-Control': 'no-store'
+            }
+          }
+        );
+      }
+    }
+
     // PWA: Manifest, Service Worker & Icons
     const pwaRes = handlePwaRoutes(request, url);
     if (pwaRes) return pwaRes;

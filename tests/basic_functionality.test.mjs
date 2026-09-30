@@ -50,6 +50,20 @@ async function testHomepage() {
     'devDoRemove history branch must mark cloud dirty');
   assert.ok(html.includes('function flushCloudSync()'), 'unload sync flush must exist');
   assert.ok(html.includes('keepalive: true'), 'unload flush must use keepalive');
+  // Maintenance gate: prod + MAINTENANCE_MODE=1 → 503 banner; static passes; dev never gated.
+  const maintEnv = { MAINTENANCE_MODE: '1' };
+  const maintRes = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/'), maintEnv, mockCtx);
+  assert.equal(maintRes.status, 503, 'prod homepage under maintenance should return 503');
+  const maintHtml = await maintRes.text();
+  assert.ok(maintHtml.includes('Working on it'), 'maintenance page must show the banner');
+  assert.equal(maintRes.headers.get('Retry-After'), '3600', 'maintenance must carry Retry-After');
+  assert.ok((maintRes.headers.get('Cache-Control') || '').includes('no-store'), 'maintenance must not be cached');
+  const maintApi = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/api/search?q=test'), maintEnv, mockCtx);
+  assert.equal(maintApi.status, 503, 'prod API under maintenance should return 503');
+  const maintStatic = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/js/yt-utils.js'), maintEnv, mockCtx);
+  assert.equal(maintStatic.status, 200, 'prod static assets must bypass the gate');
+  const devNormal = await worker.fetch(new Request('https://yutorah-player-dev.mrosensweig.workers.dev/'), maintEnv, mockCtx);
+  assert.equal(devNormal.status, 200, 'dev must never be gated, even with the var set');
   assert.ok(html.includes("fetch('/api/autocomplete-meta', { signal: ctrl.signal })"), 'autocomplete fetch must be abortable so a stall cannot kill suggestions for the session');
   assert.ok(html.includes('Warm entity metadata at boot'), 'entity metadata must warm at boot so first keystrokes show Topics & Speakers');
   console.log('  ✅ Homepage renders successfully with all controls and viewer containers.');
