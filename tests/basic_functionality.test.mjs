@@ -57,11 +57,11 @@ async function testHomepage() {
   assert.equal(maintRes.status, 503, 'prod homepage under maintenance should return 503');
   const maintHtml = await maintRes.text();
   assert.ok(maintHtml.includes('Working on it'), 'maintenance page must show the banner');
-  // Admin switch: anonymous callers get 401 (never a state leak or flip).
+  // Admin switch: anonymous GET reads status (200), anonymous POST on prod is locked (401).
   const maintAnonGet = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/api/admin/maintenance'), mockEnv, mockCtx);
-  assert.equal(maintAnonGet.status, 401, 'anonymous maintenance read should return 401');
+  assert.equal(maintAnonGet.status, 200, 'anonymous maintenance read should return 200');
   const maintAnonPost = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/api/admin/maintenance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }), mockEnv, mockCtx);
-  assert.equal(maintAnonPost.status, 401, 'anonymous maintenance flip should return 401');
+  assert.equal(maintAnonPost.status, 401, 'anonymous maintenance flip on prod should return 401');
   assert.equal(maintRes.headers.get('Retry-After'), '3600', 'maintenance must carry Retry-After');
   assert.ok((maintRes.headers.get('Cache-Control') || '').includes('no-store'), 'maintenance must not be cached');
   const maintApi = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/api/search?q=test'), maintEnv, mockCtx);
@@ -1509,9 +1509,20 @@ async function testAdminMaintenance() {
   assert.equal(r.status, 403, 'non-admin POST must return 403');
   assert.equal(db.__settings.get('maintenance'), '0', 'non-admin POST must not write');
 
-  // No ADMIN_EMAILS configured: even the admin is locked out (fail-closed).
+  // No ADMIN_EMAILS configured: even the admin is locked out on prod (fail-closed).
   r = await apiPost(noAdminEnv, adminCookie, JSON.stringify({ on: true }));
-  assert.equal(r.status, 403, 'POST without ADMIN_EMAILS must return 403');
+  assert.equal(r.status, 403, 'POST without ADMIN_EMAILS on prod must return 403');
+
+  // Dev site dev-mode flip: no session cookie, but dev host + X-Dev-Mode: 1 allows toggle.
+  const devHostPost = (body) => worker.fetch(new Request('https://yutorah-player-dev.mrosensweig.workers.dev/api/admin/maintenance', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Dev-Mode': '1' }, body
+  }), noAdminEnv, mockCtx);
+  r = await devHostPost(JSON.stringify({ on: true }));
+  assert.equal(r.status, 200, 'dev-host dev-mode POST {on:true} must return 200');
+  assert.equal(db.__settings.get('maintenance'), '1', 'row must flip to 1 via dev host');
+  r = await devHostPost(JSON.stringify({ on: false }));
+  assert.equal(r.status, 200, 'dev-host dev-mode POST {on:false} must return 200');
+  assert.equal(db.__settings.get('maintenance'), '0', 'row must flip back to 0 via dev host');
 
   // Gate honors the D1 row on prod host (session not required for the gate).
   const gateEnv = { SESSION_SECRET: 'x', yutorah_db: makeFakeDb({ settings: { maintenance: '1' } }) };

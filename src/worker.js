@@ -197,7 +197,7 @@ async function handleAuthRoutes(request, env, url) {
   }
 
   // ---- Ops switch: read/flip prod maintenance mode ----
-  // GET returns state (login required); POST flips it (admin only).
+  // GET returns state (public read); POST flips it (admin or dev-site dev mode).
   // Served from either worker (shared D1); the prod gate reads it live.
   const isAdminUser = (u) => {
     try {
@@ -210,24 +210,17 @@ async function handleAuthRoutes(request, env, url) {
     }
   };
   if (path === '/api/admin/maintenance') {
-    const user = await getSessionUser(request, env);
-    if (!user) {
-      return new Response(JSON.stringify({ error: 'login required' }), {
-        status: 401, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
-      });
-    }
-    if (!env || !env.yutorah_db) {
-      return new Response(JSON.stringify({ error: 'no database bound' }), {
-        status: 503, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
-      });
-    }
     if (request.method === 'GET') {
       let on = false;
       try {
-        const row = await env.yutorah_db.prepare(
-          "SELECT value FROM app_settings WHERE key = 'maintenance'").first();
-        if (row && (row.value === '1' || row.value === '0')) {
-          on = row.value === '1';
+        if (env && env.yutorah_db) {
+          const row = await env.yutorah_db.prepare(
+            "SELECT value FROM app_settings WHERE key = 'maintenance'").first();
+          if (row && (row.value === '1' || row.value === '0')) {
+            on = row.value === '1';
+          } else if (env && env.MAINTENANCE_MODE === '1') {
+            on = true;
+          }
         } else if (env && env.MAINTENANCE_MODE === '1') {
           on = true;
         }
@@ -239,9 +232,25 @@ async function handleAuthRoutes(request, env, url) {
       });
     }
     if (request.method === 'POST') {
-      if (!isAdminUser(user)) {
+      const isDevHost = url.hostname.includes('-dev.') || url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+      const isDevHeader = request.headers.get('x-dev-mode') === '1';
+      const devAuthorized = isDevHost && isDevHeader;
+      const user = await getSessionUser(request, env);
+      const adminAuthorized = isAdminUser(user);
+
+      if (!devAuthorized && !adminAuthorized) {
+        if (!user && !isDevHeader) {
+          return new Response(JSON.stringify({ error: 'login required' }), {
+            status: 401, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+          });
+        }
         return new Response(JSON.stringify({ error: 'forbidden' }), {
           status: 403, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+        });
+      }
+      if (!env || !env.yutorah_db) {
+        return new Response(JSON.stringify({ error: 'no database bound' }), {
+          status: 503, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
         });
       }
       // Strict schema: a malformed body or missing `on` must NEVER write
@@ -23562,9 +23571,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   }
 
   // Prod maintenance switch (dev-mode UI; flips instantly, no deploy).
-  // Refreshes the row label from the server; POST toggles (admin only).
+  // Refreshes the row label from the server; POST toggles (admin or dev mode).
   function refreshProdMaintenanceLabel() {
-    fetch('/api/admin/maintenance', { credentials: 'same-origin' })
+    const headers = {};
+    if (typeof isDevMode !== 'undefined' && isDevMode) headers['X-Dev-Mode'] = '1';
+    fetch('/api/admin/maintenance', { credentials: 'same-origin', headers })
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         const label = document.getElementById('prodMaintLabel');
@@ -23578,7 +23589,9 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       });
   }
   function toggleProdMaintenance(btn) {
-    fetch('/api/admin/maintenance', { credentials: 'same-origin' })
+    const headers = { 'Content-Type': 'application/json' };
+    if (typeof isDevMode !== 'undefined' && isDevMode) headers['X-Dev-Mode'] = '1';
+    fetch('/api/admin/maintenance', { credentials: 'same-origin', headers })
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         if (!d || typeof d.on !== 'boolean') {
@@ -23590,7 +23603,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
         return fetch('/api/admin/maintenance', {
           method: 'POST',
           credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: JSON.stringify({ on: next })
         }).then(r => r.json().then(p => ({ status: r.status, body: p })).catch(() => ({ status: r.status, body: {} })));
       })
@@ -23602,7 +23615,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
           return;
         }
         if (status === 403) {
-          flashToast('🔒 Admin only', true, false);
+          flashToast('🔒 Admin or Dev Mode required', true, false);
           return;
         }
         if (status !== 200 || !body || typeof body.on !== 'boolean') {
