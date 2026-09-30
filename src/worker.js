@@ -2214,7 +2214,7 @@ export default {
           '.box{max-width:420px}h1{font-size:28px;margin:0 0 12px}p{color:#94a3b8;line-height:1.6}</style></head>' +
           '<body><div class="box"><div style="font-size:48px;">🚧</div>' +
           '<h1>Working on it</h1>' +
-          '<p>The YUTorah Player is briefly under construction while we make it better. Please check back soon.</p>' +
+          '<p>The YUTorah Player is briefly under construction while we make it better. In the meantime, please visit <a href="https://www.yutorah.org" style="color:#5c8ecc; font-weight:600;">YUTorah.org</a>.</p>' +
           '</div></body></html>',
           {
             status: 503,
