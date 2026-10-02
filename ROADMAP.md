@@ -6,9 +6,18 @@
 
 ---
 
-## 🎯 Immediate Priority Backlog (Top of Queue) — ALL IMPLEMENTED & VERIFIED ✅
+## 🎯 Immediate Priority Backlog (Top of Queue)
 
-Below is the status of the prioritized enhancements across the Playlists, Audio Transport, Auth, and PWA systems:
+### 🚨 Next Up (To Do Next — Queued, Do Not Implement Yet): Search Results "Load More Recent" (+5 in Reverse Chronological Order)
+- **Current Behavior**: A search returns the top 3 most recent results, followed by the most relevant results.
+- **Requested Enhancement**:
+  1. Add a dedicated `"🔽 Load More Recent"` button positioned at the end of the `🕒 Recent Results` section (directly before the `🎯 Most Relevant Results` section begins).
+  2. Clicking on it loads the next **5** most recent results, continuing in reverse chronological order from now (results #1–3 are the 3 most recent, then the next 5 are the 4th–8th most recent, etc.).
+  3. The user can keep clicking this button to get 5 more added to the list of recent results each time (`start=4, rows=5`, then `start=9, rows=5`, etc.), and they are dynamically appended to the recent results list before the most relevant list.
+  4. Deduplication: any shiur loaded into recent results remains excluded from the relevance section below so duplicate cards never appear.
+  5. Status: **Queued as Priority 1 for next development cycle — DO NOT IMPLEMENT YET**.
+
+Below is the status of previously completed prioritized enhancements:
 
 ### 1. Playlist Identity & Name Uniqueness Rules — `[COMPLETED ✅]`
 - **Multi-Creator Same Name Allowed**: Two different creators can each have a playlist with the exact same name (e.g., both User A and User B can have "Shabbos Prep").
@@ -55,7 +64,7 @@ Below is a numbered assessment of the primary strategic initiatives for the YUTo
 
 | # | Strategic Initiative | Implementation Overview (2–3 Sentences) | Effort / Feasibility | User Impact |
 | :---: | :--- | :--- | :--- | :---: |
-| **1** | **Search Results: Top 3 Recent Matches Sub-Section + "Load More Recent"** *(Next Up — Priority 1)* | Injects the top 3 most recent results matching the search and filter criteria directly above the main results grid under a dedicated `🕒 Recent Results` subtitle, followed by the remaining results under an improved `🎯 Most Relevant Results` section subtitle. The Recent section ends with its own independent `🔽 Load More Recent` button that appends further date-sorted matches in reverse chronological order (today → outward) without affecting the separate `🔽 Load More Results` button of the relevance section below. | **Low-Medium**<br>*(1–2 days)* | **VERY HIGH**<br>★★★★★ |
+| **1** | **Search Results: Top 3 Recent Matches + "Load More Recent" (+5 in Reverse Chronological Order)** *(Next Up — Queued / Do Not Implement Yet)* | Injects the top 3 most recent results matching search/filters above the main results under `🕒 Recent Results`, followed by `🎯 Most Relevant Results`. At the end of the Recent section, a `"🔽 Load More Recent"` button fetches 5 more recent results in reverse chronological order (from now going backward: 3 initial -> +5 -> +5, etc.) and appends them to the Recent section before the relevant results. | **Low-Medium**<br>*(1–2 days)* | **VERY HIGH**<br>★★★★★ |
 | **2** | **Developer Mode: "Dev's Playlists", Progress Tracking & Multi-Playlist Engine** *(Next Up — Priority 2)* | Adds an exclusive "Dev's Playlists" tab between *Editor's Picks* and *Featured Series* on the homepage when Dev Mode is active. Features 3 default playlists: *History* (all listened lectures with attached mini progress bar, last-listened timestamp, and "x/y min through"), *Save for Later* (clock shortcut button on cards), and *Favorites* (star shortcut button on cards). Includes custom playlist creation with live autocomplete, multi-playlist membership via card/player plus (`+`) button, and playlist deletion with confirmation prompts. | **Medium**<br>*(2–3 days)* | **TRANSFORMATIVE**<br>★★★★★ |
 | **3** | **Google OAuth 2.0 & Cloud History Sync** | Integrates an edge-native Google OAuth 2.0 / OpenID Connect authorization code flow with PKCE, storing persistent 1-year `HttpOnly` session tokens. User progress, listening history, and bookmarks synchronize bidirectionally to a Cloudflare D1 (Serverless SQLite) database with debounced 30-second playback heartbeats. Replaces the guest `localStorage` history tab with an organized chronological cloud view (*Today*, *Yesterday*, *This Week*) with full item removal and GDPR/CCPA export/erasure. | **Medium**<br>*(3–4 days)* | **CRITICAL**<br>★★★★★ |
 | **4** | **Shiur Audio Transcription & Mixed Hebrew/English Transliteration** | Orchestrates lazy on-demand speech-to-text via Groq Whisper Large-v3-Turbo seeded with a specialized 224-token "Yeshivish" rabbinic prompt, completing a 45-minute shiur in ~14 seconds for ~$0.03. Formats mixed Hebrew/English words (*"The \*gemara\* in \*Rosh Hashanah\* discusses whether \*tekiah\* is \*d'oraisa\*"*) using a deterministic Sefaria-derived prefix-stripping lexicon. Transcripts are cached permanently as JSON and WebVTT in Cloudflare R2 object storage so each lecture is only processed once across all users. | **Medium-High**<br>*(4–5 days)* | **TRANSFORMATIVE**<br>★★★★★ |
@@ -384,7 +393,7 @@ In place of a single undifferentiated grid of 30 cards, search results are clean
    - **Header**: `<div class="search-results-subheading"><span>🕒</span> Recent Results</div>`
    - Initially displays 3 cards for the freshest lectures matching the query, sorted in reverse chronological order (today → yesterday → this week → older).
    - If total matches for a query are $\le 3$, all matches appear under Recent Results without an empty second section.
-   - **"Load More" for Recent Results**: At the bottom of the Recent Results sub-section, a dedicated `"🔽 Load More Recent"` button is displayed (when more recent matches exist beyond the initial 3). Clicking this button fetches the next batch of date-sorted results (`start=4`, then `start=7`, etc., with `sortIndex=1`) and appends them into the Recent Results grid, progressively expanding the recency feed in reverse chronological order (from today outward). The button continues to appear as long as additional date-sorted matches remain.
+   - **"Load More" for Recent Results**: At the bottom of the Recent Results sub-section, a dedicated `"🔽 Load More Recent"` button is displayed (when more recent matches exist beyond the initial 3). Clicking this button fetches the next batch of **5** date-sorted results (`start=4, rows=5`, then `start=9, rows=5`, `start=14, rows=5`, etc., with `sortIndex=1`) and appends them into the Recent Results grid, progressively expanding the recency feed in reverse chronological order (from now going backward). Users can keep clicking this button repeatedly to add 5 more results each time before the most relevant list. The button continues to appear as long as additional date-sorted matches remain.
    - This allows users to browse an arbitrarily deep chronological feed of matching lectures without scrolling past to the relevance section.
 2. **Relevance / All Matching Sub-Section (with its own separate "Load More")**:
    - **Header**: `<div class="search-results-subheading"><span>🎯</span> Most Relevant Results</div>` (or `📚 All Relevant Matches`)

@@ -586,6 +586,7 @@ Per-user instruction: dev only (no prod), one feature at a time — quick review
 
 | Item | Status | Description | Notes |
 | :--- | :---: | :--- | :--- |
+| **Search: "Load More Recent" (+5 in reverse order)** | `[REQUESTED / TO DO NEXT]` | When searching, initial results return top 3 most recent results followed by most relevant results. Add a button at the end of the Recent Results section to load 5 more recent results in reverse chronological order (from now going backward: 3 initial -> +5 -> +5, etc.). Each click appends 5 more to the recent results list before the relevant results list. | **DO NOT IMPLEMENT YET.** Queued as priority for next development cycle. |
 | **Live Google OAuth Credentials** | `[REQUESTED / NOT DONE]` | Add `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` via `wrangler secret put` | Waiting on credentials from owner to live-test Google login on dev. |
 | **Clock Icon Selection** | `[PARKED]` | Choose preferred clock hand design among 5 options in Settings | User to select preferred SVG clock hand style. |
 | **Production Deployment** | `[PARKED]` | Promote `feat/auth-d1` branch & D1 binding to production | STRICT RULE: Awaiting explicit approval from user before touching production. |
