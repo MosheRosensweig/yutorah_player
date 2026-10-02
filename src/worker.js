@@ -19187,12 +19187,18 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       if (newDocs.length < 5 || (totalRecent > 0 && currentRecentDocs.length >= totalRecent)) {
         hasMoreRecentResults = false;
       }
+      isLoadingMoreRecent = false;
       renderCurrentSearchResults();
     } catch (err) {
       console.error('Failed to load more recent results:', err);
-      if (btn) btn.disabled = false;
-      if (btnText) btnText.textContent = '🔽 Load More Recent';
-      if (spinner) spinner.style.display = 'none';
+      isLoadingMoreRecent = false;
+      renderCurrentSearchResults();
+      const b = document.getElementById('loadMoreRecentBtn');
+      const bt = document.getElementById('loadMoreRecentBtnText');
+      const sp = document.getElementById('loadMoreRecentSpinner');
+      if (b) b.disabled = false;
+      if (bt) bt.textContent = '🔽 Load More Recent';
+      if (sp) sp.style.display = 'none';
     } finally {
       isLoadingMoreRecent = false;
     }

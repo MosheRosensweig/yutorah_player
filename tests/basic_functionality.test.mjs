@@ -1662,6 +1662,8 @@ async function testLoadMoreRecent() {
   assert.ok(html.includes('hasMoreRecentResults'), 'Script must track hasMoreRecentResults state');
   assert.ok(html.includes('load-more-recent-wrap'), 'Script must render load-more-recent-wrap container');
   assert.ok(html.includes('🔽 Load More Recent'), 'Script must use standard 🔽 Load More Recent label');
+  assert.ok(html.includes('isLoadingMoreRecent = false;\n      renderCurrentSearchResults();'),
+    'loadMoreRecentResults must reset isLoadingMoreRecent to false before re-rendering');
 
   // 2. Verify /api/search with date sort and pagination parameters
   const dateSearchRes = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/api/search?q=pesach&sort=date&start=4&rows=5'), mockEnv, mockCtx);

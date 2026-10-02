@@ -1,7 +1,7 @@
 # Currently Working On — Living Status & Activity Log
 
 Living status doc & audit log — updated on every milestone and user request.  
-Last updated: **2026-10-01, 21:46 ET**  
+Last updated: **2026-10-02, 09:08 ET**  
 Current branch: `main`  
 Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev)  
 Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://yutorah-player.mrosensweig.workers.dev) (Maintenance mode active: HTTP 503)
@@ -11,8 +11,9 @@ Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://
 - Added a dedicated `🔽 Load More Recent` button at the end of the Recent Results section (directly before the relevance section).
 - Clicking it loads the next 5 most recent results in reverse chronological order from now (3 initial -> +5 -> +5, etc.) and appends them to the recent list.
 - Implemented with NO cross-section deduplication per explicit user instruction.
-- Added Test #35 in `tests/basic_functionality.test.mjs` verifying client markup, pagination, `/api/search?sort=date&start=4&rows=5`, reverse chronological date ordering, and un-deduplicated relevance results.
-- Changelog entry recorded in `src/changelog.json` (`2026-10-01T22:03:00-04:00`).
+- **Bugfix (2026-10-02)**: Fixed infinite spinning wheel on `🔽 Load More Recent` button caused by re-rendering the search grid before setting `isLoadingMoreRecent = false`. The loading flag is now cleared prior to calling `renderCurrentSearchResults()`.
+- Added Test #35 in `tests/basic_functionality.test.mjs` verifying client markup, pagination, `/api/search?sort=date&start=4&rows=5`, reverse chronological date ordering, un-deduplicated relevance results, and reset of `isLoadingMoreRecent = false` before re-render.
+- Changelog entries recorded in `src/changelog.json` (`2026-10-01T22:03:00-04:00`, `2026-10-02T09:08:00-04:00`).
 
 ## 🎯 Developer Workflow & Mandatory Dev Log Documentation — DONE
 - Formalized mandatory update protocol in `README.md` and `CURRENTLY_WORKING_ON.md`.

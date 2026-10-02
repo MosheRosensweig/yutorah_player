@@ -1,6 +1,10 @@
 {
   "entries": [
     {
+      "date": "2026-10-02T09:08:00-04:00",
+      "message": "Fix: reset isLoadingMoreRecent state before re-rendering search results grid to prevent persistent spinner on '🔽 Load More Recent' button after successful batch load."
+    },
+    {
       "date": "2026-10-01T22:03:00-04:00",
       "message": "Search Results 'Load More Recent' (+5 reverse chronological): searches return top 3 most recent matches followed by most relevant results; added a dedicated '🔽 Load More Recent' button at the end of the Recent Results section that fetches 5 more recent matches in reverse chronological order from now on each click, progressively appending them before the relevance section without cross-section deduplication."
     },
