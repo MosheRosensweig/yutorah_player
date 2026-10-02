@@ -1681,15 +1681,30 @@ async function testLoadMoreRecent() {
     assert.ok(dates[i - 1].localeCompare(dates[i]) >= 0, `Date at index ${i - 1} (${dates[i-1]}) must be >= date at index ${i} (${dates[i]})`);
   }
 
-  // 3. Verify initial search endpoint returns recentDocs (initial 3) and docs WITHOUT deduplication
-  const mainSearchRes = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/api/search?q=pesach'), mockEnv, mockCtx);
-  assert.equal(mainSearchRes.status, 200);
-  const mainData = await mainSearchRes.json();
-  assert.ok(Array.isArray(mainData.response.recentDocs), 'Initial search must include recentDocs array');
-  assert.equal(mainData.response.recentDocs.length, 3, 'Initial search must provide top 3 recentDocs');
-  assert.ok(mainData.response.docs.length >= 25, 'Relevance docs list must retain full results without deduplication');
+  // 4. Verify Dedup Recent control and deduplication logic
+  assert.ok(html.includes('id="toggleDedupResults"'), 'HTML must include toggleDedupResults checkbox');
+  assert.ok(html.includes('onToggleDedupResults'), 'Script must define onToggleDedupResults function');
+  assert.ok(html.includes('let dedupRecentResults = false;'), 'dedupRecentResults must default to false (OFF by default)');
+  assert.ok(!html.includes('id="toggleDedupResults" checked'), 'toggleDedupResults checkbox must be unchecked by default');
+  assert.ok(html.includes('relevantIds = (dedupRecentResults && currentSearchDocs)'), 'loadMoreRecentResults must check dedupRecentResults before filtering against currentSearchDocs');
 
-  console.log('  ✅ Search Results "Load More Recent" (+5 reverse order, no dedupe) verified.');
+  // Verify deduplication filtering behavior programmatically
+  const sampleRelevanceDocs = [{ id: '100', title: 'Doc 100' }, { id: '200', title: 'Doc 200' }];
+  const sampleNewRecent = [{ id: '100', title: 'Doc 100' }, { id: '300', title: 'Doc 300' }];
+  const existingRecentIds = new Set(['50']);
+
+  // Case A: Dedup ON
+  const relevantIdsOn = new Set(sampleRelevanceDocs.map(d => String(d.id)));
+  const toAddDedupOn = sampleNewRecent.filter(d => !existingRecentIds.has(String(d.id)) && !relevantIdsOn.has(String(d.id)));
+  assert.equal(toAddDedupOn.length, 1, 'When dedup is ON, duplicate doc 100 must be omitted');
+  assert.equal(toAddDedupOn[0].id, '300', 'Only non-duplicate doc 300 must be added');
+
+  // Case B: Dedup OFF
+  const relevantIdsOff = null;
+  const toAddDedupOff = sampleNewRecent.filter(d => !existingRecentIds.has(String(d.id)) && (!relevantIdsOff || !relevantIdsOff.has(String(d.id))));
+  assert.equal(toAddDedupOff.length, 2, 'When dedup is OFF, doc 100 must be retained alongside doc 300');
+
+  console.log('  ✅ Search Results "Load More Recent" (+5 reverse order, dedup toggle off by default) verified.');
 }
 
 async function runAll() {

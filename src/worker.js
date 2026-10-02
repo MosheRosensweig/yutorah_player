@@ -13235,6 +13235,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
             </span>
             <span class="match-toggle-label">📚 Stack Series</span>
           </label>
+          <label class="match-explain-toggle" id="dedupResultsToggleContainer" title="When enabled, additional recent results that already appear in Most Relevant Results are omitted">
+            <input type="checkbox" id="toggleDedupResults" onchange="onToggleDedupResults(this.checked)">
+            <span class="match-toggle-track">
+              <span class="match-toggle-thumb"></span>
+            </span>
+            <span class="match-toggle-label">⚡ Dedup Results</span>
+          </label>
           <div class="view-toggle-wrap" role="group" aria-label="Cards or rows view">
             <button type="button" class="view-toggle-btn selected" data-view="cards" onclick="setCardView('cards')" title="Card grid view">🃏 Cards</button>
             <button type="button" class="view-toggle-btn" data-view="rows" onclick="setCardView('rows')" title="One-per-row list view like yutorah.org">📋 Rows</button>
@@ -15402,8 +15409,10 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   // Recent Results rail state (initial top-3, expandable with Load More Recent).
   let currentRecentDocs = ${jsEmbed(initialRecentDocs || [])};
   let recentNumFound = ${jsEmbed(initialRecentNumFound || 0)};
+  let currentRecentOffset = ${initialRecentDocs ? initialRecentDocs.length : 0};
   let isLoadingMoreRecent = false;
   let hasMoreRecentResults = ${(initialRecentNumFound || (initialRecentDocs && initialRecentDocs.length)) > (initialRecentDocs ? initialRecentDocs.length : 0) ? 'true' : 'false'};
+  let dedupRecentResults = false;
   let currentSearchAbort = null;
   let currentPhoneticTokens = ${jsEmbed(initialPhoneticExpansion?.tokens || [])};
   let currentSearchDocs = ${jsEmbed(initialSearchResults || [])};
@@ -16933,6 +16942,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     stackSeriesEnabled = !!checked;
     renderCurrentSearchResults();
   }
+
+  function onToggleDedupResults(checked) {
+    dedupRecentResults = !!checked;
+  }
+  window.onToggleDedupResults = onToggleDedupResults;
 
   // ROADMAP §5.4: client-side twin of the edge fuzzy engine (used for
   // as-you-type chips; post-search strips come from /api/search didYouMean).
@@ -18817,9 +18831,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     currentFilterParams = extraParams;
     currentSearchPage = 1;
     currentRecentDocs = [];
+    currentRecentOffset = 0;
     recentNumFound = 0;
     isLoadingMoreRecent = false;
     hasMoreRecentResults = true;
+    const dedupToggle = document.getElementById('toggleDedupResults');
+    if (dedupToggle) dedupRecentResults = dedupToggle.checked;
     currentDidYouMean = [];
     currentQueryResolution = null;
     currentSpeakerViewCache = null;
@@ -18943,6 +18960,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       // Relevance pages are the paginated unit (full 30); the Recent rail
       // sits on top and is counted separately via recentNumFound.
       currentRecentDocs = data?.response?.recentDocs || [];
+      currentRecentOffset = currentRecentDocs.length;
       totalSearchResults = data?.response?.numFound || docs.length;
       currentLoadedDocsCount = docs.length;
       recentNumFound = data?.response?.recentNumFound || 0;
@@ -19133,7 +19151,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (btnText) btnText.textContent = 'Loading more recent shiurim...';
     if (spinner) spinner.style.display = 'inline-block';
 
-    const nextOffset = (currentRecentDocs ? currentRecentDocs.length : 0) + 1;
+    const nextOffset = (currentRecentOffset || 0) + 1;
     let apiUrl = '/api/search?q=' + encodeURIComponent(currentSearchQuery || '') +
       '&sort=date&start=' + nextOffset + '&rows=5';
 
@@ -19173,18 +19191,26 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       const res = await fetch(apiUrl);
       const data = await res.json();
       const newDocs = data?.response?.docs || [];
+      currentRecentOffset = (currentRecentOffset || 0) + newDocs.length;
 
       if (newDocs.length > 0) {
-        const existingIds = new Set((currentRecentDocs || []).map(d => String(d.shiurID || d.shiurid || d.id || '')));
+        const existingRecentIds = new Set((currentRecentDocs || []).map(d => String(d.shiurID || d.shiurid || d.id || '')));
+        const relevantIds = (dedupRecentResults && currentSearchDocs)
+          ? new Set(currentSearchDocs.map(d => String(d.shiurID || d.shiurid || d.id || '')))
+          : null;
+
         const toAdd = newDocs.filter(d => {
           const id = String(d.shiurID || d.shiurid || d.id || '');
-          return !id || !existingIds.has(id);
+          if (!id) return true;
+          if (existingRecentIds.has(id)) return false;
+          if (relevantIds && relevantIds.has(id)) return false;
+          return true;
         });
-        currentRecentDocs = (currentRecentDocs || []).concat(toAdd.length > 0 ? toAdd : newDocs);
+        currentRecentDocs = (currentRecentDocs || []).concat(toAdd);
       }
 
       const totalRecent = data?.response?.numFound || recentNumFound || 0;
-      if (newDocs.length < 5 || (totalRecent > 0 && currentRecentDocs.length >= totalRecent)) {
+      if (newDocs.length < 5 || (totalRecent > 0 && currentRecentOffset >= totalRecent)) {
         hasMoreRecentResults = false;
       }
       isLoadingMoreRecent = false;
@@ -19258,6 +19284,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
     currentSearchDocs = [];
     currentRecentDocs = [];
+    currentRecentOffset = 0;
     recentNumFound = 0;
     isLoadingMoreRecent = false;
     hasMoreRecentResults = true;
@@ -19269,12 +19296,15 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     showMatchReasons = false;
     useClassicSearch = false;
     stackSeriesEnabled = true;
+    dedupRecentResults = false;
     const matchToggle = document.getElementById('toggleMatchExplain');
     if (matchToggle) matchToggle.checked = false;
     const classicToggle = document.getElementById('toggleClassicSearch');
     if (classicToggle) classicToggle.checked = false;
     const stackToggle = document.getElementById('toggleStackSeries');
     if (stackToggle) stackToggle.checked = true;
+    const dedupToggle = document.getElementById('toggleDedupResults');
+    if (dedupToggle) dedupToggle.checked = false;
     const resGrid = document.getElementById('searchResultsGrid');
     if (resGrid) resGrid.classList.remove('explain-matches-active');
 

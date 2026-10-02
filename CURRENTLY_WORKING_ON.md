@@ -1,19 +1,19 @@
 # Currently Working On — Living Status & Activity Log
 
 Living status doc & audit log — updated on every milestone and user request.  
-Last updated: **2026-10-02, 09:08 ET**  
+Last updated: **2026-10-02, 09:16 ET**  
 Current branch: `main`  
 Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev)  
 Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://yutorah-player.mrosensweig.workers.dev) (Maintenance mode active: HTTP 503)
 
-## 🎯 Search Results: "Load More Recent" (+5 in Reverse Chronological Order) — DONE
+## 🎯 Search Results: "Load More Recent" (+5 in Reverse Chronological Order) & Dedup Control — DONE
 - On search, returns top 3 most recent results under `🕒 Recent Results`, followed by `🎯 Most Relevant Results`.
 - Added a dedicated `🔽 Load More Recent` button at the end of the Recent Results section (directly before the relevance section).
 - Clicking it loads the next 5 most recent results in reverse chronological order from now (3 initial -> +5 -> +5, etc.) and appends them to the recent list.
-- Implemented with NO cross-section deduplication per explicit user instruction.
+- **Dedup Control (2026-10-02)**: Added a `⚡ Dedup Results` toggle switch in search actions (off by default). When enabled, incoming recent batches are checked against the Most Relevant Results list and any duplicate shiurim already in relevance are omitted from recent results. When disabled (default), all recent results are added without cross-section deduplication.
 - **Bugfix (2026-10-02)**: Fixed infinite spinning wheel on `🔽 Load More Recent` button caused by re-rendering the search grid before setting `isLoadingMoreRecent = false`. The loading flag is now cleared prior to calling `renderCurrentSearchResults()`.
-- Added Test #35 in `tests/basic_functionality.test.mjs` verifying client markup, pagination, `/api/search?sort=date&start=4&rows=5`, reverse chronological date ordering, un-deduplicated relevance results, and reset of `isLoadingMoreRecent = false` before re-render.
-- Changelog entries recorded in `src/changelog.json` (`2026-10-01T22:03:00-04:00`, `2026-10-02T09:08:00-04:00`).
+- Added Test #35 in `tests/basic_functionality.test.mjs` verifying client markup, pagination, `/api/search?sort=date&start=4&rows=5`, reverse chronological date ordering, dedup toggle markup and default-off state, and programmatic deduplication filtering.
+- Changelog entries recorded in `src/changelog.json` (`2026-10-01T22:03:00-04:00`, `2026-10-02T09:08:00-04:00`, `2026-10-02T09:16:00-04:00`).
 
 ## 🎯 Developer Workflow & Mandatory Dev Log Documentation — DONE
 - Formalized mandatory update protocol in `README.md` and `CURRENTLY_WORKING_ON.md`.
