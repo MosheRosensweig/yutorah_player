@@ -67,6 +67,30 @@ It serves the live YUTorah site under your own URL with zero frame or CORS restr
 
 ---
 
+## 🔄 Development & Update Workflow (Standard Protocol)
+
+Whenever making any update or change to the application:
+
+1. **Add Timestamped Dev Log (Mandatory)**:
+   - Always add a newest-first, timestamped entry to `src/changelog.json` with an accurate ISO timestamp (`YYYY-MM-DDTHH:MM:SS-04:00`) describing all changes in the release.
+   - This dev log is bundled with the worker, served via `/api/changelog`, and viewable directly in Dev Mode under **⚙️ Settings → 📋 Change Log**.
+   - **Rule**: Never push to `main` or deploy to `dev` or `prod` without first adding a timestamped entry to `src/changelog.json`.
+2. **Local Verification**:
+   - Check worker syntax: `node --check src/worker.js`
+   - Run automated regression test suite: `node tests/basic_functionality.test.mjs` (all tests must pass).
+3. **Commit & Push**:
+   - `git add -A && git commit -m "..." && git push origin main`
+4. **Deploy to Dev**:
+   - `npx wrangler deploy --env dev`
+   - Verify HTTP status: `curl -s -o /dev/null -w "%{http_code}\n" https://yutorah-player-dev.mrosensweig.workers.dev/` (should be 200).
+5. **Deploy to Prod**:
+   - `npx wrangler deploy`
+   - Verify HTTP status: `curl -s -o /dev/null -w "%{http_code}\n" https://yutorah-player.mrosensweig.workers.dev/`
+6. **Update Status**:
+   - Update `CURRENTLY_WORKING_ON.md` with current branch, commit, deploy status, and milestone summary.
+
+---
+
 ## 🗺️ Product Roadmap
 
 Check out [`ROADMAP.md`](ROADMAP.md) for planned features and architecture, including:

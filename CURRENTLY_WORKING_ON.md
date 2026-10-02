@@ -1,10 +1,16 @@
 # Currently Working On — Living Status & Activity Log
 
 Living status doc & audit log — updated on every milestone and user request.  
-Last updated: **2026-10-01, 21:42 ET**  
+Last updated: **2026-10-01, 21:46 ET**  
 Current branch: `main`  
 Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev)  
 Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://yutorah-player.mrosensweig.workers.dev) (Maintenance mode active: HTTP 503)
+
+## 🎯 Developer Workflow & Mandatory Dev Log Documentation — DONE
+- Formalized mandatory update protocol in `README.md` and `CURRENTLY_WORKING_ON.md`.
+- Requires timestamped entry in `src/changelog.json` on **every single update and deploy**.
+- Dev log is served via `/api/changelog` and visible in Dev Mode under ⚙️ Settings → `📋 Change Log`.
+- Changelog entry recorded in `src/changelog.json` (`2026-10-01T21:45:00-04:00`).
 
 ## 🎯 Brand Disclaimer Tooltip, Click Flash & Dev Switch — DONE
 - Top-left brand button (`🎧 YUTorah UNOFFICIAL`) desktop hover tooltip: `"This website is not affiliated with YUTorah in any way"`.

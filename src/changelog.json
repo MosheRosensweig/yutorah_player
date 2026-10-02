@@ -1,6 +1,10 @@
 {
   "entries": [
     {
+      "date": "2026-10-01T21:45:00-04:00",
+      "message": "Developer workflow documentation update: formalized mandatory update protocol in README.md and CURRENTLY_WORKING_ON.md requiring a timestamped changelog entry in src/changelog.json on every single update and deploy so all changes are tracked and viewable in Dev Mode under ⚙️ Settings → 📋 Change Log."
+    },
+    {
       "date": "2026-10-01T21:40:00-04:00",
       "message": "Top-left brand button disclaimer enhancements: added desktop hover tooltip indicating non-affiliation with YUTorah; added on-click flash HUD notification displaying the disclaimer on both desktop and mobile while navigating home; added Dev settings switch to toggle the click disclaimer popup on or off via D1 app_settings."
     },
