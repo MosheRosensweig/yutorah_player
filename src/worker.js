@@ -1440,7 +1440,8 @@ async function getDailySponsorship() {
         liveUrl = liveUrl.replace('https://www.yutorah.org/_cdn/', 'https://cdn.yutorah.net/');
         // Verify that the audio URL is active and accessible
         try {
-          const headCheck = await fetch(liveUrl, { method: 'HEAD', redirect: 'follow' });
+          const sig = typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(2000) : undefined;
+          const headCheck = await fetch(liveUrl, { method: 'HEAD', redirect: 'follow', signal: sig });
           if (headCheck.ok) {
             result.audioUrl = liveUrl;
           }
@@ -1471,7 +1472,8 @@ async function getDailySponsorship() {
 
         if (mm && dd && yy) {
           const checkUrl = `https://cdn.yutorah.net/_media/sponsorshipAudio/${mm}${dd}${yy}.mp3`;
-          const head = await fetch(checkUrl, { method: 'HEAD', redirect: 'follow' });
+          const sig2 = typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(1000) : undefined;
+          const head = await fetch(checkUrl, { method: 'HEAD', redirect: 'follow', signal: sig2 });
           if (head.ok) {
             result.audioUrl = checkUrl;
             break;
@@ -12790,8 +12792,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 <header id="mainHeader">
   <div class="header-inner">
     <div class="header-left">
-      <a href="/" class="brand" onclick="goHome(event)">
-        <span class="brand-text">🎧 YUTorah Enhanced</span> <span>PLAYER</span>
+      <a href="/" class="brand" onclick="goHome(event)" title="YUTorah Unofficial">
+        <span class="brand-text">🎧 YUTorah</span> <span>UNOFFICIAL</span>
       </a>
       <button type="button" id="authBtn" class="theme-toggle-btn auth-btn" onclick="toggleAuthMenu(event)" title="Sign in to sync across devices">
         <span class="auth-icon">👤</span><span class="auth-label"> Sign in</span>
