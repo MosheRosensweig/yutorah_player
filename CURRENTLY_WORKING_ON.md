@@ -582,21 +582,31 @@ Per-user instruction: dev only (no prod), one feature at a time — quick review
 ---
 
 ## 🛡️ Standing Development Guidelines
-1. **Log Updates**: Update this document (`CURRENTLY_WORKING_ON.md`) on every milestone, logging completed work (`[DONE]`), in-progress work (`[IN PROGRESS]`), and queued items (`[REQUESTED / NOT DONE]`).
-2. **Dual Review**: Correctness QA and Style/Theme subagents must review and approve every release before deployment. See *How to do a dual review and deploy* below.
-3. **Separate Commits**: Maintain atomic commits per feature branch.
-4. **DEV ONLY**: Deploy strictly to `yutorah-player-dev.mrosensweig.workers.dev` via `npx wrangler deploy --env dev`. **NEVER** touch production without explicit user command.
-5. **Changelog**: Update `src/changelog.json` on every push.
+1. **Timestamped Dev Log (MANDATORY ON EVERY UPDATE)**:
+   - Always add a newest-first, timestamped entry to `src/changelog.json` on **every single update and push**.
+   - Format: `{ "date": "YYYY-MM-DDTHH:MM:SS-04:00", "message": "Detailed description of the change" }`.
+   - This dev log is served via `/api/changelog` and is directly viewable by the user in Dev Mode under ⚙️ Settings → `📋 Change Log`.
+   - **Rule**: Never push to `main` or deploy to `dev`/`prod` without first adding a timestamped entry to `src/changelog.json`.
+2. **Milestone Log Updates**: Update this document (`CURRENTLY_WORKING_ON.md`) on every milestone, logging completed work (`[DONE]`), in-progress work (`[IN PROGRESS]`), and queued items (`[REQUESTED / NOT DONE]`).
+3. **Dual Review**: Correctness QA and Style/Theme subagents must review and approve every release before deployment. See *How to do a dual review and deploy* below.
+4. **Separate Commits**: Maintain clean, atomic commits per feature branch with descriptive commit messages.
+5. **Environment Targets**:
+   - Dev site: `https://yutorah-player-dev.mrosensweig.workers.dev` via `npx wrangler deploy --env dev`.
+   - Prod site: `https://yutorah-player.mrosensweig.workers.dev` via `npx wrangler deploy`.
+   - Verify health and maintenance state on both workers after deploying.
 
 ### How to do a dual review and deploy (robust, step-by-step)
 1. **Finish one task at a time** — scope is a single feature or fix batch; no bundling of unrelated changes.
-2. **Local verify**: `npm test` (must be 5/5 green) + `node --check src/worker.js`.
-3. **Launch two subagents in parallel** via Task tool:
+2. **Add Timestamped Dev Log**: Add a newest-first entry to `src/changelog.json` with an accurate ISO timestamp (`YYYY-MM-DDTHH:MM:SS-04:00`) describing all changes in the release.
+3. **Local verify**: `node tests/basic_functionality.test.mjs` (must be 100% green) + `node --check src/worker.js`.
+4. **Launch two subagents in parallel** via Task tool:
    - **Correctness reviewer**: prompt to check logic, edge cases, state, persistence, quota, XSS, bounds. Must cite `file:line`.
    - **Style/Theme reviewer**: prompt to check UX, light/dark, touch targets, focus rings, a11y, contrast. Must cite `file:line`.
-4. **Triage**: BLOCKER/HIGH must be fixed before deploy; LOW/MEDIUM may be logged as follow-ups.
-5. **Fix, re-test, re-review if needed** — iterate until both reviewers PASS or only LOWs remain.
-6. **Commit & push**: `git add -A && git commit -m "... (muse spark)" && git push origin <branch>`.
-7. **Deploy to dev only**: `npx wrangler deploy --env dev` → verify `Current Version ID` and `curl -s -o /dev/null -w "%{http_code}" https://yutorah-player-dev...` is 200.
-8. **Update logs**: append to `CURRENTLY_WORKING_ON.md` activity log and `src/changelog.json` newest-first entry with ISO date.
-9. **Final dual review**: after the last task in the batch, run one concluding dual review across the whole batch to catch integration gaps.
+5. **Triage**: BLOCKER/HIGH must be fixed before deploy; LOW/MEDIUM may be logged as follow-ups.
+6. **Fix, re-test, re-review if needed** — iterate until both reviewers PASS or only LOWs remain.
+7. **Commit & push**: `git add -A && git commit -m "..." && git push origin <branch>`.
+8. **Deploy**:
+   - Dev: `npx wrangler deploy --env dev` → verify `Current Version ID` and `curl -s -o /dev/null -w "%{http_code}" https://yutorah-player-dev.mrosensweig.workers.dev/` is 200.
+   - Prod (when authorized/requested): `npx wrangler deploy` → verify status.
+9. **Update logs**: append to `CURRENTLY_WORKING_ON.md` activity log and verify dev log entry via `/api/changelog`.
+10. **Final dual review**: after the last task in the batch, run one concluding dual review across the whole batch to catch integration gaps.

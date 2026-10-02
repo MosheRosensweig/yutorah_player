@@ -1,6 +1,18 @@
 {
   "entries": [
     {
+      "date": "2026-10-01T20:05:00-04:00",
+      "message": "Top-left brand button updated to '🎧 YUTorah UNOFFICIAL' (with accessibility title) replacing legacy 'Enhanced Player' branding; added resilient timeouts for upstream CDN sponsorship audio checks."
+    },
+    {
+      "date": "2026-10-01T19:40:00-04:00",
+      "message": "Ops maintenance mode toggle in Dev settings: live control of production maintenance mode directly from dev site settings menu backed by Cloudflare D1 app_settings table (no redeploy needed to toggle); updated maintenance copy to remove 'briefly'."
+    },
+    {
+      "date": "2026-09-30T19:00:00-04:00",
+      "message": "Pre-roll audio toggle increased from 3 taps to 10 taps to prevent accidental activation; removed daf button from mini player."
+    },
+    {
       "date": "2026-09-14T16:20:00-04:00",
       "message": "Daf detection & action lifecycle fix: properly double-escape regexes in client-side detectDafReference, synchronize full and mini-player Daf actions across track switches, and normalize Baba Batra to Bava Basra."
     },
