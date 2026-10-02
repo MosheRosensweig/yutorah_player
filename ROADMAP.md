@@ -8,14 +8,14 @@
 
 ## 🎯 Immediate Priority Backlog (Top of Queue)
 
-### 🚨 Next Up (To Do Next — Queued, Do Not Implement Yet): Search Results "Load More Recent" (+5 in Reverse Chronological Order)
-- **Current Behavior**: A search returns the top 3 most recent results, followed by the most relevant results.
-- **Requested Enhancement**:
-  1. Add a dedicated `"🔽 Load More Recent"` button positioned at the end of the `🕒 Recent Results` section (directly before the `🎯 Most Relevant Results` section begins).
+### 1. Search Results: "Load More Recent" (+5 in Reverse Chronological Order) — `[COMPLETED ✅]`
+- **Behavior**: A search returns the top 3 most recent results under `🕒 Recent Results`, followed by the most relevant results under `🎯 Most Relevant Results`.
+- **Implementation**:
+  1. Added a dedicated `"🔽 Load More Recent"` button at the end of the `🕒 Recent Results` section (directly before the `🎯 Most Relevant Results` section begins).
   2. Clicking on it loads the next **5** most recent results, continuing in reverse chronological order from now (results #1–3 are the 3 most recent, then the next 5 are the 4th–8th most recent, etc.).
   3. The user can keep clicking this button to get 5 more added to the list of recent results each time (`start=4, rows=5`, then `start=9, rows=5`, etc.), and they are dynamically appended to the recent results list before the most relevant list.
-  4. Deduplication: any shiur loaded into recent results remains excluded from the relevance section below so duplicate cards never appear.
-  5. Status: **Queued as Priority 1 for next development cycle — DO NOT IMPLEMENT YET**.
+  4. No deduplication between recent and relevance sections per explicit user instruction.
+  5. Verified with automated regression tests (Test #35).
 
 Below is the status of previously completed prioritized enhancements:
 
@@ -64,7 +64,7 @@ Below is a numbered assessment of the primary strategic initiatives for the YUTo
 
 | # | Strategic Initiative | Implementation Overview (2–3 Sentences) | Effort / Feasibility | User Impact |
 | :---: | :--- | :--- | :--- | :---: |
-| **1** | **Search Results: Top 3 Recent Matches + "Load More Recent" (+5 in Reverse Chronological Order)** *(Next Up — Queued / Do Not Implement Yet)* | Injects the top 3 most recent results matching search/filters above the main results under `🕒 Recent Results`, followed by `🎯 Most Relevant Results`. At the end of the Recent section, a `"🔽 Load More Recent"` button fetches 5 more recent results in reverse chronological order (from now going backward: 3 initial -> +5 -> +5, etc.) and appends them to the Recent section before the relevant results. | **Low-Medium**<br>*(1–2 days)* | **VERY HIGH**<br>★★★★★ |
+| **1** | **Search Results: Top 3 Recent Matches + "Load More Recent" (+5 in Reverse Chronological Order)** | Injects the top 3 most recent results matching search/filters above the main results under `🕒 Recent Results`, followed by `🎯 Most Relevant Results`. At the end of the Recent section, a `"🔽 Load More Recent"` button fetches 5 more recent results in reverse chronological order (from now going backward: 3 initial -> +5 -> +5, etc.) and appends them to the Recent section before the relevant results without deduplication. | **Completed**<br>*(Verified)* | **VERY HIGH**<br>★★★★★ |
 | **2** | **Developer Mode: "Dev's Playlists", Progress Tracking & Multi-Playlist Engine** *(Next Up — Priority 2)* | Adds an exclusive "Dev's Playlists" tab between *Editor's Picks* and *Featured Series* on the homepage when Dev Mode is active. Features 3 default playlists: *History* (all listened lectures with attached mini progress bar, last-listened timestamp, and "x/y min through"), *Save for Later* (clock shortcut button on cards), and *Favorites* (star shortcut button on cards). Includes custom playlist creation with live autocomplete, multi-playlist membership via card/player plus (`+`) button, and playlist deletion with confirmation prompts. | **Medium**<br>*(2–3 days)* | **TRANSFORMATIVE**<br>★★★★★ |
 | **3** | **Google OAuth 2.0 & Cloud History Sync** | Integrates an edge-native Google OAuth 2.0 / OpenID Connect authorization code flow with PKCE, storing persistent 1-year `HttpOnly` session tokens. User progress, listening history, and bookmarks synchronize bidirectionally to a Cloudflare D1 (Serverless SQLite) database with debounced 30-second playback heartbeats. Replaces the guest `localStorage` history tab with an organized chronological cloud view (*Today*, *Yesterday*, *This Week*) with full item removal and GDPR/CCPA export/erasure. | **Medium**<br>*(3–4 days)* | **CRITICAL**<br>★★★★★ |
 | **4** | **Shiur Audio Transcription & Mixed Hebrew/English Transliteration** | Orchestrates lazy on-demand speech-to-text via Groq Whisper Large-v3-Turbo seeded with a specialized 224-token "Yeshivish" rabbinic prompt, completing a 45-minute shiur in ~14 seconds for ~$0.03. Formats mixed Hebrew/English words (*"The \*gemara\* in \*Rosh Hashanah\* discusses whether \*tekiah\* is \*d'oraisa\*"*) using a deterministic Sefaria-derived prefix-stripping lexicon. Transcripts are cached permanently as JSON and WebVTT in Cloudflare R2 object storage so each lecture is only processed once across all users. | **Medium-High**<br>*(4–5 days)* | **TRANSFORMATIVE**<br>★★★★★ |

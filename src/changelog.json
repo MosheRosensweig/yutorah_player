@@ -1,6 +1,10 @@
 {
   "entries": [
     {
+      "date": "2026-10-01T22:03:00-04:00",
+      "message": "Search Results 'Load More Recent' (+5 reverse chronological): searches return top 3 most recent matches followed by most relevant results; added a dedicated '🔽 Load More Recent' button at the end of the Recent Results section that fetches 5 more recent matches in reverse chronological order from now on each click, progressively appending them before the relevance section without cross-section deduplication."
+    },
+    {
       "date": "2026-10-01T21:45:00-04:00",
       "message": "Developer workflow documentation update: formalized mandatory update protocol in README.md and CURRENTLY_WORKING_ON.md requiring a timestamped changelog entry in src/changelog.json on every single update and deploy so all changes are tracked and viewable in Dev Mode under ⚙️ Settings → 📋 Change Log."
     },

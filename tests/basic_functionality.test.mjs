@@ -1650,6 +1650,46 @@ async function testDisclaimerPopup() {
   console.log('  ✅ Brand disclaimer tooltip, click flash & dev switch verified.');
 }
 
+async function testLoadMoreRecent() {
+  console.log('\n--- Running Test #35: Search Results "Load More Recent" (+5 in Reverse Chronological Order) ---');
+
+  // 1. Verify client markup and functions in rendered homepage HTML
+  const res = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/'), mockEnv, mockCtx);
+  const html = await res.text();
+  assert.ok(html.includes('loadMoreRecentResults'), 'Script must define loadMoreRecentResults function');
+  assert.ok(html.includes('loadMoreRecentBtn'), 'Script must include loadMoreRecentBtn element');
+  assert.ok(html.includes('isLoadingMoreRecent'), 'Script must track isLoadingMoreRecent state');
+  assert.ok(html.includes('hasMoreRecentResults'), 'Script must track hasMoreRecentResults state');
+  assert.ok(html.includes('load-more-recent-wrap'), 'Script must render load-more-recent-wrap container');
+  assert.ok(html.includes('🔽 Load More Recent'), 'Script must use standard 🔽 Load More Recent label');
+
+  // 2. Verify /api/search with date sort and pagination parameters
+  const dateSearchRes = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/api/search?q=pesach&sort=date&start=4&rows=5'), mockEnv, mockCtx);
+  assert.equal(dateSearchRes.status, 200, 'Search with sort=date&start=4&rows=5 must return 200');
+  const dateData = await dateSearchRes.json();
+  assert.ok(dateData && dateData.response, 'Response must have response payload');
+  assert.ok(Array.isArray(dateData.response.docs), 'Response must have docs array');
+  assert.equal(dateData.response.docs.length, 5, 'Date window at start=4 with rows=5 must return exactly 5 docs');
+  assert.equal(dateData.response.start, 4, 'Response start must reflect item offset 4');
+  assert.equal(dateData.response.sort, 'date', 'Response sort must reflect date ordering');
+
+  // Verify reverse chronological ordering in returned docs
+  const dates = dateData.response.docs.map(d => String(d.shiurdate || d.shiurdatesubmitted || d.shiurDate || d.shiurDateSubmitted || ''));
+  for (let i = 1; i < dates.length; i++) {
+    assert.ok(dates[i - 1].localeCompare(dates[i]) >= 0, `Date at index ${i - 1} (${dates[i-1]}) must be >= date at index ${i} (${dates[i]})`);
+  }
+
+  // 3. Verify initial search endpoint returns recentDocs (initial 3) and docs WITHOUT deduplication
+  const mainSearchRes = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/api/search?q=pesach'), mockEnv, mockCtx);
+  assert.equal(mainSearchRes.status, 200);
+  const mainData = await mainSearchRes.json();
+  assert.ok(Array.isArray(mainData.response.recentDocs), 'Initial search must include recentDocs array');
+  assert.equal(mainData.response.recentDocs.length, 3, 'Initial search must provide top 3 recentDocs');
+  assert.ok(mainData.response.docs.length >= 25, 'Relevance docs list must retain full results without deduplication');
+
+  console.log('  ✅ Search Results "Load More Recent" (+5 reverse order, no dedupe) verified.');
+}
+
 async function runAll() {
   try {
     await testHomepage();
@@ -1686,6 +1726,7 @@ async function runAll() {
     await testThemeNoContagion();
     await testAdminMaintenance();
     await testDisclaimerPopup();
+    await testLoadMoreRecent();
     console.log('\n🎉 ALL BASIC FUNCTIONALITY, ARTICLE READER & LIQUID MODE TESTS PASSED SUCCESSFULLY!');
   } catch (err) {
     console.error('\n❌ Test failed:', err);

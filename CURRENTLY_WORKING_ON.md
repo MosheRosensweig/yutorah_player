@@ -6,6 +6,14 @@ Current branch: `main`
 Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev)  
 Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://yutorah-player.mrosensweig.workers.dev) (Maintenance mode active: HTTP 503)
 
+## 🎯 Search Results: "Load More Recent" (+5 in Reverse Chronological Order) — DONE
+- On search, returns top 3 most recent results under `🕒 Recent Results`, followed by `🎯 Most Relevant Results`.
+- Added a dedicated `🔽 Load More Recent` button at the end of the Recent Results section (directly before the relevance section).
+- Clicking it loads the next 5 most recent results in reverse chronological order from now (3 initial -> +5 -> +5, etc.) and appends them to the recent list.
+- Implemented with NO cross-section deduplication per explicit user instruction.
+- Added Test #35 in `tests/basic_functionality.test.mjs` verifying client markup, pagination, `/api/search?sort=date&start=4&rows=5`, reverse chronological date ordering, and un-deduplicated relevance results.
+- Changelog entry recorded in `src/changelog.json` (`2026-10-01T22:03:00-04:00`).
+
 ## 🎯 Developer Workflow & Mandatory Dev Log Documentation — DONE
 - Formalized mandatory update protocol in `README.md` and `CURRENTLY_WORKING_ON.md`.
 - Requires timestamped entry in `src/changelog.json` on **every single update and deploy**.
@@ -586,7 +594,6 @@ Per-user instruction: dev only (no prod), one feature at a time — quick review
 
 | Item | Status | Description | Notes |
 | :--- | :---: | :--- | :--- |
-| **Search: "Load More Recent" (+5 in reverse order)** | `[REQUESTED / TO DO NEXT]` | When searching, initial results return top 3 most recent results followed by most relevant results. Add a button at the end of the Recent Results section to load 5 more recent results in reverse chronological order (from now going backward: 3 initial -> +5 -> +5, etc.). Each click appends 5 more to the recent results list before the relevant results list. | **DO NOT IMPLEMENT YET.** Queued as priority for next development cycle. |
 | **Live Google OAuth Credentials** | `[REQUESTED / NOT DONE]` | Add `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` via `wrangler secret put` | Waiting on credentials from owner to live-test Google login on dev. |
 | **Clock Icon Selection** | `[PARKED]` | Choose preferred clock hand design among 5 options in Settings | User to select preferred SVG clock hand style. |
 | **Production Deployment** | `[PARKED]` | Promote `feat/auth-d1` branch & D1 binding to production | STRICT RULE: Awaiting explicit approval from user before touching production. |

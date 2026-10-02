@@ -1819,7 +1819,7 @@ async function executeSearchInternal(searchParams) {
     else if (locationIds.length > 1) locationIds.forEach(id => multiEntities.push({ tId, catId, locId: id, sId }));
     else if (seriesIds.length > 1) seriesIds.forEach(id => multiEntities.push({ tId, catId, locId, sId: id }));
     const entities = multiEntities.length > 0 ? multiEntities : [{ tId, catId, locId, sId }];
-    const pagesToCover = Math.min(4, Math.ceil((itemOffset + rowCount) / 30) + 1);
+    const pagesToCover = Math.min(10, Math.ceil((itemOffset + rowCount) / 30) + 1);
     const fanout = [];
     for (const ent of entities) {
       for (let p = 1; p <= pagesToCover; p++) {
@@ -6359,8 +6359,22 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   let initialGridHtml = '';
   if (initialSearchResults && initialSearchResults.length > 0) {
+    if (initialRecentDocs && initialRecentDocs.length > 0) {
+      const recentTotal = initialRecentNumFound || initialRecentDocs.length;
+      initialGridHtml += `<div class="search-results-subheading"><span>🕒</span><span>Recent Results</span><span class="sub-count">${recentTotal.toLocaleString()} matching</span></div>`;
+      initialGridHtml += initialRecentDocs.map(d => renderShiurCardHtml(d, initialSearchTerms)).join('');
+      if (recentTotal > initialRecentDocs.length) {
+        initialGridHtml += `<div class="load-more-recent-wrap" style="grid-column: 1 / -1; width: 100%; text-align: center; margin: 12px 0 20px;">` +
+          `<button id="loadMoreRecentBtn" type="button" class="load-more-btn" onclick="loadMoreRecentResults();">` +
+          `<span id="loadMoreRecentBtnText">🔽 Load More Recent</span>` +
+          `<span id="loadMoreRecentSpinner" class="spinner-small" style="display: none;"></span>` +
+          `</button>` +
+          `</div>`;
+      }
+      initialGridHtml += `<div class="search-results-subheading"><span>🎯</span><span>Most Relevant Results</span></div>`;
+    }
     const grouped = groupAndRankDocs(initialSearchResults, initialSearchTerms, searchQuery);
-    initialGridHtml = grouped.map(item => renderGroupItemHtml(item, initialSearchTerms)).join('');
+    initialGridHtml += grouped.map(item => renderGroupItemHtml(item, initialSearchTerms)).join('');
   }
 
   let title = 'YUTorah Enhanced Player';
@@ -15385,9 +15399,11 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   let isLoadingMore = false;
   let currentSpeakerViewCache = null;
 
-  // Recent Results rail state (fixed top-3, no expansion control).
+  // Recent Results rail state (initial top-3, expandable with Load More Recent).
   let currentRecentDocs = ${jsEmbed(initialRecentDocs || [])};
   let recentNumFound = ${jsEmbed(initialRecentNumFound || 0)};
+  let isLoadingMoreRecent = false;
+  let hasMoreRecentResults = ${(initialRecentNumFound || (initialRecentDocs && initialRecentDocs.length)) > (initialRecentDocs ? initialRecentDocs.length : 0) ? 'true' : 'false'};
   let currentSearchAbort = null;
   let currentPhoneticTokens = ${jsEmbed(initialPhoneticExpansion?.tokens || [])};
   let currentSearchDocs = ${jsEmbed(initialSearchResults || [])};
@@ -17117,18 +17133,28 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       return;
     }
 
-    // Recent Results rail: fixed top-3 freshest, no expansion control.
-    const visibleRecent = (currentRecentDocs || []).slice(0, 3);
-    if (visibleRecent.length > 0) {
+    // Recent Results rail: renders the freshest matches in reverse chronological order
+    if (currentRecentDocs && currentRecentDocs.length > 0) {
       const recentTotal = recentNumFound || currentRecentDocs.length;
       html += '<div class="search-results-subheading"><span>🕒</span><span>Recent Results</span>' +
         '<span class="sub-count">' + recentTotal.toLocaleString() + ' matching</span></div>';
-      html += renderList(visibleRecent);
+      html += currentRecentDocs.map(d => renderDocToCard(d)).join('');
+
+      const canLoadMoreRecent = (typeof hasMoreRecentResults !== 'undefined' ? hasMoreRecentResults : true) &&
+        (recentTotal > currentRecentDocs.length);
+      if (canLoadMoreRecent) {
+        html += '<div class="load-more-recent-wrap" style="grid-column: 1 / -1; width: 100%; text-align: center; margin: 12px 0 20px;">' +
+          '<button id="loadMoreRecentBtn" type="button" class="load-more-btn" onclick="loadMoreRecentResults();"' + (isLoadingMoreRecent ? ' disabled' : '') + '>' +
+          '<span id="loadMoreRecentBtnText">' + (isLoadingMoreRecent ? 'Loading more recent shiurim...' : '🔽 Load More Recent') + '</span>' +
+          '<span id="loadMoreRecentSpinner" class="spinner-small" style="display: ' + (isLoadingMoreRecent ? 'inline-block' : 'none') + ';"></span>' +
+          '</button>' +
+          '</div>';
+      }
     }
 
     // 🎯 Relevance sub-section (own separate Load More).
     if (currentSearchDocs && currentSearchDocs.length > 0) {
-      if (visibleRecent.length > 0) {
+      if (currentRecentDocs && currentRecentDocs.length > 0) {
         html += '<div class="search-results-subheading"><span>🎯</span><span>Most Relevant Results</span></div>';
       }
       html += renderList(currentSearchDocs);
@@ -18792,6 +18818,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     currentSearchPage = 1;
     currentRecentDocs = [];
     recentNumFound = 0;
+    isLoadingMoreRecent = false;
+    hasMoreRecentResults = true;
     currentDidYouMean = [];
     currentQueryResolution = null;
     currentSpeakerViewCache = null;
@@ -18918,6 +18946,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       totalSearchResults = data?.response?.numFound || docs.length;
       currentLoadedDocsCount = docs.length;
       recentNumFound = data?.response?.recentNumFound || 0;
+      hasMoreRecentResults = recentNumFound > currentRecentDocs.length || (recentNumFound === 0 && totalSearchResults > currentRecentDocs.length);
+      isLoadingMoreRecent = false;
       currentDidYouMean = data?.didYouMean || [];
       currentQueryResolution = data?.queryResolution || null;
 
@@ -19090,6 +19120,85 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     }
   }
 
+  // Load more date-sorted recent results (+5 in reverse chronological order).
+  async function loadMoreRecentResults() {
+    if (isLoadingMoreRecent || !hasMoreRecentResults) return;
+    isLoadingMoreRecent = true;
+
+    const btn = document.getElementById('loadMoreRecentBtn');
+    const btnText = document.getElementById('loadMoreRecentBtnText');
+    const spinner = document.getElementById('loadMoreRecentSpinner');
+
+    if (btn) btn.disabled = true;
+    if (btnText) btnText.textContent = 'Loading more recent shiurim...';
+    if (spinner) spinner.style.display = 'inline-block';
+
+    const nextOffset = (currentRecentDocs ? currentRecentDocs.length : 0) + 1;
+    let apiUrl = '/api/search?q=' + encodeURIComponent(currentSearchQuery || '') +
+      '&sort=date&start=' + nextOffset + '&rows=5';
+
+    const teachersList = currentFilterParams.teachers || (currentFilterParams.teacherId ? [{ id: currentFilterParams.teacherId }] : []);
+    teachersList.forEach(t => {
+      apiUrl += '&teacherId=' + encodeURIComponent(t.id);
+    });
+
+    const categoriesList = currentFilterParams.categories || (currentFilterParams.subCategoryId ? [{ id: currentFilterParams.subCategoryId }] : []);
+    categoriesList.forEach(c => {
+      apiUrl += '&subCategoryId=' + encodeURIComponent(c.id);
+    });
+
+    const locationsList = currentFilterParams.locations || (currentFilterParams.locationId ? [{ id: currentFilterParams.locationId }] : []);
+    locationsList.forEach(l => {
+      apiUrl += '&locationId=' + encodeURIComponent(l.id);
+    });
+
+    const seriesList = currentFilterParams.series || (currentFilterParams.seriesId ? [{ id: currentFilterParams.seriesId }] : []);
+    seriesList.forEach(s => {
+      apiUrl += '&seriesId=' + encodeURIComponent(s.id);
+    });
+
+    if (currentFilterParams.minDuration) apiUrl += '&minDuration=' + encodeURIComponent(currentFilterParams.minDuration);
+    if (currentFilterParams.maxDuration) apiUrl += '&maxDuration=' + encodeURIComponent(currentFilterParams.maxDuration);
+    if (currentFilterParams.year) apiUrl += '&year=' + encodeURIComponent(currentFilterParams.year);
+    if (currentFilterParams.fromDate) apiUrl += '&fromDate=' + encodeURIComponent(currentFilterParams.fromDate);
+    if (currentFilterParams.toDate) apiUrl += '&toDate=' + encodeURIComponent(currentFilterParams.toDate);
+    if (currentFilterParams.mediaType && currentFilterParams.mediaType !== 'all') {
+      apiUrl += '&mediaType=' + encodeURIComponent(currentFilterParams.mediaType);
+    }
+    if (currentFilterParams.enablePhonetics === false || (currentFilterParams.enablePhonetics === undefined && useClassicSearch)) {
+      apiUrl += '&exact=1';
+    }
+
+    try {
+      const res = await fetch(apiUrl);
+      const data = await res.json();
+      const newDocs = data?.response?.docs || [];
+
+      if (newDocs.length > 0) {
+        const existingIds = new Set((currentRecentDocs || []).map(d => String(d.shiurID || d.shiurid || d.id || '')));
+        const toAdd = newDocs.filter(d => {
+          const id = String(d.shiurID || d.shiurid || d.id || '');
+          return !id || !existingIds.has(id);
+        });
+        currentRecentDocs = (currentRecentDocs || []).concat(toAdd.length > 0 ? toAdd : newDocs);
+      }
+
+      const totalRecent = data?.response?.numFound || recentNumFound || 0;
+      if (newDocs.length < 5 || (totalRecent > 0 && currentRecentDocs.length >= totalRecent)) {
+        hasMoreRecentResults = false;
+      }
+      renderCurrentSearchResults();
+    } catch (err) {
+      console.error('Failed to load more recent results:', err);
+      if (btn) btn.disabled = false;
+      if (btnText) btnText.textContent = '🔽 Load More Recent';
+      if (spinner) spinner.style.display = 'none';
+    } finally {
+      isLoadingMoreRecent = false;
+    }
+  }
+  window.loadMoreRecentResults = loadMoreRecentResults;
+
   // Keyboard shortcut: Escape closes modal and search preview
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
@@ -19144,6 +19253,8 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     currentSearchDocs = [];
     currentRecentDocs = [];
     recentNumFound = 0;
+    isLoadingMoreRecent = false;
+    hasMoreRecentResults = true;
     currentDidYouMean = [];
     currentQueryResolution = null;
     currentSpeakerViewCache = null;
