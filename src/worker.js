@@ -15410,6 +15410,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   let currentRecentDocs = ${jsEmbed(initialRecentDocs || [])};
   let recentNumFound = ${jsEmbed(initialRecentNumFound || 0)};
   let currentRecentOffset = ${initialRecentDocs ? initialRecentDocs.length : 0};
+  let recentPendingDocs = [];
   let isLoadingMoreRecent = false;
   let hasMoreRecentResults = ${(initialRecentNumFound || (initialRecentDocs && initialRecentDocs.length)) > (initialRecentDocs ? initialRecentDocs.length : 0) ? 'true' : 'false'};
   let dedupRecentResults = false;
@@ -16945,6 +16946,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   function onToggleDedupResults(checked) {
     dedupRecentResults = !!checked;
+    recentPendingDocs = [];
   }
   window.onToggleDedupResults = onToggleDedupResults;
 
@@ -17155,7 +17157,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       html += currentRecentDocs.map(d => renderDocToCard(d)).join('');
 
       const canLoadMoreRecent = (typeof hasMoreRecentResults !== 'undefined' ? hasMoreRecentResults : true) &&
-        (recentTotal > currentRecentDocs.length);
+        (recentTotal > (typeof currentRecentOffset !== 'undefined' ? currentRecentOffset : currentRecentDocs.length) || (typeof recentPendingDocs !== 'undefined' && recentPendingDocs.length > 0));
       if (canLoadMoreRecent) {
         html += '<div class="load-more-recent-wrap" style="grid-column: 1 / -1; width: 100%; text-align: center; margin: 12px 0 20px;">' +
           '<button id="loadMoreRecentBtn" type="button" class="load-more-btn" onclick="loadMoreRecentResults();"' + (isLoadingMoreRecent ? ' disabled' : '') + '>' +
@@ -18832,6 +18834,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     currentSearchPage = 1;
     currentRecentDocs = [];
     currentRecentOffset = 0;
+    recentPendingDocs = [];
     recentNumFound = 0;
     isLoadingMoreRecent = false;
     hasMoreRecentResults = true;
@@ -18961,6 +18964,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       // sits on top and is counted separately via recentNumFound.
       currentRecentDocs = data?.response?.recentDocs || [];
       currentRecentOffset = currentRecentDocs.length;
+      recentPendingDocs = [];
       totalSearchResults = data?.response?.numFound || docs.length;
       currentLoadedDocsCount = docs.length;
       recentNumFound = data?.response?.recentNumFound || 0;
@@ -19140,7 +19144,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 
   // Load more date-sorted recent results (+5 in reverse chronological order).
   async function loadMoreRecentResults() {
-    if (isLoadingMoreRecent || !hasMoreRecentResults) return;
+    if (isLoadingMoreRecent || (!hasMoreRecentResults && (!recentPendingDocs || recentPendingDocs.length === 0))) return;
     isLoadingMoreRecent = true;
 
     const btn = document.getElementById('loadMoreRecentBtn');
@@ -19151,68 +19155,112 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (btnText) btnText.textContent = 'Loading more recent shiurim...';
     if (spinner) spinner.style.display = 'inline-block';
 
-    const nextOffset = (currentRecentOffset || 0) + 1;
-    let apiUrl = '/api/search?q=' + encodeURIComponent(currentSearchQuery || '') +
-      '&sort=date&start=' + nextOffset + '&rows=5';
+    const buildApiUrl = (startOffset, rowsCount) => {
+      let url = '/api/search?q=' + encodeURIComponent(currentSearchQuery || '') +
+        '&sort=date&start=' + startOffset + '&rows=' + rowsCount;
 
-    const teachersList = currentFilterParams.teachers || (currentFilterParams.teacherId ? [{ id: currentFilterParams.teacherId }] : []);
-    teachersList.forEach(t => {
-      apiUrl += '&teacherId=' + encodeURIComponent(t.id);
-    });
+      const teachersList = currentFilterParams.teachers || (currentFilterParams.teacherId ? [{ id: currentFilterParams.teacherId }] : []);
+      teachersList.forEach(t => {
+        url += '&teacherId=' + encodeURIComponent(t.id);
+      });
 
-    const categoriesList = currentFilterParams.categories || (currentFilterParams.subCategoryId ? [{ id: currentFilterParams.subCategoryId }] : []);
-    categoriesList.forEach(c => {
-      apiUrl += '&subCategoryId=' + encodeURIComponent(c.id);
-    });
+      const categoriesList = currentFilterParams.categories || (currentFilterParams.subCategoryId ? [{ id: currentFilterParams.subCategoryId }] : []);
+      categoriesList.forEach(c => {
+        url += '&subCategoryId=' + encodeURIComponent(c.id);
+      });
 
-    const locationsList = currentFilterParams.locations || (currentFilterParams.locationId ? [{ id: currentFilterParams.locationId }] : []);
-    locationsList.forEach(l => {
-      apiUrl += '&locationId=' + encodeURIComponent(l.id);
-    });
+      const locationsList = currentFilterParams.locations || (currentFilterParams.locationId ? [{ id: currentFilterParams.locationId }] : []);
+      locationsList.forEach(l => {
+        url += '&locationId=' + encodeURIComponent(l.id);
+      });
 
-    const seriesList = currentFilterParams.series || (currentFilterParams.seriesId ? [{ id: currentFilterParams.seriesId }] : []);
-    seriesList.forEach(s => {
-      apiUrl += '&seriesId=' + encodeURIComponent(s.id);
-    });
+      const seriesList = currentFilterParams.series || (currentFilterParams.seriesId ? [{ id: currentFilterParams.seriesId }] : []);
+      seriesList.forEach(s => {
+        url += '&seriesId=' + encodeURIComponent(s.id);
+      });
 
-    if (currentFilterParams.minDuration) apiUrl += '&minDuration=' + encodeURIComponent(currentFilterParams.minDuration);
-    if (currentFilterParams.maxDuration) apiUrl += '&maxDuration=' + encodeURIComponent(currentFilterParams.maxDuration);
-    if (currentFilterParams.year) apiUrl += '&year=' + encodeURIComponent(currentFilterParams.year);
-    if (currentFilterParams.fromDate) apiUrl += '&fromDate=' + encodeURIComponent(currentFilterParams.fromDate);
-    if (currentFilterParams.toDate) apiUrl += '&toDate=' + encodeURIComponent(currentFilterParams.toDate);
-    if (currentFilterParams.mediaType && currentFilterParams.mediaType !== 'all') {
-      apiUrl += '&mediaType=' + encodeURIComponent(currentFilterParams.mediaType);
-    }
-    if (currentFilterParams.enablePhonetics === false || (currentFilterParams.enablePhonetics === undefined && useClassicSearch)) {
-      apiUrl += '&exact=1';
-    }
+      if (currentFilterParams.minDuration) url += '&minDuration=' + encodeURIComponent(currentFilterParams.minDuration);
+      if (currentFilterParams.maxDuration) url += '&maxDuration=' + encodeURIComponent(currentFilterParams.maxDuration);
+      if (currentFilterParams.year) url += '&year=' + encodeURIComponent(currentFilterParams.year);
+      if (currentFilterParams.fromDate) url += '&fromDate=' + encodeURIComponent(currentFilterParams.fromDate);
+      if (currentFilterParams.toDate) url += '&toDate=' + encodeURIComponent(currentFilterParams.toDate);
+      if (currentFilterParams.mediaType && currentFilterParams.mediaType !== 'all') {
+        url += '&mediaType=' + encodeURIComponent(currentFilterParams.mediaType);
+      }
+      if (currentFilterParams.enablePhonetics === false || (currentFilterParams.enablePhonetics === undefined && useClassicSearch)) {
+        url += '&exact=1';
+      }
+      return url;
+    };
 
     try {
-      const res = await fetch(apiUrl);
-      const data = await res.json();
-      const newDocs = data?.response?.docs || [];
-      currentRecentOffset = (currentRecentOffset || 0) + newDocs.length;
+      const TARGET_NEW = 5;
+      const gathered = [];
+      const existingRecentIds = new Set((currentRecentDocs || []).map(d => String(d.shiurID || d.shiurid || d.id || '')));
+      const relevantIds = (dedupRecentResults && currentSearchDocs)
+        ? new Set(currentSearchDocs.map(d => String(d.shiurID || d.shiurid || d.id || '')))
+        : null;
 
-      if (newDocs.length > 0) {
-        const existingRecentIds = new Set((currentRecentDocs || []).map(d => String(d.shiurID || d.shiurid || d.id || '')));
-        const relevantIds = (dedupRecentResults && currentSearchDocs)
-          ? new Set(currentSearchDocs.map(d => String(d.shiurID || d.shiurid || d.id || '')))
-          : null;
-
-        const toAdd = newDocs.filter(d => {
-          const id = String(d.shiurID || d.shiurid || d.id || '');
-          if (!id) return true;
-          if (existingRecentIds.has(id)) return false;
-          if (relevantIds && relevantIds.has(id)) return false;
-          return true;
-        });
-        currentRecentDocs = (currentRecentDocs || []).concat(toAdd);
+      // 1. Pull from any buffered non-duplicate results first
+      if (typeof recentPendingDocs !== 'undefined' && recentPendingDocs.length > 0) {
+        while (recentPendingDocs.length > 0 && gathered.length < TARGET_NEW) {
+          const item = recentPendingDocs.shift();
+          const id = String(item.shiurID || item.shiurid || item.id || '');
+          if (id && existingRecentIds.has(id)) continue;
+          if (id && relevantIds && relevantIds.has(id)) continue;
+          gathered.push(item);
+          if (id) existingRecentIds.add(id);
+        }
       }
 
-      const totalRecent = data?.response?.numFound || recentNumFound || 0;
-      if (newDocs.length < 5 || (totalRecent > 0 && currentRecentOffset >= totalRecent)) {
-        hasMoreRecentResults = false;
+      // 2. Fetch from network until TARGET_NEW is reached or Solr has no more results
+      let fetchCount = 0;
+      const MAX_FETCHES = 10;
+
+      while (gathered.length < TARGET_NEW && hasMoreRecentResults && fetchCount < MAX_FETCHES) {
+        fetchCount++;
+        const nextOffset = (currentRecentOffset || 0) + 1;
+        const fetchRows = 5;
+        const apiUrl = buildApiUrl(nextOffset, fetchRows);
+
+        const res = await fetch(apiUrl);
+        const data = await res.json();
+        const newDocs = data?.response?.docs || [];
+        currentRecentOffset = (currentRecentOffset || 0) + newDocs.length;
+
+        const totalRecent = data?.response?.numFound || recentNumFound || 0;
+        if (newDocs.length < fetchRows || (totalRecent > 0 && currentRecentOffset >= totalRecent)) {
+          hasMoreRecentResults = false;
+        }
+
+        if (newDocs.length === 0) {
+          hasMoreRecentResults = false;
+          break;
+        }
+
+        for (const doc of newDocs) {
+          const id = String(doc.shiurID || doc.shiurid || doc.id || '');
+          if (id && existingRecentIds.has(id)) continue;
+          if (id && relevantIds && relevantIds.has(id)) continue;
+
+          if (gathered.length < TARGET_NEW) {
+            gathered.push(doc);
+            if (id) existingRecentIds.add(id);
+          } else {
+            if (typeof recentPendingDocs === 'undefined') recentPendingDocs = [];
+            recentPendingDocs.push(doc);
+          }
+        }
       }
+
+      if (gathered.length > 0) {
+        currentRecentDocs = (currentRecentDocs || []).concat(gathered);
+      }
+
+      if (typeof recentPendingDocs !== 'undefined' && recentPendingDocs.length > 0) {
+        hasMoreRecentResults = true;
+      }
+
       isLoadingMoreRecent = false;
       renderCurrentSearchResults();
     } catch (err) {
@@ -19285,6 +19333,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     currentSearchDocs = [];
     currentRecentDocs = [];
     currentRecentOffset = 0;
+    recentPendingDocs = [];
     recentNumFound = 0;
     isLoadingMoreRecent = false;
     hasMoreRecentResults = true;

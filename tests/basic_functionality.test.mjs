@@ -1687,24 +1687,63 @@ async function testLoadMoreRecent() {
   assert.ok(html.includes('let dedupRecentResults = false;'), 'dedupRecentResults must default to false (OFF by default)');
   assert.ok(!html.includes('id="toggleDedupResults" checked'), 'toggleDedupResults checkbox must be unchecked by default');
   assert.ok(html.includes('relevantIds = (dedupRecentResults && currentSearchDocs)'), 'loadMoreRecentResults must check dedupRecentResults before filtering against currentSearchDocs');
+  assert.ok(html.includes('recentPendingDocs'), 'Script must track recentPendingDocs buffer');
+  assert.ok(html.includes('while (gathered.length < TARGET_NEW && hasMoreRecentResults && fetchCount < MAX_FETCHES)'),
+    'loadMoreRecentResults must loop until TARGET_NEW (5) un-deduplicated rows are gathered');
 
   // Verify deduplication filtering behavior programmatically
-  const sampleRelevanceDocs = [{ id: '100', title: 'Doc 100' }, { id: '200', title: 'Doc 200' }];
-  const sampleNewRecent = [{ id: '100', title: 'Doc 100' }, { id: '300', title: 'Doc 300' }];
+  const sampleRelevanceDocs = [{ id: '100', title: 'Doc 100' }, { id: '200', title: 'Doc 200' }, { id: '400', title: 'Doc 400' }];
   const existingRecentIds = new Set(['50']);
 
-  // Case A: Dedup ON
+  // Case A: Dedup ON with multi-batch quota filling
   const relevantIdsOn = new Set(sampleRelevanceDocs.map(d => String(d.id)));
-  const toAddDedupOn = sampleNewRecent.filter(d => !existingRecentIds.has(String(d.id)) && !relevantIdsOn.has(String(d.id)));
-  assert.equal(toAddDedupOn.length, 1, 'When dedup is ON, duplicate doc 100 must be omitted');
-  assert.equal(toAddDedupOn[0].id, '300', 'Only non-duplicate doc 300 must be added');
+  const batch1 = [
+    { id: '100', title: 'Doc 100' }, // dupe (in relevance)
+    { id: '101', title: 'Doc 101' }, // valid
+    { id: '200', title: 'Doc 200' }, // dupe (in relevance)
+    { id: '102', title: 'Doc 102' }, // valid
+    { id: '400', title: 'Doc 400' }, // dupe (in relevance)
+  ];
+  const batch2 = [
+    { id: '103', title: 'Doc 103' }, // valid
+    { id: '104', title: 'Doc 104' }, // valid
+    { id: '105', title: 'Doc 105' }, // valid
+    { id: '106', title: 'Doc 106' }, // valid (extra, should buffer)
+    { id: '200', title: 'Doc 200' }, // dupe
+  ];
+
+  const TARGET_NEW = 5;
+  const gathered = [];
+  const testPending = [];
+  const batches = [batch1, batch2];
+
+  for (const b of batches) {
+    if (gathered.length >= TARGET_NEW) break;
+    for (const doc of b) {
+      const id = String(doc.id);
+      if (existingRecentIds.has(id)) continue;
+      if (relevantIdsOn.has(id)) continue;
+      if (gathered.length < TARGET_NEW) {
+        gathered.push(doc);
+        existingRecentIds.add(id);
+      } else {
+        testPending.push(doc);
+      }
+    }
+  }
+
+  assert.equal(gathered.length, 5, 'When dedup is ON, loop must keep fetching until exactly 5 un-deduplicated rows are gathered');
+  assert.deepEqual(gathered.map(d => d.id), ['101', '102', '103', '104', '105'], 'Gathered items must be exactly the first 5 non-duplicates');
+  assert.equal(testPending.length, 1, 'Extra non-duplicate in batch must be buffered into pending');
+  assert.equal(testPending[0].id, '106', 'Buffered doc must be 106');
 
   // Case B: Dedup OFF
   const relevantIdsOff = null;
-  const toAddDedupOff = sampleNewRecent.filter(d => !existingRecentIds.has(String(d.id)) && (!relevantIdsOff || !relevantIdsOff.has(String(d.id))));
-  assert.equal(toAddDedupOff.length, 2, 'When dedup is OFF, doc 100 must be retained alongside doc 300');
+  const toAddDedupOff = batch1.filter(d => !existingRecentIds.has(String(d.id)) && (!relevantIdsOff || !relevantIdsOff.has(String(d.id))));
+  // batch1 contains 100, 101, 200, 102, 400. 101 and 102 are already in existingRecentIds. 100, 200, 400 are not in existingRecentIds.
+  assert.equal(toAddDedupOff.length, 3, 'When dedup is OFF, docs present in relevance are retained');
 
-  console.log('  ✅ Search Results "Load More Recent" (+5 reverse order, dedup toggle off by default) verified.');
+  console.log('  ✅ Search Results "Load More Recent" (+5 reverse order, dedup quota loop & pending buffer) verified.');
 }
 
 async function runAll() {

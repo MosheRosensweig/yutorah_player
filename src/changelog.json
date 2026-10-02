@@ -1,6 +1,10 @@
 {
   "entries": [
     {
+      "date": "2026-10-02T09:23:00-04:00",
+      "message": "Search Results: when '⚡ Dedup Results' is activated, '🔽 Load More Recent' automatically continues fetching subsequent batches until a full quota of 5 un-deduplicated recent rows is gathered (or all catalog matches are exhausted), buffering any excess non-duplicate rows for immediate next clicks."
+    },
+    {
       "date": "2026-10-02T09:16:00-04:00",
       "message": "Search Results: added '⚡ Dedup Results' toggle switch (off by default); when enabled, '🔽 Load More Recent' checks incoming matches against the Most Relevant Results list and omits any duplicates, while keeping full un-deduplicated results when off."
     },
