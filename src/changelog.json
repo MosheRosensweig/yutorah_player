@@ -1,6 +1,10 @@
 {
   "entries": [
     {
+      "date": "2026-10-01T21:40:00-04:00",
+      "message": "Top-left brand button disclaimer enhancements: added desktop hover tooltip indicating non-affiliation with YUTorah; added on-click flash HUD notification displaying the disclaimer on both desktop and mobile while navigating home; added Dev settings switch to toggle the click disclaimer popup on or off via D1 app_settings."
+    },
+    {
       "date": "2026-10-01T20:05:00-04:00",
       "message": "Top-left brand button updated to '🎧 YUTorah UNOFFICIAL' (with accessibility title) replacing legacy 'Enhanced Player' branding; added resilient timeouts for upstream CDN sponsorship audio checks."
     },

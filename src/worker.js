@@ -285,6 +285,76 @@ async function handleAuthRoutes(request, env, url) {
     });
   }
 
+  // ---- Ops switch: read/flip brand disclaimer click popup ----
+  // GET returns state (public read, default true); POST flips it (admin or dev-site dev mode).
+  if (path === '/api/admin/disclaimer-popup') {
+    if (request.method === 'GET') {
+      let on = true;
+      try {
+        if (env && env.yutorah_db) {
+          const row = await env.yutorah_db.prepare(
+            "SELECT value FROM app_settings WHERE key = 'disclaimer_popup'").first();
+          if (row && (row.value === '1' || row.value === '0')) {
+            on = row.value === '1';
+          }
+        }
+      } catch (e) {}
+      return new Response(JSON.stringify({ on }), {
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' }
+      });
+    }
+    if (request.method === 'POST') {
+      const isDevHost = url.hostname.includes('-dev.') || url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+      const isDevHeader = request.headers.get('x-dev-mode') === '1';
+      const devAuthorized = isDevHost && isDevHeader;
+      const user = await getSessionUser(request, env);
+      const adminAuthorized = isAdminUser(user);
+
+      if (!devAuthorized && !adminAuthorized) {
+        if (!user && !isDevHeader) {
+          return new Response(JSON.stringify({ error: 'login required' }), {
+            status: 401, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+          });
+        }
+        return new Response(JSON.stringify({ error: 'forbidden' }), {
+          status: 403, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+        });
+      }
+      if (!env || !env.yutorah_db) {
+        return new Response(JSON.stringify({ error: 'no database bound' }), {
+          status: 503, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+        });
+      }
+      let on = null;
+      try {
+        const body = await request.json();
+        if (body && (body.on === true || body.on === '1' || body.on === 1)) on = true;
+        else if (body && (body.on === false || body.on === '0' || body.on === 0)) on = false;
+      } catch (e) {}
+      if (on === null) {
+        return new Response(JSON.stringify({ error: 'body.on must be true or false' }), {
+          status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+        });
+      }
+      try {
+        await env.yutorah_db.prepare(
+          "INSERT INTO app_settings (key, value, updated_at) VALUES ('disclaimer_popup', ?, ?) " +
+          "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at")
+          .bind(on ? '1' : '0', Date.now()).run();
+      } catch (e) {
+        return new Response(JSON.stringify({ error: 'database write failed' }), {
+          status: 502, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+        });
+      }
+      return new Response(JSON.stringify({ on }), {
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' }
+      });
+    }
+    return new Response(JSON.stringify({ error: 'method not allowed' }), {
+      status: 405, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+    });
+  }
+
   const secureCookies = isHttpsRequest(request);
   const allowedHosts = (env && (env.ALLOWED_HOSTS || '')).split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
   if (allowedHosts.length > 0 && !allowedHosts.includes(url.hostname.toLowerCase())) {
@@ -2301,7 +2371,8 @@ export default {
         const isStatic = p === '/favicon.ico' || p === '/sw.js' ||
           p === '/manifest.json' || p === '/manifest.webmanifest' ||
           p.startsWith('/icons/') || p.startsWith('/js/') ||
-          p === '/api/admin/maintenance';
+          p === '/api/admin/maintenance' ||
+          p === '/api/admin/disclaimer-popup';
         if (!isStatic) {
           try {
             if (env.yutorah_db) {
@@ -2355,6 +2426,7 @@ export default {
         url.pathname === '/api/playlists/save' || url.pathname === '/api/playlists/unsave' ||
         url.pathname === '/api/playlists/mine' ||
         url.pathname === '/api/admin/maintenance' ||
+        url.pathname === '/api/admin/disclaimer-popup' ||
         url.pathname === '/auth/google' || url.pathname === '/auth/callback' ||
         url.pathname === '/auth/logout') {
       const handled = await handleAuthRoutes(request, env, url) ||
@@ -2940,6 +3012,17 @@ export default {
 
     const isClassicSearch = url.searchParams.get('exact') === '1' || url.searchParams.get('classic') === '1';
 
+    let disclaimerPopup = true;
+    try {
+      if (env && env.yutorah_db) {
+        const row = await env.yutorah_db.prepare(
+          "SELECT value FROM app_settings WHERE key = 'disclaimer_popup'").first();
+        if (row && (row.value === '1' || row.value === '0')) {
+          disclaimerPopup = row.value === '1';
+        }
+      }
+    } catch (e) {}
+
     // 7. Render and return the HTML app
     return new Response(renderAppHtml({
       shiurData,
@@ -2961,7 +3044,8 @@ export default {
       initialQueryResolution,
       initialDidYouMean,
       isClassicSearch,
-      dafInit
+      dafInit,
+      disclaimerPopup
     }), {
       headers: {
         'Content-Type': 'text/html; charset=utf-8',
@@ -6251,7 +6335,7 @@ function renderDafFragment(opts = {}) {
   };
 }
 
-function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpeed = '', themeMode = 'dark', homepageData, sponsorshipText = '', sponsorshipPlainText = '', sponsorshipAudioUrl = '', searchQuery, initialSearchResults, initialNumFound = 0, initialPhoneticExpansion = null, initialRecentDocs = [], initialRecentNumFound = 0, initialQueryResolution = null, initialDidYouMean = [], isClassicSearch = false, dafInit = null }) {
+function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpeed = '', themeMode = 'dark', homepageData, sponsorshipText = '', sponsorshipPlainText = '', sponsorshipAudioUrl = '', searchQuery, initialSearchResults, initialNumFound = 0, initialPhoneticExpansion = null, initialRecentDocs = [], initialRecentNumFound = 0, initialQueryResolution = null, initialDidYouMean = [], isClassicSearch = false, dafInit = null, disclaimerPopup = true }) {
   const isPlaying = Boolean(shiurData || directAudio);
   const initialDafRef = extractDafReference(shiurData);
 
@@ -6909,6 +6993,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       flex-shrink: 0;
       min-width: 0;
     }
+    .brand-wrap {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      flex-shrink: 0;
+      min-width: 0;
+    }
     .brand {
       display: flex;
       align-items: center;
@@ -6946,9 +7037,50 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       flex-shrink: 0;
       white-space: nowrap;
     }
+    .brand-hover-tooltip {
+      display: none;
+      position: absolute;
+      top: calc(100% + 8px);
+      left: 0;
+      background: rgba(18, 26, 38, 0.96);
+      color: #ffffff;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      line-height: 1.4;
+      white-space: nowrap;
+      pointer-events: none;
+      z-index: 10001;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+      border: 1px solid rgba(255,255,255,0.15);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      opacity: 0;
+      transform: translateY(-4px);
+      transition: opacity 0.15s ease, transform 0.15s ease;
+    }
+    .brand-hover-tooltip::before {
+      content: '';
+      position: absolute;
+      bottom: 100%;
+      left: 20px;
+      border: 5px solid transparent;
+      border-bottom-color: rgba(18, 26, 38, 0.96);
+    }
+    @media (hover: hover) and (pointer: fine) {
+      .brand-wrap:hover .brand-hover-tooltip,
+      .brand-wrap:focus-within .brand-hover-tooltip {
+        display: block;
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
     /* Last-resort brand shrink (toggled by checkHeaderOverflow). */
-    #mainHeader.cluster-tight .brand {
+    #mainHeader.cluster-tight .brand,
+    #mainHeader.cluster-tight .brand-wrap {
       flex-shrink: 1;
+      min-width: 0;
     }
     .hebrew-date-badge {
       font-size: 13px;
@@ -12792,9 +12924,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
 <header id="mainHeader">
   <div class="header-inner">
     <div class="header-left">
-      <a href="/" class="brand" onclick="goHome(event)" title="YUTorah Unofficial">
-        <span class="brand-text">🎧 YUTorah</span> <span>UNOFFICIAL</span>
-      </a>
+      <div class="brand-wrap">
+        <a href="/" class="brand" onclick="handleBrandClick(event)" title="This website is not affiliated with YUTorah in any way">
+          <span class="brand-text">🎧 YUTorah</span> <span>UNOFFICIAL</span>
+        </a>
+        <div class="brand-hover-tooltip" role="tooltip">This website is not affiliated with YUTorah in any way</div>
+      </div>
       <button type="button" id="authBtn" class="theme-toggle-btn auth-btn" onclick="toggleAuthMenu(event)" title="Sign in to sync across devices">
         <span class="auth-icon">👤</span><span class="auth-label"> Sign in</span>
       </button>
@@ -13914,6 +14049,13 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
   const INITIAL_ARTICLE_PDF = ${jsEmbed(articlePdfUrl || '')};
   let currentArticlePdf = INITIAL_ARTICLE_PDF;
   let isCurrentShiurArticle = Boolean(INITIAL_ARTICLE_PDF);
+  const INITIAL_DISCLAIMER_POPUP = ${disclaimerPopup ? 'true' : 'false'};
+  let disclaimerPopupEnabled = INITIAL_DISCLAIMER_POPUP;
+  try {
+    const localDisclaimer = localStorage.getItem('yutorah_disclaimer_popup');
+    if (localDisclaimer === '0') disclaimerPopupEnabled = false;
+    else if (localDisclaimer === '1') disclaimerPopupEnabled = true;
+  } catch (e) {}
   let initialTimeApplied = false;
   let lastUrlUpdateSec = -1;
   let lastUrlUpdateTime = 0;
@@ -17020,6 +17162,12 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       }
     } catch (e) {}
     return '/';
+  }
+  function handleBrandClick(e) {
+    goHome(e);
+    if (disclaimerPopupEnabled) {
+      flashToast('This website is not affiliated with YUTorah in any way', false, false);
+    }
   }
   function goHome(e) {
     if (e) e.preventDefault();
@@ -23517,6 +23665,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     if (isDevMode) {
       html += '<div class="settings-menu-label">Dev settings</div>';
       html += '<button type="button" class="settings-menu-item" onclick="toggleProdMaintenance(this);"><span class="menu-item-icon" id="prodMaintIcon">🚧</span> <span id="prodMaintLabel">Prod site: …</span></button>';
+      html += '<button type="button" class="settings-menu-item" onclick="toggleDisclaimerPopup(this);"><span class="menu-item-icon" id="disclaimerPopupIcon">💬</span> <span id="disclaimerPopupLabel">Disclaimer popup: …</span></button>';
       html += '<button type="button" class="settings-menu-item" onclick="closeAuthMenu(); openChangelogModal();"><span class="menu-item-icon">📋</span> <span>Change Log</span></button>';
       html += '<div class="settings-menu-label">Save button icon</div>';
       html += '<div id="saveIconPickerAuth" style="display:flex; gap:6px; padding:4px 10px 8px; flex-wrap:wrap;"></div>';
@@ -23526,6 +23675,7 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
     positionAuthMenu();
     if (isDevMode) {
       try { refreshProdMaintenanceLabel(); } catch (e) {}
+      try { refreshDisclaimerPopupLabel(); } catch (e) {}
     }
     if (isDevMode) {
       const wrap = document.getElementById('saveIconPickerAuth');
@@ -23633,6 +23783,76 @@ function renderAppHtml({ shiurData, shiurId, directAudio, timestamp, playbackSpe
       })
       .catch(() => {
         flashToast('⚠️ Switch unreachable', true, false);
+      });
+  }
+
+  // Brand disclaimer click popup switch (dev-mode UI; flips instantly).
+  function refreshDisclaimerPopupLabel() {
+    const headers = {};
+    if (typeof isDevMode !== 'undefined' && isDevMode) headers['X-Dev-Mode'] = '1';
+    fetch('/api/admin/disclaimer-popup', { credentials: 'same-origin', headers })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        const label = document.getElementById('disclaimerPopupLabel');
+        const icon = document.getElementById('disclaimerPopupIcon');
+        if (label) label.textContent = 'Disclaimer popup: ' + (!d ? 'UNKNOWN' : (d.on ? 'ENABLED' : 'DISABLED'));
+        if (icon && d && typeof d.on === 'boolean') icon.textContent = d.on ? '💬' : '🔇';
+        if (d && typeof d.on === 'boolean') {
+          disclaimerPopupEnabled = d.on;
+          try { localStorage.setItem('yutorah_disclaimer_popup', d.on ? '1' : '0'); } catch (e) {}
+        }
+      })
+      .catch(() => {
+        const label = document.getElementById('disclaimerPopupLabel');
+        if (label) label.textContent = 'Disclaimer popup: UNKNOWN';
+      });
+  }
+
+  function toggleDisclaimerPopup(btn) {
+    const headers = { 'Content-Type': 'application/json' };
+    if (typeof isDevMode !== 'undefined' && isDevMode) headers['X-Dev-Mode'] = '1';
+    fetch('/api/admin/disclaimer-popup', { credentials: 'same-origin', headers })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d || typeof d.on !== 'boolean') {
+          flashToast('⚠️ Could not read disclaimer switch state — not toggling', true, false);
+          refreshDisclaimerPopupLabel();
+          return null;
+        }
+        const next = !d.on;
+        return fetch('/api/admin/disclaimer-popup', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers,
+          body: JSON.stringify({ on: next })
+        }).then(r => r.json().then(p => ({ status: r.status, body: p })).catch(() => ({ status: r.status, body: {} })));
+      })
+      .then(res => {
+        if (!res) return;
+        const { status, body } = res;
+        if (status === 401) {
+          flashToast('🔑 Log in (as admin) to flip disclaimer switch', true, false);
+          return;
+        }
+        if (status === 403) {
+          flashToast('🔒 Admin or Dev Mode required', true, false);
+          return;
+        }
+        if (status !== 200 || !body || typeof body.on !== 'boolean') {
+          flashToast('⚠️ Switch did not confirm (HTTP ' + status + ')', true, false);
+          refreshDisclaimerPopupLabel();
+          return;
+        }
+        disclaimerPopupEnabled = body.on;
+        try { localStorage.setItem('yutorah_disclaimer_popup', body.on ? '1' : '0'); } catch (e) {}
+        const label = document.getElementById('disclaimerPopupLabel');
+        const icon = document.getElementById('disclaimerPopupIcon');
+        if (label) label.textContent = 'Disclaimer popup: ' + (body.on ? 'ENABLED' : 'DISABLED');
+        if (icon) icon.textContent = body.on ? '💬' : '🔇';
+        flashToast(body.on ? '💬 Disclaimer click popup enabled' : '🔇 Disclaimer click popup disabled', false, false);
+      })
+      .catch(() => {
+        flashToast('⚠️ Disclaimer switch unreachable', true, false);
       });
   }
 

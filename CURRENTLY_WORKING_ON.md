@@ -1,10 +1,18 @@
 # Currently Working On — Living Status & Activity Log
 
 Living status doc & audit log — updated on every milestone and user request.  
-Last updated: **2026-09-16, 09:15 ET**  
-Current branch: `feat/player-followups` (Player Follow-ups F1–F4; based on `feat/player-ux-batch` @ `6c66a1d`)  
-Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev) (`72685143`)  
-Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://yutorah-player.mrosensweig.workers.dev) (`ee012e93`) — suggestion parity (boot warm + fetch timeout, v1.5.6); markers verified
+Last updated: **2026-10-01, 21:42 ET**  
+Current branch: `main`  
+Dev deployment: [https://yutorah-player-dev.mrosensweig.workers.dev](https://yutorah-player-dev.mrosensweig.workers.dev)  
+Production deployment: [https://yutorah-player.mrosensweig.workers.dev](https://yutorah-player.mrosensweig.workers.dev) (Maintenance mode active: HTTP 503)
+
+## 🎯 Brand Disclaimer Tooltip, Click Flash & Dev Switch — DONE
+- Top-left brand button (`🎧 YUTorah UNOFFICIAL`) desktop hover tooltip: `"This website is not affiliated with YUTorah in any way"`.
+- On-click flash notification on screen (`flashToast`) on desktop and mobile while navigating home.
+- Dev Mode settings toggle for disclaimer popup backed by Cloudflare D1 `app_settings` (key `disclaimer_popup`, default `true`).
+- Test #34 added in `tests/basic_functionality.test.mjs` verifying SSR markup, CSS, JS event handlers, API routes (`GET` & `POST /api/admin/disclaimer-popup`), and RBAC.
+- Changelog entry recorded in `src/changelog.json` (`2026-10-01T21:40:00-04:00`).
+
 ## 🎯 Research Q&A — DONE (no code changed; full write-up delivered 2026-09-20)
 ### Q1: Can summaries/transcripts power search? YES — verified path below
 - Upstream Solr CANNOT search transcript text today (probed: no transcript/fulltext field, no query-builder support). Data is fetchable per-track (`/transcriptions/shiur/<id>`: ~569-char summaries, 5 chapter anchors, word timestamps, batch endpoint works) — so we index it ourselves.

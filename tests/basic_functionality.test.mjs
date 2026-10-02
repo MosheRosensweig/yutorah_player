@@ -1535,6 +1535,121 @@ async function testAdminMaintenance() {
   console.log('  ✅ Admin maintenance switch verified (fail-safe POST, RBAC, D1 gate).');
 }
 
+async function testDisclaimerPopup() {
+  console.log('\n--- Running Test #34: Brand Disclaimer Tooltip, Click Flash & Dev Switch ---');
+  const res = await worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/'), mockEnv, mockCtx);
+  const html = await res.text();
+
+  // 1. Brand HTML wrapper and tooltip markup
+  assert.ok(html.includes('class="brand-wrap"'), 'Header must contain .brand-wrap');
+  assert.ok(html.includes('class="brand-hover-tooltip"'), 'Header must contain .brand-hover-tooltip');
+  assert.ok(html.includes('role="tooltip"'), 'Brand hover tooltip must have role="tooltip"');
+  assert.ok(html.includes('This website is not affiliated with YUTorah in any way'), 'Tooltip copy must state non-affiliation');
+  assert.ok(html.includes('onclick="handleBrandClick(event)"'), 'Brand link must call handleBrandClick');
+
+  // 2. CSS rules
+  assert.ok(html.includes('.brand-wrap {'), 'CSS must define .brand-wrap');
+  assert.ok(html.includes('.brand-hover-tooltip {'), 'CSS must define .brand-hover-tooltip');
+  assert.ok(html.includes('@media (hover: hover) and (pointer: fine)'), 'Tooltip must use hover media query');
+
+  // 3. Client scripts
+  assert.ok(html.includes('function handleBrandClick(e)'), 'Client script must define handleBrandClick');
+  assert.ok(html.includes('INITIAL_DISCLAIMER_POPUP'), 'Client script must define INITIAL_DISCLAIMER_POPUP');
+  assert.ok(html.includes('toggleDisclaimerPopup'), 'Client script must define toggleDisclaimerPopup');
+  assert.ok(html.includes('refreshDisclaimerPopupLabel'), 'Client script must define refreshDisclaimerPopupLabel');
+  assert.ok(html.includes('id="disclaimerPopupLabel"'), 'Dev menu must contain disclaimerPopupLabel');
+
+  // 4. API endpoint & RBAC
+  const norm = (s) => s.replace(/\s+/g, ' ').trim().toUpperCase();
+  const makeFakeDb = ({ users = {}, settings = {} } = {}) => {
+    const userMap = new Map(Object.entries(users));
+    const setMap = new Map(Object.entries(settings));
+    return {
+      __settings: setMap,
+      prepare(sql) {
+        const q = norm(sql);
+        const bound = (...args) => ({
+          first: async () => {
+            if (q.startsWith('SELECT ID, EMAIL, NAME, PICTURE FROM USERS WHERE ID = ?')) {
+              return userMap.get(String(args[0])) || null;
+            }
+            if (q.startsWith('SELECT VALUE FROM APP_SETTINGS WHERE KEY =')) {
+              const k = q.includes("'DISCLAIMER_POPUP'") ? 'disclaimer_popup' : 'maintenance';
+              const v = setMap.get(k);
+              return (v === undefined) ? null : { value: v };
+            }
+            return null;
+          },
+          run: async () => {
+            if (q.startsWith('INSERT INTO APP_SETTINGS')) {
+              const k = q.includes("'DISCLAIMER_POPUP'") ? 'disclaimer_popup' : 'maintenance';
+              setMap.set(k, String(args[0]));
+            }
+            return { success: true };
+          },
+          all: async () => ({ results: [] })
+        });
+        const unbound = bound();
+        unbound.bind = (...args) => bound(...args);
+        return unbound;
+      }
+    };
+  };
+
+  const b64url = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url');
+  const forgeSession = (uid, secret) => {
+    const h = b64url({ alg: 'HS256', typ: 'JWT' });
+    const b = b64url({ uid, exp: Date.now() + 3600000 });
+    const sig = createHmac('sha256', secret).update(h + '.' + b).digest('base64url');
+    return h + '.' + b + '.' + sig;
+  };
+
+  const adminUser = { id: 'u-admin', email: 'Admin@Example.com', name: 'Admin', picture: '' };
+  const plainUser = { id: 'u-bob', email: 'bob@example.com', name: 'Bob', picture: '' };
+  const db = makeFakeDb({ users: { 'u-admin': adminUser, 'u-bob': plainUser }, settings: { disclaimer_popup: '1' } });
+  const adminEnv = { SESSION_SECRET: 'test-secret', ADMIN_EMAILS: 'admin@example.com', yutorah_db: db };
+  const bobEnv = { SESSION_SECRET: 'test-secret', ADMIN_EMAILS: 'admin@example.com', yutorah_db: db };
+  const noAdminEnv = { SESSION_SECRET: 'test-secret', yutorah_db: db };
+  const adminCookie = 'yutorah_session=' + forgeSession('u-admin', 'test-secret');
+  const bobCookie = 'yutorah_session=' + forgeSession('u-bob', 'test-secret');
+
+  const apiGet = (env, cookie) => worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/api/admin/disclaimer-popup', {
+    headers: cookie ? { Cookie: cookie } : {}
+  }), env, mockCtx);
+  const apiPost = (env, cookie, body) => worker.fetch(new Request('https://yutorah-player.mrosensweig.workers.dev/api/admin/disclaimer-popup', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) }, body
+  }), env, mockCtx);
+
+  // Unauthenticated GET returns 200 with default true or stored setting
+  let r = await apiGet(adminEnv);
+  assert.equal(r.status, 200, 'unauthenticated GET /api/admin/disclaimer-popup must return 200');
+  assert.equal((await r.json()).on, true, 'GET must report on: true');
+
+  // Unauthenticated POST on prod host must return 401
+  r = await apiPost(adminEnv, null, JSON.stringify({ on: false }));
+  assert.equal(r.status, 401, 'unauthenticated POST on prod host must return 401');
+
+  // Non-admin POST on prod host must return 403
+  r = await apiPost(bobEnv, bobCookie, JSON.stringify({ on: false }));
+  assert.equal(r.status, 403, 'non-admin POST on prod host must return 403');
+
+  // Admin POST valid toggle
+  r = await apiPost(adminEnv, adminCookie, JSON.stringify({ on: false }));
+  assert.equal(r.status, 200, 'admin POST {on:false} must return 200');
+  assert.equal((await r.json()).on, false);
+  assert.equal(db.__settings.get('disclaimer_popup'), '0');
+
+  // Dev host POST with X-Dev-Mode: 1
+  const devHostPost = (body) => worker.fetch(new Request('https://yutorah-player-dev.mrosensweig.workers.dev/api/admin/disclaimer-popup', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Dev-Mode': '1' }, body
+  }), noAdminEnv, mockCtx);
+  r = await devHostPost(JSON.stringify({ on: true }));
+  assert.equal(r.status, 200, 'dev-host dev-mode POST {on:true} must return 200');
+  assert.equal(db.__settings.get('disclaimer_popup'), '1');
+
+  console.log('  ✅ Brand disclaimer tooltip, click flash & dev switch verified.');
+}
+
 async function runAll() {
   try {
     await testHomepage();
@@ -1570,6 +1685,7 @@ async function runAll() {
     await testCardPlayStatesAndMiniPop();
     await testThemeNoContagion();
     await testAdminMaintenance();
+    await testDisclaimerPopup();
     console.log('\n🎉 ALL BASIC FUNCTIONALITY, ARTICLE READER & LIQUID MODE TESTS PASSED SUCCESSFULLY!');
   } catch (err) {
     console.error('\n❌ Test failed:', err);
